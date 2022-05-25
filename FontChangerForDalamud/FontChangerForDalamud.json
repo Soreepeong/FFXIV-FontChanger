@@ -1,0 +1,12 @@
+{
+  "Author": "srkizer",
+  "Name": "FontChanger",
+  "Punchline": "COMIC SANS COMIC SANS COMIC SANS COMIC SANS COMIC SANS COMIC SANS COMIC SANS",
+  "Description": "Comic sans.",
+  "InternalName": "fontchangerfordalamud",
+  "ApplicableVersion": "any",
+  "RepoUrl": "https://github.com/Soreepeong/FFXIV-FontChanger",
+  "Tags": [
+    "comic sans"
+  ]
+}
