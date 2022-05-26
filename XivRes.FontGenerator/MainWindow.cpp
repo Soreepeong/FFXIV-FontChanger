@@ -1389,8 +1389,6 @@ void App::FontEditorWindow::UpdateFaceElementListViewItem(const Structs::FaceEle
 }
 
 std::pair<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std::shared_ptr<XivRes::MemoryMipmapStream>>> App::FontEditorWindow::CompileCurrentFontSet(ProgressDialog & progressDialog) {
-	XivRes::FontGenerator::FontdataPacker packer;
-
 	progressDialog.UpdateStatusMessage("Loading base fonts...");
 	m_fontSet.ConsolidateFonts();
 
@@ -1407,8 +1405,11 @@ std::pair<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std:
 		}
 		pool.SubmitDoneAndWait();
 	}
-
 	progressDialog.ThrowIfCancelled();
+
+	XivRes::FontGenerator::FontdataPacker packer;
+	packer.SetDiscardStep(m_fontSet.DiscardStep);
+	packer.SetSideLength(m_fontSet.SideLength);
 
 	for (auto& pFace : m_fontSet.Faces)
 		packer.AddFont(pFace->GetMergedFont());

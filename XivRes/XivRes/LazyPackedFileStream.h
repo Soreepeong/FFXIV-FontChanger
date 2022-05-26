@@ -4,6 +4,7 @@
 #include <zlib.h>
 
 #include "PackedFileStream.h"
+#include "Internal/ThreadPool.h"
 
 namespace XivRes {
 	class LazyPackedFileStream : public PackedFileStream {

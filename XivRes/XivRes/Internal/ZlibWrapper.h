@@ -187,6 +187,11 @@ namespace XivRes::Internal {
 		const std::span<uint8_t>& Result() const {
 			return m_latestResult;
 		}
+
+		std::vector<uint8_t> TakeResult() {
+			m_buffer.resize(m_latestResult.size());
+			return std::move(m_buffer);
+		}
 	};
 }
 

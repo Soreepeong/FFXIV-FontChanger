@@ -277,7 +277,6 @@ namespace XivRes {
 	protected:
 		void Initialize(const IStream& stream) override {
 			std::vector<SqpackTexturePackedFileBlockLocator> blockLocators;
-			std::vector<uint8_t> readBuffer(EntryBlockDataSize);
 			std::vector<uint16_t> subBlockSizes;
 			std::vector<uint8_t> texHeaderBytes;
 
@@ -324,48 +323,100 @@ namespace XivRes {
 				}
 			}
 
-			std::optional<Internal::ZlibReusableDeflater> deflater;
-			if (m_compressionLevel)
-				deflater.emplace(m_compressionLevel, Z_DEFLATED, -15);
+			std::vector<uint32_t> maxMipmapSizes;
+			{
+				maxMipmapSizes.reserve(mipmapOffsets.size());
+				std::vector<uint8_t> readBuffer;
+
+				for (size_t i = 0; i < mipmapOffsets.size(); ++i) {
+					uint32_t maxMipmapSize = 0;
+
+					const auto minSize = (std::max)(4U, static_cast<uint32_t>(TextureRawDataLength(AsTexHeader().Type, 1, 1, AsTexHeader().Depth, i)));
+					if (mipmapSizes[i] > minSize) {
+						for (size_t repeatI = 0; repeatI < repeatCount; repeatI++) {
+							size_t offset = mipmapOffsets[i] + mipmapSizes[i] * repeatI;
+							auto mipmapSize = mipmapSizes[i];
+							readBuffer.resize(mipmapSize);
+
+							if (const auto read = static_cast<size_t>(stream.ReadStreamPartial(offset, &readBuffer[0], mipmapSize)); read != mipmapSize) {
+								// <caused by TexTools export>
+								std::fill_n(&readBuffer[read], mipmapSize - read, 0);
+								// </caused by TexTools export>
+							}
+
+							for (auto nextSize = mipmapSize;; mipmapSize = nextSize) {
+								nextSize /= 2;
+								if (nextSize < minSize)
+									break;
+
+								auto anyNonZero = false;
+								for (const auto& v : std::span(readBuffer).subspan(nextSize, mipmapSize - nextSize))
+									if ((anyNonZero = anyNonZero || v))
+										break;
+								if (anyNonZero)
+									break;
+							}
+							maxMipmapSize = (std::max)(maxMipmapSize, mipmapSize);
+						}
+					} else {
+						maxMipmapSize = mipmapSizes[i];
+					}
+					maxMipmapSizes.emplace_back(maxMipmapSize);
+				}
+
+			}
+
+			std::vector<std::vector<std::vector<std::pair<bool, std::vector<uint8_t>>>>> blockDataList;
+			{
+				blockDataList.resize(mipmapOffsets.size());
+
+				Internal::ThreadPool<> threadPool;
+				std::vector<std::optional<Internal::ZlibReusableDeflater>> deflaters(threadPool.GetThreadCount());
+				std::vector<std::vector<uint8_t>> readBuffers(threadPool.GetThreadCount());
+
+				for (size_t i = 0; i < mipmapOffsets.size(); ++i) {
+					blockDataList[i].resize(repeatCount);
+					const auto maxMipmapSize = maxMipmapSizes[i];
+
+					for (uint32_t repeatI = 0; repeatI < repeatCount; repeatI++) {
+						const auto blockAlignment = Align<uint32_t>(maxMipmapSize, EntryBlockDataSize);
+						auto& blockDataVector = blockDataList[i][repeatI];
+						blockDataVector.resize(blockAlignment.Count);
+
+						blockAlignment.IterateChunked([&](const uint32_t index, const uint32_t offset, const uint32_t length) {
+							threadPool.Submit([this, &stream, &readBuffers, &deflaters, &blockDataVector, index, offset, length](size_t threadIndex) {
+								auto& readBuffer = readBuffers[threadIndex];
+								auto& deflater = deflaters[threadIndex];
+								if (m_compressionLevel && !deflater)
+									deflater.emplace(m_compressionLevel, Z_DEFLATED, -15);
+
+								readBuffer.reserve(EntryBlockDataSize);
+								readBuffer.resize(length);
+								if (const auto read = static_cast<size_t>(stream.ReadStreamPartial(offset, &readBuffer[0], length)); read != length) {
+									// <caused by TexTools export>
+									std::fill_n(&readBuffer[read], length - read, 0);
+									// </caused by TexTools export>
+								}
+
+								if ((blockDataVector[index].first = deflater && deflater->Deflate(std::span(readBuffer)).size() < readBuffer.size()))
+									blockDataVector[index].second = deflater->TakeResult();
+								else
+									blockDataVector[index].second = std::move(readBuffer);
+							});
+						}, mipmapOffsets[i] + mipmapSizes[i] * repeatI);
+					}
+				}
+
+				threadPool.SubmitDoneAndWait();
+			}
+
 			std::vector<uint8_t> entryBody;
 			entryBody.reserve(static_cast<size_t>(stream.StreamSize()));
 
 			auto blockOffsetCounter = static_cast<uint32_t>(std::span(texHeaderBytes).size_bytes());
 			for (size_t i = 0; i < mipmapOffsets.size(); ++i) {
-				uint32_t maxMipmapSize = 0;
+				const auto maxMipmapSize = maxMipmapSizes[i];
 
-				const auto minSize = (std::max)(4U, static_cast<uint32_t>(TextureRawDataLength(AsTexHeader().Type, 1, 1, AsTexHeader().Depth, i)));
-				if (mipmapSizes[i] > minSize) {
-					for (size_t repeatI = 0; repeatI < repeatCount; repeatI++) {
-						size_t offset = mipmapOffsets[i] + mipmapSizes[i] * repeatI;
-						auto mipmapSize = mipmapSizes[i];
-						readBuffer.resize(mipmapSize);
-
-						if (const auto read = static_cast<size_t>(stream.ReadStreamPartial(offset, &readBuffer[0], mipmapSize)); read != mipmapSize) {
-							// <caused by TexTools export>
-							std::fill_n(&readBuffer[read], mipmapSize - read, 0);
-							// </caused by TexTools export>
-						}
-
-						for (auto nextSize = mipmapSize;; mipmapSize = nextSize) {
-							nextSize /= 2;
-							if (nextSize < minSize)
-								break;
-
-							auto anyNonZero = false;
-							for (const auto& v : std::span(readBuffer).subspan(nextSize, mipmapSize - nextSize))
-								if ((anyNonZero = anyNonZero || v))
-									break;
-							if (anyNonZero)
-								break;
-						}
-						maxMipmapSize = (std::max)(maxMipmapSize, mipmapSize);
-					}
-				} else {
-					maxMipmapSize = mipmapSizes[i];
-				}
-
-				readBuffer.resize(EntryBlockDataSize);
 				for (uint32_t repeatI = 0; repeatI < repeatCount; repeatI++) {
 					const auto blockAlignment = Align<uint32_t>(maxMipmapSize, EntryBlockDataSize);
 
@@ -377,18 +428,8 @@ namespace XivRes {
 						.SubBlockCount = blockAlignment.Count,
 					};
 
-					blockAlignment.IterateChunked([&](uint32_t, const uint32_t offset, const uint32_t length) {
-						const auto sourceBuf = std::span(readBuffer).subspan(0, length);
-						if (const auto read = static_cast<size_t>(stream.ReadStreamPartial(offset, &sourceBuf[0], length)); read != length) {
-							// <caused by TexTools export>
-							std::fill_n(&sourceBuf[read], length - read, 0);
-							// </caused by TexTools export>
-						}
-
-						if (deflater)
-							deflater->Deflate(sourceBuf);
-						const auto useCompressed = deflater && deflater->Result().size() < sourceBuf.size();
-						const auto targetBuf = useCompressed ? deflater->Result() : sourceBuf;
+					blockAlignment.IterateChunked([&](const uint32_t index, const uint32_t offset, const uint32_t length) {
+						auto& [useCompressed, targetBuf] = blockDataList[i][repeatI][index];
 
 						PackedBlockHeader header{
 							.HeaderSize = sizeof PackedBlockHeader,

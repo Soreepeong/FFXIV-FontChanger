@@ -69,6 +69,10 @@ namespace XivRes::Internal {
 					th.join();
 		}
 
+		size_t GetThreadCount() const {
+			return m_nThreads;
+		}
+
 		void AddOnNewThreadCallback(std::function<void(size_t)> cb) {
 			EnsureNotQuitting();
 			if (IsAnyWorkerThreadRunning())
