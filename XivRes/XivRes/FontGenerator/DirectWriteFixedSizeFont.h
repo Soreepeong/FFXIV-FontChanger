@@ -753,9 +753,12 @@ namespace XivRes::FontGenerator {
 				if (renderMode == DWRITE_RENDERING_MODE_DEFAULT)
 					SuccessOrThrow(m_dwrite.Face->GetRecommendedRenderingMode(m_info->Size, 1.f, m_info->Params.MeasureMode, nullptr, &renderMode));
 				
+				DWRITE_MATRIX matrix{ 1, 0, 0, 1, 0, 0 };
+				// DWRITE_MATRIX matrix{ std::cosf(30 * acos(-1) / 180), std::sinf(30 * acos(-1) / 180), -std::sinf(30 * acos(-1) / 180), std::cosf(30 * acos(-1) / 180), 0, 0 };
+
 				SuccessOrThrow(m_dwrite.Factory3->CreateGlyphRunAnalysis(
 					&run,
-					nullptr,
+					&matrix,
 					renderMode,
 					m_info->Params.MeasureMode,
 					m_info->Params.GridFitMode,
