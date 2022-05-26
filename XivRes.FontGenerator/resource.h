@@ -5,6 +5,7 @@
 #define IDD_FACEELEMENTEDITOR           101
 #define IDR_FONTEDITOR                  106
 #define IDR_ACCELERATOR_FACEELEMENTEDITOR 107
+#define IDD_PROGRESS                    108
 #define IDC_COMBO_FONT_RENDERER         1001
 #define IDC_COMBO_FONT                  1002
 #define IDC_COMBO_DIRECTWRITE_RENDERMODE 1004
@@ -36,6 +37,9 @@
 #define IDC_EDIT_ADDCUSTOMRANGE_PREVIEW 1034
 #define IDC_CHECK_UNICODEBLOCKS_SHOWBLOCKSWITHANYOFCHARACTERSINPUT 1035
 #define IDC_EDIT_UNICODEBLOCKS_RANGEPREVIEW 1036
+#define IDC_STATIC_STEPNAME             1036
+#define IDC_PROGRESS1                   1037
+#define IDC_PROGRESS                    1037
 #define ID_FILE_OPEN                    40003
 #define ID_FILE_SAVE                    40004
 #define ID_FILE_SAVEAS                  40005
@@ -109,9 +113,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        108
+#define _APS_NEXT_RESOURCE_VALUE        110
 #define _APS_NEXT_COMMAND_VALUE         40153
-#define _APS_NEXT_CONTROL_VALUE         1036
+#define _APS_NEXT_CONTROL_VALUE         1038
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

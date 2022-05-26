@@ -1,0 +1,155 @@
+#pragma once
+
+namespace App {
+	class ProgressDialog {
+		const HWND m_hParentWnd;
+		const std::string m_windowTitle;
+
+		HANDLE m_hReadyEvent = nullptr;
+
+		struct ControlStruct {
+			HWND Window;
+			HWND CancelButton = GetDlgItem(Window, IDCANCEL);
+			HWND StepNameStatic = GetDlgItem(Window, IDC_STATIC_STEPNAME);
+			HWND ProgrssBar = GetDlgItem(Window, IDC_PROGRESS);
+		} *m_controls = nullptr;
+
+		std::thread m_dialogThread;
+		bool m_bCancelled = false;
+
+	public:
+		ProgressDialog(HWND hParentWnd, std::string windowTitle)
+			: m_hParentWnd(hParentWnd)
+			, m_windowTitle(std::move(windowTitle)) {
+
+			m_hReadyEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+			if (!m_hReadyEvent)
+				throw std::runtime_error("Failed to open progress dialog");
+			
+			bool bFailed = false;
+			m_dialogThread = std::thread([this, &bFailed]() {
+				std::unique_ptr<std::remove_pointer<HGLOBAL>::type, decltype(FreeResource)*> hglob(LoadResource(g_hInstance, FindResourceW(g_hInstance, MAKEINTRESOURCE(IDD_PROGRESS), RT_DIALOG)), FreeResource);
+				if (-1 == DialogBoxIndirectParamW(
+					g_hInstance,
+					reinterpret_cast<DLGTEMPLATE*>(LockResource(hglob.get())),
+					nullptr,
+					DlgProcStatic,
+					reinterpret_cast<LPARAM>(this))) {
+					bFailed = true;
+					SetEvent(m_hReadyEvent);
+				}
+			});
+
+			WaitForSingleObject(m_hReadyEvent, INFINITE);
+			CloseHandle(m_hReadyEvent);
+			m_hReadyEvent = nullptr;
+			if (bFailed)
+				throw std::runtime_error("Failed to open progress dialog");
+			
+			if (m_controls)
+				SetForegroundWindow(m_controls->Window);
+		}
+
+		~ProgressDialog() {
+			SendMessageW(m_controls->Window, WM_CLOSE, 0, 1);
+			m_dialogThread.join();
+			delete m_controls;
+		}
+
+		class ProgressDialogCancelledError : public std::runtime_error {
+		public:
+			ProgressDialogCancelledError() : std::runtime_error("Cancelled by user") {}
+		};
+
+		void ThrowIfCancelled() const {
+			if (IsCancelled())
+				throw ProgressDialogCancelledError();
+		}
+
+		bool IsCancelled() const {
+			return m_bCancelled;
+		}
+
+		void UpdateStatusMessage(const std::string& s) {
+			Static_SetText(m_controls->StepNameStatic, XivRes::Unicode::Convert<std::wstring>(s).c_str());
+		}
+
+		void UpdateProgress(float progress) {
+			if (std::isnan(progress)) {
+				SendMessageW(m_controls->ProgrssBar, PBM_SETMARQUEE, TRUE, 0);
+			} else {
+				const auto progInt = static_cast<int>(10000.f * progress);
+				SendMessageW(m_controls->ProgrssBar, PBM_SETMARQUEE, FALSE, 0);
+				SendMessageW(m_controls->ProgrssBar, PBM_SETPOS, progInt, 0);
+			}
+		}
+
+	private:
+		INT_PTR Dialog_OnInitDialog() {
+			SetWindowTextW(m_controls->Window, XivRes::Unicode::Convert<std::wstring>(m_windowTitle).c_str());
+			SendMessageW(m_controls->ProgrssBar, PBM_SETRANGE32, 0, 10000);
+			UpdateProgress(std::nanf(""));
+
+			RECT rc, rcParent;
+			GetWindowRect(m_controls->Window, &rc);
+			GetWindowRect(m_hParentWnd, &rcParent);
+			rc.right -= rc.left;
+			rc.bottom -= rc.top;
+			rc.left = (rcParent.left + rcParent.right - rc.right) / 2;
+			rc.top = (rcParent.top + rcParent.bottom - rc.bottom) / 2;
+			rc.right += rc.left;
+			rc.bottom += rc.top;
+			SetWindowPos(m_controls->Window, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_NOACTIVATE | SWP_NOZORDER);
+
+			SetEvent(m_hReadyEvent);
+
+			return 0;
+		}
+
+		INT_PTR CancelButton_OnCommand(uint16_t notiCode) {
+			m_bCancelled = true;
+			EnableWindow(m_controls->CancelButton, FALSE);
+			return 0;
+		}
+
+		INT_PTR DlgProc(UINT message, WPARAM wParam, LPARAM lParam) {
+			switch (message) {
+				case WM_INITDIALOG:
+					return Dialog_OnInitDialog();
+				case WM_COMMAND:
+				{
+					switch (LOWORD(wParam)) {
+						case IDCANCEL: return CancelButton_OnCommand(HIWORD(wParam));
+					}
+					return 0;
+				}
+				case WM_CLOSE:
+				{
+					if (lParam == 1) {
+						SetForegroundWindow(m_hParentWnd);
+						EndDialog(m_controls->Window, 0);
+					} else
+						return 1;
+					return 0;
+				}
+				case WM_DESTROY:
+				{
+					return 0;
+				}
+			}
+			return 0;
+		}
+
+		static INT_PTR __stdcall DlgProcStatic(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+			if (message == WM_INITDIALOG) {
+				auto& params = *reinterpret_cast<ProgressDialog*>(lParam);
+				params.m_controls = new ControlStruct{ hwnd };
+				SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&params));
+				return params.DlgProc(message, wParam, lParam);
+			} else {
+				return reinterpret_cast<ProgressDialog*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))->DlgProc(message, wParam, lParam);
+			}
+			return 0;
+		}
+	};
+}

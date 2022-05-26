@@ -34,11 +34,17 @@ namespace XivRes::FontGenerator {
 			info->BaselineShift = wrapModifiers.BaselineShift;
 
 			std::set<char32_t> codepoints;
-			for (const auto& [c1, c2] : wrapModifiers.Codepoints) {
-				for (auto c = c1; c <= c2; c++)
-					codepoints.insert(c);
+			for (const auto& c : m_font->GetAllCodepoints()) {
+				auto found = false;
+				for (const auto& [c1, c2] : wrapModifiers.Codepoints) {
+					if (c1 <= c && c <= c2) {
+						found = true;
+						break;
+					}
+				}
+				if (found)
+					info->Codepoints.insert(c);
 			}
-			std::ranges::set_intersection(codepoints, m_font->GetAllCodepoints(), std::inserter(info->Codepoints, info->Codepoints.begin()));
 
 			m_info = std::move(info);
 		}
