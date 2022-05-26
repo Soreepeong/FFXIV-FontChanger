@@ -231,14 +231,14 @@ const std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>& App::Structs::Face
 				case RendererEnum::DirectWrite:
 				{
 					auto [factory, font] = Lookup.ResolveFont();
-					m_baseFont = std::make_shared<XivRes::FontGenerator::DirectWriteFixedSizeFont>(std::move(factory), std::move(font), Size, Gamma, RendererSpecific.DirectWrite);
+					m_baseFont = std::make_shared<XivRes::FontGenerator::DirectWriteFixedSizeFont>(std::move(factory), std::move(font), Size, Gamma, TransformationMatrix, RendererSpecific.DirectWrite);
 					break;
 				}
 
 				case RendererEnum::FreeType:
 				{
 					auto [pStream, index] = Lookup.ResolveStream();
-					m_baseFont = std::make_shared<XivRes::FontGenerator::FreeTypeFixedSizeFont>(*pStream, index, Size, Gamma, RendererSpecific.FreeType);
+					m_baseFont = std::make_shared<XivRes::FontGenerator::FreeTypeFixedSizeFont>(*pStream, index, Size, Gamma, TransformationMatrix, RendererSpecific.FreeType);
 					break;
 				}
 
@@ -356,14 +356,14 @@ std::wstring App::Structs::FaceElement::GetRendererRepresentation() const {
 			return L"Prerendered (Game)";
 
 		case RendererEnum::DirectWrite:
-			return std::format(L"DirectWrite (Render={}, Measure={}, GridFit={})",
+			return std::format(L"DirectWrite ({}, {}, {})",
 				RendererSpecific.DirectWrite.GetRenderModeString(),
 				RendererSpecific.DirectWrite.GetMeasuringModeString(),
 				RendererSpecific.DirectWrite.GetGridFitModeString()
 			);
 
 		case RendererEnum::FreeType:
-			return std::format(L"FreeType ({})", RendererSpecific.FreeType.GetLoadFlagsString());
+			return std::format(L"FreeType ({}, {})", RendererSpecific.FreeType.GetRenderModeString(), RendererSpecific.FreeType.GetLoadFlagsString());
 
 		default:
 			return L"INVALID";
@@ -398,6 +398,7 @@ App::Structs::FaceElement::FaceElement(const FaceElement & r)
 	, Size(r.Size)
 	, Gamma(r.Gamma)
 	, Overwrite(r.Overwrite)
+	, TransformationMatrix(r.TransformationMatrix)
 	, WrapModifiers(r.WrapModifiers)
 	, Renderer(r.Renderer)
 	, Lookup(r.Lookup)
@@ -425,6 +426,7 @@ void App::Structs::swap(App::Structs::FaceElement & l, App::Structs::FaceElement
 	swap(l.Size, r.Size);
 	swap(l.Gamma, r.Gamma);
 	swap(l.Overwrite, r.Overwrite);
+	swap(l.TransformationMatrix, r.TransformationMatrix);
 	swap(l.WrapModifiers, r.WrapModifiers);
 	swap(l.Renderer, r.Renderer);
 	swap(l.Lookup, r.Lookup);
@@ -474,7 +476,7 @@ App::Structs::Face& App::Structs::Face::operator=(const Face & r) {
 	return *this;
 }
 
-void App::Structs::swap(App::Structs::Face& l, App::Structs::Face& r) noexcept {
+void App::Structs::swap(App::Structs::Face & l, App::Structs::Face & r) noexcept {
 	if (&l == &r)
 		return;
 
@@ -561,6 +563,8 @@ void App::Structs::from_json(const nlohmann::json & json, FontSet & value) {
 		for (const auto& v : *it)
 			value.Faces.emplace_back(std::make_unique<Face>(v.get<Face>()));
 	}
+	value.DiscardStep = json.value<int>("discardStep", 1);
+	value.SideLength = json.value<int>("sideLength", 4096);
 	value.TexFilenameFormat = json.value<std::string>("texFilenameFormat", "");
 }
 
@@ -569,10 +573,12 @@ void App::Structs::to_json(nlohmann::json & json, const FontSet & value) {
 	auto& faces = *json.emplace("faces", nlohmann::json::array()).first;
 	for (const auto& e : value.Faces)
 		faces.emplace_back(*e);
+	json.emplace("discardStep", value.DiscardStep);
+	json.emplace("sideLength", value.SideLength);
 	json.emplace("texFilenameFormat", value.TexFilenameFormat);
 }
 
-void App::Structs::from_json(const nlohmann::json& json, Face& value) {
+void App::Structs::from_json(const nlohmann::json & json, Face & value) {
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 

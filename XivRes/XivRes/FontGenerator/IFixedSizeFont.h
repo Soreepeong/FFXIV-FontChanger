@@ -142,6 +142,13 @@ namespace XivRes::FontGenerator {
 		}
 	};
 
+	struct FontRenderTransformationMatrix {
+		float M11;
+		float M12;
+		float M21;
+		float M22;
+	};
+
 	class IFixedSizeFont {
 	public:
 		virtual std::string GetFamilyName() const = 0;

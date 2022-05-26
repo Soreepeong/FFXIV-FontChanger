@@ -315,6 +315,18 @@ namespace XivRes::FontGenerator {
 		}
 
 	public:
+		void SetThreadCount(size_t n = std::thread::hardware_concurrency()) {
+			m_nThreads = n;
+		}
+
+		void SetDiscardStep(int n) {
+			m_nDiscardStep = n;
+		}
+
+		void SetSideLength(int n) {
+			m_nSideLength = n;
+		}
+
 		~FontdataPacker() {
 			m_bCancelRequested = true;
 			Wait();

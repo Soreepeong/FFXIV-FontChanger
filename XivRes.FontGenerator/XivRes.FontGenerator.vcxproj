@@ -200,8 +200,10 @@
   <ItemGroup>
     <ClCompile Include="BaseWindow.cpp" />
     <ClCompile Include="ExportPreviewWindow.cpp" />
+    <ClCompile Include="FaceElementEditorDialog.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="MainWindow.cpp" />
+    <ClCompile Include="ProgressDialog.cpp" />
     <ClCompile Include="Structs.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>

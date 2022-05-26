@@ -19,6 +19,12 @@
     <ClCompile Include="MainWindow.cpp">
       <Filter>Source\Windows</Filter>
     </ClCompile>
+    <ClCompile Include="FaceElementEditorDialog.cpp">
+      <Filter>Source\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="ProgressDialog.cpp">
+      <Filter>Source\Dialogs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Project Items">

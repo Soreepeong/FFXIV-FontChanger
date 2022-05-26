@@ -63,7 +63,7 @@ namespace XivRes::FontGenerator {
 			std::vector<uint8_t> m_buf;
 
 		public:
-			FreeTypeFontTable(FT_Face face, uint32_t tag)  {
+			FreeTypeFontTable(FT_Face face, uint32_t tag) {
 				FT_ULong len = 0;
 				if (SuccessOrThrow(FT_Load_Sfnt_Table(face, tag, 0, nullptr, &len), { FT_Err_Table_Missing }))
 					return;
@@ -88,7 +88,8 @@ namespace XivRes::FontGenerator {
 
 	public:
 		struct CreateStruct {
-			int LoadFlags = FT_LOAD_DEFAULT | FT_LOAD_TARGET_LIGHT;
+			int LoadFlags = FT_LOAD_DEFAULT;
+			FT_Render_Mode RenderMode = FT_RENDER_MODE_LIGHT;
 
 			std::wstring GetLoadFlagsString() const {
 				std::wstring res;
@@ -101,9 +102,23 @@ namespace XivRes::FontGenerator {
 					return L"Default";
 				return res.substr(2);
 			}
+
+			std::wstring GetRenderModeString() const {
+				switch (RenderMode) {
+					case FT_RENDER_MODE_NORMAL: return L"Normal";
+					case FT_RENDER_MODE_LIGHT: return L"Light";
+					case FT_RENDER_MODE_MONO: return L"Mono";
+					case FT_RENDER_MODE_LCD: return L"LCD";
+					case FT_RENDER_MODE_LCD_V: return L"LCD_V";
+					case FT_RENDER_MODE_SDF: return L"SDF";
+					default: return L"Invalid";
+				}
+			}
 		};
 
 	private:
+		class FreeTypeBitmapWrapper;
+
 		class FreeTypeFaceWrapper {
 			struct InfoStruct {
 				std::vector<uint8_t> Data;
@@ -111,6 +126,7 @@ namespace XivRes::FontGenerator {
 				std::map<std::pair<char32_t, char32_t>, int> KerningPairs;
 				std::map<char32_t, GlyphMetrics> AllGlyphMetrics;
 				std::vector<uint8_t> GammaTable;
+				FT_Matrix Matrix;
 				CreateStruct Params{};
 				int FaceIndex = 0;
 				float Size = 0.f;
@@ -123,7 +139,7 @@ namespace XivRes::FontGenerator {
 		public:
 			FreeTypeFaceWrapper() = default;
 
-			FreeTypeFaceWrapper(std::vector<uint8_t> data, int faceIndex, float size, float gamma, CreateStruct createStruct)
+			FreeTypeFaceWrapper(std::vector<uint8_t> data, int faceIndex, float size, float gamma, const FontRenderTransformationMatrix& matrix, CreateStruct createStruct)
 				: m_library(std::make_shared<FreeTypeLibraryWrapper>()) {
 
 				auto info = std::make_shared<InfoStruct>();
@@ -132,6 +148,10 @@ namespace XivRes::FontGenerator {
 				info->GammaTable = Internal::BitmapCopy::CreateGammaTable(gamma);
 				info->Params = createStruct;
 				info->FaceIndex = faceIndex;
+				info->Matrix.xx = static_cast<FT_Fixed>(matrix.M11 * static_cast<float>(0x10000));
+				info->Matrix.xy = static_cast<FT_Fixed>(matrix.M12 * static_cast<float>(0x10000));
+				info->Matrix.yx = static_cast<FT_Fixed>(matrix.M21 * static_cast<float>(0x10000));
+				info->Matrix.yy = static_cast<FT_Fixed>(matrix.M22 * static_cast<float>(0x10000));
 				info->Params.LoadFlags &= (0 |
 					FT_LOAD_NO_HINTING |
 					FT_LOAD_NO_BITMAP |
@@ -250,12 +270,7 @@ namespace XivRes::FontGenerator {
 				return FT_Get_Char_Index(m_face, codepoint);
 			}
 
-			void LoadGlyph(int glyphIndex, bool bRender = false) const {
-				if (m_face->glyph->glyph_index == glyphIndex && !bRender)
-					return;
-
-				SuccessOrThrow(FT_Load_Glyph(m_face, glyphIndex, m_info->Params.LoadFlags | (bRender ? FT_LOAD_RENDER : 0)));
-			}
+			std::unique_ptr<std::remove_pointer_t<FT_Glyph>, decltype(FT_Done_Glyph)*> LoadGlyph(int glyphIndex, bool render) const;
 
 			FreeTypeLibraryWrapper& GetLibrary() const {
 				return *m_library;
@@ -362,14 +377,14 @@ namespace XivRes::FontGenerator {
 		FreeTypeFaceWrapper m_face;
 
 	public:
-		FreeTypeFixedSizeFont(const std::filesystem::path& path, int faceIndex, float size, float gamma, CreateStruct createStruct)
-			: FreeTypeFixedSizeFont(ReadStreamIntoVector<uint8_t>(FileStream(path)), faceIndex, size, gamma, createStruct) {}
+		FreeTypeFixedSizeFont(const std::filesystem::path& path, int faceIndex, float size, float gamma, const FontRenderTransformationMatrix& matrix, CreateStruct createStruct)
+			: FreeTypeFixedSizeFont(ReadStreamIntoVector<uint8_t>(FileStream(path)), faceIndex, size, gamma, matrix, createStruct) {}
 
-		FreeTypeFixedSizeFont(IStream& stream, int faceIndex, float fSize, float gamma, CreateStruct createStruct)
-			: m_face(ReadStreamIntoVector<uint8_t>(stream), faceIndex, fSize, gamma, createStruct) {}
+		FreeTypeFixedSizeFont(IStream& stream, int faceIndex, float fSize, float gamma, const FontRenderTransformationMatrix& matrix, CreateStruct createStruct)
+			: m_face(ReadStreamIntoVector<uint8_t>(stream), faceIndex, fSize, gamma, matrix, createStruct) {}
 
-		FreeTypeFixedSizeFont(std::vector<uint8_t> data, int faceIndex, float fSize, float gamma, CreateStruct createStruct)
-			: m_face(std::move(data), faceIndex, fSize, gamma, createStruct) {}
+		FreeTypeFixedSizeFont(std::vector<uint8_t> data, int faceIndex, float fSize, float gamma, const FontRenderTransformationMatrix& matrix, CreateStruct createStruct)
+			: m_face(std::move(data), faceIndex, fSize, gamma, matrix, createStruct) {}
 
 		FreeTypeFixedSizeFont(FreeTypeFixedSizeFont&& r) = default;
 		FreeTypeFixedSizeFont(const FreeTypeFixedSizeFont& r) = default;
@@ -419,8 +434,7 @@ namespace XivRes::FontGenerator {
 			if (!glyphIndex)
 				return false;
 
-			m_face.LoadGlyph(glyphIndex, false);
-			gm = GlyphMetricsFromCurrentGlyph();
+			gm = FreeTypeGlyphToMetrics(m_face.LoadGlyph(glyphIndex, false).get());
 			return true;
 		}
 
@@ -435,7 +449,7 @@ namespace XivRes::FontGenerator {
 
 			if (const auto it = m_face.GetAllKerningPairs().find(std::make_pair(left, right)); it != m_face.GetAllKerningPairs().end())
 				return gm.AdvanceX + it->second;
-			
+
 			return gm.AdvanceX;
 		}
 
@@ -444,8 +458,9 @@ namespace XivRes::FontGenerator {
 			if (!glyphIndex)
 				return false;
 
-			m_face.LoadGlyph(glyphIndex, true);
-			auto dest = GlyphMetricsFromCurrentGlyph(drawX, drawY);
+			auto glyph = m_face.LoadGlyph(glyphIndex, true);
+			auto bitmapGlyph = reinterpret_cast<FT_BitmapGlyph>(glyph.get());
+			auto dest = FreeTypeGlyphToMetrics(glyph.get(), drawX, drawY);
 			auto src = dest;
 			src.Translate(-src.X1, -src.Y1);
 			src.AdjustToIntersection(dest, src.GetWidth(), src.GetHeight(), destWidth, destHeight);
@@ -453,7 +468,7 @@ namespace XivRes::FontGenerator {
 				return true;
 
 			FreeTypeBitmapWrapper bitmapWrapper(m_face.GetLibrary());
-			bitmapWrapper.ConvertFrom(m_face->glyph->bitmap, 1);
+			bitmapWrapper.ConvertFrom(bitmapGlyph->bitmap, 1);
 
 			Internal::BitmapCopy::ToRGBA8888()
 				.From(bitmapWrapper->buffer, bitmapWrapper->pitch, bitmapWrapper->rows, 1, Internal::BitmapVerticalDirection::TopRowFirst)
@@ -470,8 +485,9 @@ namespace XivRes::FontGenerator {
 			if (!glyphIndex)
 				return false;
 
-			m_face.LoadGlyph(glyphIndex, true);
-			auto dest = GlyphMetricsFromCurrentGlyph(drawX, drawY);
+			auto glyph = m_face.LoadGlyph(glyphIndex, true);
+			auto bitmapGlyph = reinterpret_cast<FT_BitmapGlyph>(glyph.get());
+			auto dest = FreeTypeGlyphToMetrics(glyph.get(), drawX, drawY);
 			auto src = dest;
 			src.Translate(-src.X1, -src.Y1);
 			src.AdjustToIntersection(dest, src.GetWidth(), src.GetHeight(), destWidth, destHeight);
@@ -479,7 +495,7 @@ namespace XivRes::FontGenerator {
 				return true;
 
 			FreeTypeBitmapWrapper bitmapWrapper(m_face.GetLibrary());
-			bitmapWrapper.ConvertFrom(m_face->glyph->bitmap, 1);
+			bitmapWrapper.ConvertFrom(bitmapGlyph->bitmap, 1);
 
 			Internal::BitmapCopy::ToL8()
 				.From(bitmapWrapper->buffer, bitmapWrapper->pitch, bitmapWrapper->rows, 1, Internal::BitmapVerticalDirection::TopRowFirst)
@@ -502,17 +518,39 @@ namespace XivRes::FontGenerator {
 		}
 
 	private:
-		GlyphMetrics GlyphMetricsFromCurrentGlyph(int x = 0, int y = 0) const {
+		GlyphMetrics FreeTypeGlyphToMetrics(FT_Glyph glyph, int x = 0, int y = 0) const {
+			FT_BBox cbox;
+			FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_PIXELS, &cbox);
 			GlyphMetrics src{
-				.X1 = x + m_face->glyph->bitmap_left,
-				.Y1 = y + GetAscent() - m_face->glyph->bitmap_top,
-				.X2 = src.X1 + static_cast<int>(m_face->glyph->bitmap.width),
-				.Y2 = src.Y1 + static_cast<int>(m_face->glyph->bitmap.rows),
-				.AdvanceX = (m_face->glyph->advance.x + 63) / 64,
+				.X1 = x + cbox.xMin,
+				.Y1 = y + GetAscent() - cbox.yMax,
+				.X2 = src.X1 + static_cast<int>(cbox.xMax - cbox.xMin),
+				.Y2 = src.Y1 + static_cast<int>(cbox.yMax - cbox.yMin),
+				.AdvanceX = (glyph->advance.x + 1024 * 64 - 1) / (1024 * 64),
 			};
 			return src;
 		}
 	};
+
+	inline std::unique_ptr<std::remove_pointer_t<FT_Glyph>, decltype(FT_Done_Glyph)*> FreeTypeFixedSizeFont::FreeTypeFaceWrapper::LoadGlyph(int glyphIndex, bool render) const {
+		if (m_face->glyph->glyph_index != glyphIndex)
+			SuccessOrThrow(FT_Load_Glyph(m_face, glyphIndex, m_info->Params.LoadFlags));
+
+		FT_Glyph glyph;
+		SuccessOrThrow(FT_Get_Glyph(m_face->glyph, &glyph));
+		auto uniqueGlyphPtr = std::unique_ptr<std::remove_pointer_t<FT_Glyph>, decltype(FT_Done_Glyph)*>(glyph, FT_Done_Glyph);
+
+		FT_Vector zeroDelta{};
+		FT_Glyph_Transform(glyph, &m_info->Matrix, &zeroDelta); // failing this is acceptable
+
+		if (render) {
+			SuccessOrThrow(FT_Glyph_To_Bitmap(&glyph, m_info->Params.RenderMode, nullptr, false));
+			uniqueGlyphPtr.release();
+			uniqueGlyphPtr = { glyph, FT_Done_Glyph };
+		}
+
+		return std::move(uniqueGlyphPtr);
+	}
 }
 
 #endif

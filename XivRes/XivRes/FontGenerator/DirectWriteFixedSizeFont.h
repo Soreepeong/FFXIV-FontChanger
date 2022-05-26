@@ -391,12 +391,13 @@ namespace XivRes::FontGenerator {
 			std::map<std::pair<char32_t, char32_t>, int> KerningPairs;
 			std::vector<uint8_t> GammaTable;
 			DWRITE_FONT_METRICS1 Metrics;
+			DWRITE_MATRIX Matrix;
 			CreateStruct Params;
 			int FontIndex = 0;
 			float Size = 0.f;
 
-			template<decltype(std::roundf) TIntCastFn = std::roundf>
-			int ScaleFromFontUnit(int fontUnitValue) const {
+			template<decltype(std::roundf) TIntCastFn = std::roundf, typename T>
+			int ScaleFromFontUnit(T fontUnitValue) const {
 				return static_cast<int>(TIntCastFn(static_cast<float>(fontUnitValue) * Size / static_cast<float>(Metrics.designUnitsPerEm)));
 			}
 		};
@@ -416,10 +417,10 @@ namespace XivRes::FontGenerator {
 		mutable std::vector<uint8_t> m_drawBuffer;
 
 	public:
-		DirectWriteFixedSizeFont(std::filesystem::path path, int fontIndex, float size, float gamma, CreateStruct params)
-			: DirectWriteFixedSizeFont(std::make_shared<MemoryStream>(FileStream(path)), fontIndex, size, gamma, std::move(params)) {}
+		DirectWriteFixedSizeFont(std::filesystem::path path, int fontIndex, float size, float gamma, const FontRenderTransformationMatrix& matrix, CreateStruct params)
+			: DirectWriteFixedSizeFont(std::make_shared<MemoryStream>(FileStream(path)), fontIndex, size, gamma, matrix, std::move(params)) {}
 
-		DirectWriteFixedSizeFont(IDWriteFactoryPtr factory, IDWriteFontPtr font, float size, float gamma, CreateStruct params) {
+		DirectWriteFixedSizeFont(IDWriteFactoryPtr factory, IDWriteFontPtr font, float size, float gamma, const FontRenderTransformationMatrix& matrix, CreateStruct params) {
 			if (!font)
 				return;
 
@@ -429,6 +430,7 @@ namespace XivRes::FontGenerator {
 			info->Params = std::move(params);
 			info->Size = size;
 			info->GammaTable = Internal::BitmapCopy::CreateGammaTable(gamma);
+			info->Matrix = { matrix.M11, matrix.M12, matrix.M21, matrix.M22, 0.f, 0.f };
 
 			m_dwrite = FaceFromInfoStruct(*info);
 			m_dwrite.Face->GetMetrics(&info->Metrics);
@@ -475,7 +477,7 @@ namespace XivRes::FontGenerator {
 			m_info = std::move(info);
 		}
 
-		DirectWriteFixedSizeFont(std::shared_ptr<IStream> stream, int fontIndex, float size, float gamma, CreateStruct params) {
+		DirectWriteFixedSizeFont(std::shared_ptr<IStream> stream, int fontIndex, float size, float gamma, const FontRenderTransformationMatrix& matrix, CreateStruct params) {
 			if (!stream)
 				return;
 
@@ -485,6 +487,7 @@ namespace XivRes::FontGenerator {
 			info->FontIndex = fontIndex;
 			info->Size = size;
 			info->GammaTable = Internal::BitmapCopy::CreateGammaTable(gamma);
+			info->Matrix = { matrix.M11, matrix.M12, matrix.M21, matrix.M22, 0.f, 0.f };
 
 			m_dwrite = FaceFromInfoStruct(*info);
 			m_dwrite.Face->GetMetrics(&info->Metrics);
@@ -732,7 +735,7 @@ namespace XivRes::FontGenerator {
 
 				DWRITE_GLYPH_METRICS dgm;
 				SuccessOrThrow(m_dwrite.Face->GetGdiCompatibleGlyphMetrics(
-					m_info->Size, 1.0f, nullptr,
+					m_info->Size, 1.0f, &m_info->Matrix,
 					m_info->Params.MeasureMode == DWRITE_MEASURING_MODE_GDI_NATURAL ? TRUE : FALSE,
 					&glyphIndex, 1, &dgm));
 
@@ -753,12 +756,9 @@ namespace XivRes::FontGenerator {
 				if (renderMode == DWRITE_RENDERING_MODE_DEFAULT)
 					SuccessOrThrow(m_dwrite.Face->GetRecommendedRenderingMode(m_info->Size, 1.f, m_info->Params.MeasureMode, nullptr, &renderMode));
 				
-				DWRITE_MATRIX matrix{ 1, 0, 0, 1, 0, 0 };
-				// DWRITE_MATRIX matrix{ std::cosf(30 * acos(-1) / 180), std::sinf(30 * acos(-1) / 180), -std::sinf(30 * acos(-1) / 180), std::cosf(30 * acos(-1) / 180), 0, 0 };
-
 				SuccessOrThrow(m_dwrite.Factory3->CreateGlyphRunAnalysis(
 					&run,
-					&matrix,
+					&m_info->Matrix,
 					renderMode,
 					m_info->Params.MeasureMode,
 					m_info->Params.GridFitMode,
@@ -769,7 +769,7 @@ namespace XivRes::FontGenerator {
 				
 				SuccessOrThrow(analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_ALIASED_1x1, gm.AsMutableRectPtr()));
 				
-				gm.AdvanceX = m_info->ScaleFromFontUnit(dgm.advanceWidth);
+				gm.AdvanceX = m_info->ScaleFromFontUnit(static_cast<float>(dgm.advanceWidth) * m_info->Matrix.m11);
 
 				return true;
 

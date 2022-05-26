@@ -1,5 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 
+#include <cmath>
 #include <iostream>
 #include <ranges>
 
@@ -11,15 +13,17 @@
 #include <dwrite.h>
 #include <shellapi.h>
 
-#include <zlib.h>
-#include <minizip/zip.h>
-#include <minizip/iowin32.h>
+#include <exprtk.hpp>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_BITMAP_H
 #include FT_OUTLINE_H 
 #include FT_GLYPH_H
+
+#include <zlib.h>
+#include <minizip/zip.h>
+#include <minizip/iowin32.h>
 
 #include <nlohmann/json.hpp>
 
@@ -50,24 +54,31 @@ _COM_SMARTPTR_TYPEDEF(IShellItemArray, __uuidof(IShellItemArray));
 _COM_SMARTPTR_TYPEDEF(IDWriteFont, __uuidof(IDWriteFont));
 _COM_SMARTPTR_TYPEDEF(IDWriteFactory, __uuidof(IDWriteFactory));
 
-inline std::wstring GetWindowString(HWND hwnd) {
+inline std::wstring GetWindowString(HWND hwnd, bool trim = false) {
 	std::wstring buf(GetWindowTextLengthW(hwnd) + static_cast<size_t>(1), L'\0');
 	buf.resize(GetWindowTextW(hwnd, &buf[0], static_cast<int>(buf.size())));
+	if (trim) {
+		const auto l = buf.find_first_not_of(L"\t\r\n ");
+		if (l == std::wstring::npos)
+			return {};
+
+		const auto r = buf.find_last_not_of(L"\t\r\n ");
+		return buf.substr(l, r - l + 1);
+	}
 	return buf;
 }
 
-inline float GetWindowFloat(HWND hwnd) {
-	return std::wcstof(GetWindowString(hwnd).c_str(), nullptr);
+template<typename T>
+inline T GetWindowNumber(HWND hwnd) {
+	return static_cast<T>(std::wcstod(GetWindowString(hwnd, true).c_str(), nullptr));
 }
 
-inline void SetWindowFloat(HWND hwnd, float v) {
-	SetWindowTextW(hwnd, std::format(L"{:g}", v).c_str());
-}
-
-inline int GetWindowInt(HWND hwnd) {
-	return std::wcstol(GetWindowString(hwnd).c_str(), nullptr, 0);
-}
-
-inline void SetWindowInt(HWND hwnd, int v) {
-	SetWindowTextW(hwnd, std::format(L"{}", v).c_str());
+template<typename T>
+inline void SetWindowNumber(HWND hwnd, T v) {
+	if constexpr (std::is_floating_point_v<T>)
+		SetWindowTextW(hwnd, std::format(L"{:g}", v).c_str());
+	else if constexpr (std::is_integral_v<T>)
+		SetWindowTextW(hwnd, std::format(L"{}", v).c_str());
+	else
+		static_assert(!sizeof(T), "no match");
 }

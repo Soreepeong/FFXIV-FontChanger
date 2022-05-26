@@ -42,9 +42,9 @@ namespace App::Structs {
 		float Size = 0.f;
 		float Gamma = 1.f;
 		bool Overwrite = false;
+		XivRes::FontGenerator::FontRenderTransformationMatrix TransformationMatrix{ 1.f, 0.f, 0.f, 1.f };
 		XivRes::FontGenerator::WrapModifiers WrapModifiers;
 		RendererEnum Renderer = RendererEnum::Empty;
-
 		LookupStruct Lookup;
 		RendererSpecificStruct RendererSpecific;
 
@@ -96,6 +96,8 @@ namespace App::Structs {
 
 	struct FontSet {
 		std::string TexFilenameFormat;
+		int DiscardStep = 1;
+		int SideLength = 4096;
 		std::vector<std::unique_ptr<Face>> Faces;
 
 		void ConsolidateFonts();
