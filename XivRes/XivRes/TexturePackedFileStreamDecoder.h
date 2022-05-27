@@ -1,6 +1,8 @@
 #ifndef _XIVRES_TEXTUREPACKEDFILESTREAMDECODER_H_
 #define _XIVRES_TEXTUREPACKEDFILESTREAMDECODER_H_
 
+#include <mutex>
+
 #include "SqpackStreamDecoder.h"
 #include "Texture.h"
 
@@ -17,6 +19,8 @@ namespace XivRes {
 			}
 		};
 
+		std::mutex m_mtx;
+
 		std::vector<uint8_t> m_head;
 		std::vector<BlockInfo> m_blocks;
 
@@ -24,10 +28,10 @@ namespace XivRes {
 		TexturePackedFileStreamDecoder(const PackedFileHeader& header, std::shared_ptr<const PackedFileStream> stream)
 			: BasePackedFileStreamDecoder(std::move(stream)) {
 			uint64_t readOffset = sizeof PackedFileHeader;
-			const auto locators = ReadStreamIntoVector<SqpackTexturePackedFileBlockLocator>(*m_stream, readOffset, header.BlockCountOrVersion);
+			const auto locators = ReadStreamIntoVector<PackedLodBlockLocator>(*m_stream, readOffset, header.BlockCountOrVersion);
 			readOffset += std::span(locators).size_bytes();
 
-			m_head = ReadStreamIntoVector<uint8_t>(*m_stream, header.HeaderSize, locators[0].FirstBlockOffset);
+			m_head = ReadStreamIntoVector<uint8_t>(*m_stream, header.HeaderSize, locators[0].CompressedOffset);
 
 			const auto& texHeader = *reinterpret_cast<const TextureHeader*>(&m_head[0]);
 			const auto mipmapOffsets = Internal::span_cast<uint32_t>(m_head, sizeof texHeader, texHeader.MipmapCount);
@@ -48,9 +52,9 @@ namespace XivRes {
 					baseRequestOffset = 0;
 				m_blocks.emplace_back(BlockInfo{
 					.RequestOffset = baseRequestOffset,
-					.BlockOffset = header.HeaderSize + locator.FirstBlockOffset,
+					.BlockOffset = header.HeaderSize + locator.CompressedOffset,
 					.RemainingDecompressedSize = locator.DecompressedSize,
-					.RemainingBlockSizes = ReadStreamIntoVector<uint16_t>(*m_stream, readOffset, locator.SubBlockCount),
+					.RemainingBlockSizes = ReadStreamIntoVector<uint16_t>(*m_stream, readOffset, locator.BlockCount),
 					});
 				readOffset += std::span(m_blocks.back().RemainingBlockSizes).size_bytes();
 				baseRequestOffset += mipmapPlaneSize;
@@ -78,38 +82,37 @@ namespace XivRes {
 			if (info.TargetBuffer.empty() || m_blocks.empty())
 				return length - info.TargetBuffer.size_bytes();
 
+			const auto lock = std::lock_guard(m_mtx);
+
 			const auto streamSize = m_blocks.back().RequestOffset + m_blocks.back().RemainingDecompressedSize;
 
-			auto from = std::lower_bound(m_blocks.begin(), m_blocks.end(), static_cast<uint32_t>(info.RelativeOffset));
-			if (from == m_blocks.end() && info.RelativeOffset >= streamSize)
+			if (info.RelativeOffset >= streamSize)
 				return 0;
-			if (from != m_blocks.begin() && from->RequestOffset > info.RelativeOffset)
-				from -= 1;
 
-			for (auto it = from; it != m_blocks.end(); ) {
-				info.ProgressRead(*m_stream, it->BlockOffset, it->RemainingBlockSizes.empty() ? 16384 : it->RemainingBlockSizes.front());
-				info.ProgressDecode(it->RequestOffset);
+			size_t i = std::lower_bound(m_blocks.begin(), m_blocks.end(), static_cast<uint32_t>(info.RelativeOffset)) - m_blocks.begin();
+			if (i != 0 && (i == m_blocks.size() || info.RelativeOffset < m_blocks[i].RequestOffset))
+				i--;
 
-				if (it->RemainingBlockSizes.empty()) {
-					++it;
-				} else {
-					const auto& blockHeader = info.AsHeader();
-					auto newBlockInfo = BlockInfo{
-						.RequestOffset = it->RequestOffset + blockHeader.DecompressedSize,
-						.BlockOffset = it->BlockOffset + it->RemainingBlockSizes.front(),
-						.RemainingDecompressedSize = it->RemainingDecompressedSize - blockHeader.DecompressedSize,
-						.RemainingBlockSizes = std::move(it->RemainingBlockSizes),
-					};
+			for (; i < m_blocks.size() && !info.TargetBuffer.empty(); i++) {
+				auto& block = m_blocks[i];
+				info.ProgressRead(*m_stream, block.BlockOffset, block.RemainingBlockSizes.empty() ? 16384 : block.RemainingBlockSizes.front());
+				info.ProgressDecode(block.RequestOffset);
 
-					++it;
-					if (it == m_blocks.end() || (it->RequestOffset != newBlockInfo.RequestOffset && it->BlockOffset != newBlockInfo.BlockOffset)) {
-						newBlockInfo.RemainingBlockSizes.erase(newBlockInfo.RemainingBlockSizes.begin());
-						it = m_blocks.emplace(it, std::move(newBlockInfo));
-					}
+				if (block.RemainingBlockSizes.empty())
+					continue;
+
+				const auto& blockHeader = info.AsHeader();
+				auto newBlockInfo = BlockInfo{
+					.RequestOffset = block.RequestOffset + blockHeader.DecompressedSize,
+					.BlockOffset = block.BlockOffset + block.RemainingBlockSizes.front(),
+					.RemainingDecompressedSize = block.RemainingDecompressedSize - blockHeader.DecompressedSize,
+					.RemainingBlockSizes = std::move(block.RemainingBlockSizes),
+				};
+
+				if (i + 1 >= m_blocks.size() || (m_blocks[i + 1].RequestOffset != newBlockInfo.RequestOffset && m_blocks[i + 1].BlockOffset != newBlockInfo.BlockOffset)) {
+					newBlockInfo.RemainingBlockSizes.erase(newBlockInfo.RemainingBlockSizes.begin());
+					m_blocks.emplace(m_blocks.begin() + i + 1, std::move(newBlockInfo));
 				}
-
-				if (info.TargetBuffer.empty())
-					break;
 			}
 
 			return length - info.TargetBuffer.size_bytes();

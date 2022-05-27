@@ -6,37 +6,52 @@
 #include "LazyPackedFileStream.h"
 
 namespace XivRes {
-	class BinaryPackedFileViewStream : public LazyPackedFileStream {
-		const std::vector<uint8_t> m_header;
-
-		uint32_t m_padBeforeData = 0;
+	class BinaryPassthroughPacker : public AbstractPassthroughFilePacker<PackedFileType::Binary> {
+		std::vector<uint8_t> m_header;
+		std::mutex m_mtx;
 
 	public:
-		BinaryPackedFileViewStream(SqpackPathSpec pathSpec, std::filesystem::path path, int compressionLevel = Z_BEST_COMPRESSION)
-			: LazyPackedFileStream(std::move(pathSpec), std::move(path), compressionLevel)
-			, m_header(CreateHeaderForNonCompressedBinaryEntryProvider(static_cast<size_t>(m_stream->StreamSize()))) {}
+		BinaryPassthroughPacker(std::shared_ptr<const IStream> stream)
+			: AbstractPassthroughFilePacker(std::move(stream)) {}
 
-		BinaryPackedFileViewStream(SqpackPathSpec pathSpec, std::shared_ptr<const IStream> stream, int compressionLevel = Z_BEST_COMPRESSION)
-			: LazyPackedFileStream(std::move(pathSpec), std::move(stream), compressionLevel)
-			, m_header(CreateHeaderForNonCompressedBinaryEntryProvider(static_cast<size_t>(m_stream->StreamSize()))) {}
-
-		using LazyPackedFileStream::StreamSize;
-		using LazyPackedFileStream::ReadStreamPartial;
-
-		[[nodiscard]] PackedFileType GetPackedFileType() const override {
-			return PackedFileType::Binary;
-		}
-
-	protected:
-		[[nodiscard]] std::streamsize MaxPossibleStreamSize() const override {
+		[[nodiscard]] std::streamsize StreamSize() override {
+			EnsureInitialized();
 			return reinterpret_cast<const PackedFileHeader*>(&m_header[0])->GetTotalPackedFileSize();
 		}
 
-		[[nodiscard]] std::streamsize StreamSize(const IStream& stream) const override {
-			return MaxPossibleStreamSize();
+		void EnsureInitialized() override {
+			if (!m_header.empty())
+				return;
+
+			const auto lock = std::lock_guard(m_mtx);
+			
+			if (!m_header.empty())
+				return;
+
+			const auto size = m_stream->StreamSize();
+			const auto blockAlignment = Align<uint32_t>(static_cast<uint32_t>(size), EntryBlockDataSize);
+			const auto headerAlignment = Align(sizeof PackedFileHeader + blockAlignment.Count * sizeof PackedStandardBlockLocator);
+
+			m_header.resize(headerAlignment.Alloc);
+			auto& header = *reinterpret_cast<PackedFileHeader*>(&m_header[0]);
+			const auto locators = Internal::span_cast<PackedStandardBlockLocator>(m_header, sizeof header, blockAlignment.Count);
+
+			header = {
+				.HeaderSize = static_cast<uint32_t>(headerAlignment),
+				.Type = PackedFileType::Binary,
+				.DecompressedSize = static_cast<uint32_t>(size),
+				.BlockCountOrVersion = blockAlignment.Count,
+			};
+			header.SetSpaceUnits((static_cast<size_t>(blockAlignment.Count) - 1) * EntryBlockSize + sizeof PackedBlockHeader + blockAlignment.Last);
+
+			blockAlignment.IterateChunked([&](uint32_t index, uint32_t offset, uint32_t size) {
+				locators[index].Offset = index == 0 ? 0 : locators[index - 1].Offset + locators[index - 1].BlockSize;
+				locators[index].BlockSize = static_cast<uint16_t>(Align(sizeof PackedBlockHeader + size));
+				locators[index].DecompressedDataSize = static_cast<uint16_t>(size);
+			});
 		}
 
-		std::streamsize ReadStreamPartial(const IStream& stream, std::streamoff offset, void* buf, std::streamsize length) const override {
+		std::streamsize TranslateRead(std::streamoff offset, void* buf, std::streamsize length) override {
 			if (!length)
 				return 0;
 
@@ -81,7 +96,7 @@ namespace XivRes {
 
 					if (relativeOffset < size) {
 						const auto available = (std::min)(out.size_bytes(), static_cast<size_t>(size - relativeOffset));
-						ReadStream(stream, offset + relativeOffset, &out[0], available);
+						ReadStream(*m_stream, offset + relativeOffset, &out[0], available);
 						out = out.subspan(available);
 						relativeOffset = 0;
 
@@ -105,121 +120,102 @@ namespace XivRes {
 
 			return length - out.size_bytes();
 		}
-
-	private:
-		static std::vector<uint8_t> CreateHeaderForNonCompressedBinaryEntryProvider(size_t size) {
-			const auto blockAlignment = Align<uint32_t>(static_cast<uint32_t>(size), EntryBlockDataSize);
-			const auto headerAlignment = Align(sizeof PackedFileHeader + blockAlignment.Count * sizeof SqpackBinaryPackedFileBlockLocator);
-
-			std::vector<uint8_t> res(headerAlignment.Alloc);
-			auto& header = *reinterpret_cast<PackedFileHeader*>(&res[0]);
-			const auto locators = Internal::span_cast<SqpackBinaryPackedFileBlockLocator>(res, sizeof header, blockAlignment.Count);
-
-			header = {
-				.HeaderSize = static_cast<uint32_t>(headerAlignment),
-				.Type = PackedFileType::Binary,
-				.DecompressedSize = static_cast<uint32_t>(size),
-				.BlockCountOrVersion = blockAlignment.Count,
-			};
-			header.SetSpaceUnits((static_cast<size_t>(blockAlignment.Count) - 1) * EntryBlockSize + sizeof PackedBlockHeader + blockAlignment.Last);
-
-			blockAlignment.IterateChunked([&](uint32_t index, uint32_t offset, uint32_t size) {
-				locators[index] = {
-					static_cast<uint32_t>(offset),
-					static_cast<uint16_t>(EntryBlockSize),
-					static_cast<uint16_t>(size)
-				};
-			});
-			return res;
-		}
 	};
 
-	class BinaryPackedFileStream : public LazyPackedFileStream {
-		std::vector<char> m_data;
-
+	class BinaryCompressingPacker : public CompressingFilePacker<PackedFileType::Binary> {
 	public:
-		using LazyPackedFileStream::LazyPackedFileStream;
-		using LazyPackedFileStream::StreamSize;
-		using LazyPackedFileStream::ReadStreamPartial;
+		std::unique_ptr<IStream> Pack(const IStream& stream, int compressionLevel) const override {
+			const auto rawStreamSize = static_cast<uint32_t>(stream.StreamSize());
 
-		[[nodiscard]] PackedFileType GetPackedFileType() const override {
-			return PackedFileType::Binary;
-		}
+			const auto blockAlignment = Align<uint32_t>(rawStreamSize, EntryBlockDataSize);
+			std::vector<std::pair<bool, std::vector<uint8_t>>> blockDataList(blockAlignment.Count);
 
-	protected:
-		void Initialize(const IStream& stream) override {
-			const auto rawSize = static_cast<uint32_t>(stream.StreamSize());
-			PackedFileHeader entryHeader = {
-				.HeaderSize = sizeof entryHeader,
-				.Type = PackedFileType::Binary,
-				.DecompressedSize = rawSize,
-				.BlockCountOrVersion = 0,
-			};
+			{
+				Internal::ThreadPool<> threadPool;
+				std::vector<std::optional<Internal::ZlibReusableDeflater>> deflaters(threadPool.GetThreadCount());
+				std::vector<std::vector<uint8_t>> readBuffers(threadPool.GetThreadCount());
 
-			std::optional<Internal::ZlibReusableDeflater> deflater;
-			if (m_compressionLevel)
-				deflater.emplace(m_compressionLevel, Z_DEFLATED, -15);
-			std::vector<uint8_t> entryBody;
-			entryBody.reserve(rawSize);
+				try {
+					blockAlignment.IterateChunkedBreakable([&](const uint32_t index, const uint32_t offset, const uint32_t length) {
+						if (IsCancelled())
+							return false;
 
-			std::vector<SqpackBinaryPackedFileBlockLocator> locators;
-			std::vector<uint8_t> sourceBuf(EntryBlockDataSize);
-			Align<uint32_t>(rawSize, EntryBlockDataSize).IterateChunked([&](uint32_t index, uint32_t offset, uint32_t size) {
-				sourceBuf.resize(size);
-				ReadStream(stream, offset, std::span(sourceBuf));
-				if (deflater)
-					deflater->Deflate(sourceBuf);
-				const auto useCompressed = deflater && deflater->Result().size() < sourceBuf.size();
-				const auto targetBuf = useCompressed ? deflater->Result() : sourceBuf;
+						threadPool.Submit([this, compressionLevel, offset, length, &stream, &readBuffers, &deflaters, &blockData = blockDataList[index]](size_t threadIndex) {
+							if (IsCancelled())
+								return;
 
-				PackedBlockHeader header{
-					.HeaderSize = sizeof PackedBlockHeader,
-					.Version = 0,
-					.CompressedSize = useCompressed ? static_cast<uint32_t>(targetBuf.size()) : PackedBlockHeader::CompressedSizeNotCompressed,
-					.DecompressedSize = static_cast<uint32_t>(sourceBuf.size()),
-				};
-				const auto alignmentInfo = Align(sizeof header + targetBuf.size());
+							auto& readBuffer = readBuffers[threadIndex];
+							auto& deflater = deflaters[threadIndex];
+							if (compressionLevel && !deflater)
+								deflater.emplace(compressionLevel, Z_DEFLATED, -15);
 
-				locators.emplace_back(SqpackBinaryPackedFileBlockLocator{
-					locators.empty() ? 0 : locators.back().BlockSize + locators.back().Offset,
-					static_cast<uint16_t>(alignmentInfo.Alloc),
-					static_cast<uint16_t>(sourceBuf.size())
+							readBuffer.clear();
+							readBuffer.resize(length);
+							ReadStream(stream, offset, std::span(readBuffer));
+							if (deflater)
+								deflater->Deflate(readBuffer);
+
+							if ((blockData.first = deflater && deflater->Deflate(std::span(readBuffer)).size() < readBuffer.size()))
+								blockData.second = deflater->TakeResult();
+							else
+								blockData.second = std::move(readBuffer);
+						});
+
+						return true;
 					});
+				} catch (...) {
+					// pass
+				}
+				threadPool.SubmitDoneAndWait();
+			}
 
-				entryBody.resize(entryBody.size() + alignmentInfo.Alloc);
+			if (IsCancelled())
+				return nullptr;
 
-				auto ptr = entryBody.end() - static_cast<size_t>(alignmentInfo.Alloc);
-				ptr = std::copy_n(reinterpret_cast<uint8_t*>(&header), sizeof header, ptr);
-				ptr = std::copy(targetBuf.begin(), targetBuf.end(), ptr);
-				std::fill_n(ptr, alignmentInfo.Pad, 0);
+			const auto entryHeaderLength = static_cast<uint16_t>(Align(0
+				+ sizeof PackedFileHeader
+				+ sizeof PackedStandardBlockLocator * blockAlignment.Count
+			));
+			size_t entryBodyLength = 0;
+			for (const auto& blockItem : blockDataList)
+				entryBodyLength += Align(sizeof PackedBlockHeader + blockItem.second.size());
+
+			std::vector<uint8_t> result(entryHeaderLength + entryBodyLength);
+
+			auto& entryHeader = *reinterpret_cast<PackedFileHeader*>(&result[0]);
+			entryHeader.Type = PackedFileType::Binary;
+			entryHeader.DecompressedSize = rawStreamSize;
+			entryHeader.BlockCountOrVersion = static_cast<uint32_t>(blockAlignment.Count);
+			entryHeader.HeaderSize = entryHeaderLength;
+			entryHeader.SetSpaceUnits(entryBodyLength);
+
+			const auto locators = Internal::span_cast<PackedStandardBlockLocator>(result, sizeof entryHeader, blockAlignment.Count);
+			auto resultDataPtr = result.begin() + entryHeaderLength;
+
+			blockAlignment.IterateChunkedBreakable([&](const uint32_t index, const uint32_t offset, const uint32_t length) {
+				if (IsCancelled())
+					return false;
+				auto& [useCompressed, targetBuf] = blockDataList[index];
+
+				auto& header = *reinterpret_cast<PackedBlockHeader*>(&*resultDataPtr);
+				header.HeaderSize = sizeof PackedBlockHeader;
+				header.Version = 0;
+				header.CompressedSize = useCompressed ? static_cast<uint32_t>(targetBuf.size()) : PackedBlockHeader::CompressedSizeNotCompressed;
+				header.DecompressedSize = length;
+
+				std::copy(targetBuf.begin(), targetBuf.end(), resultDataPtr + sizeof header);
+
+				locators[index].Offset = index == 0 ? 0 : locators[index - 1].BlockSize + locators[index - 1].Offset;
+				locators[index].BlockSize = static_cast<uint16_t>(Align(sizeof header + targetBuf.size()));
+				locators[index].DecompressedDataSize = static_cast<uint16_t>(length);
+
+				resultDataPtr += locators[index].BlockSize;
+
+				std::vector<uint8_t>().swap(targetBuf);
+				return true;
 			});
 
-			entryHeader.BlockCountOrVersion = static_cast<uint32_t>(locators.size());
-			entryHeader.HeaderSize = static_cast<uint32_t>(Align(entryHeader.HeaderSize + std::span(locators).size_bytes()));
-			entryHeader.SetSpaceUnits(entryBody.size());
-			m_data.reserve(Align(entryHeader.HeaderSize + entryBody.size()));
-			m_data.insert(m_data.end(), reinterpret_cast<char*>(&entryHeader), reinterpret_cast<char*>(&entryHeader + 1));
-			if (!locators.empty()) {
-				m_data.insert(m_data.end(), reinterpret_cast<char*>(&locators.front()), reinterpret_cast<char*>(&locators.back() + 1));
-				m_data.resize(entryHeader.HeaderSize, 0);
-				m_data.insert(m_data.end(), entryBody.begin(), entryBody.end());
-			} else
-				m_data.resize(entryHeader.HeaderSize, 0);
-
-			m_data.resize(Align(m_data.size()));
-		}
-
-		[[nodiscard]] std::streamsize StreamSize(const IStream& stream) const override {
-			return static_cast<uint32_t>(m_data.size());
-		}
-
-		std::streamsize ReadStreamPartial(const IStream& stream, std::streamoff offset, void* buf, std::streamsize length) const override {
-			const auto available = static_cast<size_t>((std::min<std::streamsize>)(length, m_data.size() - offset));
-			if (!available)
-				return 0;
-
-			memcpy(buf, &m_data[static_cast<size_t>(offset)], available);
-			return available;
+			return std::make_unique<MemoryStream>(std::move(result));
 		}
 	};
 }

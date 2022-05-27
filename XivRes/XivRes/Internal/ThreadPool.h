@@ -25,7 +25,10 @@ namespace XivRes::Internal {
 		std::string m_sFirstError;
 
 		size_t m_nThreads;
+		size_t m_nRunningThreads = 0;
+		std::mutex m_threadLock;
 		std::vector<std::thread> m_threads;
+		std::vector<bool> m_threadRunning;
 		std::vector<std::function<void(size_t)>> m_onNewThreadCallbacks;
 
 		std::mutex m_queuedTaskLock;
@@ -44,26 +47,27 @@ namespace XivRes::Internal {
 	public:
 		ThreadPool(size_t nThreads = SIZE_MAX)
 			: m_nThreads(nThreads == SIZE_MAX ? std::thread::hardware_concurrency() : nThreads) {
-			m_threads.reserve(m_nThreads);
+			m_threads.resize(m_nThreads);
+			m_threadRunning.resize(m_nThreads);
 		}
 
 		~ThreadPool() {
-			if (!IsAnyWorkerThreadRunning())
-				return;
+			if (IsAnyWorkerThreadRunning()) {
+				if (!m_bErrorOccurred) {
+					m_bErrorOccurred = true;
+					m_sFirstError = "Cancelled via dtor";
+				}
 
-			if (!m_bErrorOccurred) {
-				m_bErrorOccurred = true;
-				m_sFirstError = "Cancelled via dtor";
-			}
-
-			{
-				const auto lock = std::lock_guard(m_queuedTaskLock);
-				m_bNoMoreTasks = true;
-				for (const auto& _ : m_threads)
-					m_queuedTasks.emplace_back();
+				{
+					const auto lock = std::lock_guard(m_queuedTaskLock);
+					m_bNoMoreTasks = true;
+					for (const auto& _ : m_threads)
+						m_queuedTasks.emplace_back();
+				}
 			}
 
 			m_queuedTaskAvailable.notify_all();
+			m_finishedTaskAvailable.notify_all();
 			for (auto& th : m_threads)
 				if (th.joinable())
 					th.join();
@@ -100,8 +104,8 @@ namespace XivRes::Internal {
 		}
 
 		bool IsAnyWorkerThreadRunning() const {
-			for (auto& th : m_threads)
-				if (th.joinable())
+			for (const auto& b : m_threadRunning)
+				if (b)
 					return true;
 
 			return false;
@@ -114,6 +118,7 @@ namespace XivRes::Internal {
 			});
 		}
 
+		template<typename = std::enable_if_t<!std::is_void_v<TResult>>>
 		void Submit(std::function<void(size_t)> fn) {
 			return Submit(Task{
 				std::nullopt,
@@ -135,6 +140,7 @@ namespace XivRes::Internal {
 			});
 		}
 
+		template<typename = std::enable_if_t<!std::is_void_v<TResult>>>
 		void Submit(std::function<void()> fn) {
 			return Submit(Task{
 				std::nullopt,
@@ -150,8 +156,6 @@ namespace XivRes::Internal {
 		}
 
 		void SubmitDone(std::string finishingWithError = {}) {
-			PropagateInnerErrorIfErrorOccurred();
-
 			if (m_bNoMoreTasks)
 				return;
 
@@ -183,8 +187,10 @@ namespace XivRes::Internal {
 			PropagateInnerErrorIfErrorOccurred();
 		}
 
-		template<class Rep, class Period>
 		std::optional<std::pair<TIdentifier, TResult>> GetResult() {
+			if (m_bNoMoreTasks && !IsAnyWorkerThreadRunning())
+				return std::nullopt;
+
 			auto lock = std::unique_lock(m_finishedTaskLock);
 			m_finishedTaskAvailable.wait(lock, [this] { return !IsAnyWorkerThreadRunning() || !m_finishedTasks.empty(); });
 			if (m_finishedTasks.empty())
@@ -197,6 +203,9 @@ namespace XivRes::Internal {
 
 		template<class Rep, class Period>
 		std::optional<std::pair<TIdentifier, TResult>> GetResult(const std::chrono::duration<Rep, Period>& rel_time) {
+			if (m_bNoMoreTasks && !IsAnyWorkerThreadRunning())
+				return std::nullopt;
+
 			auto lock = std::unique_lock(m_finishedTaskLock);
 			if (!m_finishedTaskAvailable.wait_for(lock, rel_time, [this] { return !IsAnyWorkerThreadRunning() || !m_finishedTasks.empty(); }) || m_finishedTasks.empty())
 				return std::nullopt;
@@ -208,6 +217,9 @@ namespace XivRes::Internal {
 
 		template<class Clock, class Duration>
 		std::optional<std::pair<TIdentifier, TResult>> GetResult(const std::chrono::time_point<Clock, Duration>& timeout_time) {
+			if (m_bNoMoreTasks && !IsAnyWorkerThreadRunning())
+				return std::nullopt;
+
 			auto lock = std::unique_lock(m_finishedTaskLock);
 			if (!m_finishedTaskAvailable.wait_until(lock, timeout_time, [this] { return !IsAnyWorkerThreadRunning() || !m_finishedTasks.empty(); }) || m_finishedTasks.empty())
 				return std::nullopt;
@@ -238,10 +250,15 @@ namespace XivRes::Internal {
 
 			m_queuedTaskAvailable.notify_one();
 
-			if (m_threads.size() >= m_nThreads)
+			if (m_nRunningThreads >= m_nThreads)
 				return;
 
-			m_threads.emplace_back([this, nThreadIndex = m_threads.size()]() {
+			const auto lock = std::lock_guard(m_threadLock);
+			if (m_nRunningThreads >= m_nThreads)
+				return;
+
+			m_threadRunning[m_nRunningThreads] = true;
+			m_threads.emplace(m_threads.begin() + m_nRunningThreads, [this, nThreadIndex = m_nRunningThreads]() {
 				std::optional<TResult> result;
 
 				try {
@@ -263,24 +280,24 @@ namespace XivRes::Internal {
 						auto lock = std::unique_lock(m_queuedTaskLock);
 						m_queuedTaskAvailable.wait(lock, [this] { return !m_queuedTasks.empty() || m_bNoMoreTasks; });
 						if (m_queuedTasks.empty())
-							return;
+							break;
 
 						task = std::move(m_queuedTasks.front());
 						m_queuedTasks.pop_front();
 					}
 
 					if (!task.Function)
-						return;
+						break;
 
 					try {
 						result = task.Function(nThreadIndex);
 
 					} catch (const InternalCancelledError&) {
-						return;
+						break;
 
 					} catch (const std::exception& e) {
 						SubmitDone(std::format("Task: {}", e.what()));
-						return;
+						break;
 					}
 
 					if (!task.Identifier.has_value())
@@ -294,7 +311,13 @@ namespace XivRes::Internal {
 					m_finishedTaskAvailable.notify_one();
 					result.reset();
 				}
+
+				const auto lock = std::lock_guard(m_threadLock);
+				m_threadRunning[nThreadIndex] = false;
+				m_finishedTaskAvailable.notify_all();
 			});
+
+			m_nRunningThreads++;
 		}
 
 	public:

@@ -10,7 +10,7 @@
 
 namespace XivRes {
 	class BinaryPackedFileStreamDecoder : public BasePackedFileStreamDecoder {
-		const std::vector<SqpackBinaryPackedFileBlockLocator> m_locators;
+		const std::vector<PackedStandardBlockLocator> m_locators;
 		const uint32_t m_headerSize;
 		std::vector<uint32_t> m_offsets;
 
@@ -18,7 +18,7 @@ namespace XivRes {
 		BinaryPackedFileStreamDecoder(const PackedFileHeader& header, std::shared_ptr<const PackedFileStream> stream)
 			: BasePackedFileStreamDecoder(std::move(stream))
 			, m_headerSize(header.HeaderSize)
-			, m_locators(ReadStreamIntoVector<SqpackBinaryPackedFileBlockLocator>(*m_stream, sizeof PackedFileHeader, header.BlockCountOrVersion)) {
+			, m_locators(ReadStreamIntoVector<PackedStandardBlockLocator>(*m_stream, sizeof PackedFileHeader, header.BlockCountOrVersion)) {
 
 			m_offsets.resize(m_locators.size() + 1);
 			for (size_t i = 1; i < m_offsets.size(); ++i)
@@ -41,7 +41,7 @@ namespace XivRes {
 				.RequestOffsetVerify = m_offsets[from],
 			};
 
-			for (auto it = from; it < m_offsets.size(); ++it) {
+			for (auto it = from; it < m_locators.size(); ++it) {
 				info.ProgressRead(*m_stream, m_headerSize + m_locators[it].Offset, m_locators[it].BlockSize);
 				info.ProgressDecode(m_offsets[it]);
 				if (info.TargetBuffer.empty())

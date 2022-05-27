@@ -250,11 +250,11 @@ namespace XivRes {
 			if (file_size(path) == 0) {
 				provider = std::make_shared<EmptyOrObfuscatedPackedFileStream>(std::move(pathSpec));
 			} else if (extensionLower == u8".tex" || extensionLower == u8".atex") {
-				provider = std::make_shared<TexturePackedFileViewStream>(std::move(pathSpec), path);
+				provider = std::make_shared<PassthroughPackedFileStream<TexturePassthroughPacker>>(std::move(pathSpec), path);
 			} else if (extensionLower == u8".mdl") {
 				provider = std::make_shared<ModelPackedFileViewStream>(std::move(pathSpec), path);
 			} else {
-				provider = std::make_shared<BinaryPackedFileViewStream>(std::move(pathSpec), path);
+				provider = std::make_shared<PassthroughPackedFileStream<BinaryPassthroughPacker>>(std::move(pathSpec), path);
 			}
 
 			return AddEntry(provider, overwriteExisting);

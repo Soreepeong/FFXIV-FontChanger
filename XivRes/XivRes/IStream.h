@@ -18,6 +18,8 @@ namespace XivRes {
 
 	class IStream {
 	public:
+		virtual ~IStream() = default;
+
 		[[nodiscard]] virtual std::streamsize StreamSize() const = 0;
 
 		[[nodiscard]] virtual std::streamsize ReadStreamPartial(std::streamoff offset, void* buf, std::streamsize length) const = 0;
@@ -67,7 +69,6 @@ namespace XivRes {
 		DefaultAbstractStream(const IStream&) = delete;
 		IStream& operator=(IStream&&) = delete;
 		IStream& operator=(const IStream&) = delete;
-		virtual ~DefaultAbstractStream() = default;
 
 		[[nodiscard]] virtual std::streamsize StreamSize() const = 0;
 
@@ -223,8 +224,6 @@ namespace XivRes {
 			: m_path(std::move(path)) {
 			m_streams.emplace_back(m_path, std::ios::binary);
 		}
-
-		~FileStream() override = default;
 
 		[[nodiscard]] std::streamsize StreamSize() const override {
 			PooledObject stream(*this);

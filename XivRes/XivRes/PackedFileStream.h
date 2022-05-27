@@ -33,6 +33,17 @@ namespace XivRes {
 
 		std::unique_ptr<PackedFileUnpackingStream> GetUnpackedStreamPtr(std::span<uint8_t> obfuscatedHeaderRewrite = {}) const;
 	};
+
+	template<PackedFileType TPackedFileType>
+	class TypedPackedFileStream : public PackedFileStream {
+	public:
+		TypedPackedFileStream(SqpackPathSpec pathSpec)
+			: PackedFileStream(std::move(pathSpec)) {}
+
+		PackedFileType GetPackedFileType() const final {
+			return TPackedFileType;
+		}
+	};
 }
 
 #endif

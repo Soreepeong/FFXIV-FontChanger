@@ -386,18 +386,18 @@ namespace XivRes {
 		}
 	};
 
-	struct SqpackBinaryPackedFileBlockLocator {
+	struct PackedStandardBlockLocator {
 		LE<uint32_t> Offset;
 		LE<uint16_t> BlockSize;
 		LE<uint16_t> DecompressedDataSize;
 	};
 
-	struct SqpackTexturePackedFileBlockLocator {
-		LE<uint32_t> FirstBlockOffset;
-		LE<uint32_t> TotalSize;
+	struct PackedLodBlockLocator {
+		LE<uint32_t> CompressedOffset;
+		LE<uint32_t> CompressedSize;
 		LE<uint32_t> DecompressedSize;
-		LE<uint32_t> FirstSubBlockIndex;
-		LE<uint32_t> SubBlockCount;
+		LE<uint32_t> FirstBlockIndex;
+		LE<uint32_t> BlockCount;
 	};
 
 	struct SqpackModelPackedFileBlockLocator {
