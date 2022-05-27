@@ -11,6 +11,13 @@ namespace XivRes::FontGenerator {
 		Bottom,
 	};
 
+	enum class MergedFontCodepointMode {
+		AddNew,
+		AddAll,
+		Replace,
+		Enum_Count_,
+	};
+
 	class MergedFixedSizeFont : public DefaultAbstractFixedSizeFont {
 		struct InfoStruct {
 			std::set<char32_t> Codepoints;
@@ -32,23 +39,34 @@ namespace XivRes::FontGenerator {
 		MergedFixedSizeFont& operator=(MergedFixedSizeFont&&) = default;
 		MergedFixedSizeFont& operator=(const MergedFixedSizeFont&) = default;
 
-		MergedFixedSizeFont(std::vector<std::pair<std::shared_ptr<IFixedSizeFont>, bool>> fonts, MergedFontVerticalAlignment verticalAlignment = MergedFontVerticalAlignment::Baseline) {
+		MergedFixedSizeFont(std::vector<std::pair<std::shared_ptr<IFixedSizeFont>, MergedFontCodepointMode>> fonts, MergedFontVerticalAlignment verticalAlignment = MergedFontVerticalAlignment::Baseline) {
 			auto info = std::make_shared<InfoStruct>();
 			if (fonts.empty())
-				fonts.emplace_back(std::make_shared<EmptyFixedSizeFont>(), false);
+				fonts.emplace_back(std::make_shared<EmptyFixedSizeFont>(), MergedFontCodepointMode::AddAll);
 
 			info->Alignment = verticalAlignment;
 			info->Size = fonts.front().first->GetSize();
 			info->Ascent = fonts.front().first->GetAscent();
 			info->LineHeight = fonts.front().first->GetLineHeight();
 
-			for (auto& [font, overwrite] : fonts) {
+			for (auto& [font, mergeMode] : fonts) {
 				for (const auto c : font->GetAllCodepoints()) {
-					if (overwrite) {
-						info->UsedFonts.insert_or_assign(c, font.get());
-						info->Codepoints.insert(c);
-					} else if (info->UsedFonts.emplace(c, font.get()).second)
-						info->Codepoints.insert(c);
+					switch (mergeMode) {
+						case MergedFontCodepointMode::AddNew:
+							if (info->UsedFonts.emplace(c, font.get()).second)
+								info->Codepoints.insert(c);
+							break;
+						case MergedFontCodepointMode::Replace:
+							if (const auto it = info->UsedFonts.find(c); it != info->UsedFonts.end())
+								it->second = font.get();
+							break;
+						case MergedFontCodepointMode::AddAll:
+							info->UsedFonts.insert_or_assign(c, font.get());
+							info->Codepoints.insert(c);
+							break;
+						default:
+							throw std::invalid_argument("Invalid MergedFontCodepointMode");
+					}
 				}
 
 				m_fonts.emplace_back(std::move(font));
@@ -115,7 +133,10 @@ namespace XivRes::FontGenerator {
 			m_kerningPairs.emplace();
 			for (const auto& [font, chars] : charsPerFonts) {
 				for (const auto& kerningPair : font->GetAllKerningPairs()) {
-					if (chars.contains(kerningPair.first.first) && chars.contains(kerningPair.first.second))
+					if (kerningPair.first.first < U' ' || kerningPair.first.second < U' ')
+						continue;
+
+					if (chars.contains(kerningPair.first.first) && chars.contains(kerningPair.first.second) && kerningPair.second)
 						m_kerningPairs->emplace(kerningPair);
 				}
 			}

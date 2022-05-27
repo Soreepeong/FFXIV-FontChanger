@@ -87,7 +87,7 @@ namespace App {
 		LRESULT Menu_Edit_SelectAll();
 		LRESULT Menu_Edit_Details();
 		LRESULT Menu_Edit_ChangeParams(int baselineShift, int horizontalOffset, int letterSpacing, float fontSize);
-		LRESULT Menu_Edit_ToggleOverwrite();
+		LRESULT Menu_Edit_ToggleMergeMode();
 		LRESULT Menu_Edit_MoveUpOrDown(int direction);
 		LRESULT Menu_Edit_CreateEmptyCopyFromSelection();
 
@@ -158,7 +158,7 @@ namespace App {
 						case ID_EDIT_INCREASEFONTSIZEBY1: return Menu_Edit_ChangeParams(0, 0, 0, +1.f);
 						case ID_EDIT_DECREASEFONTSIZEBY0_2: return Menu_Edit_ChangeParams(0, 0, 0, -0.2f);
 						case ID_EDIT_INCREASEFONTSIZEBY0_2: return Menu_Edit_ChangeParams(0, 0, 0, +0.2f);
-						case ID_EDIT_TOGGLEOVERWRITE: return Menu_Edit_ToggleOverwrite();
+						case ID_EDIT_TOGGLEMERGEMODE: return Menu_Edit_ToggleMergeMode();
 						case ID_EDIT_MOVEUP: return Menu_Edit_MoveUpOrDown(-1);
 						case ID_EDIT_MOVEDOWN: return Menu_Edit_MoveUpOrDown(+1);
 						case ID_EDIT_CREATEEMPTYCOPYFROMSELECTION: return Menu_Edit_CreateEmptyCopyFromSelection();

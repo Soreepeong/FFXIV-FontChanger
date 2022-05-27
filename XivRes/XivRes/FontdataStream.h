@@ -179,6 +179,11 @@ namespace XivRes {
 		}
 
 		void AddFontEntry(char32_t c, uint16_t textureIndex, uint16_t textureOffsetX, uint16_t textureOffsetY, uint8_t boundingWidth, uint8_t boundingHeight, int8_t nextOffsetX, int8_t currentOffsetY) {
+			if (textureOffsetX >= 4096 || textureOffsetY >= 4096)
+				throw std::invalid_argument("Texture Offset X and Y must be lesser than 4096.");
+			if (textureIndex >= 256)
+				throw std::invalid_argument("Texture Index cannot be bigger than 255.");
+
 			const auto val = Unicode::CodePointToUtf8Uint32(c);
 
 			auto it = std::lower_bound(m_fontTableEntries.begin(), m_fontTableEntries.end(), val, [](const FontdataGlyphEntry& l, uint32_t r) {
@@ -186,6 +191,8 @@ namespace XivRes {
 			});
 
 			if (it == m_fontTableEntries.end() || it->Utf8Value != val) {
+				if (m_fontTableEntries.size() >= 65535)
+					throw std::runtime_error("The game supports up to 65535 characters.");
 				auto entry = FontdataGlyphEntry();
 				entry.Utf8Value = val;
 				entry.ShiftJisValue = Unicode::CodePointToShiftJisUint16(val);
@@ -204,6 +211,11 @@ namespace XivRes {
 		}
 
 		void AddFontEntry(const FontdataGlyphEntry& entry) {
+			if (entry.TextureOffsetX >= 4096 || entry.TextureOffsetY >= 4096)
+				throw std::invalid_argument("Texture Offset X and Y must be lesser than 4096.");
+			if (entry.TextureIndex >= 256)
+				throw std::invalid_argument("Texture Index cannot be bigger than 255.");
+
 			auto it = m_fontTableEntries.end();
 
 			if (m_fontTableEntries.empty() || m_fontTableEntries.back() < entry)
@@ -214,6 +226,8 @@ namespace XivRes {
 				it = std::lower_bound(m_fontTableEntries.begin(), m_fontTableEntries.end(), entry);
 
 			if (it == m_fontTableEntries.end() || it->Utf8Value != entry.Utf8Value) {
+				if (m_fontTableEntries.size() >= 65535)
+					throw std::runtime_error("The game supports up to 65535 characters.");
 				it = m_fontTableEntries.insert(it, entry);
 				m_fcsv.KerningHeaderOffset += sizeof entry;
 				m_fthd.FontTableEntryCount += 1;
@@ -245,8 +259,11 @@ namespace XivRes {
 					it->RightOffset = entry.RightOffset + (cumulative ? *it->RightOffset : 0);
 				else
 					m_kerningEntries.erase(it);
-			} else if (entry.RightOffset)
+			} else if (entry.RightOffset) {
+				if (m_kerningEntries.size() >= 65535)
+					throw std::runtime_error("The game supports up to 65535 kerning pairs.");
 				m_kerningEntries.insert(it, entry);
+			}
 
 			m_fthd.KerningEntryCount = m_knhd.EntryCount = static_cast<uint32_t>(m_kerningEntries.size());
 		}

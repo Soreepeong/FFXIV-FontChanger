@@ -90,7 +90,7 @@ namespace App {
 
 		INT_PTR CodepointsDeleteButton_OnCommand(uint16_t notiCode);
 
-		INT_PTR CodepointsOverwriteCheck_OnCommand(uint16_t notiCode);
+		INT_PTR CodepointsMergeModeCombo_OnCommand(uint16_t notiCode);
 
 		INT_PTR UnicodeBlockSearchNameEdit_OnCommand(uint16_t notiCode);
 

@@ -29,7 +29,7 @@ struct App::FaceElementEditorDialog::ControlStruct {
 	HWND CodepointsList = GetDlgItem(Window, IDC_LIST_CODEPOINTS);
 	HWND CodepointsClearButton = GetDlgItem(Window, IDC_BUTTON_CODEPOINTS_CLEAR);
 	HWND CodepointsDeleteButton = GetDlgItem(Window, IDC_BUTTON_CODEPOINTS_DELETE);
-	HWND CodepointsOverwriteCheck = GetDlgItem(Window, IDC_CHECK_CODEPOINTS_OVERWRITE);
+	HWND CodepointsMergeModeCombo = GetDlgItem(Window, IDC_COMBO_CODEPOINTS_MERGEMODE);
 	HWND UnicodeBlockSearchNameEdit = GetDlgItem(Window, IDC_EDIT_UNICODEBLOCKS_SEARCH);
 	HWND UnicodeBlockSearchShowBlocksWithAnyOfCharactersInput = GetDlgItem(Window, IDC_CHECK_UNICODEBLOCKS_SHOWBLOCKSWITHANYOFCHARACTERSINPUT);
 	HWND UnicodeBlockSearchResultList = GetDlgItem(Window, IDC_LIST_UNICODEBLOCKS_SEARCHRESULTS);
@@ -464,9 +464,15 @@ INT_PTR App::FaceElementEditorDialog::CodepointsDeleteButton_OnCommand(uint16_t 
 	return 0;
 }
 
-INT_PTR App::FaceElementEditorDialog::CodepointsOverwriteCheck_OnCommand(uint16_t notiCode) {
-	m_element.Overwrite = Button_GetCheck(m_controls->CodepointsOverwriteCheck);
-	OnWrappedFontChanged();
+INT_PTR App::FaceElementEditorDialog::CodepointsMergeModeCombo_OnCommand(uint16_t notiCode) {
+	if (notiCode != CBN_SELCHANGE)
+		return 0;
+
+	if (const auto v = static_cast<XivRes::FontGenerator::MergedFontCodepointMode>(ComboBox_GetCurSel(m_controls->CodepointsMergeModeCombo));
+		v != m_element.MergeMode) {
+		m_element.MergeMode = v;
+		OnWrappedFontChanged();
+	}
 	return 0;
 }
 
@@ -604,7 +610,10 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	for (int i = 0, i_ = static_cast<int>(m_element.WrapModifiers.Codepoints.size()); i < i_; i++)
 		AddCodepointRangeToListBox(i, m_element.WrapModifiers.Codepoints[i].first, m_element.WrapModifiers.Codepoints[i].second, charVec);
 
-	Button_SetCheck(m_controls->CodepointsOverwriteCheck, m_element.Overwrite ? TRUE : FALSE);
+	ComboBox_AddString(m_controls->CodepointsMergeModeCombo, L"Add new glyphs");
+	ComboBox_AddString(m_controls->CodepointsMergeModeCombo, L"Add all glyphs");
+	ComboBox_AddString(m_controls->CodepointsMergeModeCombo, L"Replace existing glyphs");
+	ComboBox_SetCurSel(m_controls->CodepointsMergeModeCombo, static_cast<int>(m_element.MergeMode));
 
 	SetWindowNumber(m_controls->TransformationMatrixM11Edit, m_element.TransformationMatrix.M11);
 	SetWindowNumber(m_controls->TransformationMatrixM12Edit, m_element.TransformationMatrix.M12);
@@ -946,7 +955,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->CustomRangeAdd, FALSE);
 			EnableWindow(m_controls->CodepointsList, FALSE);
 			EnableWindow(m_controls->CodepointsDeleteButton, FALSE);
-			EnableWindow(m_controls->CodepointsOverwriteCheck, FALSE);
+			EnableWindow(m_controls->CodepointsMergeModeCombo, FALSE);
 			EnableWindow(m_controls->UnicodeBlockSearchNameEdit, FALSE);
 			EnableWindow(m_controls->UnicodeBlockSearchResultList, FALSE);
 			EnableWindow(m_controls->UnicodeBlockSearchAddAll, FALSE);
@@ -983,7 +992,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->CustomRangeAdd, TRUE);
 			EnableWindow(m_controls->CodepointsList, TRUE);
 			EnableWindow(m_controls->CodepointsDeleteButton, TRUE);
-			EnableWindow(m_controls->CodepointsOverwriteCheck, TRUE);
+			EnableWindow(m_controls->CodepointsMergeModeCombo, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchNameEdit, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchResultList, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchAddAll, TRUE);
@@ -1020,7 +1029,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->CustomRangeAdd, TRUE);
 			EnableWindow(m_controls->CodepointsList, TRUE);
 			EnableWindow(m_controls->CodepointsDeleteButton, TRUE);
-			EnableWindow(m_controls->CodepointsOverwriteCheck, TRUE);
+			EnableWindow(m_controls->CodepointsMergeModeCombo, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchNameEdit, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchResultList, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchAddAll, TRUE);
@@ -1057,7 +1066,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->CustomRangeAdd, TRUE);
 			EnableWindow(m_controls->CodepointsList, TRUE);
 			EnableWindow(m_controls->CodepointsDeleteButton, TRUE);
-			EnableWindow(m_controls->CodepointsOverwriteCheck, TRUE);
+			EnableWindow(m_controls->CodepointsMergeModeCombo, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchNameEdit, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchResultList, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchAddAll, TRUE);
@@ -1343,7 +1352,7 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 				case IDC_LIST_CODEPOINTS: return CodepointsList_OnCommand(HIWORD(wParam));
 				case IDC_BUTTON_CODEPOINTS_CLEAR: return CodepointsClearButton_OnCommand(HIWORD(wParam));
 				case IDC_BUTTON_CODEPOINTS_DELETE: return CodepointsDeleteButton_OnCommand(HIWORD(wParam));
-				case IDC_CHECK_CODEPOINTS_OVERWRITE: return CodepointsOverwriteCheck_OnCommand(HIWORD(wParam));
+				case IDC_COMBO_CODEPOINTS_MERGEMODE: return CodepointsMergeModeCombo_OnCommand(HIWORD(wParam));
 				case IDC_EDIT_UNICODEBLOCKS_SEARCH: return UnicodeBlockSearchNameEdit_OnCommand(HIWORD(wParam));
 				case IDC_CHECK_UNICODEBLOCKS_SHOWBLOCKSWITHANYOFCHARACTERSINPUT: return UnicodeBlockSearchShowBlocksWithAnyOfCharactersInput_OnCommand(HIWORD(wParam));
 				case IDC_LIST_UNICODEBLOCKS_SEARCHRESULTS: return UnicodeBlockSearchResultList_OnCommand(HIWORD(wParam));

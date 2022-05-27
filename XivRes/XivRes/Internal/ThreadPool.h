@@ -188,14 +188,15 @@ namespace XivRes::Internal {
 		}
 
 		std::optional<std::pair<TIdentifier, TResult>> GetResult() {
-			if (m_bNoMoreTasks && !IsAnyWorkerThreadRunning())
-				return std::nullopt;
-
 			auto lock = std::unique_lock(m_finishedTaskLock);
-			m_finishedTaskAvailable.wait(lock, [this] { return !IsAnyWorkerThreadRunning() || !m_finishedTasks.empty(); });
-			if (m_finishedTasks.empty())
-				return std::nullopt;
+			if (m_finishedTasks.empty()) {
+				if (m_bNoMoreTasks && !IsAnyWorkerThreadRunning())
+					return std::nullopt;
 
+				m_finishedTaskAvailable.wait(lock, [this] { return !IsAnyWorkerThreadRunning() || !m_finishedTasks.empty(); });
+				if (m_finishedTasks.empty())
+					return std::nullopt;
+			}
 			auto res = std::move(m_finishedTasks.front());
 			m_finishedTasks.pop_front();
 			return res;
@@ -203,13 +204,14 @@ namespace XivRes::Internal {
 
 		template<class Rep, class Period>
 		std::optional<std::pair<TIdentifier, TResult>> GetResult(const std::chrono::duration<Rep, Period>& rel_time) {
-			if (m_bNoMoreTasks && !IsAnyWorkerThreadRunning())
-				return std::nullopt;
-
 			auto lock = std::unique_lock(m_finishedTaskLock);
-			if (!m_finishedTaskAvailable.wait_for(lock, rel_time, [this] { return !IsAnyWorkerThreadRunning() || !m_finishedTasks.empty(); }) || m_finishedTasks.empty())
-				return std::nullopt;
+			if (m_finishedTasks.empty()) {
+				if (m_bNoMoreTasks && !IsAnyWorkerThreadRunning())
+					return std::nullopt;
 
+				if (!m_finishedTaskAvailable.wait_for(lock, rel_time, [this] { return !IsAnyWorkerThreadRunning() || !m_finishedTasks.empty(); }) || m_finishedTasks.empty())
+					return std::nullopt;
+			}
 			auto res = std::move(m_finishedTasks.front());
 			m_finishedTasks.pop_front();
 			return res;
@@ -217,13 +219,14 @@ namespace XivRes::Internal {
 
 		template<class Clock, class Duration>
 		std::optional<std::pair<TIdentifier, TResult>> GetResult(const std::chrono::time_point<Clock, Duration>& timeout_time) {
-			if (m_bNoMoreTasks && !IsAnyWorkerThreadRunning())
-				return std::nullopt;
-
 			auto lock = std::unique_lock(m_finishedTaskLock);
-			if (!m_finishedTaskAvailable.wait_until(lock, timeout_time, [this] { return !IsAnyWorkerThreadRunning() || !m_finishedTasks.empty(); }) || m_finishedTasks.empty())
-				return std::nullopt;
+			if (m_finishedTasks.empty()) {
+				if (m_bNoMoreTasks && !IsAnyWorkerThreadRunning())
+					return std::nullopt;
 
+				if (!m_finishedTaskAvailable.wait_until(lock, timeout_time, [this] { return !IsAnyWorkerThreadRunning() || !m_finishedTasks.empty(); }) || m_finishedTasks.empty())
+					return std::nullopt;
+			}
 			auto res = std::move(m_finishedTasks.front());
 			m_finishedTasks.pop_front();
 			return res;

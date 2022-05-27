@@ -41,7 +41,7 @@ namespace App::Structs {
 	public:
 		float Size = 0.f;
 		float Gamma = 1.f;
-		bool Overwrite = false;
+		XivRes::FontGenerator::MergedFontCodepointMode MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::AddNew;
 		XivRes::FontGenerator::FontRenderTransformationMatrix TransformationMatrix{ 1.f, 0.f, 0.f, 1.f };
 		XivRes::FontGenerator::WrapModifiers WrapModifiers;
 		RendererEnum Renderer = RendererEnum::Empty;

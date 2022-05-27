@@ -111,6 +111,9 @@ namespace XivRes::FontGenerator {
 			std::map<Unicode::UnicodeBlocks::NegativeLsbGroup, std::map<char32_t, int>> negativeLsbChars;
 
 			for (const auto codepoint : m_info->Codepoints) {
+				if (codepoint < U' ')
+					continue;
+
 				GlyphMetrics gm;
 				if (!m_font->GetGlyphMetrics(codepoint, gm))
 					continue;

@@ -115,8 +115,8 @@ BEGIN
     EDITTEXT        IDC_EDIT_ADDCUSTOMRANGE_PREVIEW,12,288,246,42,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
     GROUPBOX        "&Codepoints",IDC_STATIC,342,6,264,150
     LISTBOX         IDC_LIST_CODEPOINTS,348,18,252,108,LBS_NOINTEGRALHEIGHT | LBS_EXTENDEDSEL | WS_VSCROLL | WS_TABSTOP
-    CONTROL         "Overwrite",IDC_CHECK_CODEPOINTS_OVERWRITE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,348,132,78,18
-    PUSHBUTTON      "Clear",IDC_BUTTON_CODEPOINTS_CLEAR,462,132,66,18
+    COMBOBOX        IDC_COMBO_CODEPOINTS_MERGEMODE,348,132,114,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Clear",IDC_BUTTON_CODEPOINTS_CLEAR,468,132,66,18
     PUSHBUTTON      "Delete",IDC_BUTTON_CODEPOINTS_DELETE,534,132,66,18
     GROUPBOX        "Find and Add &Unicode Block",IDC_STATIC,342,162,264,174
     LTEXT           "Search",IDC_STATIC,348,174,36,12,SS_CENTERIMAGE
@@ -338,7 +338,7 @@ BEGIN
         MENUITEM "Increase Font Size by 1px\t]", ID_EDIT_INCREASEFONTSIZEBY1
         MENUITEM "Decrease Font Size by 0.2px\tShift+[", ID_EDIT_DECREASEFONTSIZEBY0_2
         MENUITEM "Increase Font Size by 0.2px\tShift+]", ID_EDIT_INCREASEFONTSIZEBY0_2
-        MENUITEM "Toggle Overwrite\tO",         ID_EDIT_TOGGLEOVERWRITE
+        MENUITEM "Toggle Merge Mode\tO",        ID_EDIT_TOGGLEMERGEMODE
         MENUITEM "Move Up\t,",                  ID_EDIT_MOVEUP
         MENUITEM "Move Down\t.",                ID_EDIT_MOVEDOWN
         MENUITEM "Create Empty Copy From Selection\tC", ID_EDIT_CREATEEMPTYCOPYFROMSELECTION
@@ -367,9 +367,9 @@ BEGIN
         MENUITEM "&Preview\tCtrl+P",            ID_EXPORT_PREVIEW
         MENUITEM SEPARATOR
         MENUITEM "Export to .&fdt and .tex files", ID_EXPORT_RAW
-        MENUITEM "Export to .ttmp2 TexTools ModPack file (Compress &while packing)", ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING
-        MENUITEM "Export to .ttmp2 TexTools ModPack file (Compress &after packing)", ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING
-        MENUITEM "Export to .ttmp2 TexTools ModPack file (Do &not compress)", ID_EXPORT_TOTTMP_DONOTCOMPRESS
+        MENUITEM "Export to .ttmp TexTools ModPack file (Compress &while packing)", ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING
+        MENUITEM "Export to .ttmp TexTools ModPack file (Compress &after packing)", ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING
+        MENUITEM "Export to .ttmp TexTools ModPack file (Do &not compress)", ID_EXPORT_TOTTMP_DONOTCOMPRESS
     END
 END
 
@@ -401,7 +401,7 @@ BEGIN
     VK_OEM_COMMA,   ID_EDIT_MOVEUP,         VIRTKEY, NOINVERT
     "V",            ID_EDIT_PASTE,          VIRTKEY, CONTROL, NOINVERT
     "A",            ID_EDIT_SELECTALL,      VIRTKEY, CONTROL, NOINVERT
-    "O",            ID_EDIT_TOGGLEOVERWRITE, VIRTKEY, NOINVERT
+    "M",            ID_EDIT_TOGGLEMERGEMODE, VIRTKEY, NOINVERT
     "P",            ID_EXPORT_PREVIEW,      VIRTKEY, CONTROL, NOINVERT
     "Q",            ID_FILE_EXIT,           VIRTKEY, CONTROL, NOINVERT
     "O",            ID_FILE_OPEN,           VIRTKEY, CONTROL, NOINVERT

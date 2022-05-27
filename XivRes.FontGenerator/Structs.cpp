@@ -397,7 +397,7 @@ App::Structs::FaceElement::FaceElement(const FaceElement & r)
 	, m_wrappedFont(r.m_wrappedFont)
 	, Size(r.Size)
 	, Gamma(r.Gamma)
-	, Overwrite(r.Overwrite)
+	, MergeMode(r.MergeMode)
 	, TransformationMatrix(r.TransformationMatrix)
 	, WrapModifiers(r.WrapModifiers)
 	, Renderer(r.Renderer)
@@ -425,7 +425,7 @@ void App::Structs::swap(App::Structs::FaceElement & l, App::Structs::FaceElement
 	swap(l.m_wrappedFont, r.m_wrappedFont);
 	swap(l.Size, r.Size);
 	swap(l.Gamma, r.Gamma);
-	swap(l.Overwrite, r.Overwrite);
+	swap(l.MergeMode, r.MergeMode);
 	swap(l.TransformationMatrix, r.TransformationMatrix);
 	swap(l.WrapModifiers, r.WrapModifiers);
 	swap(l.Renderer, r.Renderer);
@@ -435,10 +435,10 @@ void App::Structs::swap(App::Structs::FaceElement & l, App::Structs::FaceElement
 
 const std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>& App::Structs::Face::GetMergedFont() const {
 	if (!MergedFont) {
-		std::vector<std::pair<std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>, bool>> mergeFontList;
+		std::vector<std::pair<std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>, XivRes::FontGenerator::MergedFontCodepointMode>> mergeFontList;
 
 		for (auto& pElement : Elements)
-			mergeFontList.emplace_back(pElement->GetWrappedFont(), pElement->Overwrite);
+			mergeFontList.emplace_back(pElement->GetWrappedFont(), pElement->MergeMode);
 
 		MergedFont = std::make_shared<XivRes::FontGenerator::MergedFixedSizeFont>(std::move(mergeFontList));
 	}
@@ -606,7 +606,24 @@ void App::Structs::from_json(const nlohmann::json & json, FaceElement & value) {
 
 	value.Size = json.value<float>("size", 0.f);
 	value.Gamma = json.value<float>("gamma", 1.f);
-	value.Overwrite = json.value<bool>("overwrite", false);
+	if (const auto it = json.find("mergeMode"); it != json.end() && it->is_number_integer()) {
+		switch (it->get<int>()) {
+			case static_cast<int>(XivRes::FontGenerator::MergedFontCodepointMode::AddAll):
+				value.MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::AddAll;
+				break;
+			case static_cast<int>(XivRes::FontGenerator::MergedFontCodepointMode::AddNew):
+				value.MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::AddNew;
+				break;
+			case static_cast<int>(XivRes::FontGenerator::MergedFontCodepointMode::Replace):
+				value.MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::Replace;
+				break;
+		}
+	} else if (const auto it = json.find("overwrite"); it != json.end() && it->is_boolean()) {
+		if (it->get<bool>())
+			value.MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::AddAll;
+		else
+			value.MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::AddNew;
+	}
 	if (const auto it = json.find("wrapModifiers"); it != json.end())
 		from_json(*it, value.WrapModifiers);
 	else
@@ -626,7 +643,7 @@ void App::Structs::to_json(nlohmann::json & json, const FaceElement & value) {
 	json = nlohmann::json::object();
 	json.emplace("size", value.Size);
 	json.emplace("gamma", value.Gamma);
-	json.emplace("overwrite", value.Overwrite);
+	json.emplace("mergeMode", value.MergeMode);
 	json.emplace("wrapModifiers", value.WrapModifiers);
 	json.emplace("renderer", static_cast<int>(value.Renderer));
 	json.emplace("lookup", value.Lookup);

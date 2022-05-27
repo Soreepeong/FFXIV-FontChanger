@@ -53,6 +53,8 @@
 #define IDC_BUTTON_EXPRESSION_HELP      1050
 #define IDC_EDIT1                       1051
 #define IDC_EDIT_FONT_SIZE              1051
+#define IDC_COMBO1                      1052
+#define IDC_COMBO_CODEPOINTS_MERGEMODE  1052
 #define ID_FILE_OPEN                    40003
 #define ID_FILE_SAVE                    40004
 #define ID_FILE_SAVEAS                  40005
@@ -121,14 +123,15 @@
 #define ID_VIEW_800                     40140
 #define ID_VIEW_900                     40141
 #define ID_VIEW_SHOWLINEMETRICS         40152
+#define ID_EDIT_TOGGLEMERGEMODE         40153
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        110
-#define _APS_NEXT_COMMAND_VALUE         40153
-#define _APS_NEXT_CONTROL_VALUE         1052
+#define _APS_NEXT_COMMAND_VALUE         40154
+#define _APS_NEXT_CONTROL_VALUE         1053
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
