@@ -101,7 +101,7 @@
 				}
 			],
 			"name": "AXIS_96",
-			"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
+			"previewText": "게임을 종료하시겠습니까?"
 		},
 		{
 			"elements": [
@@ -203,7 +203,7 @@
 				}
 			],
 			"name": "AXIS_12",
-			"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
+			"previewText": "게임을 종료하시겠습니까?"
 		},
 		{
 			"elements": [
@@ -299,8 +299,8 @@
 								55295
 							]
 						],
-						"horizontalOffset": 1,
-						"letterSpacing": 0
+						"horizontalOffset": 0,
+						"letterSpacing": -1
 					}
 				}
 			],
@@ -401,8 +401,8 @@
 								55295
 							]
 						],
-						"horizontalOffset": 1,
-						"letterSpacing": 0
+						"horizontalOffset": 0,
+						"letterSpacing": -1
 					}
 				}
 			],
@@ -1218,7 +1218,7 @@
 						}
 					},
 					"renderer": 2,
-					"size": 10.0,
+					"size": 11.0,
 					"wrapModifiers": {
 						"baselineShift": 0,
 						"codepoints": [
@@ -1299,7 +1299,7 @@
 						"name": "Source Han Sans K",
 						"stretch": 5,
 						"style": 0,
-						"weight": 500
+						"weight": 700
 					},
 					"mergeMode": 0,
 					"renderSpecific": {
@@ -1320,9 +1320,9 @@
 						}
 					},
 					"renderer": 2,
-					"size": 13.0,
+					"size": 14.0,
 					"wrapModifiers": {
-						"baselineShift": 1,
+						"baselineShift": 0,
 						"codepoints": [
 							[
 								4352,
@@ -1422,7 +1422,7 @@
 						}
 					},
 					"renderer": 2,
-					"size": 15.0,
+					"size": 16.0,
 					"wrapModifiers": {
 						"baselineShift": 1,
 						"codepoints": [
@@ -1447,8 +1447,8 @@
 								55295
 							]
 						],
-						"horizontalOffset": 1,
-						"letterSpacing": 0
+						"horizontalOffset": 0,
+						"letterSpacing": -1
 					}
 				}
 			],
