@@ -32,32 +32,14 @@ namespace XivRes::FontGenerator {
 	}
 
 	class FreeTypeFixedSizeFont : public DefaultAbstractFixedSizeFont {
-		class FreeTypeLibraryWrapper {
-			FT_Library m_library{};
-			std::mutex m_mtx;
+		using LibraryPtr = std::unique_ptr<std::remove_pointer_t<FT_Library>, decltype(FT_Done_FreeType)*>;
 
-		public:
-			FreeTypeLibraryWrapper() {
-				SuccessOrThrow(FT_Init_FreeType(&m_library));
-			}
-
-			FreeTypeLibraryWrapper(FreeTypeLibraryWrapper&&) = delete;
-			FreeTypeLibraryWrapper(const FreeTypeLibraryWrapper&) = delete;
-			FreeTypeLibraryWrapper& operator=(FreeTypeLibraryWrapper&&) = delete;
-			FreeTypeLibraryWrapper& operator=(const FreeTypeLibraryWrapper&) = delete;
-
-			~FreeTypeLibraryWrapper() {
-				SuccessOrThrow(FT_Done_FreeType(m_library));
-			}
-
-			FT_Library operator*() const {
-				return m_library;
-			}
-
-			std::mutex& Mutex() {
-				return m_mtx;
-			}
-		};
+		template<typename T>
+		static inline T FirstArgIsReturn(FT_Error(*pfn)(T*)) {
+			T p{};
+			SuccessOrThrow(pfn(&p));
+			return p;
+		}
 
 		class FreeTypeFontTable {
 			std::vector<uint8_t> m_buf;
@@ -132,7 +114,7 @@ namespace XivRes::FontGenerator {
 				float Size = 0.f;
 			};
 
-			std::shared_ptr<FreeTypeLibraryWrapper> m_library;
+			LibraryPtr m_library;
 			std::shared_ptr<const InfoStruct> m_info;
 			FT_Face m_face{};
 
@@ -140,7 +122,7 @@ namespace XivRes::FontGenerator {
 			FreeTypeFaceWrapper() = default;
 
 			FreeTypeFaceWrapper(std::vector<uint8_t> data, int faceIndex, float size, float gamma, const FontRenderTransformationMatrix& matrix, CreateStruct createStruct)
-				: m_library(std::make_shared<FreeTypeLibraryWrapper>()) {
+				: m_library(FirstArgIsReturn<FT_Library>(FT_Init_FreeType), &FT_Done_FreeType) {
 
 				auto info = std::make_shared<InfoStruct>();
 				info->Data = std::move(data);
@@ -158,7 +140,7 @@ namespace XivRes::FontGenerator {
 					FT_LOAD_FORCE_AUTOHINT |
 					FT_LOAD_NO_AUTOHINT);
 
-				m_face = CreateFace(*m_library, *info);
+				m_face = CreateFace(m_library.get(), *info);
 				FT_UInt glyphIndex;
 				for (char32_t c = FT_Get_First_Char(m_face, &glyphIndex); glyphIndex; c = FT_Get_Next_Char(m_face, c, &glyphIndex))
 					info->Characters.insert(c);
@@ -202,11 +184,11 @@ namespace XivRes::FontGenerator {
 			}
 
 			FreeTypeFaceWrapper(const FreeTypeFaceWrapper& r)
-				: m_library(r.m_library)
+				: m_library(FirstArgIsReturn<FT_Library>(FT_Init_FreeType), &FT_Done_FreeType)
 				, m_info(r.m_info) {
 
 				if (r.m_face)
-					m_face = CreateFace(*m_library, *m_info);
+					m_face = CreateFace(m_library.get(), *m_info);
 			}
 
 			FreeTypeFaceWrapper& operator=(FreeTypeFaceWrapper&& r) noexcept {
@@ -227,13 +209,14 @@ namespace XivRes::FontGenerator {
 				if (this == &r)
 					return *this;
 
-				const auto face = CreateFace(*r.m_library, *r.m_info);
+				auto library = LibraryPtr(FirstArgIsReturn<FT_Library>(FT_Init_FreeType), &FT_Done_FreeType);
+				auto face = CreateFace(library.get(), *r.m_info);
 
 				*this = nullptr;
 
-				m_library = r.m_library;
+				m_library = std::move(library);
 				m_info = r.m_info;
-				m_face = r.m_face;
+				m_face = std::move(face);
 
 				return *this;
 			}
@@ -242,10 +225,7 @@ namespace XivRes::FontGenerator {
 				if (!m_face)
 					return *this;
 
-				{
-					const auto lock = std::lock_guard(m_library->Mutex());
-					SuccessOrThrow(FT_Done_Face(m_face));
-				}
+				SuccessOrThrow(FT_Done_Face(m_face));
 
 				m_face = nullptr;
 				m_info = nullptr;
@@ -272,8 +252,8 @@ namespace XivRes::FontGenerator {
 
 			std::unique_ptr<std::remove_pointer_t<FT_Glyph>, decltype(FT_Done_Glyph)*> LoadGlyph(int glyphIndex, bool render) const;
 
-			FreeTypeLibraryWrapper& GetLibrary() const {
-				return *m_library;
+			FT_Library GetLibrary() const {
+				return m_library.get();
 			}
 
 			float GetSize() const {
@@ -301,10 +281,9 @@ namespace XivRes::FontGenerator {
 			}
 
 		private:
-			static FT_Face CreateFace(FreeTypeLibraryWrapper& m_library, const InfoStruct& info) {
+			static FT_Face CreateFace(FT_Library library, const InfoStruct& info) {
 				FT_Face face;
-				const auto lock = std::lock_guard(m_library.Mutex());
-				SuccessOrThrow(FT_New_Memory_Face(*m_library, &info.Data[0], static_cast<FT_Long>(info.Data.size()), info.FaceIndex, &face));
+				SuccessOrThrow(FT_New_Memory_Face(library, &info.Data[0], static_cast<FT_Long>(info.Data.size()), info.FaceIndex, &face));
 				try {
 					SuccessOrThrow(FT_Set_Char_Size(face, 0, static_cast<FT_F26Dot6>(64.f * info.Size), 72, 72));
 					return face;
@@ -316,11 +295,11 @@ namespace XivRes::FontGenerator {
 		};
 
 		class FreeTypeBitmapWrapper {
-			FreeTypeLibraryWrapper& m_library;
+			const FT_Library m_library;
 			FT_Bitmap m_bitmap;
 
 		public:
-			FreeTypeBitmapWrapper(FreeTypeLibraryWrapper& library)
+			FreeTypeBitmapWrapper(FT_Library library)
 				: m_library(library) {
 				FT_Bitmap_Init(&m_bitmap);
 			}
@@ -331,8 +310,7 @@ namespace XivRes::FontGenerator {
 			FreeTypeBitmapWrapper& operator=(const FreeTypeBitmapWrapper&) = delete;
 
 			~FreeTypeBitmapWrapper() {
-				const auto lock = std::lock_guard(m_library.Mutex());
-				SuccessOrThrow(FT_Bitmap_Done(*m_library, &m_bitmap));
+				SuccessOrThrow(FT_Bitmap_Done(m_library, &m_bitmap));
 			}
 
 			FT_Bitmap& operator*() {
@@ -344,7 +322,7 @@ namespace XivRes::FontGenerator {
 			}
 
 			void ConvertFrom(const FT_Bitmap& source, int alignment) {
-				SuccessOrThrow(FT_Bitmap_Convert(*m_library, &source, &m_bitmap, alignment));
+				SuccessOrThrow(FT_Bitmap_Convert(m_library, &source, &m_bitmap, alignment));
 				switch (m_bitmap.num_grays) {
 					case 2:
 						for (auto& b : GetBuffer())
