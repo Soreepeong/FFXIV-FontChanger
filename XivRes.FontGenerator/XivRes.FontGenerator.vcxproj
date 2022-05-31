@@ -54,6 +54,7 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
   </ImportGroup>
   <ImportGroup Label="Shared">
   </ImportGroup>
@@ -135,6 +136,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
+      <SupportJustMyCode>false</SupportJustMyCode>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -171,6 +173,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
+      <SupportJustMyCode>false</SupportJustMyCode>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -201,6 +204,7 @@
     <ClCompile Include="BaseWindow.cpp" />
     <ClCompile Include="ExportPreviewWindow.cpp" />
     <ClCompile Include="FaceElementEditorDialog.cpp" />
+    <ClCompile Include="GameFontReloader.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="MainWindow.cpp" />
     <ClCompile Include="nmd_assembly.cpp">
@@ -219,12 +223,16 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <MASM Include="CallAtkModuleVf43.asm">
+      <FileType>Document</FileType>
+    </MASM>
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BaseWindow.h" />
     <ClInclude Include="ExportPreviewWindow.h" />
     <ClInclude Include="FaceElementEditorDialog.h" />
+    <ClInclude Include="GameFontReloader.h" />
     <ClInclude Include="nmd_assembly.h" />
     <ClInclude Include="ProgressDialog.h" />
     <ClInclude Include="Structs.h" />
@@ -237,5 +245,6 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
   </ImportGroup>
 </Project>

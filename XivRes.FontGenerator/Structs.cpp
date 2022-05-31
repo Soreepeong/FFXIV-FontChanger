@@ -492,7 +492,7 @@ void App::Structs::swap(App::Structs::Face & l, App::Structs::Face & r) noexcept
 	swap(l.Elements, r.Elements);
 }
 
-void App::Structs::FontSet::ConsolidateFonts() {
+void App::Structs::FontSet::ConsolidateFonts() const {
 	std::map<std::string, std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>> loadedBaseFonts;
 	for (const auto& pFace : Faces) {
 		for (const auto& pElem : pFace->Elements) {
@@ -571,6 +571,7 @@ void App::Structs::from_json(const nlohmann::json & json, FontSet & value) {
 	}
 	value.DiscardStep = json.value<int>("discardStep", 1);
 	value.SideLength = json.value<int>("sideLength", 4096);
+	value.ExpectedTexCount = json.value<int>("expectedTexCount", 1);
 	value.TexFilenameFormat = json.value<std::string>("texFilenameFormat", "");
 }
 
@@ -581,6 +582,7 @@ void App::Structs::to_json(nlohmann::json & json, const FontSet & value) {
 		faces.emplace_back(*e);
 	json.emplace("discardStep", value.DiscardStep);
 	json.emplace("sideLength", value.SideLength);
+	json.emplace("expectedTexCount", value.ExpectedTexCount);
 	json.emplace("texFilenameFormat", value.TexFilenameFormat);
 }
 
@@ -773,6 +775,31 @@ void App::Structs::to_json(nlohmann::json & json, const LookupStruct & value) {
 	json.emplace("weight", static_cast<int>(value.Weight));
 	json.emplace("stretch", static_cast<int>(value.Stretch));
 	json.emplace("style", static_cast<int>(value.Style));
+}
+
+void App::Structs::from_json(const nlohmann::json& json, MultiFontSet& value) {
+	if (!json.is_object())
+		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
+
+	value.FontSets.clear();
+	if (json.contains("faces")) {
+		value.FontSets.emplace_back(std::make_unique<FontSet>(std::move(json.get<FontSet>())));
+		return;
+	}
+
+	if (const auto it = json.find("fontSets"); it != json.end() && it->is_array()) {
+		for (const auto& o : *it) {
+			value.FontSets.emplace_back(std::make_unique<FontSet>(o.get<FontSet>()));
+		}
+	}
+}
+
+void App::Structs::to_json(nlohmann::json& json, const MultiFontSet& value) {
+	json = nlohmann::json::object();
+	auto& fontSets = json["fontSets"] = nlohmann::json::array();
+	for (const auto& set : value.FontSets) {
+		to_json(fontSets.emplace_back(), *set);
+	}
 }
 
 const char* App::Structs::GetDefaultPreviewText() {

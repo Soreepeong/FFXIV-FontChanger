@@ -98,11 +98,16 @@ namespace App::Structs {
 		std::string TexFilenameFormat;
 		int DiscardStep = 1;
 		int SideLength = 4096;
+		int ExpectedTexCount = 1;
 		std::vector<std::unique_ptr<Face>> Faces;
 
-		void ConsolidateFonts();
+		void ConsolidateFonts() const;
 
 		static FontSet NewFromTemplateFont(XivRes::GameFontType fontType);
+	};
+
+	struct MultiFontSet {
+		std::vector<std::unique_ptr<FontSet>> FontSets;
 	};
 
 	void to_json(nlohmann::json& json, const LookupStruct& value);
@@ -124,6 +129,10 @@ namespace App::Structs {
 	void to_json(nlohmann::json& json, const FontSet& value);
 
 	void from_json(const nlohmann::json& json, FontSet& value);
+
+	void to_json(nlohmann::json& json, const MultiFontSet& value);
+
+	void from_json(const nlohmann::json& json, MultiFontSet& value);
 
 	const char* GetDefaultPreviewText();
 }

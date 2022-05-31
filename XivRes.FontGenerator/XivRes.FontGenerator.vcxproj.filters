@@ -28,6 +28,9 @@
     <ClCompile Include="nmd_assembly.cpp">
       <Filter>Project Items</Filter>
     </ClCompile>
+    <ClCompile Include="GameFontReloader.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Project Items">
@@ -71,6 +74,9 @@
     <ClInclude Include="nmd_assembly.h">
       <Filter>Project Items</Filter>
     </ClInclude>
+    <ClInclude Include="GameFontReloader.h">
+      <Filter>Source</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json">
@@ -81,5 +87,10 @@
     <ResourceCompile Include="XivRes.FontGenerator.rc">
       <Filter>Project Items</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="CallAtkModuleVf43.asm">
+      <Filter>Source</Filter>
+    </MASM>
   </ItemGroup>
 </Project>

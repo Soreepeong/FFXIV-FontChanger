@@ -3,6 +3,7 @@
 #include "Structs.h"
 #include "ExportPreviewWindow.h"
 #include "FaceElementEditorDialog.h"
+#include "GameFontReloader.h"
 #include "MainWindow.h"
 #include "ProgressDialog.h"
 
@@ -135,7 +136,7 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 
 	if (m_args.size() >= 2 && std::filesystem::exists(m_args[1])) {
 		try {
-			SetCurrentFontSet(m_args[1]);
+			SetCurrentMultiFontSet(m_args[1]);
 		} catch (const std::exception& e) {
 			MessageBoxW(m_hWnd, std::format(L"Failed to open file: {}", XivRes::Unicode::Convert<std::wstring>(e.what())).c_str(), GetWindowString(m_hWnd).c_str(), MB_OK | MB_ICONERROR);
 		}
@@ -257,6 +258,26 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bShowLineMetrics ? MFS_CHECKED : 0) };
 		SetMenuItemInfoW(hMenu, ID_VIEW_SHOWLINEMETRICS, FALSE, &mii);
 	}
+	{
+		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_hotReloadFontType == XivRes::GameFontType::undefined ? MFS_CHECKED : 0) };
+		SetMenuItemInfoW(hMenu, ID_HOTRELOAD_FONT_AUTO, FALSE, &mii);
+	}
+	{
+		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_hotReloadFontType == XivRes::GameFontType::font ? MFS_CHECKED : 0) };
+		SetMenuItemInfoW(hMenu, ID_HOTRELOAD_FONT_FONT, FALSE, &mii);
+	}
+	{
+		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_hotReloadFontType == XivRes::GameFontType::font_lobby ? MFS_CHECKED : 0) };
+		SetMenuItemInfoW(hMenu, ID_HOTRELOAD_FONT_LOBBY, FALSE, &mii);
+	}
+	{
+		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_hotReloadFontType == XivRes::GameFontType::chn_axis ? MFS_CHECKED : 0) };
+		SetMenuItemInfoW(hMenu, ID_HOTRELOAD_FONT_CHNAXIS, FALSE, &mii);
+	}
+	{
+		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_hotReloadFontType == XivRes::GameFontType::krn_axis ? MFS_CHECKED : 0) };
+		SetMenuItemInfoW(hMenu, ID_HOTRELOAD_FONT_KRNAXIS, FALSE, &mii);
+	}
 	return 0;
 }
 
@@ -292,21 +313,32 @@ LRESULT App::FontEditorWindow::Menu_File_New(XivRes::GameFontType fontType) {
 	if (Changes_ConfirmIfDirty())
 		return 1;
 
+	Structs::MultiFontSet mfs;
+
 	switch (fontType) {
 		case XivRes::GameFontType::font:
-			SetCurrentFontSet(Structs::FontSet::NewFromTemplateFont(fontType), "Untitled (font)", true);
+			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
+			mfs.FontSets.back()->ExpectedTexCount = 7;
+			SetCurrentMultiFontSet(std::move(mfs), "Untitled (font)", true);
 			break;
 		case XivRes::GameFontType::font_lobby:
-			SetCurrentFontSet(Structs::FontSet::NewFromTemplateFont(fontType), "Untitled (font_lobby)", true);
+			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
+			mfs.FontSets.back()->ExpectedTexCount = 6;
+			SetCurrentMultiFontSet(std::move(mfs), "Untitled (font_lobby)", true);
 			break;
 		case XivRes::GameFontType::chn_axis:
-			SetCurrentFontSet(Structs::FontSet::NewFromTemplateFont(fontType), "Untitled (chn_axis)", true);
+			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
+			mfs.FontSets.back()->ExpectedTexCount = 20;
+			SetCurrentMultiFontSet(std::move(mfs), "Untitled (chn_axis)", true);
 			break;
 		case XivRes::GameFontType::krn_axis:
-			SetCurrentFontSet(Structs::FontSet::NewFromTemplateFont(fontType), "Untitled (krn_axis)", true);
+			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
+			mfs.FontSets.back()->ExpectedTexCount = 9;
+			SetCurrentMultiFontSet(std::move(mfs), "Untitled (krn_axis)", true);
 			break;
 		default:
-			SetCurrentFontSet(Structs::FontSet::NewFromTemplateFont(fontType), "Untitled", true);
+			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
+			SetCurrentMultiFontSet(std::move(mfs), "Untitled", true);
 			break;
 	}
 
@@ -348,7 +380,7 @@ LRESULT App::FontEditorWindow::Menu_File_Open() {
 
 		std::unique_ptr<std::remove_pointer<PWSTR>::type, decltype(CoTaskMemFree)*> pszFileNamePtr(pszFileName, CoTaskMemFree);
 
-		SetCurrentFontSet(pszFileName);
+		SetCurrentMultiFontSet(pszFileName);
 
 	} catch (const std::exception& e) {
 		MessageBoxW(m_hWnd, std::format(L"Failed to open file: {}", XivRes::Unicode::Convert<std::wstring>(e.what())).c_str(), GetWindowString(m_hWnd).c_str(), MB_OK | MB_ICONERROR);
@@ -363,7 +395,7 @@ LRESULT App::FontEditorWindow::Menu_File_Save() {
 		return Menu_File_SaveAs(true);
 
 	try {
-		const auto dump = nlohmann::json(m_fontSet).dump(1, '\t');
+		const auto dump = nlohmann::json(m_multiFontSet).dump(1, '\t');
 		std::ofstream(m_path, std::ios::binary).write(&dump[0], dump.size());
 		Changes_MarkFresh();
 	} catch (const std::exception& e) {
@@ -383,7 +415,7 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 	const auto fileTypesSpan = std::span(fileTypes);
 
 	try {
-		const auto dump = nlohmann::json(m_fontSet).dump(1, '\t');
+		const auto dump = nlohmann::json(m_multiFontSet).dump(1, '\t');
 
 		IFileSaveDialogPtr pDialog;
 		DWORD dwFlags;
@@ -749,13 +781,20 @@ LRESULT App::FontEditorWindow::Menu_Edit_CreateEmptyCopyFromSelection() {
 
 LRESULT App::FontEditorWindow::Menu_View_NextOrPrevFont(int direction) {
 	auto i = ListBox_GetCurSel(m_hFacesListBox);
-	if (i + direction < 0 || i + direction >= static_cast<int>(m_fontSet.Faces.size()))
+	if (i + direction < 0 || i + direction >= ListBox_GetCount(m_hFacesListBox))
 		return 0;
 
 	i += direction;
 	ListBox_SetCurSel(m_hFacesListBox, i);
-	m_pActiveFace = m_fontSet.Faces[i].get();
-	UpdateFaceElementList();
+
+	for (auto& pFontSet : m_multiFontSet.FontSets) {
+		if (i < pFontSet->Faces.size()) {
+			m_pActiveFace = pFontSet->Faces[i].get();
+			UpdateFaceElementList();
+			break;
+		}
+		i -= static_cast<int>(pFontSet->Faces.size());
+	}
 	return 0;
 }
 
@@ -790,18 +829,23 @@ LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 		ProgressDialog progressDialog(m_hWnd, "Exporting...");
 		ShowWindow(m_hWnd, SW_HIDE);
 		const auto hideWhilePacking = XivRes::Internal::CallOnDestruction([this]() { ShowWindow(m_hWnd, SW_SHOW); });
-		const auto [fdts, mips] = CompileCurrentFontSet(progressDialog);
-
-		auto texturesAll = std::make_shared<XivRes::TextureStream>(mips[0]->Type, mips[0]->Width, mips[0]->Height, 1, 1, mips.size());
-		for (size_t i = 0; i < mips.size(); i++)
-			texturesAll->SetMipmap(0, i, mips[i]);
 
 		std::vector<std::pair<std::string, std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>>> resultFonts;
-		for (size_t i = 0; i < fdts.size(); i++)
-			resultFonts.emplace_back(m_fontSet.Faces[i]->Name, std::make_shared<XivRes::FontGenerator::GameFontdataFixedSizeFont>(fdts[i], mips, m_fontSet.Faces[i]->Name, ""));
+		for (const auto& fontSet : m_multiFontSet.FontSets) {
+			const auto [fdts, mips] = CompileCurrentFontSet(progressDialog, *fontSet);
+
+			auto texturesAll = std::make_shared<XivRes::TextureStream>(mips[0]->Type, mips[0]->Width, mips[0]->Height, 1, 1, mips.size());
+			for (size_t i = 0; i < mips.size(); i++)
+				texturesAll->SetMipmap(0, i, mips[i]);
+
+			for (size_t i = 0; i < fdts.size(); i++)
+				resultFonts.emplace_back(fontSet->Faces[i]->Name, std::make_shared<XivRes::FontGenerator::GameFontdataFixedSizeFont>(fdts[i], mips, fontSet->Faces[i]->Name, ""));
+
+			std::thread([texturesAll]() {XivRes::Internal::ShowTextureStream(*texturesAll); }).detach();
+		}
 
 		ExportPreviewWindow::ShowNew(std::move(resultFonts));
-		std::thread([texturesAll]() {XivRes::Internal::ShowTextureStream(*texturesAll); }).detach();
+
 		return 0;
 	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
 		return 1;
@@ -840,35 +884,38 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 		ProgressDialog progressDialog(m_hWnd, "Exporting...");
 		ShowWindow(m_hWnd, SW_HIDE);
 		const auto hideWhilePacking = XivRes::Internal::CallOnDestruction([this]() { ShowWindow(m_hWnd, SW_SHOW); });
-		const auto [fdts, mips] = CompileCurrentFontSet(progressDialog);
 
-		progressDialog.UpdateProgress(std::nanf(""));
-		progressDialog.UpdateStatusMessage("Writing to files...");
+		for (const auto& pFontSet : m_multiFontSet.FontSets) {
+			const auto [fdts, mips] = CompileCurrentFontSet(progressDialog, *pFontSet);
 
-		std::vector<char> buf(32768);
-		XivRes::TextureStream textureOne(mips[0]->Type, mips[0]->Width, mips[0]->Height, 1, 1, 1);
+			progressDialog.UpdateProgress(std::nanf(""));
+			progressDialog.UpdateStatusMessage("Writing to files...");
 
-		for (size_t i = 0; i < mips.size(); i++) {
-			progressDialog.ThrowIfCancelled();
-			textureOne.SetMipmap(0, 0, mips[i]);
+			std::vector<char> buf(32768);
+			XivRes::TextureStream textureOne(mips[0]->Type, mips[0]->Width, mips[0]->Height, 1, 1, 1);
 
-			std::ofstream out(basePath / std::format(m_fontSet.TexFilenameFormat, i + 1), std::ios::binary);
-			size_t pos = 0;
-
-			for (size_t read, pos = 0; (read = textureOne.ReadStreamPartial(pos, &buf[0], buf.size())); pos += read) {
+			for (size_t i = 0; i < mips.size(); i++) {
 				progressDialog.ThrowIfCancelled();
-				out.write(&buf[0], read);
+				textureOne.SetMipmap(0, 0, mips[i]);
+
+				std::ofstream out(basePath / std::format(pFontSet->TexFilenameFormat, i + 1), std::ios::binary);
+				size_t pos = 0;
+
+				for (size_t read, pos = 0; (read = textureOne.ReadStreamPartial(pos, &buf[0], buf.size())); pos += read) {
+					progressDialog.ThrowIfCancelled();
+					out.write(&buf[0], read);
+				}
 			}
-		}
 
-		for (size_t i = 0; i < fdts.size(); i++) {
-			progressDialog.ThrowIfCancelled();
-			std::ofstream out(basePath / std::format("{}.fdt", m_fontSet.Faces[i]->Name), std::ios::binary);
-			size_t pos = 0;
-
-			for (size_t read, pos = 0; (read = fdts[i]->ReadStreamPartial(pos, &buf[0], buf.size())); pos += read) {
+			for (size_t i = 0; i < fdts.size(); i++) {
 				progressDialog.ThrowIfCancelled();
-				out.write(&buf[0], read);
+				std::ofstream out(basePath / std::format("{}.fdt", pFontSet->Faces[i]->Name), std::ios::binary);
+				size_t pos = 0;
+
+				for (size_t read, pos = 0; (read = fdts[i]->ReadStreamPartial(pos, &buf[0], buf.size())); pos += read) {
+					progressDialog.ThrowIfCancelled();
+					out.write(&buf[0], read);
+				}
 			}
 		}
 
@@ -935,56 +982,11 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 		ProgressDialog progressDialog(m_hWnd, "Exporting...");
 		ShowWindow(m_hWnd, SW_HIDE);
 		const auto hideWhilePacking = XivRes::Internal::CallOnDestruction([this]() { ShowWindow(m_hWnd, SW_SHOW); });
-		const auto [fdts, mips] = CompileCurrentFontSet(progressDialog);
 
-		progressDialog.UpdateProgress(std::nanf(""));
+		std::vector<std::tuple<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std::shared_ptr<XivRes::MemoryMipmapStream>>, const Structs::FontSet&>> pairs;
 
 		std::stringstream ttmpl;
-		std::vector<char> ttmpd;
-
-		for (size_t i = 0; i < fdts.size(); i++) {
-			progressDialog.ThrowIfCancelled();
-
-			const auto targetFileName = std::format("common/font/{}.fdt", m_fontSet.Faces[i]->Name);
-			progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
-
-			XivRes::CompressingPackedFileStream<XivRes::BinaryCompressingPacker> packedStream(targetFileName, fdts[i], compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
-
-			const auto pos = ttmpd.size();
-			ttmpl << nlohmann::json::object({
-				{ "DatFile", "000000" },
-				{ "FullPath", targetFileName },
-				{ "ModOffset", pos },
-				{ "ModSize", packedStream.StreamSize() },
-				}) << std::endl;
-
-			ttmpd.resize(pos + packedStream.StreamSize());
-			ReadStream(packedStream, 0, std::span(ttmpd).subspan(pos));
-		}
-
-		for (size_t i = 0; i < mips.size(); i++) {
-			progressDialog.ThrowIfCancelled();
-
-			const auto targetFileName = std::format("common/font/{}", std::format(m_fontSet.TexFilenameFormat, i + 1));
-			progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
-
-			const auto& mip = mips[i];
-			auto textureOne = std::make_shared<XivRes::TextureStream>(mip->Type, mip->Width, mip->Height, 1, 1, 1);
-			textureOne->SetMipmap(0, 0, mip);
-
-			XivRes::CompressingPackedFileStream<XivRes::TextureCompressingPacker> packedStream(targetFileName, std::move(textureOne), compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
-
-			const auto pos = ttmpd.size();
-			ttmpl << nlohmann::json::object({
-				{ "DatFile", "000000" },
-				{ "FullPath", targetFileName },
-				{ "ModOffset", pos },
-				{ "ModSize", packedStream.StreamSize() },
-				}) << std::endl;
-
-			ttmpd.resize(pos + packedStream.StreamSize());
-			ReadStream(packedStream, 0, std::span(ttmpd).subspan(pos));
-		}
+		uint64_t ttmpdPos = 0;
 
 		zip_fileinfo zi{};
 		zi.tmz_date.tm_sec = zi.tmz_date.tm_min = zi.tmz_date.tm_hour =
@@ -997,15 +999,80 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 		FileTimeToLocalFileTime(&ft, &ftLocal);
 		FileTimeToDosDateTime(&ftLocal, ((LPWORD)&zi.dosDate) + 1, ((LPWORD)&zi.dosDate) + 0);
 
-		progressDialog.UpdateStatusMessage("Writing target file...");
-		progressDialog.UpdateProgress(0);
+		std::vector<uint8_t> readBuf(512 * 1024);
+		{
+			if (const auto err = zipOpenNewFileInZip3_64(zf, "TTMPD.mpd", &zi,
+				NULL, 0, NULL, 0, NULL /* comment*/,
+				compressionMode == CompressionMode::CompressAfterPacking ? Z_DEFLATED : 0,
+				compressionMode == CompressionMode::CompressAfterPacking ? Z_BEST_COMPRESSION : 0,
+				0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY,
+				nullptr, 0, 0))
+				throw std::runtime_error(std::format("Failed to create TTMPD.mpd inside zip: {}", err));
+			std::unique_ptr<std::remove_pointer_t<decltype(zf)>, decltype(zipCloseFileInZip)*> ziClose(zf, zipCloseFileInZip);
 
-		uint64_t totalWriteSize, written = 0;
-		const auto ChunkSize = 256 * 1024;
+			for (auto& pFontSet : m_multiFontSet.FontSets) {
+				auto [fdts, mips] = CompileCurrentFontSet(progressDialog, *pFontSet);
+
+				for (size_t i = 0; i < fdts.size(); i++) {
+					progressDialog.ThrowIfCancelled();
+
+					const auto targetFileName = std::format("common/font/{}.fdt", pFontSet->Faces[i]->Name);
+					progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
+
+					XivRes::CompressingPackedFileStream<XivRes::BinaryCompressingPacker> packedStream(targetFileName, fdts[i], compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
+
+					ttmpl << nlohmann::json::object({
+						{ "DatFile", "000000" },
+						{ "FullPath", targetFileName },
+						{ "ModOffset", ttmpdPos },
+						{ "ModSize", packedStream.StreamSize() },
+						}) << std::endl;
+
+					for (uint64_t offset = 0, size = packedStream.StreamSize(); offset < size; offset += readBuf.size()) {
+						progressDialog.ThrowIfCancelled();
+						const auto writeSize = static_cast<size_t>((std::min<uint64_t>)(size - offset, readBuf.size()));
+						ReadStream(packedStream, offset, std::span(readBuf).subspan(0, writeSize));
+						if (const auto err = zipWriteInFileInZip(zf, &readBuf[0], static_cast<uint32_t>(writeSize)))
+							throw std::runtime_error(std::format("Failed to write to TTMPL.mpl inside zip: {}", err));
+
+						ttmpdPos += writeSize;
+					}
+				}
+
+				for (size_t i = 0; i < mips.size(); i++) {
+					progressDialog.ThrowIfCancelled();
+
+					const auto targetFileName = std::format("common/font/{}", std::format(pFontSet->TexFilenameFormat, i + 1));
+					progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
+
+					const auto& mip = mips[i];
+					auto textureOne = std::make_shared<XivRes::TextureStream>(mip->Type, mip->Width, mip->Height, 1, 1, 1);
+					textureOne->SetMipmap(0, 0, mip);
+
+					XivRes::CompressingPackedFileStream<XivRes::TextureCompressingPacker> packedStream(targetFileName, std::move(textureOne), compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
+
+					ttmpl << nlohmann::json::object({
+						{ "DatFile", "000000" },
+						{ "FullPath", targetFileName },
+						{ "ModOffset", ttmpdPos },
+						{ "ModSize", packedStream.StreamSize() },
+						}) << std::endl;
+
+					for (uint64_t offset = 0, size = packedStream.StreamSize(); offset < size; offset += readBuf.size()) {
+						progressDialog.ThrowIfCancelled();
+						const auto writeSize = static_cast<size_t>((std::min<uint64_t>)(size - offset, readBuf.size()));
+						ReadStream(packedStream, offset, std::span(readBuf).subspan(0, writeSize));
+						if (const auto err = zipWriteInFileInZip(zf, &readBuf[0], static_cast<uint32_t>(writeSize)))
+							throw std::runtime_error(std::format("Failed to write to TTMPL.mpl inside zip: {}", err));
+
+						ttmpdPos += writeSize;
+					}
+				}
+			}
+		}
+
 		{
 			const auto ttmpls = ttmpl.str();
-			totalWriteSize = ttmpls.size() + ttmpd.size();
-
 			if (const auto err = zipOpenNewFileInZip3_64(zf, "TTMPL.mpl", &zi,
 				NULL, 0, NULL, 0, NULL /* comment*/,
 				compressionMode == CompressionMode::CompressAfterPacking ? Z_DEFLATED : 0,
@@ -1015,36 +1082,12 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 				throw std::runtime_error(std::format("Failed to create TTMPL.mpl inside zip: {}", err));
 			std::unique_ptr<std::remove_pointer_t<decltype(zf)>, decltype(zipCloseFileInZip)*> ziClose(zf, zipCloseFileInZip);
 
-			for (size_t offset = 0; offset < ttmpls.size(); offset += ChunkSize) {
+			for (size_t offset = 0; offset < ttmpls.size(); offset += readBuf.size()) {
 				progressDialog.ThrowIfCancelled();
 
-				const auto writeSize = (std::min<size_t>)(ttmpls.size() - offset, ChunkSize);
+				const auto writeSize = (std::min<size_t>)(ttmpls.size() - offset, readBuf.size());
 				if (const auto err = zipWriteInFileInZip(zf, reinterpret_cast<const uint8_t*>(&ttmpls[offset]), static_cast<uint32_t>(writeSize)))
 					throw std::runtime_error(std::format("Failed to write to TTMPL.mpl inside zip: {}", err));
-
-				written += writeSize;
-				progressDialog.UpdateProgress(1.f * written / totalWriteSize);
-			}
-		}
-		{
-			if (const auto err = zipOpenNewFileInZip3_64(zf, "TTMPD.mpd", &zi,
-				NULL, 0, NULL, 0, NULL /* comment*/,
-				compressionMode == CompressionMode::CompressAfterPacking ? Z_DEFLATED : 0,
-				compressionMode == CompressionMode::CompressAfterPacking ? Z_BEST_COMPRESSION : 0,
-				0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY,
-				nullptr, crc32_z(0, reinterpret_cast<const uint8_t*>(&ttmpd[0]), ttmpd.size()), 0))
-				throw std::runtime_error(std::format("Failed to create TTMPD.mpd inside zip: {}", err));
-			std::unique_ptr<std::remove_pointer_t<decltype(zf)>, decltype(zipCloseFileInZip)*> ziClose(zf, zipCloseFileInZip);
-
-			for (size_t offset = 0; offset < ttmpd.size(); offset += ChunkSize) {
-				progressDialog.ThrowIfCancelled();
-
-				const auto writeSize = (std::min<size_t>)(ttmpd.size() - offset, ChunkSize);
-				if (const auto err = zipWriteInFileInZip(zf, reinterpret_cast<const uint8_t*>(&ttmpd[offset]), static_cast<uint32_t>(writeSize)))
-					throw std::runtime_error(std::format("Failed to write to TTMPL.mpl inside zip: {}", err));
-
-				written += writeSize;
-				progressDialog.UpdateProgress(1.f * written / totalWriteSize);
 			}
 		}
 
@@ -1074,6 +1117,68 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 	return 0;
 }
 
+LRESULT App::FontEditorWindow::Menu_HotReload_Reload(bool restore) {
+	std::vector<DWORD> pids;
+	pids.resize(4096);
+	DWORD cb;
+	EnumProcesses(&pids[0], static_cast<DWORD>(std::span(pids).size_bytes()), &cb);
+	pids.resize(cb / sizeof DWORD);
+	for (const auto pid : pids) {
+		try {
+			GameFontReloader::GameProcess game(pid);
+			if (restore) {
+				game.RefreshFonts(nullptr);
+				continue;
+			}
+
+			GameFontReloader::FontSet fontSet;
+			XivRes::GameFontType baseFontType = m_hotReloadFontType;
+
+			if (baseFontType == XivRes::GameFontType::undefined) {
+				if (game.GetFontSets().size() == 5)
+					baseFontType = XivRes::GameFontType::chn_axis;
+				else if (game.GetFontSets().size() == 4)
+					baseFontType = XivRes::GameFontType::krn_axis;
+				else
+					baseFontType = XivRes::GameFontType::font;
+
+				fontSet = GameFontReloader::GetDefaultFontSet(baseFontType);
+				
+				for (const auto& f : m_multiFontSet.FontSets) {
+					std::string texNameFormat = f->TexFilenameFormat;
+					for (size_t pos; (pos = texNameFormat.find("{}")) != std::string::npos; )
+						texNameFormat.replace(pos, 2, "%d");
+					
+					for (const auto& face : f->Faces) {
+						for (auto& f2 : fontSet.Faces) {
+							if (f2.Fdt == face->Name + ".fdt" && f2.TexPattern != texNameFormat) {
+								f2.TexPattern = texNameFormat;
+								f2.TexCount = f->ExpectedTexCount;
+							}
+						}
+					}
+				}
+
+			} else
+				fontSet = GameFontReloader::GetDefaultFontSet(baseFontType);
+
+			if (baseFontType == XivRes::GameFontType::chn_axis && game.GetFontSets().size() < 5)
+				continue;
+
+			game.RefreshFonts(&fontSet);
+
+		} catch (const std::exception&) {
+			// pass, don't really care
+		}
+	}
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::Menu_HotReload_Font(XivRes::GameFontType mode) {
+	m_hotReloadFontType = mode;
+	return 0;
+}
+
 LRESULT App::FontEditorWindow::Edit_OnCommand(uint16_t commandId) {
 	switch (commandId) {
 		case EN_CHANGE:
@@ -1094,10 +1199,16 @@ LRESULT App::FontEditorWindow::FaceListBox_OnCommand(uint16_t commandId) {
 	switch (commandId) {
 		case LBN_SELCHANGE:
 		{
-			const auto iItem = ListBox_GetCurSel(m_hFacesListBox);
+			auto iItem = ListBox_GetCurSel(m_hFacesListBox);
 			if (iItem != LB_ERR) {
-				m_pActiveFace = m_fontSet.Faces[iItem].get();
-				UpdateFaceElementList();
+				for (auto& pFontSet : m_multiFontSet.FontSets) {
+					if (iItem < pFontSet->Faces.size()) {
+						m_pActiveFace = pFontSet->Faces[iItem].get();
+						UpdateFaceElementList();
+						break;
+					}
+					iItem -= static_cast<int>(pFontSet->Faces.size());
+				}
 			}
 			return 0;
 		}
@@ -1234,16 +1345,19 @@ LRESULT App::FontEditorWindow::FaceElementsListView_OnDblClick(NMITEMACTIVATE & 
 	return 0;
 }
 
-void App::FontEditorWindow::SetCurrentFontSet(std::filesystem::path path) {
+void App::FontEditorWindow::SetCurrentMultiFontSet(std::filesystem::path path) {
 	const auto s = ReadStreamIntoVector<char>(XivRes::FileStream(path));
 	const auto j = nlohmann::json::parse(s.begin(), s.end());
-	SetCurrentFontSet(j.get<Structs::FontSet>(), path, false);
+	SetCurrentMultiFontSet(j.get<Structs::MultiFontSet>(), path, false);
 }
 
-void App::FontEditorWindow::SetCurrentFontSet(Structs::FontSet fontSet, std::filesystem::path path, bool fakePath) {
-	m_fontSet = std::move(fontSet);
+void App::FontEditorWindow::SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, std::filesystem::path path, bool fakePath) {
+	m_multiFontSet = std::move(multiFontSet);
 	m_path = std::move(path);
 	m_bPathIsNotReal = fakePath;
+
+	m_pFontSet = nullptr;
+	m_pActiveFace = nullptr;
 
 	UpdateFaceList();
 	Changes_MarkFresh();
@@ -1309,27 +1423,33 @@ void App::FontEditorWindow::UpdateFaceList() {
 
 	ListBox_ResetContent(m_hFacesListBox);
 	auto selectionRestored = false;
-	for (int i = 0, i_ = static_cast<int>(m_fontSet.Faces.size()); i < i_; i++) {
-		auto& face = *m_fontSet.Faces[i];
-		ListBox_AddString(m_hFacesListBox, XivRes::Unicode::Convert<std::wstring>(face.Name).c_str());
-		ListBox_SetItemData(m_hFacesListBox, i, &face);
-		if (currentTag == &face) {
-			ListBox_SetCurSel(m_hFacesListBox, i);
-			selectionRestored = true;
+
+	for (auto& pFontSet : m_multiFontSet.FontSets) {
+		for (int i = 0, i_ = static_cast<int>(pFontSet->Faces.size()); i < i_; i++) {
+			auto& face = *pFontSet->Faces[i];
+			ListBox_AddString(m_hFacesListBox, XivRes::Unicode::Convert<std::wstring>(std::format("{}: {}", pFontSet->TexFilenameFormat, face.Name)).c_str());
+			ListBox_SetItemData(m_hFacesListBox, i, &face);
+			if (currentTag == &face) {
+				ListBox_SetCurSel(m_hFacesListBox, i);
+				selectionRestored = true;
+			}
 		}
 	}
 
 	if (!selectionRestored) {
-		if (m_fontSet.Faces.empty())
+		m_pFontSet = nullptr;
+		if (!m_multiFontSet.FontSets.empty()) {
+			m_pFontSet = m_multiFontSet.FontSets[0].get();
 			m_pActiveFace = nullptr;
-		else {
-			ListBox_SetCurSel(m_hFacesListBox, 0);
-			m_pActiveFace = m_fontSet.Faces.empty() ? nullptr : m_fontSet.Faces[0].get();
+			if (!m_pFontSet->Faces.empty()) {
+				ListBox_SetCurSel(m_hFacesListBox, 0);
+				m_pActiveFace = m_pFontSet->Faces[0].get();
+			}
 		}
-
-		UpdateFaceElementList();
-		Window_Redraw();
 	}
+
+	UpdateFaceElementList();
+	Window_Redraw();
 }
 
 void App::FontEditorWindow::UpdateFaceElementList() {
@@ -1419,14 +1539,14 @@ void App::FontEditorWindow::UpdateFaceElementListViewItem(const Structs::FaceEle
 	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::Lookup, &(buf = element.GetLookupRepresentation())[0]);
 }
 
-std::pair<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std::shared_ptr<XivRes::MemoryMipmapStream>>> App::FontEditorWindow::CompileCurrentFontSet(ProgressDialog & progressDialog) {
+std::pair<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std::shared_ptr<XivRes::MemoryMipmapStream>>> App::FontEditorWindow::CompileCurrentFontSet(ProgressDialog & progressDialog, Structs::FontSet & fontSet) {
 	progressDialog.UpdateStatusMessage("Loading base fonts...");
-	m_fontSet.ConsolidateFonts();
+	fontSet.ConsolidateFonts();
 
 	{
 		progressDialog.UpdateStatusMessage("Resolving kerning pairs...");
 		XivRes::Internal::ThreadPool<Structs::Face*, size_t> pool;
-		for (auto& pFace : m_fontSet.Faces) {
+		for (auto& pFace : fontSet.Faces) {
 			pool.Submit(pFace.get(), [pFace = pFace.get(), &progressDialog]()->size_t {
 				if (progressDialog.IsCancelled())
 					return 0;
@@ -1452,10 +1572,10 @@ std::pair<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std:
 	progressDialog.ThrowIfCancelled();
 
 	XivRes::FontGenerator::FontdataPacker packer;
-	packer.SetDiscardStep(m_fontSet.DiscardStep);
-	packer.SetSideLength(m_fontSet.SideLength);
+	packer.SetDiscardStep(fontSet.DiscardStep);
+	packer.SetSideLength(fontSet.SideLength);
 
-	for (auto& pFace : m_fontSet.Faces)
+	for (auto& pFace : fontSet.Faces)
 		packer.AddFont(pFace->GetMergedFont());
 
 	packer.Compile();
@@ -1474,6 +1594,10 @@ std::pair<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std:
 	if (mips.empty())
 		throw std::runtime_error("No mipmap produced");
 
+	if (fontSet.ExpectedTexCount != mips.size()) {
+		fontSet.ExpectedTexCount = static_cast<int>(mips.size());
+		Changes_MarkDirty();
+	}
 	return std::make_pair(fdts, mips);
 }
 

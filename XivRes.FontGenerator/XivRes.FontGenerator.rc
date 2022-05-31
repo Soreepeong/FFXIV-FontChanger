@@ -371,6 +371,20 @@ BEGIN
         MENUITEM "Export to .ttmp TexTools ModPack file (Compress &after packing)", ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING
         MENUITEM "Export to .ttmp TexTools ModPack file (Do &not compress)", ID_EXPORT_TOTTMP_DONOTCOMPRESS
     END
+    POPUP "Hot &Reload"
+    BEGIN
+        MENUITEM "&Reload fonts in all running instances of games", ID_HOTRELOAD_RELOAD
+        MENUITEM "Restore to &default",         ID_HOTRELOAD_RESTORE
+        MENUITEM SEPARATOR
+        MENUITEM "&Auto",                       ID_HOTRELOAD_FONT_AUTO, CHECKED
+        MENUITEM "font (&F)",                   ID_HOTRELOAD_FONT_FONT
+        MENUITEM "font_lobby (&L)",             ID_HOTRELOAD_FONT_LOBBY
+        MENUITEM "chn_axis (&C)",               ID_HOTRELOAD_FONT_CHNAXIS
+        MENUITEM "krn_axis (&K)",               ID_HOTRELOAD_FONT_KRNAXIS
+        MENUITEM SEPARATOR
+        MENUITEM "This feature may cause running game to crash.", ID_HOTRELOAD_THISFEATUREMAYCAUSERUNNINGGAMETOCRASH, INACTIVE
+        MENUITEM "Export fdt/tex combo to Penumbra mod directory to use this feature.", ID_HOTRELOAD_EXPORTFDT, INACTIVE
+    END
 END
 
 

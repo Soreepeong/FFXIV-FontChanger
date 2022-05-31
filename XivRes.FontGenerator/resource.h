@@ -53,7 +53,6 @@
 #define IDC_BUTTON_EXPRESSION_HELP      1050
 #define IDC_EDIT1                       1051
 #define IDC_EDIT_FONT_SIZE              1051
-#define IDC_COMBO1                      1052
 #define IDC_COMBO_CODEPOINTS_MERGEMODE  1052
 #define ID_FILE_OPEN                    40003
 #define ID_FILE_SAVE                    40004
@@ -124,13 +123,35 @@
 #define ID_VIEW_900                     40141
 #define ID_VIEW_SHOWLINEMETRICS         40152
 #define ID_EDIT_TOGGLEMERGEMODE         40153
+#define ID_MISC_RELOADFONTSINALLRUNNINGAGMES 40154
+#define ID_MISC_DE                      40155
+#define ID_MISC_FONT                    40156
+#define ID_MISC_FONT40157               40157
+#define ID_MISC_CHN                     40158
+#define ID_MISC_KRN                     40159
+#define ID_HOTRELOAD_RELOAD             40160
+#define ID_HOTRELOAD_DEFAULT            40161
+#define ID_HOTRELOAD_FONT               40162
+#define ID_HOTRELOAD_FONT_FONT          40163
+#define ID_HOTRELOAD_FONT_LOBBY         40164
+#define ID_HOTRELOAD_CHNAXIS            40165
+#define ID_HOTRELOAD_KRNAXIS            40166
+#define ID_HOTRELOAD_THISFEATUREMAYCAUSERUNNINGGAMETOCRASH 40167
+#define ID_HOTRELOAD_EXPORTFDT          40168
+#define ID_HOTRELOAD_FONT_DEFAULT       40169
+#define ID_HOTRELOAD_FONT_CHNAXIS       40170
+#define ID_HOTRELOAD_FONT_KRNAXIS       40171
+#define ID_HOTRELOAD_CUSTOM             40172
+#define ID_HOTRELOAD_FONT_CUSTOM        40173
+#define ID_HOTRELOAD_FONT_AUTO          40174
+#define ID_HOTRELOAD_RESTORE            40175
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        110
-#define _APS_NEXT_COMMAND_VALUE         40154
+#define _APS_NEXT_COMMAND_VALUE         40176
 #define _APS_NEXT_CONTROL_VALUE         1053
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

@@ -30,7 +30,8 @@ namespace App {
 		bool m_bChanged = false;
 		bool m_bPathIsNotReal = false;
 		std::filesystem::path m_path;
-		Structs::FontSet m_fontSet;
+		Structs::MultiFontSet m_multiFontSet;
+		Structs::FontSet* m_pFontSet;
 		Structs::Face* m_pActiveFace = nullptr;
 
 		std::shared_ptr<XivRes::MemoryMipmapStream> m_pMipmap;
@@ -51,6 +52,7 @@ namespace App {
 		int m_nDrawLeft{};
 		int m_nDrawTop{};
 		int m_nZoom = 1;
+		XivRes::GameFontType m_hotReloadFontType = XivRes::GameFontType::undefined;
 
 		bool m_bIsReorderingFaceElementList = false;
 
@@ -101,6 +103,9 @@ namespace App {
 		LRESULT Menu_Export_Raw();
 		LRESULT Menu_Export_TTMP(CompressionMode compressionMode);
 
+		LRESULT Menu_HotReload_Reload(bool restore);
+		LRESULT Menu_HotReload_Font(XivRes::GameFontType mode);
+
 		LRESULT Edit_OnCommand(uint16_t commandId);
 
 		LRESULT FaceListBox_OnCommand(uint16_t commandId);
@@ -111,8 +116,8 @@ namespace App {
 		bool FaceElementsListView_DragProcessDragging(int16_t x, int16_t y);
 		LRESULT FaceElementsListView_OnDblClick(NMITEMACTIVATE& nmia);
 
-		void SetCurrentFontSet(std::filesystem::path path);
-		void SetCurrentFontSet(Structs::FontSet fontSet, std::filesystem::path path, bool fakePath);
+		void SetCurrentMultiFontSet(std::filesystem::path path);
+		void SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, std::filesystem::path path, bool fakePath);
 
 		void Changes_MarkFresh();
 		void Changes_MarkDirty();
@@ -124,7 +129,7 @@ namespace App {
 		void UpdateFaceElementList();
 		void UpdateFaceElementListViewItem(const Structs::FaceElement& element);
 
-		std::pair<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std::shared_ptr<XivRes::MemoryMipmapStream>>> CompileCurrentFontSet(ProgressDialog&);
+		std::pair<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std::shared_ptr<XivRes::MemoryMipmapStream>>> CompileCurrentFontSet(ProgressDialog&, Structs::FontSet& fontSet);
 
 		LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			switch (msg) {
@@ -181,6 +186,13 @@ namespace App {
 						case ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING: return Menu_Export_TTMP(CompressionMode::CompressWhilePacking);
 						case ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING: return Menu_Export_TTMP(CompressionMode::CompressAfterPacking);
 						case ID_EXPORT_TOTTMP_DONOTCOMPRESS: return Menu_Export_TTMP(CompressionMode::DoNotCompress);
+						case ID_HOTRELOAD_RELOAD: return Menu_HotReload_Reload(false);
+						case ID_HOTRELOAD_RESTORE: return Menu_HotReload_Reload(true);
+						case ID_HOTRELOAD_FONT_AUTO: return Menu_HotReload_Font(XivRes::GameFontType::undefined);
+						case ID_HOTRELOAD_FONT_FONT: return Menu_HotReload_Font(XivRes::GameFontType::font);
+						case ID_HOTRELOAD_FONT_LOBBY: return Menu_HotReload_Font(XivRes::GameFontType::font_lobby);
+						case ID_HOTRELOAD_FONT_CHNAXIS: return Menu_HotReload_Font(XivRes::GameFontType::chn_axis);
+						case ID_HOTRELOAD_FONT_KRNAXIS: return Menu_HotReload_Font(XivRes::GameFontType::krn_axis);
 					}
 					break;
 
