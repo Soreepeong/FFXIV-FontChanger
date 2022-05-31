@@ -434,6 +434,8 @@ LRESULT App::FontEditorWindow::Menu_Edit_Add() {
 	if (!m_pActiveFace)
 		return 0;
 
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+
 	std::set<int> indices;
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
 		indices.insert(i);
@@ -510,6 +512,8 @@ LRESULT App::FontEditorWindow::Menu_Edit_Paste() {
 	if (!clipboard)
 		return 0;
 
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+
 	std::string data;
 	if (const auto pData = GetClipboardData(CF_UNICODETEXT))
 		data = XivRes::Unicode::Convert<std::string>(reinterpret_cast<const wchar_t*>(pData));
@@ -560,6 +564,9 @@ LRESULT App::FontEditorWindow::Menu_Edit_Paste() {
 LRESULT App::FontEditorWindow::Menu_Edit_Delete() {
 	if (!m_pActiveFace)
 		return 0;
+
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+
 	std::set<int> indices;
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
 		indices.insert(i);
@@ -590,6 +597,8 @@ LRESULT App::FontEditorWindow::Menu_Edit_Details() {
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_ChangeParams(int baselineShift, int horizontalOffset, int letterSpacing, float fontSize) {
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+
 	auto any = false;
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));) {
 		any = true;
@@ -626,6 +635,8 @@ LRESULT App::FontEditorWindow::Menu_Edit_ChangeParams(int baselineShift, int hor
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_ToggleMergeMode() {
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+
 	auto any = false;
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));) {
 		any = true;
@@ -645,6 +656,8 @@ LRESULT App::FontEditorWindow::Menu_Edit_ToggleMergeMode() {
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_MoveUpOrDown(int direction) {
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+
 	std::vector<size_t> ids;
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
 		ids.emplace_back(i);
@@ -701,6 +714,8 @@ LRESULT App::FontEditorWindow::Menu_Edit_MoveUpOrDown(int direction) {
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_CreateEmptyCopyFromSelection() {
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+
 	if (!m_pActiveFace)
 		return 0;
 
@@ -1119,6 +1134,8 @@ bool App::FontEditorWindow::FaceElementsListView_OnDragProcessMouseMove(int16_t 
 }
 
 bool App::FontEditorWindow::FaceElementsListView_DragProcessDragging(int16_t x, int16_t y) {
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+
 	// Determine the dropped item
 	LVHITTESTINFO lvhti{
 		.pt = {x, y},
@@ -1284,6 +1301,8 @@ void App::FontEditorWindow::ShowEditor(Structs::FaceElement & element) {
 }
 
 void App::FontEditorWindow::UpdateFaceList() {
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFacesListBox, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFacesListBox, WM_SETREDRAW, TRUE, 0); });
+
 	Structs::Face* currentTag = nullptr;
 	if (int curSel = ListBox_GetCurSel(m_hFacesListBox); curSel != LB_ERR)
 		currentTag = reinterpret_cast<Structs::Face*>(ListBox_GetItemData(m_hFacesListBox, curSel));
@@ -1314,6 +1333,8 @@ void App::FontEditorWindow::UpdateFaceList() {
 }
 
 void App::FontEditorWindow::UpdateFaceElementList() {
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+
 	if (!m_pActiveFace) {
 		ListView_DeleteAllItems(m_hFaceElementsListView);
 		return;
@@ -1406,7 +1427,7 @@ std::pair<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std:
 		progressDialog.UpdateStatusMessage("Resolving kerning pairs...");
 		XivRes::Internal::ThreadPool<Structs::Face*, size_t> pool;
 		for (auto& pFace : m_fontSet.Faces) {
-			pool.Submit(pFace.get(), [pFace = pFace.get(), &progressDialog]() -> size_t {
+			pool.Submit(pFace.get(), [pFace = pFace.get(), &progressDialog]()->size_t {
 				if (progressDialog.IsCancelled())
 					return 0;
 				return pFace->GetMergedFont()->GetAllKerningPairs().size();

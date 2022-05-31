@@ -40,10 +40,12 @@ std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> GetGameFont(XivRes::FontG
 			{
 				auto& font = s_fontSet[XivRes::GameFontType::font];
 				if (!font) {
-					for (const auto& path : pathconf["global"]) {
-						try {
-							font = XivRes::GameReader(path.get<std::string>()).GetFonts(XivRes::GameFontType::font);
-						} catch (...) {
+					for (const auto validRegion : { "global", "chinese", "korean" }) {
+						for (const auto& path : pathconf[validRegion]) {
+							try {
+								font = XivRes::GameReader(path.get<std::string>()).GetFonts(XivRes::GameFontType::font);
+							} catch (...) {
+							}
 						}
 					}
 					if (!font)
@@ -56,10 +58,12 @@ std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> GetGameFont(XivRes::FontG
 			{
 				auto& font = s_fontSet[XivRes::GameFontType::chn_axis];
 				if (!font) {
-					for (const auto& path : pathconf["chinese"]) {
-						try {
-							font = XivRes::GameReader(path.get<std::string>()).GetFonts(XivRes::GameFontType::chn_axis);
-						} catch (...) {
+					for (const auto validRegion : { "chinese" }) {
+						for (const auto& path : pathconf[validRegion]) {
+							try {
+								font = XivRes::GameReader(path.get<std::string>()).GetFonts(XivRes::GameFontType::chn_axis);
+							} catch (...) {
+							}
 						}
 					}
 					if (!font)
@@ -72,10 +76,12 @@ std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> GetGameFont(XivRes::FontG
 			{
 				auto& font = s_fontSet[XivRes::GameFontType::krn_axis];
 				if (!font) {
-					for (const auto& path : pathconf["korean"]) {
-						try {
-							font = XivRes::GameReader(path.get<std::string>()).GetFonts(XivRes::GameFontType::krn_axis);
-						} catch (...) {
+					for (const auto validRegion : { "korean" }) {
+						for (const auto& path : pathconf[validRegion]) {
+							try {
+								font = XivRes::GameReader(path.get<std::string>()).GetFonts(XivRes::GameFontType::krn_axis);
+							} catch (...) {
+							}
 						}
 					}
 					if (!font)
@@ -665,6 +671,7 @@ void App::Structs::from_json(const nlohmann::json & json, RendererSpecificStruct
 		value.FreeType.LoadFlags |= obj->value<bool>("noBitmap", false) ? FT_LOAD_NO_BITMAP : 0;
 		value.FreeType.LoadFlags |= obj->value<bool>("forceAutohint", false) ? FT_LOAD_FORCE_AUTOHINT : 0;
 		value.FreeType.LoadFlags |= obj->value<bool>("noAutohint", false) ? FT_LOAD_NO_AUTOHINT : 0;
+		value.FreeType.RenderMode = static_cast<FT_Render_Mode>(obj->value<int>("renderMode", FT_RENDER_MODE_LIGHT));
 	} else
 		value.FreeType = {};
 	if (const auto obj = json.find("directwrite"); obj != json.end() && obj->is_object()) {
@@ -686,6 +693,7 @@ void App::Structs::to_json(nlohmann::json & json, const RendererSpecificStruct &
 		{ "noBitmap", !!(value.FreeType.LoadFlags & FT_LOAD_NO_BITMAP) },
 		{ "forceAutohint", !!(value.FreeType.LoadFlags & FT_LOAD_FORCE_AUTOHINT) },
 		{ "noAutohint", !!(value.FreeType.LoadFlags & FT_LOAD_NO_AUTOHINT) },
+		{ "renderMode", static_cast<int>(value.FreeType.RenderMode) },
 		}));
 	json.emplace("directwrite", nlohmann::json::object({
 		{ "renderMode", static_cast<int>(value.DirectWrite.RenderMode) },
