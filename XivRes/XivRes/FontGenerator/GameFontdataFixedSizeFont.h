@@ -95,10 +95,6 @@ namespace XivRes::FontGenerator {
 			return m_info->Codepoints;
 		}
 
-		const void* GetBaseFontGlyphUniqid(char32_t c) const override {
-			return m_info->Font->GetFontEntry(c);
-		}
-
 		bool GetGlyphMetrics(char32_t codepoint, GlyphMetrics& gm) const override {
 			const auto p = m_info->Font->GetFontEntry(codepoint);
 			if (!p)

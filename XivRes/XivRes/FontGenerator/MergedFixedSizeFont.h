@@ -110,6 +110,14 @@ namespace XivRes::FontGenerator {
 			return nullptr;
 		}
 
+		char32_t UniqidToGlyph(const void* pc) const override {
+			for (const auto& font : m_info->UsedFonts) {
+				if (const auto r = font.second->UniqidToGlyph(pc))
+					return r;
+			}
+			return 0;
+		}
+
 		bool GetGlyphMetrics(char32_t codepoint, GlyphMetrics& gm) const override {
 			if (const auto it = m_info->UsedFonts.find(codepoint); it != m_info->UsedFonts.end()) {
 				if (!it->second->GetGlyphMetrics(codepoint, gm))

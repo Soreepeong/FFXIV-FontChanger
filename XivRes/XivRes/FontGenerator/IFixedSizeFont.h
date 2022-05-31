@@ -167,6 +167,8 @@ namespace XivRes::FontGenerator {
 
 		virtual const void* GetBaseFontGlyphUniqid(char32_t c) const = 0;
 
+		virtual char32_t UniqidToGlyph(const void*) const = 0;
+
 		virtual const std::map<std::pair<char32_t, char32_t>, int>& GetAllKerningPairs() const = 0;
 
 		virtual int GetAdjustedAdvanceX(char32_t left, char32_t right) const = 0;
@@ -186,6 +188,11 @@ namespace XivRes::FontGenerator {
 			const auto& codepoints = GetAllCodepoints();
 			const auto it = codepoints.find(c);
 			return it == codepoints.end() ? nullptr : &*it;
+		}
+
+		char32_t UniqidToGlyph(const void* pc) const {
+			const auto c = *reinterpret_cast<const char32_t*>(pc);
+			return GetAllCodepoints().contains(c) ? c : 0;
 		}
 
 		int GetAdjustedAdvanceX(char32_t left, char32_t right) const override {
@@ -255,6 +262,10 @@ namespace XivRes::FontGenerator {
 
 		const void* GetBaseFontGlyphUniqid(char32_t c) const override {
 			return nullptr;
+		}
+
+		char32_t UniqidToGlyph(const void* pc) const override {
+			return 0;
 		}
 
 		const std::map<std::pair<char32_t, char32_t>, int>& GetAllKerningPairs() const override {

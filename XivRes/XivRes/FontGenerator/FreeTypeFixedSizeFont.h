@@ -425,10 +425,6 @@ namespace XivRes::FontGenerator {
 			return m_face.GetAllCharacters();
 		}
 
-		const void* GetBaseFontGlyphUniqid(char32_t c) const override {
-			return m_face.GetAllCharacters().contains(c) ? &m_face.GetRawData()[c] : nullptr;
-		}
-
 		bool GetGlyphMetrics(char32_t codepoint, GlyphMetrics& gm) const override {
 			const auto glyphIndex = m_face.GetCharIndex(codepoint);
 			if (!glyphIndex)

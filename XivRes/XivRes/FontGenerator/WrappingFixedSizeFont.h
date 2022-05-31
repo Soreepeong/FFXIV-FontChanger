@@ -111,6 +111,10 @@ namespace XivRes::FontGenerator {
 			return m_font->GetBaseFontGlyphUniqid(codepoint);
 		}
 
+		char32_t UniqidToGlyph(const void* pc) const override {
+			return m_font->UniqidToGlyph(pc);
+		}
+
 		const std::map<std::pair<char32_t, char32_t>, int>& GetAllKerningPairs() const override {
 			if (m_kerningPairs)
 				return *m_kerningPairs;

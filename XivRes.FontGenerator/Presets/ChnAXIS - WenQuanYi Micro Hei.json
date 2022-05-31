@@ -34,6 +34,7 @@
 					"size": 12.0,
 					"wrapModifiers": {
 						"baselineShift": 0,
+						"codepointReplacements": {},
 						"codepoints": [
 							[
 								0,

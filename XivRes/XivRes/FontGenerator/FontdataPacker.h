@@ -29,9 +29,21 @@ namespace XivRes::FontGenerator {
 			char32_t Codepoint{};
 			const IFixedSizeFont* BaseFont{};
 			FontdataGlyphEntry BaseEntry{};
-			std::map<FontdataStream*, std::pair<FontdataGlyphEntry, size_t>> TargetFonts{};
 			const Unicode::UnicodeBlocks::BlockDefinition* UnicodeBlock{};
 			int CurrentOffsetX{};
+
+			struct TargetGlyph {
+				FontdataStream& Font;
+				FontdataGlyphEntry Entry;
+				size_t SourceFontIndex;
+
+				TargetGlyph(FontdataStream& font, const FontdataGlyphEntry& entry, size_t sourceFontIndex)
+					: Font(font)
+					, Entry(entry)
+					, SourceFontIndex(sourceFontIndex) {}
+			};
+
+			std::vector<TargetGlyph> Targets{};
 		};
 		std::vector<std::shared_ptr<FontdataStream>> m_targetFonts;
 		std::vector<std::shared_ptr<MemoryMipmapStream>> m_targetMipmapStreams;
@@ -110,24 +122,23 @@ namespace XivRes::FontGenerator {
 					if (codepoint < 0x20 || codepoint == 0x7F)
 						continue;
 
-					auto& pInfo = rectangleInfoMap[font->GetBaseFontGlyphUniqid(codepoint)];
+					const auto uniqid = font->GetBaseFontGlyphUniqid(codepoint);
+					auto& pInfo = rectangleInfoMap[uniqid];
 					if (!pInfo) {
 						m_targetPlans.emplace_back();
 						pInfo = &m_targetPlans.back();
-						pInfo->Codepoint = codepoint;
 						pInfo->BaseFont = font->GetBaseFont(codepoint);
+						pInfo->Codepoint = pInfo->BaseFont->UniqidToGlyph(uniqid);
 						if (m_threadSafeBaseFonts[pInfo->BaseFont].empty()) {
 							m_threadSafeBaseFonts[pInfo->BaseFont].resize(m_nThreads);
 							m_threadSafeBaseFonts[pInfo->BaseFont][0] = pInfo->BaseFont->GetThreadSafeView();
 						}
 						pInfo->UnicodeBlock = &block;
-						pInfo->BaseEntry.Char(codepoint);
+						pInfo->BaseEntry.Char(pInfo->Codepoint);
 					}
-					pInfo->TargetFonts[m_targetFonts[i].get()] = std::make_pair(FontdataGlyphEntry{
-						.Utf8Value = pInfo->BaseEntry.Utf8Value,
-						.ShiftJisValue = pInfo->BaseEntry.ShiftJisValue,
-					}, i);
-					m_targetFonts[i]->AddFontEntry(codepoint, 0, 0, 0, 0, 0, 0, 0);
+					pInfo->Targets.emplace_back(*m_targetFonts[i], FontdataGlyphEntry(), i);
+					pInfo->Targets.back().Entry.Char(codepoint);
+					pInfo->Targets.back().Font.AddFontEntry(codepoint, 0, 0, 0, 0, 0, 0, 0);
 				}
 			}
 		}
@@ -156,9 +167,8 @@ namespace XivRes::FontGenerator {
 						info.BaseEntry.BoundingWidth = Internal::RangeCheckedCast<uint8_t>(gm.X2 - info.CurrentOffsetX);
 						info.BaseEntry.NextOffsetX = gm.AdvanceX - gm.X2;
 
-						for (auto& [fdt, entryAndSourceFontIndex] : info.TargetFonts) {
-							auto& [entry, sourceFontIndex] = entryAndSourceFontIndex;
-							const auto& sourceFont = GetThreadSafeSourceFont(sourceFontIndex, nThreadIndex);
+						for (auto& target : info.Targets) {
+							const auto& sourceFont = GetThreadSafeSourceFont(target.SourceFontIndex, nThreadIndex);
 							if (!sourceFont.GetGlyphMetrics(info.Codepoint, gm))
 								throw std::runtime_error("Font reported to have a codepoint but it's failing to report glyph metrics");
 							if (gm.X1 < 0)
@@ -166,14 +176,14 @@ namespace XivRes::FontGenerator {
 							if (gm.GetHeight() != *info.BaseEntry.BoundingHeight)
 								throw std::runtime_error("Target font has a glyph with different bounding height from the source");
 
-							entry.CurrentOffsetY = gm.Y1;
-							entry.BoundingHeight = Internal::RangeCheckedCast<uint8_t>(gm.GetHeight());
-							entry.BoundingWidth = Internal::RangeCheckedCast<uint8_t>(gm.X2 - (std::min)(0, gm.X1));
-							entry.NextOffsetX = gm.AdvanceX - gm.X2;
+							target.Entry.CurrentOffsetY = gm.Y1;
+							target.Entry.BoundingHeight = Internal::RangeCheckedCast<uint8_t>(gm.GetHeight());
+							target.Entry.BoundingWidth = Internal::RangeCheckedCast<uint8_t>(gm.X2 - (std::min)(0, gm.X1));
+							target.Entry.NextOffsetX = gm.AdvanceX - gm.X2;
 
-							if (*info.BaseEntry.BoundingWidth < *entry.BoundingWidth) {
-								info.CurrentOffsetX -= *entry.BoundingWidth - *info.BaseEntry.BoundingWidth;
-								info.BaseEntry.BoundingWidth = *entry.BoundingWidth;
+							if (*info.BaseEntry.BoundingWidth < *target.Entry.BoundingWidth) {
+								info.CurrentOffsetX -= *target.Entry.BoundingWidth - *info.BaseEntry.BoundingWidth;
+								info.BaseEntry.BoundingWidth = *target.Entry.BoundingWidth;
 							}
 						}
 					}
@@ -261,12 +271,11 @@ namespace XivRes::FontGenerator {
 					info.BaseEntry.TextureOffsetY = Internal::RangeCheckedCast<uint16_t>(r.y + 1);
 					info.BaseEntry.TextureIndex = Internal::RangeCheckedCast<uint16_t>(planeIndex);
 
-					for (auto& [pFontdata, entryAndMore] : info.TargetFonts) {
-						auto& [entry, _] = entryAndMore;
-						entry.TextureOffsetX = Internal::RangeCheckedCast<uint16_t>(r.x + 1 + info.BaseEntry.BoundingWidth - *entry.BoundingWidth);
-						entry.TextureOffsetY = static_cast<uint16_t>(r.y + 1);
-						entry.TextureIndex = static_cast<uint16_t>(planeIndex);
-						pFontdata->AddFontEntry(entry);
+					for (auto& target : info.Targets) {
+						target.Entry.TextureOffsetX = Internal::RangeCheckedCast<uint16_t>(r.x + 1 + info.BaseEntry.BoundingWidth - *target.Entry.BoundingWidth);
+						target.Entry.TextureOffsetY = static_cast<uint16_t>(r.y + 1);
+						target.Entry.TextureIndex = static_cast<uint16_t>(planeIndex);
+						target.Font.AddFontEntry(target.Entry);
 					}
 
 					successfulPlans.emplace_back(&info);
@@ -393,7 +402,7 @@ namespace XivRes::FontGenerator {
 
 						m_pszProgressString = "Laying out and drawing glyphs...";
 						LayoutGlyphs();
-						
+
 						m_error.clear();
 					} catch (const std::exception& e) {
 						m_error = e.what();
