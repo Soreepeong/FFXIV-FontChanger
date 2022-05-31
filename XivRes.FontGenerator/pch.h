@@ -12,6 +12,8 @@
 #include <comdef.h>
 #include <dwrite.h>
 #include <shellapi.h>
+#include <PathCch.h>
+#include <Psapi.h>
 
 #include <exprtk.hpp>
 
@@ -26,6 +28,9 @@
 #include <minizip/iowin32.h>
 
 #include <nlohmann/json.hpp>
+
+// https://github.com/Nomade040/nmd/blob/master/nmd_assembly.h
+#include "nmd_assembly.h"
 
 #include "XivRes/BinaryPackedFileStream.h"
 #include "XivRes/FontdataStream.h"

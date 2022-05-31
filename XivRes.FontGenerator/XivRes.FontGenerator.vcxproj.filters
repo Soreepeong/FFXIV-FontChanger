@@ -25,6 +25,9 @@
     <ClCompile Include="ProgressDialog.cpp">
       <Filter>Source\Dialogs</Filter>
     </ClCompile>
+    <ClCompile Include="nmd_assembly.cpp">
+      <Filter>Project Items</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Project Items">
@@ -64,6 +67,9 @@
     </ClInclude>
     <ClInclude Include="ProgressDialog.h">
       <Filter>Source\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="nmd_assembly.h">
+      <Filter>Project Items</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
