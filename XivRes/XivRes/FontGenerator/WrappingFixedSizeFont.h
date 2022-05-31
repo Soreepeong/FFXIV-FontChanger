@@ -6,6 +6,7 @@
 namespace XivRes::FontGenerator {
 	struct WrapModifiers {
 		std::vector<std::pair<char32_t, char32_t>> Codepoints;
+		std::map<char32_t, char32_t> CodepointReplacements;
 		int LetterSpacing = 0;
 		int HorizontalOffset = 0;
 		int BaselineShift = 0;
@@ -14,6 +15,7 @@ namespace XivRes::FontGenerator {
 	class WrappingFixedSizeFont : public DefaultAbstractFixedSizeFont {
 		struct InfoStruct {
 			std::set<char32_t> Codepoints;
+			std::map<char32_t, char32_t> MappedCodepoints;
 			int LetterSpacing = 0;
 			int HorizontalOffset = 0;
 			int BaselineShift = 0;
@@ -42,8 +44,11 @@ namespace XivRes::FontGenerator {
 						break;
 					}
 				}
-				if (found)
+				if (found) {
 					info->Codepoints.insert(c);
+					if (const auto it = wrapModifiers.CodepointReplacements.find(c); it != wrapModifiers.CodepointReplacements.end())
+						info->MappedCodepoints[c] = it->second;
+				}
 			}
 
 			m_info = std::move(info);
@@ -80,6 +85,8 @@ namespace XivRes::FontGenerator {
 		}
 
 		bool GetGlyphMetrics(char32_t codepoint, GlyphMetrics& gm) const override {
+			codepoint = TranslateCodepoint(codepoint);
+
 			if (!m_font->GetGlyphMetrics(codepoint, gm))
 				return false;
 
@@ -95,11 +102,13 @@ namespace XivRes::FontGenerator {
 			return true;
 		}
 
-		const void* GetBaseFontGlyphUniqid(char32_t c) const override {
-			if (!m_info->Codepoints.contains(c))
+		const void* GetBaseFontGlyphUniqid(char32_t codepoint) const override {
+			codepoint = TranslateCodepoint(codepoint);
+
+			if (!m_info->Codepoints.contains(codepoint))
 				return nullptr;
 
-			return m_font->GetBaseFontGlyphUniqid(c);
+			return m_font->GetBaseFontGlyphUniqid(codepoint);
 		}
 
 		const std::map<std::pair<char32_t, char32_t>, int>& GetAllKerningPairs() const override {
@@ -110,12 +119,18 @@ namespace XivRes::FontGenerator {
 			std::map<char32_t, GlyphMetrics> AllGlyphMetrics;
 			std::map<Unicode::UnicodeBlocks::NegativeLsbGroup, std::map<char32_t, int>> negativeLsbChars;
 
+			std::map<char32_t, std::set<char32_t>> reverseMappedCodepoints;
+
 			for (const auto codepoint : m_info->Codepoints) {
-				if (codepoint < U' ')
+				const auto mapped = TranslateCodepoint(codepoint);
+
+				reverseMappedCodepoints[mapped].insert(codepoint);
+
+				if (mapped < U' ')
 					continue;
 
 				GlyphMetrics gm;
-				if (!m_font->GetGlyphMetrics(codepoint, gm))
+				if (!m_font->GetGlyphMetrics(mapped, gm))
 					continue;
 
 				const auto remainingOffset = gm.X1 + m_info->HorizontalOffset;
@@ -128,14 +143,14 @@ namespace XivRes::FontGenerator {
 					gm.Translate(-gm.X1, m_info->BaselineShift);
 
 					do {
-						const auto& block = Unicode::UnicodeBlocks::GetCorrespondingBlock(codepoint);
+						const auto& block = Unicode::UnicodeBlocks::GetCorrespondingBlock(mapped);
 						if (block.NegativeLsbGroup == Unicode::UnicodeBlocks::None)
 							break;
 
 						if (block.Flags & Unicode::UnicodeBlocks::UsedWithCombining)
 							break;
 
-						negativeLsbChars[block.NegativeLsbGroup][codepoint] = remainingOffset;
+						negativeLsbChars[block.NegativeLsbGroup][mapped] = remainingOffset;
 					} while (false);
 				}
 			}
@@ -145,14 +160,20 @@ namespace XivRes::FontGenerator {
 #pragma warning(disable: 26812)
 			for (const auto& [group, chars] : negativeLsbChars) {
 				for (const auto& [rightc, offset] : chars) {
+					if (!reverseMappedCodepoints.contains(rightc))
+						continue;
+
 					for (const auto& block : Unicode::UnicodeBlocks::Blocks) {
 						if (block.NegativeLsbGroup != group && (group != Unicode::UnicodeBlocks::Combining || !(block.Flags & Unicode::UnicodeBlocks::UsedWithCombining)))
 							continue;
 #pragma warning(pop)
 						for (auto leftc = block.First; leftc <= block.Last; leftc++) {
-							if (!m_info->Codepoints.contains(leftc))
+							if (!reverseMappedCodepoints.contains(leftc))
 								continue;
-							(*m_kerningPairs)[std::make_pair(leftc, rightc)] += offset;
+
+							for (const auto leftUnmapped : reverseMappedCodepoints.at(leftc))
+								for (const auto rightUnmapped : reverseMappedCodepoints.at(rightc))
+									(*m_kerningPairs)[std::make_pair(leftUnmapped, rightUnmapped)] += offset;
 						}
 					}
 				}
@@ -169,6 +190,8 @@ namespace XivRes::FontGenerator {
 		}
 
 		bool Draw(char32_t codepoint, RGBA8888* pBuf, int drawX, int drawY, int destWidth, int destHeight, RGBA8888 fgColor, RGBA8888 bgColor) const override {
+			codepoint = TranslateCodepoint(codepoint);
+
 			GlyphMetrics gm;
 			if (!m_font->GetGlyphMetrics(codepoint, gm))
 				return false;
@@ -184,6 +207,8 @@ namespace XivRes::FontGenerator {
 		}
 
 		bool Draw(char32_t codepoint, uint8_t* pBuf, size_t stride, int drawX, int drawY, int destWidth, int destHeight, uint8_t fgColor, uint8_t bgColor, uint8_t fgOpacity, uint8_t bgOpacity) const override {
+			codepoint = TranslateCodepoint(codepoint);
+
 			GlyphMetrics gm;
 			if (!m_font->GetGlyphMetrics(codepoint, gm))
 				return false;
@@ -209,6 +234,13 @@ namespace XivRes::FontGenerator {
 				return nullptr;
 
 			return m_font->GetBaseFont(codepoint);
+		}
+
+	private:
+		char32_t TranslateCodepoint(char32_t codepoint) const {
+			if (const auto it = m_info->MappedCodepoints.find(codepoint); it != m_info->MappedCodepoints.end())
+				return TranslateCodepoint(it->second);
+			return codepoint;
 		}
 	};
 }

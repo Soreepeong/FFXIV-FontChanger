@@ -107,6 +107,8 @@ namespace XivRes::FontGenerator {
 					auto& block = Unicode::UnicodeBlocks::GetCorrespondingBlock(codepoint);
 					if (block.Flags & Unicode::UnicodeBlocks::RTL)
 						continue;
+					if (codepoint < 0x20 || codepoint == 0x7F)
+						continue;
 
 					auto& pInfo = rectangleInfoMap[font->GetBaseFontGlyphUniqid(codepoint)];
 					if (!pInfo) {

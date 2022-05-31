@@ -727,6 +727,21 @@ void XivRes::FontGenerator::from_json(const nlohmann::json & json, XivRes::FontG
 	value.LetterSpacing = json.value<int>("letterSpacing", 0);
 	value.HorizontalOffset = json.value<int>("horizontalOffset", 0);
 	value.BaselineShift = json.value<int>("baselineShift", 0);
+
+	value.CodepointReplacements.clear();
+	if (const auto it = json.find("codepointReplacements"); it != json.end() && it->is_object()) {
+		for (const auto& item : it->items()) {
+			auto vs = item.value().get<std::string>();
+			char32_t l = Unicode::UReplacement;
+			char32_t r = Unicode::UReplacement;
+			Unicode::Decode(l, item.key().c_str(), item.key().size());
+			Unicode::Decode(r, vs.c_str(), vs.size());
+			if (l == Unicode::UReplacement || r == Unicode::UReplacement)
+				continue;
+
+			value.CodepointReplacements.emplace(l, r);
+		}
+	}
 }
 
 void XivRes::FontGenerator::to_json(nlohmann::json & json, const XivRes::FontGenerator::WrapModifiers & value) {
@@ -737,6 +752,9 @@ void XivRes::FontGenerator::to_json(nlohmann::json & json, const XivRes::FontGen
 	json.emplace("letterSpacing", value.LetterSpacing);
 	json.emplace("horizontalOffset", value.HorizontalOffset);
 	json.emplace("baselineShift", value.BaselineShift);
+	auto& codepointReplacements = *json.emplace("codepointReplacements", nlohmann::json::object()).first;
+	for (const auto& [from, to] : value.CodepointReplacements)
+		codepointReplacements[Unicode::ConvertFromChar<std::string>(from)] = Unicode::ConvertFromChar<std::string>(to);
 }
 
 void App::Structs::from_json(const nlohmann::json & json, LookupStruct & value) {
