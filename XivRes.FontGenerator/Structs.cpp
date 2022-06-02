@@ -369,7 +369,7 @@ std::wstring App::Structs::FaceElement::GetRendererRepresentation() const {
 			);
 
 		case RendererEnum::FreeType:
-			return std::format(L"FreeType ({}, {})", RendererSpecific.FreeType.GetRenderModeString(), RendererSpecific.FreeType.GetLoadFlagsString());
+			return std::format(L"FreeType ({}, {})", RendererSpecific.FreeType.get_render_mode_string(), RendererSpecific.FreeType.get_load_flags_string());
 
 		default:
 			return L"INVALID";

@@ -842,14 +842,14 @@ void App::FaceElementEditorDialog::AddCodepointRangeToListBox(int index, char32_
 	const auto block = std::lower_bound(xivres::util::unicode::blocks::all_blocks().begin(), xivres::util::unicode::blocks::all_blocks().end(), c1, [](const auto& l, const auto& r) { return l.First < r; });
 	if (block != xivres::util::unicode::blocks::all_blocks().end() && block->First == c1 && block->Last == c2) {
 		if (c1 == c2) {
-			ListBox_AddString(m_controls->CodepointsList, std::format(
+			ListBox_InsertString(m_controls->CodepointsList, index, std::format(
 				L"U+{:04X} {} [{}]",
 				static_cast<uint32_t>(c1),
 				xivres::util::unicode::convert<std::wstring>(block->Name),
 				xivres::util::unicode::represent_codepoint<std::wstring>(c1)
 			).c_str());
 		} else {
-			ListBox_AddString(m_controls->CodepointsList, std::format(
+			ListBox_InsertString(m_controls->CodepointsList, index, std::format(
 				L"U+{:04X}~{:04X} {} ({}) {} ~ {}",
 				static_cast<uint32_t>(c1),
 				static_cast<uint32_t>(c2),
@@ -860,13 +860,13 @@ void App::FaceElementEditorDialog::AddCodepointRangeToListBox(int index, char32_
 			).c_str());
 		}
 	} else if (c1 == c2) {
-		ListBox_AddString(m_controls->CodepointsList, std::format(
+		ListBox_InsertString(m_controls->CodepointsList, index, std::format(
 			L"U+{:04X} [{}]",
 			static_cast<int>(c1),
 			xivres::util::unicode::represent_codepoint<std::wstring>(c1)
 		).c_str());
 	} else {
-		ListBox_AddString(m_controls->CodepointsList, std::format(
+		ListBox_InsertString(m_controls->CodepointsList, index, std::format(
 			L"U+{:04X}~{:04X} ({}) {} ~ {}",
 			static_cast<uint32_t>(c1),
 			static_cast<uint32_t>(c2),
