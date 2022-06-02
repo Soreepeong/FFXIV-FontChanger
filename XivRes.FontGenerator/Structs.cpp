@@ -645,6 +645,15 @@ void App::Structs::from_json(const nlohmann::json & json, FaceElement & value) {
 		from_json(*it, value.RendererSpecific);
 	else
 		value.RendererSpecific = {};
+	
+	if (const auto it = json.find("transformationMatrix"); it != json.end() && it->is_array() && it->size() == 4) {
+		value.TransformationMatrix.M11 = it->at(0).get<float>();
+		value.TransformationMatrix.M12 = it->at(1).get<float>();
+		value.TransformationMatrix.M21 = it->at(2).get<float>();
+		value.TransformationMatrix.M22 = it->at(3).get<float>();
+	} else {
+		value.TransformationMatrix.SetIdentity();
+	}
 }
 
 void App::Structs::to_json(nlohmann::json & json, const FaceElement & value) {
@@ -653,6 +662,7 @@ void App::Structs::to_json(nlohmann::json & json, const FaceElement & value) {
 	json.emplace("gamma", value.Gamma);
 	json.emplace("mergeMode", value.MergeMode);
 	json.emplace("wrapModifiers", value.WrapModifiers);
+	json.emplace("transformationMatrix", nlohmann::json::array({ value.TransformationMatrix.M11, value.TransformationMatrix.M12, value.TransformationMatrix.M21, value.TransformationMatrix.M22, }));
 	json.emplace("renderer", static_cast<int>(value.Renderer));
 	json.emplace("lookup", value.Lookup);
 	json.emplace("renderSpecific", value.RendererSpecific);
