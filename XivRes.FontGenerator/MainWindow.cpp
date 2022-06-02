@@ -202,7 +202,7 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 
 			const auto& mergedFont = *face.GetMergedFont();
 
-			if (int lineHeight = mergedFont.GetLineHeight(), ascent = mergedFont.GetAscent(); lineHeight > 0 && m_bShowLineMetrics) {
+			if (int lineHeight = mergedFont.line_height(), ascent = mergedFont.ascent(); lineHeight > 0 && m_bShowLineMetrics) {
 				if (ascent < lineHeight) {
 					for (int y = pad, y_ = m_pMipmap->Height - pad; y < y_; y += lineHeight) {
 						for (int y2 = y + ascent, y2_ = (std::min)(y_, y + lineHeight); y2 < y2_; y2++)
@@ -219,11 +219,11 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 			}
 
 			if (!face.PreviewText.empty()) {
-				xivres::fontgen::TextMeasurer(mergedFont)
-					.WithMaxWidth(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
-					.WithUseKerning(m_bKerning)
-					.Measure(face.PreviewText)
-					.DrawTo(*m_pMipmap, mergedFont, pad, pad, { 0xFF, 0xFF, 0xFF, 0xFF }, { 0, 0, 0, 0 });
+				xivres::fontgen::text_measurer(mergedFont)
+					.max_width(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
+					.use_kerning(m_bKerning)
+					.measure(face.PreviewText)
+					.draw_to(*m_pMipmap, mergedFont, pad, pad, { 0xFF, 0xFF, 0xFF, 0xFF }, { 0, 0, 0, 0 });
 			}
 		}
 	}
@@ -673,7 +673,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_ToggleMergeMode() {
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));) {
 		any = true;
 		auto& e = *m_pActiveFace->Elements[i];
-		e.MergeMode = static_cast<xivres::fontgen::MergedFontCodepointMode>((static_cast<int>(e.MergeMode) + 1) % static_cast<int>(xivres::fontgen::MergedFontCodepointMode::Enum_Count_));
+		e.MergeMode = static_cast<xivres::fontgen::codepoint_merge_mode>((static_cast<int>(e.MergeMode) + 1) % static_cast<int>(xivres::fontgen::codepoint_merge_mode::Enum_Count_));
 		e.OnFontWrappingParametersChange();
 		UpdateFaceElementListViewItem(e);
 	}
@@ -763,8 +763,8 @@ LRESULT App::FontEditorWindow::Menu_Edit_CreateEmptyCopyFromSelection() {
 	element.Size = ref.Size;
 	element.RendererSpecific = {
 			.Empty = {
-				.Ascent = ref.GetWrappedFont()->GetAscent() + ref.WrapModifiers.BaselineShift,
-				.LineHeight = ref.GetWrappedFont()->GetLineHeight(),
+				.Ascent = ref.GetWrappedFont()->ascent() + ref.WrapModifiers.BaselineShift,
+				.LineHeight = ref.GetWrappedFont()->line_height(),
 			},
 	};
 
@@ -830,7 +830,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 		ShowWindow(m_hWnd, SW_HIDE);
 		const auto hideWhilePacking = xivres::util::on_dtor([this]() { ShowWindow(m_hWnd, SW_SHOW); });
 
-		std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::IFixedSizeFont>>> resultFonts;
+		std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::fixed_size_font>>> resultFonts;
 		for (const auto& fontSet : m_multiFontSet.FontSets) {
 			const auto [fdts, mips] = CompileCurrentFontSet(progressDialog, *fontSet);
 
@@ -839,7 +839,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 				texturesAll->SetMipmap(0, i, mips[i]);
 
 			for (size_t i = 0; i < fdts.size(); i++)
-				resultFonts.emplace_back(fontSet->Faces[i]->Name, std::make_shared<xivres::fontgen::GameFontdataFixedSizeFont>(fdts[i], mips, fontSet->Faces[i]->Name, ""));
+				resultFonts.emplace_back(fontSet->Faces[i]->Name, std::make_shared<xivres::fontgen::fontdata_fixed_size_font>(fdts[i], mips, fontSet->Faces[i]->Name, ""));
 
 			std::thread([texturesAll]() {xivres::texture::preview(*texturesAll); }).detach();
 		}
@@ -1503,31 +1503,31 @@ void App::FontEditorWindow::UpdateFaceElementListViewItem(const Structs::FaceEle
 		return;
 
 	std::wstring buf;
-	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::FamilyName, &(buf = xivres::util::unicode::convert<std::wstring>(element.GetWrappedFont()->GetFamilyName()))[0]);
-	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::SubfamilyName, &(buf = xivres::util::unicode::convert<std::wstring>(element.GetWrappedFont()->GetSubfamilyName()))[0]);
-	if (std::fabsf(element.GetWrappedFont()->GetSize() - element.Size) >= 0.01f) {
-		ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::Size, &(buf = std::format(L"{:g}px (req. {:g}px)", element.GetWrappedFont()->GetSize(), element.Size))[0]);
+	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::FamilyName, &(buf = xivres::util::unicode::convert<std::wstring>(element.GetWrappedFont()->family_name()))[0]);
+	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::SubfamilyName, &(buf = xivres::util::unicode::convert<std::wstring>(element.GetWrappedFont()->subfamily_name()))[0]);
+	if (std::fabsf(element.GetWrappedFont()->font_size() - element.Size) >= 0.01f) {
+		ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::Size, &(buf = std::format(L"{:g}px (req. {:g}px)", element.GetWrappedFont()->font_size(), element.Size))[0]);
 	} else {
-		ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::Size, &(buf = std::format(L"{:g}px", element.GetWrappedFont()->GetSize()))[0]);
+		ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::Size, &(buf = std::format(L"{:g}px", element.GetWrappedFont()->font_size()))[0]);
 	}
-	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::LineHeight, &(buf = std::format(L"{}px", element.GetWrappedFont()->GetLineHeight()))[0]);
+	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::LineHeight, &(buf = std::format(L"{}px", element.GetWrappedFont()->line_height()))[0]);
 	if (element.WrapModifiers.BaselineShift && element.Renderer != Structs::RendererEnum::Empty) {
-		ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::Ascent, &(buf = std::format(L"{}px({:+}px)", element.GetBaseFont()->GetAscent(), element.WrapModifiers.BaselineShift))[0]);
+		ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::Ascent, &(buf = std::format(L"{}px({:+}px)", element.GetBaseFont()->ascent(), element.WrapModifiers.BaselineShift))[0]);
 	} else {
-		ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::Ascent, &(buf = std::format(L"{}px", element.GetBaseFont()->GetAscent()))[0]);
+		ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::Ascent, &(buf = std::format(L"{}px", element.GetBaseFont()->ascent()))[0]);
 	}
 	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::HorizontalOffset, &(buf = std::format(L"{}px", element.Renderer == Structs::RendererEnum::Empty ? 0 : element.WrapModifiers.HorizontalOffset))[0]);
 	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::LetterSpacing, &(buf = std::format(L"{}px", element.Renderer == Structs::RendererEnum::Empty ? 0 : element.WrapModifiers.LetterSpacing))[0]);
 	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::Codepoints, &(buf = element.GetRangeRepresentation())[0]);
-	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::GlyphCount, &(buf = std::format(L"{}", element.GetWrappedFont()->GetAllCodepoints().size()))[0]);
+	ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::GlyphCount, &(buf = std::format(L"{}", element.GetWrappedFont()->all_codepoints().size()))[0]);
 	switch (element.MergeMode) {
-		case xivres::fontgen::MergedFontCodepointMode::AddNew:
+		case xivres::fontgen::codepoint_merge_mode::AddNew:
 			ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::MergeMode, &(buf = L"Add New")[0]);
 			break;
-		case xivres::fontgen::MergedFontCodepointMode::AddAll:
+		case xivres::fontgen::codepoint_merge_mode::AddAll:
 			ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::MergeMode, &(buf = L"Add All")[0]);
 			break;
-		case xivres::fontgen::MergedFontCodepointMode::Replace:
+		case xivres::fontgen::codepoint_merge_mode::Replace:
 			ListView_SetItemText(m_hFaceElementsListView, index, ListViewCols::MergeMode, &(buf = L"Replace")[0]);
 			break;
 		default:
@@ -1550,7 +1550,7 @@ std::pair<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<st
 			pool.Submit(pFace.get(), [pFace = pFace.get(), &progressDialog]()->size_t {
 				if (progressDialog.IsCancelled())
 					return 0;
-				return pFace->GetMergedFont()->GetAllKerningPairs().size();
+				return pFace->GetMergedFont()->all_kerning_pairs().size();
 			});
 		}
 		pool.SubmitDoneAndWait();
@@ -1571,26 +1571,26 @@ std::pair<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<st
 	}
 	progressDialog.ThrowIfCancelled();
 
-	xivres::fontgen::FontdataPacker packer;
-	packer.SetDiscardStep(fontSet.DiscardStep);
-	packer.SetSideLength(fontSet.SideLength);
+	xivres::fontgen::fontdata_packer packer;
+	packer.set_discard_step(fontSet.DiscardStep);
+	packer.set_side_length(fontSet.SideLength);
 
 	for (auto& pFace : fontSet.Faces)
-		packer.AddFont(pFace->GetMergedFont());
+		packer.add_font(pFace->GetMergedFont());
 
-	packer.Compile();
+	packer.compile();
 
-	while (!packer.Wait(std::chrono::milliseconds(200))) {
+	while (!packer.wait(std::chrono::milliseconds(200))) {
 		progressDialog.ThrowIfCancelled();
 
-		progressDialog.UpdateStatusMessage(packer.GetProgressDescription());
-		progressDialog.UpdateProgress(packer.GetProgress());
+		progressDialog.UpdateStatusMessage(packer.progress_description());
+		progressDialog.UpdateProgress(packer.progress_scaled());
 	}
-	if (const auto err = packer.GetErrorIfFailed(); !err.empty())
+	if (const auto err = packer.get_error_if_failed(); !err.empty())
 		throw std::runtime_error(err);
 
-	const auto& fdts = packer.GetTargetFonts();
-	const auto& mips = packer.GetMipmapStreams();
+	const auto& fdts = packer.compiled_fontdatas();
+	const auto& mips = packer.compiled_mipmap_streams();
 	if (mips.empty())
 		throw std::runtime_error("No mipmap produced");
 

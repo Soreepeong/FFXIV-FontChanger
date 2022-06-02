@@ -28,22 +28,22 @@ namespace App::Structs {
 	};
 
 	struct RendererSpecificStruct {
-		xivres::fontgen::EmptyFixedSizeFont::CreateStruct Empty;
-		xivres::fontgen::FreeTypeFixedSizeFont::CreateStruct FreeType;
-		xivres::fontgen::DirectWriteFixedSizeFont::CreateStruct DirectWrite;
+		xivres::fontgen::empty_fixed_size_font::create_struct Empty;
+		xivres::fontgen::freetype_fixed_size_font::create_struct FreeType;
+		xivres::fontgen::directwrite_fixed_size_font::create_struct DirectWrite;
 	};
 
 	class FaceElement {
-		mutable std::shared_ptr<xivres::fontgen::IFixedSizeFont> m_baseFont;
-		mutable std::shared_ptr<xivres::fontgen::IFixedSizeFont> m_wrappedFont;
+		mutable std::shared_ptr<xivres::fontgen::fixed_size_font> m_baseFont;
+		mutable std::shared_ptr<xivres::fontgen::fixed_size_font> m_wrappedFont;
 		friend struct FontSet;
 
 	public:
 		float Size = 0.f;
 		float Gamma = 1.f;
-		xivres::fontgen::MergedFontCodepointMode MergeMode = xivres::fontgen::MergedFontCodepointMode::AddNew;
-		xivres::fontgen::FontRenderTransformationMatrix TransformationMatrix{ 1.f, 0.f, 0.f, 1.f };
-		xivres::fontgen::WrapModifiers WrapModifiers;
+		xivres::fontgen::codepoint_merge_mode MergeMode = xivres::fontgen::codepoint_merge_mode::AddNew;
+		xivres::fontgen::font_render_transformation_matrix TransformationMatrix{ 1.f, 0.f, 0.f, 1.f };
+		xivres::fontgen::wrap_modifiers WrapModifiers;
 		RendererEnum Renderer = RendererEnum::Empty;
 		LookupStruct Lookup;
 		RendererSpecificStruct RendererSpecific;
@@ -56,8 +56,8 @@ namespace App::Structs {
 
 		friend void swap(FaceElement& l, FaceElement& r) noexcept;
 
-		const std::shared_ptr<xivres::fontgen::IFixedSizeFont>& GetBaseFont() const;
-		const std::shared_ptr<xivres::fontgen::IFixedSizeFont>& GetWrappedFont() const;
+		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetBaseFont() const;
+		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetWrappedFont() const;
 
 		void OnFontWrappingParametersChange();
 		void OnFontCreateParametersChange();
@@ -72,7 +72,7 @@ namespace App::Structs {
 	void swap(FaceElement& l, FaceElement& r) noexcept;
 
 	class Face {
-		mutable std::shared_ptr<xivres::fontgen::IFixedSizeFont> MergedFont;
+		mutable std::shared_ptr<xivres::fontgen::fixed_size_font> MergedFont;
 
 	public:
 		std::string Name;
@@ -87,7 +87,7 @@ namespace App::Structs {
 
 		friend void swap(Face& l, Face& r) noexcept;
 
-		const std::shared_ptr<xivres::fontgen::IFixedSizeFont>& GetMergedFont() const;
+		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetMergedFont() const;
 
 		void OnElementChange();
 	};
@@ -138,7 +138,7 @@ namespace App::Structs {
 }
 
 namespace xivres::fontgen {
-	void to_json(nlohmann::json& json, const WrapModifiers& value);
+	void to_json(nlohmann::json& json, const wrap_modifiers& value);
 
-	void from_json(const nlohmann::json& json, WrapModifiers& value);
+	void from_json(const nlohmann::json& json, wrap_modifiers& value);
 }

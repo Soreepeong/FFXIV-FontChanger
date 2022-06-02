@@ -422,7 +422,7 @@ INT_PTR App::FaceElementEditorDialog::CustomRangeEdit_OnCommand(uint16_t notiCod
 }
 
 INT_PTR App::FaceElementEditorDialog::CustomRangeAdd_OnCommand(uint16_t notiCode) {
-	std::vector<char32_t> charVec(m_element.GetBaseFont()->GetAllCodepoints().begin(), m_element.GetBaseFont()->GetAllCodepoints().end());
+	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 
 	auto changed = false;
 	for (const auto& [c1, c2] : ParseCustomRangeString())
@@ -468,7 +468,7 @@ INT_PTR App::FaceElementEditorDialog::CodepointsMergeModeCombo_OnCommand(uint16_
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	if (const auto v = static_cast<xivres::fontgen::MergedFontCodepointMode>(ComboBox_GetCurSel(m_controls->CodepointsMergeModeCombo));
+	if (const auto v = static_cast<xivres::fontgen::codepoint_merge_mode>(ComboBox_GetCurSel(m_controls->CodepointsMergeModeCombo));
 		v != m_element.MergeMode) {
 		m_element.MergeMode = v;
 		OnWrappedFontChanged();
@@ -497,7 +497,7 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchResultList_OnCommand(uin
 
 		ListBox_GetSelItems(m_controls->UnicodeBlockSearchResultList, static_cast<int>(selItems.size()), &selItems[0]);
 
-		std::vector<char32_t> charVec(m_element.GetBaseFont()->GetAllCodepoints().begin(), m_element.GetBaseFont()->GetAllCodepoints().end());
+		std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 		std::wstring containingChars;
 
 		containingChars.reserve(8192);
@@ -524,7 +524,7 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchResultList_OnCommand(uin
 
 INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchAddAll_OnCommand(uint16_t notiCode) {
 	auto changed = false;
-	std::vector<char32_t> charVec(m_element.GetBaseFont()->GetAllCodepoints().begin(), m_element.GetBaseFont()->GetAllCodepoints().end());
+	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 	for (int i = 0, i_ = ListBox_GetCount(m_controls->UnicodeBlockSearchResultList); i < i_; i++) {
 		const auto& block = *reinterpret_cast<const xivres::util::unicode::blocks::block_definition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, i));
 		changed |= AddNewCodepointRange(block.First, block.Last, charVec);
@@ -544,7 +544,7 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchAdd_OnCommand(uint16_t n
 	ListBox_GetSelItems(m_controls->UnicodeBlockSearchResultList, static_cast<int>(selItems.size()), &selItems[0]);
 
 	auto changed = false;
-	std::vector<char32_t> charVec(m_element.GetBaseFont()->GetAllCodepoints().begin(), m_element.GetBaseFont()->GetAllCodepoints().end());
+	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 	for (const auto itemIndex : selItems) {
 		const auto& block = *reinterpret_cast<const xivres::util::unicode::blocks::block_definition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, itemIndex));
 		changed |= AddNewCodepointRange(block.First, block.Last, charVec);
@@ -606,7 +606,7 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	SetWindowNumber(m_controls->AdjustmentHorizontalOffsetEdit, m_element.WrapModifiers.HorizontalOffset);
 	SetWindowNumber(m_controls->AdjustmentGammaEdit, m_element.Gamma);
 
-	std::vector<char32_t> charVec(m_element.GetBaseFont()->GetAllCodepoints().begin(), m_element.GetBaseFont()->GetAllCodepoints().end());
+	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 	for (int i = 0, i_ = static_cast<int>(m_element.WrapModifiers.Codepoints.size()); i < i_; i++)
 		AddCodepointRangeToListBox(i, m_element.WrapModifiers.Codepoints[i].first, m_element.WrapModifiers.Codepoints[i].second, charVec);
 
@@ -884,7 +884,7 @@ void App::FaceElementEditorDialog::RefreshUnicodeBlockSearchResults() {
 
 	const auto searchByChar = Button_GetCheck(m_controls->UnicodeBlockSearchShowBlocksWithAnyOfCharactersInput);
 
-	std::vector<char32_t> charVec(m_element.GetBaseFont()->GetAllCodepoints().begin(), m_element.GetBaseFont()->GetAllCodepoints().end());
+	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 	for (const auto& block : xivres::util::unicode::blocks::all_blocks()) {
 		const auto nameView = std::string_view(block.Name);
 		const auto it = std::search(nameView.begin(), nameView.end(), input.begin(), input.end(), [](char ch1, char ch2) {

@@ -86,10 +86,10 @@ LRESULT App::ExportPreviewWindow::Window_OnPaint() {
 		sel = (std::max)(0, (std::min)(static_cast<int>(m_fonts.size() - 1), sel));
 		if (sel < m_fonts.size()) {
 			const auto& font = *m_fonts.at(sel).second;
-			xivres::fontgen::TextMeasurer(font)
-				.WithMaxWidth(m_pMipmap->Width - pad * 2)
-				.Measure(GetWindowString(m_hEdit))
-				.DrawTo(*m_pMipmap, font, 16, 16, { 0xFF, 0xFF, 0xFF, 0xFF }, { 0, 0, 0, 0 });
+			xivres::fontgen::text_measurer(font)
+				.max_width(m_pMipmap->Width - pad * 2)
+				.measure(GetWindowString(m_hEdit))
+				.draw_to(*m_pMipmap, font, 16, 16, { 0xFF, 0xFF, 0xFF, 0xFF }, { 0, 0, 0, 0 });
 		}
 	}
 
@@ -172,7 +172,7 @@ LRESULT WINAPI App::ExportPreviewWindow::WndProcInitial(HWND hwnd, UINT msg, WPA
 	return pImpl->WndProc(hwnd, msg, wParam, lParam);
 }
 
-App::ExportPreviewWindow::ExportPreviewWindow(std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::IFixedSizeFont>>> fonts) : m_fonts(fonts) {
+App::ExportPreviewWindow::ExportPreviewWindow(std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::fixed_size_font>>> fonts) : m_fonts(fonts) {
 	WNDCLASSEXW wcex{};
 	wcex.cbSize = sizeof(WNDCLASSEX);
 	wcex.style = CS_HREDRAW | CS_VREDRAW;
