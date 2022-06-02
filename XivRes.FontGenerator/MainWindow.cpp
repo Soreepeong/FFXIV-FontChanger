@@ -1021,9 +1021,17 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 
 					xivres::compressing_packed_stream<xivres::standard_compressing_packer> packedStream(targetFileName, fdts[i], compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
 
+					std::string targetFileNameLowerCase = targetFileName;
+					for (auto& c : targetFileNameLowerCase) {
+						if (0 < c && c < 0x80)
+							c = std::tolower(c);
+					}
+
 					ttmpl << nlohmann::json::object({
+						{ "Name", targetFileName },
+						{ "Category", std::format("Font({})", xivres::util::unicode::convert<std::string>(m_path.filename().wstring())) },
 						{ "DatFile", "000000" },
-						{ "FullPath", targetFileName },
+						{ "FullPath", targetFileNameLowerCase },
 						{ "ModOffset", ttmpdPos },
 						{ "ModSize", packedStream.size() },
 						}) << std::endl;
@@ -1051,9 +1059,17 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 
 					xivres::compressing_packed_stream<xivres::texture_compressing_packer> packedStream(targetFileName, std::move(textureOne), compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
 
+					std::string targetFileNameLowerCase = targetFileName;
+					for (auto& c : targetFileNameLowerCase) {
+						if (0 < c && c < 0x80)
+							c = std::tolower(c);
+					}
+
 					ttmpl << nlohmann::json::object({
+						{ "Name", targetFileName },
+						{ "Category", std::format("Font({})", xivres::util::unicode::convert<std::string>(m_path.filename().wstring())) },
 						{ "DatFile", "000000" },
-						{ "FullPath", targetFileName },
+						{ "FullPath", targetFileNameLowerCase },
 						{ "ModOffset", ttmpdPos },
 						{ "ModSize", packedStream.size() },
 						}) << std::endl;
