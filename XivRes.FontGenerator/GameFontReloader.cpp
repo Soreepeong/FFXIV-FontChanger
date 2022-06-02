@@ -263,7 +263,7 @@ void GameFontReloader::GameProcess::RefreshFonts(const FontSet* pTargetSet) cons
 	DuplicateHandle(m_hProcess.get(), hEvent2Target, nullptr, nullptr, 0, FALSE, DUPLICATE_CLOSE_SOURCE);
 }
 
-const GameFontReloader::FontSet& GameFontReloader::GetDefaultFontSet(XivRes::GameFontType type) {
+const GameFontReloader::FontSet& GameFontReloader::GetDefaultFontSet(xivres::font_type type) {
 	static const FontSet PresetFont{ {
 		{ 7, "font%d.tex", "AXIS_18.fdt" },
 		{ 7, "font%d.tex", "AXIS_14.fdt" },
@@ -441,10 +441,10 @@ const GameFontReloader::FontSet& GameFontReloader::GetDefaultFontSet(XivRes::Gam
 	} };
 
 	switch (type) {
-		case XivRes::GameFontType::font: return PresetFont;
-		case XivRes::GameFontType::font_lobby: return PresetFontLobby;
-		case XivRes::GameFontType::chn_axis: return PresetFontChnAxis; return PresetFontChnAxis;
-		case XivRes::GameFontType::krn_axis: return PresetFontKrnAxis;
+		case xivres::font_type::font: return PresetFont;
+		case xivres::font_type::font_lobby: return PresetFontLobby;
+		case xivres::font_type::chn_axis: return PresetFontChnAxis; return PresetFontChnAxis;
+		case xivres::font_type::krn_axis: return PresetFontKrnAxis;
 		default: throw std::out_of_range("font/lobby/chn/krn are supported");
 	}
 }

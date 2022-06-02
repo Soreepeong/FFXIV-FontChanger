@@ -18,10 +18,10 @@ LRESULT App::ExportPreviewWindow::Window_OnCreate(HWND hwnd) {
 
 	SendMessage(m_hFacesListBox, WM_SETFONT, reinterpret_cast<WPARAM>(m_hUiFont), FALSE);
 	SendMessage(m_hEdit, WM_SETFONT, reinterpret_cast<WPARAM>(m_hUiFont), FALSE);
-	Edit_SetText(m_hEdit, XivRes::Unicode::Convert<std::wstring>(Structs::GetDefaultPreviewText()).c_str());
+	Edit_SetText(m_hEdit, xivres::util::unicode::convert<std::wstring>(Structs::GetDefaultPreviewText()).c_str());
 
 	for (const auto& font : m_fonts)
-		ListBox_AddString(m_hFacesListBox, XivRes::Unicode::Convert<std::wstring>(font.first).c_str());
+		ListBox_AddString(m_hFacesListBox, xivres::util::unicode::convert<std::wstring>(font.first).c_str());
 	ListBox_SetCurSel(m_hFacesListBox, 0);
 
 	SetWindowSubclass(m_hEdit, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
@@ -48,11 +48,11 @@ LRESULT App::ExportPreviewWindow::Window_OnSize() {
 
 	m_nDrawLeft = FaceListBoxWidth;
 	m_nDrawTop = EditHeight;
-	m_pMipmap = std::make_shared<XivRes::MemoryMipmapStream>(
+	m_pMipmap = std::make_shared<xivres::texture::memory_mipmap_stream>(
 		(std::max<int>)(32, rc.right - rc.left - m_nDrawLeft),
 		(std::max<int>)(32, rc.bottom - rc.top - m_nDrawTop),
 		1,
-		XivRes::TextureFormat::A8R8G8B8);
+		xivres::texture::format::A8R8G8B8);
 
 	m_bNeedRedraw = true;
 	InvalidateRect(m_hWnd, nullptr, FALSE);
@@ -74,8 +74,8 @@ LRESULT App::ExportPreviewWindow::Window_OnPaint() {
 	if (m_bNeedRedraw) {
 		m_bNeedRedraw = false;
 		const auto pad = 16;
-		const auto buf = m_pMipmap->View<XivRes::RGBA8888>();
-		std::ranges::fill(buf, XivRes::RGBA8888{ 0x88, 0x88, 0x88, 0xFF });
+		const auto buf = m_pMipmap->as_span<xivres::util::RGBA8888>();
+		std::ranges::fill(buf, xivres::util::RGBA8888{ 0x88, 0x88, 0x88, 0xFF });
 
 		for (int y = pad; y < m_pMipmap->Height - pad; y++) {
 			for (int x = pad; x < m_pMipmap->Width - pad; x++)
@@ -86,7 +86,7 @@ LRESULT App::ExportPreviewWindow::Window_OnPaint() {
 		sel = (std::max)(0, (std::min)(static_cast<int>(m_fonts.size() - 1), sel));
 		if (sel < m_fonts.size()) {
 			const auto& font = *m_fonts.at(sel).second;
-			XivRes::FontGenerator::TextMeasurer(font)
+			xivres::fontgen::TextMeasurer(font)
 				.WithMaxWidth(m_pMipmap->Width - pad * 2)
 				.Measure(GetWindowString(m_hEdit))
 				.DrawTo(*m_pMipmap, font, 16, 16, { 0xFF, 0xFF, 0xFF, 0xFF }, { 0, 0, 0, 0 });
@@ -99,10 +99,10 @@ LRESULT App::ExportPreviewWindow::Window_OnPaint() {
 	bmih.biPlanes = 1;
 	bmih.biBitCount = 32;
 	bmih.biCompression = BI_BITFIELDS;
-	reinterpret_cast<XivRes::RGBA8888*>(&bitfields[0])->SetFrom(255, 0, 0, 0);
-	reinterpret_cast<XivRes::RGBA8888*>(&bitfields[1])->SetFrom(0, 255, 0, 0);
-	reinterpret_cast<XivRes::RGBA8888*>(&bitfields[2])->SetFrom(0, 0, 255, 0);
-	StretchDIBits(hdc, m_nDrawLeft, m_nDrawTop, m_pMipmap->Width, m_pMipmap->Height, 0, 0, m_pMipmap->Width, m_pMipmap->Height, &m_pMipmap->View<XivRes::RGBA8888>()[0], &bmi, DIB_RGB_COLORS, SRCCOPY);
+	reinterpret_cast<xivres::util::RGBA8888*>(&bitfields[0])->SetFrom(255, 0, 0, 0);
+	reinterpret_cast<xivres::util::RGBA8888*>(&bitfields[1])->SetFrom(0, 255, 0, 0);
+	reinterpret_cast<xivres::util::RGBA8888*>(&bitfields[2])->SetFrom(0, 0, 255, 0);
+	StretchDIBits(hdc, m_nDrawLeft, m_nDrawTop, m_pMipmap->Width, m_pMipmap->Height, 0, 0, m_pMipmap->Width, m_pMipmap->Height, &m_pMipmap->as_span<xivres::util::RGBA8888>()[0], &bmi, DIB_RGB_COLORS, SRCCOPY);
 	EndPaint(m_hWnd, &ps);
 
 	return 0;
@@ -172,7 +172,7 @@ LRESULT WINAPI App::ExportPreviewWindow::WndProcInitial(HWND hwnd, UINT msg, WPA
 	return pImpl->WndProc(hwnd, msg, wParam, lParam);
 }
 
-App::ExportPreviewWindow::ExportPreviewWindow(std::vector<std::pair<std::string, std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>>> fonts) : m_fonts(fonts) {
+App::ExportPreviewWindow::ExportPreviewWindow(std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::IFixedSizeFont>>> fonts) : m_fonts(fonts) {
 	WNDCLASSEXW wcex{};
 	wcex.cbSize = sizeof(WNDCLASSEX);
 	wcex.style = CS_HREDRAW | CS_VREDRAW;

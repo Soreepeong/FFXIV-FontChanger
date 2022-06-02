@@ -1,13 +1,13 @@
 ﻿#include "pch.h"
 #include "Structs.h"
 
-std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> GetGameFont(XivRes::FontGenerator::GameFontFamily family, float size) {
-	static std::map<XivRes::GameFontType, XivRes::FontGenerator::GameFontdataSet> s_fontSet;
+std::shared_ptr<xivres::fontgen::IFixedSizeFont> GetGameFont(xivres::fontgen::GameFontFamily family, float size) {
+	static std::map<xivres::font_type, xivres::fontgen::GameFontdataSet> s_fontSet;
 	static std::mutex s_mtx;
 
 	const auto lock = std::lock_guard(s_mtx);
 
-	std::shared_ptr<XivRes::FontGenerator::GameFontdataSet> strong;
+	std::shared_ptr<xivres::fontgen::GameFontdataSet> strong;
 
 	auto pathconf = nlohmann::json::object();
 	pathconf["global"] = nlohmann::json::array({ R"(C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game)" });
@@ -31,19 +31,19 @@ std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> GetGameFont(XivRes::FontG
 
 	try {
 		switch (family) {
-			case XivRes::FontGenerator::GameFontFamily::AXIS:
-			case XivRes::FontGenerator::GameFontFamily::Jupiter:
-			case XivRes::FontGenerator::GameFontFamily::JupiterN:
-			case XivRes::FontGenerator::GameFontFamily::MiedingerMid:
-			case XivRes::FontGenerator::GameFontFamily::Meidinger:
-			case XivRes::FontGenerator::GameFontFamily::TrumpGothic:
+			case xivres::fontgen::GameFontFamily::AXIS:
+			case xivres::fontgen::GameFontFamily::Jupiter:
+			case xivres::fontgen::GameFontFamily::JupiterN:
+			case xivres::fontgen::GameFontFamily::MiedingerMid:
+			case xivres::fontgen::GameFontFamily::Meidinger:
+			case xivres::fontgen::GameFontFamily::TrumpGothic:
 			{
-				auto& font = s_fontSet[XivRes::GameFontType::font];
+				auto& font = s_fontSet[xivres::font_type::font];
 				if (!font) {
 					for (const auto validRegion : { "global", "chinese", "korean" }) {
 						for (const auto& path : pathconf[validRegion]) {
 							try {
-								font = XivRes::GameReader(path.get<std::string>()).GetFonts(XivRes::GameFontType::font);
+								font = xivres::installation(path.get<std::string>()).get_fontdata_set(xivres::font_type::font);
 							} catch (...) {
 							}
 						}
@@ -54,14 +54,14 @@ std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> GetGameFont(XivRes::FontG
 				return font.GetFont(family, size);
 			}
 
-			case XivRes::FontGenerator::GameFontFamily::ChnAXIS:
+			case xivres::fontgen::GameFontFamily::ChnAXIS:
 			{
-				auto& font = s_fontSet[XivRes::GameFontType::chn_axis];
+				auto& font = s_fontSet[xivres::font_type::chn_axis];
 				if (!font) {
 					for (const auto validRegion : { "chinese" }) {
 						for (const auto& path : pathconf[validRegion]) {
 							try {
-								font = XivRes::GameReader(path.get<std::string>()).GetFonts(XivRes::GameFontType::chn_axis);
+								font = xivres::installation(path.get<std::string>()).get_fontdata_set(xivres::font_type::chn_axis);
 							} catch (...) {
 							}
 						}
@@ -72,14 +72,14 @@ std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> GetGameFont(XivRes::FontG
 				return font.GetFont(family, size);
 			}
 
-			case XivRes::FontGenerator::GameFontFamily::KrnAXIS:
+			case xivres::fontgen::GameFontFamily::KrnAXIS:
 			{
-				auto& font = s_fontSet[XivRes::GameFontType::krn_axis];
+				auto& font = s_fontSet[xivres::font_type::krn_axis];
 				if (!font) {
 					for (const auto validRegion : { "korean" }) {
 						for (const auto& path : pathconf[validRegion]) {
 							try {
-								font = XivRes::GameReader(path.get<std::string>()).GetFonts(XivRes::GameFontType::krn_axis);
+								font = xivres::installation(path.get<std::string>()).get_fontdata_set(xivres::font_type::krn_axis);
 							} catch (...) {
 							}
 						}
@@ -96,11 +96,11 @@ std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> GetGameFont(XivRes::FontG
 			showed = true;
 			MessageBoxW(nullptr, std::format(
 				L"Failed to find corresponding game installation ({}). Specify it in config.json. Delete config.json and run this program again to start anew. Suppressing this message from now on.",
-				XivRes::Unicode::Convert<std::wstring>(e.what())).c_str(), L"Error", MB_OK);
+				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(), L"Error", MB_OK);
 		}
 	}
 
-	return std::make_shared<XivRes::FontGenerator::EmptyFixedSizeFont>(size, XivRes::FontGenerator::EmptyFixedSizeFont::CreateStruct{});
+	return std::make_shared<xivres::fontgen::EmptyFixedSizeFont>(size, xivres::fontgen::EmptyFixedSizeFont::CreateStruct{});
 }
 
 std::wstring App::Structs::LookupStruct::GetWeightString() const {
@@ -146,7 +146,7 @@ std::wstring App::Structs::LookupStruct::GetStyleString() const {
 }
 
 std::pair<IDWriteFactoryPtr, IDWriteFontPtr> App::Structs::LookupStruct::ResolveFont() const {
-	using namespace XivRes::FontGenerator;
+	using namespace xivres::fontgen;
 
 	IDWriteFactoryPtr factory;
 	SuccessOrThrow(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(&factory)));
@@ -156,7 +156,7 @@ std::pair<IDWriteFactoryPtr, IDWriteFontPtr> App::Structs::LookupStruct::Resolve
 
 	uint32_t index;
 	BOOL exists;
-	SuccessOrThrow(coll->FindFamilyName(XivRes::Unicode::Convert<std::wstring>(Name).c_str(), &index, &exists));
+	SuccessOrThrow(coll->FindFamilyName(xivres::util::unicode::convert<std::wstring>(Name).c_str(), &index, &exists));
 	if (!exists)
 		throw std::invalid_argument("Font not found");
 
@@ -169,8 +169,8 @@ std::pair<IDWriteFactoryPtr, IDWriteFontPtr> App::Structs::LookupStruct::Resolve
 	return std::make_pair(std::move(factory), std::move(font));
 }
 
-std::pair<std::shared_ptr<XivRes::IStream>, int> App::Structs::LookupStruct::ResolveStream() const {
-	using namespace XivRes::FontGenerator;
+std::pair<std::shared_ptr<xivres::stream>, int> App::Structs::LookupStruct::ResolveStream() const {
+	using namespace xivres::fontgen;
 
 	auto [factory, font] = ResolveFont();
 
@@ -192,7 +192,7 @@ std::pair<std::shared_ptr<XivRes::IStream>, int> App::Structs::LookupStruct::Res
 	IDWriteFontFileStreamPtr stream;
 	SuccessOrThrow(loader->CreateStreamFromKey(refKey, refKeySize, &stream));
 
-	auto res = std::make_shared<XivRes::MemoryStream>();
+	auto res = std::make_shared<xivres::memory_stream>();
 	uint64_t fileSize;
 	SuccessOrThrow(stream->GetFileSize(&fileSize));
 	const void* pFragmentStart;
@@ -202,34 +202,34 @@ std::pair<std::shared_ptr<XivRes::IStream>, int> App::Structs::LookupStruct::Res
 	memcpy(&buf[0], pFragmentStart, buf.size());
 	stream->ReleaseFileFragment(pFragmentContext);
 
-	return { std::make_shared<XivRes::MemoryStream>(std::move(buf)), face->GetIndex() };
+	return { std::make_shared<xivres::memory_stream>(std::move(buf)), face->GetIndex() };
 }
 
-const std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>& App::Structs::FaceElement::GetBaseFont() const {
+const std::shared_ptr<xivres::fontgen::IFixedSizeFont>& App::Structs::FaceElement::GetBaseFont() const {
 	if (!m_baseFont) {
 		try {
 			switch (Renderer) {
 				case RendererEnum::Empty:
-					m_baseFont = std::make_shared<XivRes::FontGenerator::EmptyFixedSizeFont>(Size, RendererSpecific.Empty);
+					m_baseFont = std::make_shared<xivres::fontgen::EmptyFixedSizeFont>(Size, RendererSpecific.Empty);
 					break;
 
 				case RendererEnum::PrerenderedGameInstallation:
 					if (Lookup.Name == "AXIS")
-						m_baseFont = GetGameFont(XivRes::FontGenerator::GameFontFamily::AXIS, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::GameFontFamily::AXIS, Size);
 					else if (Lookup.Name == "Jupiter")
-						m_baseFont = GetGameFont(XivRes::FontGenerator::GameFontFamily::Jupiter, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::GameFontFamily::Jupiter, Size);
 					else if (Lookup.Name == "JupiterN")
-						m_baseFont = GetGameFont(XivRes::FontGenerator::GameFontFamily::JupiterN, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::GameFontFamily::JupiterN, Size);
 					else if (Lookup.Name == "Meidinger")
-						m_baseFont = GetGameFont(XivRes::FontGenerator::GameFontFamily::Meidinger, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::GameFontFamily::Meidinger, Size);
 					else if (Lookup.Name == "MiedingerMid")
-						m_baseFont = GetGameFont(XivRes::FontGenerator::GameFontFamily::MiedingerMid, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::GameFontFamily::MiedingerMid, Size);
 					else if (Lookup.Name == "TrumpGothic")
-						m_baseFont = GetGameFont(XivRes::FontGenerator::GameFontFamily::TrumpGothic, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::GameFontFamily::TrumpGothic, Size);
 					else if (Lookup.Name == "ChnAXIS")
-						m_baseFont = GetGameFont(XivRes::FontGenerator::GameFontFamily::ChnAXIS, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::GameFontFamily::ChnAXIS, Size);
 					else if (Lookup.Name == "KrnAXIS")
-						m_baseFont = GetGameFont(XivRes::FontGenerator::GameFontFamily::KrnAXIS, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::GameFontFamily::KrnAXIS, Size);
 					else
 						throw std::runtime_error("Invalid name");
 					break;
@@ -237,24 +237,24 @@ const std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>& App::Structs::Face
 				case RendererEnum::DirectWrite:
 				{
 					auto [factory, font] = Lookup.ResolveFont();
-					m_baseFont = std::make_shared<XivRes::FontGenerator::DirectWriteFixedSizeFont>(std::move(factory), std::move(font), Size, Gamma, TransformationMatrix, RendererSpecific.DirectWrite);
+					m_baseFont = std::make_shared<xivres::fontgen::DirectWriteFixedSizeFont>(std::move(factory), std::move(font), Size, Gamma, TransformationMatrix, RendererSpecific.DirectWrite);
 					break;
 				}
 
 				case RendererEnum::FreeType:
 				{
 					auto [pStream, index] = Lookup.ResolveStream();
-					m_baseFont = std::make_shared<XivRes::FontGenerator::FreeTypeFixedSizeFont>(*pStream, index, Size, Gamma, TransformationMatrix, RendererSpecific.FreeType);
+					m_baseFont = std::make_shared<xivres::fontgen::FreeTypeFixedSizeFont>(*pStream, index, Size, Gamma, TransformationMatrix, RendererSpecific.FreeType);
 					break;
 				}
 
 				default:
-					m_baseFont = std::make_shared<XivRes::FontGenerator::EmptyFixedSizeFont>();
+					m_baseFont = std::make_shared<xivres::fontgen::EmptyFixedSizeFont>();
 					break;
 			}
 
 		} catch (...) {
-			m_baseFont = std::make_shared<XivRes::FontGenerator::EmptyFixedSizeFont>(Size, RendererSpecific.Empty);
+			m_baseFont = std::make_shared<xivres::fontgen::EmptyFixedSizeFont>(Size, RendererSpecific.Empty);
 		}
 	}
 
@@ -262,9 +262,9 @@ const std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>& App::Structs::Face
 }
 
 
-const std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>& App::Structs::FaceElement::GetWrappedFont() const {
+const std::shared_ptr<xivres::fontgen::IFixedSizeFont>& App::Structs::FaceElement::GetWrappedFont() const {
 	if (!m_wrappedFont)
-		m_wrappedFont = std::make_shared<XivRes::FontGenerator::WrappingFixedSizeFont>(GetBaseFont(), WrapModifiers);
+		m_wrappedFont = std::make_shared<xivres::fontgen::WrappingFixedSizeFont>(GetBaseFont(), WrapModifiers);
 
 	return m_wrappedFont;
 }
@@ -329,14 +329,14 @@ std::wstring App::Structs::FaceElement::GetRangeRepresentation() const {
 		const auto right = std::ranges::upper_bound(charVec, c2);
 		const auto count = right - left;
 
-		const auto blk = std::lower_bound(XivRes::Unicode::UnicodeBlocks::Blocks.begin(), XivRes::Unicode::UnicodeBlocks::Blocks.end(), c1, [](const auto& l, const auto& r) { return l.First < r; });
-		if (blk != XivRes::Unicode::UnicodeBlocks::Blocks.end() && blk->First == c1 && blk->Last == c2) {
-			res += std::format(L"{}({})", XivRes::Unicode::Convert<std::wstring>(blk->Name), count);
+		const auto blk = std::lower_bound(xivres::util::unicode::blocks::all_blocks().begin(), xivres::util::unicode::blocks::all_blocks().end(), c1, [](const auto& l, const auto& r) { return l.First < r; });
+		if (blk != xivres::util::unicode::blocks::all_blocks().end() && blk->First == c1 && blk->Last == c2) {
+			res += std::format(L"{}({})", xivres::util::unicode::convert<std::wstring>(blk->Name), count);
 		} else if (c1 == c2) {
 			res += std::format(
 				L"U+{:04X} [{}]",
 				static_cast<uint32_t>(c1),
-				XivRes::Unicode::RepresentChar<std::wstring>(c1)
+				xivres::util::unicode::represent_codepoint<std::wstring>(c1)
 			);
 		} else {
 			res += std::format(
@@ -344,8 +344,8 @@ std::wstring App::Structs::FaceElement::GetRangeRepresentation() const {
 				static_cast<uint32_t>(c1),
 				static_cast<uint32_t>(c2),
 				count,
-				XivRes::Unicode::RepresentChar<std::wstring>(c1),
-				XivRes::Unicode::RepresentChar<std::wstring>(c2)
+				xivres::util::unicode::represent_codepoint<std::wstring>(c1),
+				xivres::util::unicode::represent_codepoint<std::wstring>(c2)
 			);
 		}
 	}
@@ -381,7 +381,7 @@ std::wstring App::Structs::FaceElement::GetLookupRepresentation() const {
 		case RendererEnum::DirectWrite:
 		case RendererEnum::FreeType:
 			return std::format(L"{} ({}, {}, {})",
-				XivRes::Unicode::Convert<std::wstring>(Lookup.Name),
+				xivres::util::unicode::convert<std::wstring>(Lookup.Name),
 				Lookup.GetWeightString(),
 				Lookup.GetStyleString(),
 				Lookup.GetStretchString()
@@ -439,14 +439,14 @@ void App::Structs::swap(App::Structs::FaceElement & l, App::Structs::FaceElement
 	swap(l.RendererSpecific, r.RendererSpecific);
 }
 
-const std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>& App::Structs::Face::GetMergedFont() const {
+const std::shared_ptr<xivres::fontgen::IFixedSizeFont>& App::Structs::Face::GetMergedFont() const {
 	if (!MergedFont) {
-		std::vector<std::pair<std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>, XivRes::FontGenerator::MergedFontCodepointMode>> mergeFontList;
+		std::vector<std::pair<std::shared_ptr<xivres::fontgen::IFixedSizeFont>, xivres::fontgen::MergedFontCodepointMode>> mergeFontList;
 
 		for (auto& pElement : Elements)
 			mergeFontList.emplace_back(pElement->GetWrappedFont(), pElement->MergeMode);
 
-		MergedFont = std::make_shared<XivRes::FontGenerator::MergedFixedSizeFont>(std::move(mergeFontList));
+		MergedFont = std::make_shared<xivres::fontgen::MergedFixedSizeFont>(std::move(mergeFontList));
 	}
 
 	return MergedFont;
@@ -493,7 +493,7 @@ void App::Structs::swap(App::Structs::Face & l, App::Structs::Face & r) noexcept
 }
 
 void App::Structs::FontSet::ConsolidateFonts() const {
-	std::map<std::string, std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>> loadedBaseFonts;
+	std::map<std::string, std::shared_ptr<xivres::fontgen::IFixedSizeFont>> loadedBaseFonts;
 	for (const auto& pFace : Faces) {
 		for (const auto& pElem : pFace->Elements) {
 			auto& elem = *pElem;
@@ -512,17 +512,17 @@ void App::Structs::FontSet::ConsolidateFonts() const {
 	}
 }
 
-App::Structs::FontSet App::Structs::FontSet::NewFromTemplateFont(XivRes::GameFontType fontType) {
+App::Structs::FontSet App::Structs::FontSet::NewFromTemplateFont(xivres::font_type fontType) {
 	FontSet res{};
 
-	if (const auto pcszFmt = XivRes::FontGenerator::GetFontTexFilenameFormat(fontType)) {
+	if (const auto pcszFmt = xivres::fontgen::GetFontTexFilenameFormat(fontType)) {
 		std::string_view filename(pcszFmt);
 		filename = filename.substr(filename.rfind('/') + 1);
 		res.TexFilenameFormat = filename;
 	} else
 		res.TexFilenameFormat = "font{}.tex";
 
-	for (const auto& def : XivRes::FontGenerator::GetFontDefinition(fontType)) {
+	for (const auto& def : xivres::fontgen::GetFontDefinition(fontType)) {
 		std::string_view filename(def.Path);
 		filename = filename.substr(filename.rfind('/') + 1);
 		filename = filename.substr(0, filename.find('.'));
@@ -616,21 +616,21 @@ void App::Structs::from_json(const nlohmann::json & json, FaceElement & value) {
 	value.Gamma = json.value<float>("gamma", 1.f);
 	if (const auto it = json.find("mergeMode"); it != json.end() && it->is_number_integer()) {
 		switch (it->get<int>()) {
-			case static_cast<int>(XivRes::FontGenerator::MergedFontCodepointMode::AddAll):
-				value.MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::AddAll;
+			case static_cast<int>(xivres::fontgen::MergedFontCodepointMode::AddAll):
+				value.MergeMode = xivres::fontgen::MergedFontCodepointMode::AddAll;
 				break;
-			case static_cast<int>(XivRes::FontGenerator::MergedFontCodepointMode::AddNew):
-				value.MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::AddNew;
+			case static_cast<int>(xivres::fontgen::MergedFontCodepointMode::AddNew):
+				value.MergeMode = xivres::fontgen::MergedFontCodepointMode::AddNew;
 				break;
-			case static_cast<int>(XivRes::FontGenerator::MergedFontCodepointMode::Replace):
-				value.MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::Replace;
+			case static_cast<int>(xivres::fontgen::MergedFontCodepointMode::Replace):
+				value.MergeMode = xivres::fontgen::MergedFontCodepointMode::Replace;
 				break;
 		}
 	} else if (const auto it = json.find("overwrite"); it != json.end() && it->is_boolean()) {
 		if (it->get<bool>())
-			value.MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::AddAll;
+			value.MergeMode = xivres::fontgen::MergedFontCodepointMode::AddAll;
 		else
-			value.MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::AddNew;
+			value.MergeMode = xivres::fontgen::MergedFontCodepointMode::AddNew;
 	}
 	if (const auto it = json.find("wrapModifiers"); it != json.end())
 		from_json(*it, value.WrapModifiers);
@@ -704,7 +704,7 @@ void App::Structs::to_json(nlohmann::json & json, const RendererSpecificStruct &
 		}));
 }
 
-void XivRes::FontGenerator::from_json(const nlohmann::json & json, XivRes::FontGenerator::WrapModifiers & value) {
+void xivres::fontgen::from_json(const nlohmann::json & json, xivres::fontgen::WrapModifiers & value) {
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
@@ -734,11 +734,11 @@ void XivRes::FontGenerator::from_json(const nlohmann::json & json, XivRes::FontG
 	if (const auto it = json.find("codepointReplacements"); it != json.end() && it->is_object()) {
 		for (const auto& item : it->items()) {
 			auto vs = item.value().get<std::string>();
-			char32_t l = Unicode::UReplacement;
-			char32_t r = Unicode::UReplacement;
-			Unicode::Decode(l, item.key().c_str(), item.key().size());
-			Unicode::Decode(r, vs.c_str(), vs.size());
-			if (l == Unicode::UReplacement || r == Unicode::UReplacement)
+			char32_t l = xivres::util::unicode::UReplacement;
+			char32_t r = xivres::util::unicode::UReplacement;
+			xivres::util::unicode::decode(l, item.key().c_str(), item.key().size());
+			xivres::util::unicode::decode(r, vs.c_str(), vs.size());
+			if (l == xivres::util::unicode::UReplacement || r == xivres::util::unicode::UReplacement)
 				continue;
 
 			value.CodepointReplacements.emplace(l, r);
@@ -746,7 +746,7 @@ void XivRes::FontGenerator::from_json(const nlohmann::json & json, XivRes::FontG
 	}
 }
 
-void XivRes::FontGenerator::to_json(nlohmann::json & json, const XivRes::FontGenerator::WrapModifiers & value) {
+void xivres::fontgen::to_json(nlohmann::json & json, const xivres::fontgen::WrapModifiers & value) {
 	json = nlohmann::json::object();
 	auto& codepoints = *json.emplace("codepoints", nlohmann::json::array()).first;
 	for (const auto& c : value.Codepoints)
@@ -756,7 +756,7 @@ void XivRes::FontGenerator::to_json(nlohmann::json & json, const XivRes::FontGen
 	json.emplace("baselineShift", value.BaselineShift);
 	auto& codepointReplacements = *json.emplace("codepointReplacements", nlohmann::json::object()).first;
 	for (const auto& [from, to] : value.CodepointReplacements)
-		codepointReplacements[Unicode::ConvertFromChar<std::string>(from)] = Unicode::ConvertFromChar<std::string>(to);
+		codepointReplacements[xivres::util::unicode::convert_from_codepoint<std::string>(from)] = xivres::util::unicode::convert_from_codepoint<std::string>(to);
 }
 
 void App::Structs::from_json(const nlohmann::json & json, LookupStruct & value) {

@@ -24,26 +24,26 @@ namespace App::Structs {
 		std::wstring GetStyleString() const;
 
 		std::pair<IDWriteFactoryPtr, IDWriteFontPtr> ResolveFont() const;
-		std::pair<std::shared_ptr<XivRes::IStream>, int> ResolveStream() const;
+		std::pair<std::shared_ptr<xivres::stream>, int> ResolveStream() const;
 	};
 
 	struct RendererSpecificStruct {
-		XivRes::FontGenerator::EmptyFixedSizeFont::CreateStruct Empty;
-		XivRes::FontGenerator::FreeTypeFixedSizeFont::CreateStruct FreeType;
-		XivRes::FontGenerator::DirectWriteFixedSizeFont::CreateStruct DirectWrite;
+		xivres::fontgen::EmptyFixedSizeFont::CreateStruct Empty;
+		xivres::fontgen::FreeTypeFixedSizeFont::CreateStruct FreeType;
+		xivres::fontgen::DirectWriteFixedSizeFont::CreateStruct DirectWrite;
 	};
 
 	class FaceElement {
-		mutable std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> m_baseFont;
-		mutable std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> m_wrappedFont;
+		mutable std::shared_ptr<xivres::fontgen::IFixedSizeFont> m_baseFont;
+		mutable std::shared_ptr<xivres::fontgen::IFixedSizeFont> m_wrappedFont;
 		friend struct FontSet;
 
 	public:
 		float Size = 0.f;
 		float Gamma = 1.f;
-		XivRes::FontGenerator::MergedFontCodepointMode MergeMode = XivRes::FontGenerator::MergedFontCodepointMode::AddNew;
-		XivRes::FontGenerator::FontRenderTransformationMatrix TransformationMatrix{ 1.f, 0.f, 0.f, 1.f };
-		XivRes::FontGenerator::WrapModifiers WrapModifiers;
+		xivres::fontgen::MergedFontCodepointMode MergeMode = xivres::fontgen::MergedFontCodepointMode::AddNew;
+		xivres::fontgen::FontRenderTransformationMatrix TransformationMatrix{ 1.f, 0.f, 0.f, 1.f };
+		xivres::fontgen::WrapModifiers WrapModifiers;
 		RendererEnum Renderer = RendererEnum::Empty;
 		LookupStruct Lookup;
 		RendererSpecificStruct RendererSpecific;
@@ -56,8 +56,8 @@ namespace App::Structs {
 
 		friend void swap(FaceElement& l, FaceElement& r) noexcept;
 
-		const std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>& GetBaseFont() const;
-		const std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>& GetWrappedFont() const;
+		const std::shared_ptr<xivres::fontgen::IFixedSizeFont>& GetBaseFont() const;
+		const std::shared_ptr<xivres::fontgen::IFixedSizeFont>& GetWrappedFont() const;
 
 		void OnFontWrappingParametersChange();
 		void OnFontCreateParametersChange();
@@ -72,7 +72,7 @@ namespace App::Structs {
 	void swap(FaceElement& l, FaceElement& r) noexcept;
 
 	class Face {
-		mutable std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont> MergedFont;
+		mutable std::shared_ptr<xivres::fontgen::IFixedSizeFont> MergedFont;
 
 	public:
 		std::string Name;
@@ -87,7 +87,7 @@ namespace App::Structs {
 
 		friend void swap(Face& l, Face& r) noexcept;
 
-		const std::shared_ptr<XivRes::FontGenerator::IFixedSizeFont>& GetMergedFont() const;
+		const std::shared_ptr<xivres::fontgen::IFixedSizeFont>& GetMergedFont() const;
 
 		void OnElementChange();
 	};
@@ -103,7 +103,7 @@ namespace App::Structs {
 
 		void ConsolidateFonts() const;
 
-		static FontSet NewFromTemplateFont(XivRes::GameFontType fontType);
+		static FontSet NewFromTemplateFont(xivres::font_type fontType);
 	};
 
 	struct MultiFontSet {
@@ -137,7 +137,7 @@ namespace App::Structs {
 	const char* GetDefaultPreviewText();
 }
 
-namespace XivRes::FontGenerator {
+namespace xivres::fontgen {
 	void to_json(nlohmann::json& json, const WrapModifiers& value);
 
 	void from_json(const nlohmann::json& json, WrapModifiers& value);

@@ -56,7 +56,7 @@ bool App::ProgressDialog::IsCancelled() const {
 }
 
 void App::ProgressDialog::UpdateStatusMessage(const std::string& s) {
-	Static_SetText(m_controls->StepNameStatic, XivRes::Unicode::Convert<std::wstring>(s).c_str());
+	Static_SetText(m_controls->StepNameStatic, xivres::util::unicode::convert<std::wstring>(s).c_str());
 }
 
 void App::ProgressDialog::UpdateProgress(float progress) {
@@ -70,7 +70,7 @@ void App::ProgressDialog::UpdateProgress(float progress) {
 }
 
 INT_PTR App::ProgressDialog::Dialog_OnInitDialog() {
-	SetWindowTextW(m_controls->Window, XivRes::Unicode::Convert<std::wstring>(m_windowTitle).c_str());
+	SetWindowTextW(m_controls->Window, xivres::util::unicode::convert<std::wstring>(m_windowTitle).c_str());
 	SendMessageW(m_controls->ProgrssBar, PBM_SETRANGE32, 0, 10000);
 	UpdateProgress(std::nanf(""));
 

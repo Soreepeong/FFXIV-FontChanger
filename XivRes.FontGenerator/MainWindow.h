@@ -34,7 +34,7 @@ namespace App {
 		Structs::FontSet* m_pFontSet;
 		Structs::Face* m_pActiveFace = nullptr;
 
-		std::shared_ptr<XivRes::MemoryMipmapStream> m_pMipmap;
+		std::shared_ptr<xivres::texture::memory_mipmap_stream> m_pMipmap;
 		std::map<Structs::FaceElement*, std::unique_ptr<FaceElementEditorDialog>> m_editors;
 		bool m_bNeedRedraw = false;
 		bool m_bWordWrap = false;
@@ -52,7 +52,7 @@ namespace App {
 		int m_nDrawLeft{};
 		int m_nDrawTop{};
 		int m_nZoom = 1;
-		XivRes::GameFontType m_hotReloadFontType = XivRes::GameFontType::undefined;
+		xivres::font_type m_hotReloadFontType = xivres::font_type::undefined;
 
 		bool m_bIsReorderingFaceElementList = false;
 
@@ -75,7 +75,7 @@ namespace App {
 		LRESULT Window_OnDestroy();
 		void Window_Redraw();
 
-		LRESULT Menu_File_New(XivRes::GameFontType fontType);
+		LRESULT Menu_File_New(xivres::font_type fontType);
 		LRESULT Menu_File_Open();
 		LRESULT Menu_File_Save();
 		LRESULT Menu_File_SaveAs(bool changeCurrentFile);
@@ -104,7 +104,7 @@ namespace App {
 		LRESULT Menu_Export_TTMP(CompressionMode compressionMode);
 
 		LRESULT Menu_HotReload_Reload(bool restore);
-		LRESULT Menu_HotReload_Font(XivRes::GameFontType mode);
+		LRESULT Menu_HotReload_Font(xivres::font_type mode);
 
 		LRESULT Edit_OnCommand(uint16_t commandId);
 
@@ -129,7 +129,7 @@ namespace App {
 		void UpdateFaceElementList();
 		void UpdateFaceElementListViewItem(const Structs::FaceElement& element);
 
-		std::pair<std::vector<std::shared_ptr<XivRes::FontdataStream>>, std::vector<std::shared_ptr<XivRes::MemoryMipmapStream>>> CompileCurrentFontSet(ProgressDialog&, Structs::FontSet& fontSet);
+		std::pair<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<std::shared_ptr<xivres::texture::memory_mipmap_stream>>> CompileCurrentFontSet(ProgressDialog&, Structs::FontSet& fontSet);
 
 		LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			switch (msg) {
@@ -137,10 +137,10 @@ namespace App {
 					switch (LOWORD(wParam)) {
 						case Id_Edit: return Edit_OnCommand(HIWORD(wParam));
 						case Id_FaceListBox: return FaceListBox_OnCommand(HIWORD(wParam));
-						case ID_FILE_NEW_MAINGAMEFONT: return Menu_File_New(XivRes::GameFontType::font);
-						case ID_FILE_NEW_LOBBYFONT: return Menu_File_New(XivRes::GameFontType::font_lobby);
-						case ID_FILE_NEW_CHNAXIS: return Menu_File_New(XivRes::GameFontType::chn_axis);
-						case ID_FILE_NEW_KRNAXIS: return Menu_File_New(XivRes::GameFontType::krn_axis);
+						case ID_FILE_NEW_MAINGAMEFONT: return Menu_File_New(xivres::font_type::font);
+						case ID_FILE_NEW_LOBBYFONT: return Menu_File_New(xivres::font_type::font_lobby);
+						case ID_FILE_NEW_CHNAXIS: return Menu_File_New(xivres::font_type::chn_axis);
+						case ID_FILE_NEW_KRNAXIS: return Menu_File_New(xivres::font_type::krn_axis);
 						case ID_FILE_OPEN: return Menu_File_Open();
 						case ID_FILE_SAVE: return Menu_File_Save();
 						case ID_FILE_SAVEAS: return Menu_File_SaveAs(true);
@@ -188,11 +188,11 @@ namespace App {
 						case ID_EXPORT_TOTTMP_DONOTCOMPRESS: return Menu_Export_TTMP(CompressionMode::DoNotCompress);
 						case ID_HOTRELOAD_RELOAD: return Menu_HotReload_Reload(false);
 						case ID_HOTRELOAD_RESTORE: return Menu_HotReload_Reload(true);
-						case ID_HOTRELOAD_FONT_AUTO: return Menu_HotReload_Font(XivRes::GameFontType::undefined);
-						case ID_HOTRELOAD_FONT_FONT: return Menu_HotReload_Font(XivRes::GameFontType::font);
-						case ID_HOTRELOAD_FONT_LOBBY: return Menu_HotReload_Font(XivRes::GameFontType::font_lobby);
-						case ID_HOTRELOAD_FONT_CHNAXIS: return Menu_HotReload_Font(XivRes::GameFontType::chn_axis);
-						case ID_HOTRELOAD_FONT_KRNAXIS: return Menu_HotReload_Font(XivRes::GameFontType::krn_axis);
+						case ID_HOTRELOAD_FONT_AUTO: return Menu_HotReload_Font(xivres::font_type::undefined);
+						case ID_HOTRELOAD_FONT_FONT: return Menu_HotReload_Font(xivres::font_type::font);
+						case ID_HOTRELOAD_FONT_LOBBY: return Menu_HotReload_Font(xivres::font_type::font_lobby);
+						case ID_HOTRELOAD_FONT_CHNAXIS: return Menu_HotReload_Font(xivres::font_type::chn_axis);
+						case ID_HOTRELOAD_FONT_KRNAXIS: return Menu_HotReload_Font(xivres::font_type::krn_axis);
 					}
 					break;
 

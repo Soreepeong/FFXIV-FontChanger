@@ -1,0 +1,3 @@
+[submodule "xivres"]
+	path = xivres
+	url = git@github.com:Soreepeong/xivres.git

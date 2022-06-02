@@ -40,5 +40,5 @@ namespace GameFontReloader {
 		void RefreshFonts(const FontSet* pTargetSet = nullptr) const;
 	};
 
-	const FontSet& GetDefaultFontSet(XivRes::GameFontType type);
+	const FontSet& GetDefaultFontSet(xivres::font_type type);
 }

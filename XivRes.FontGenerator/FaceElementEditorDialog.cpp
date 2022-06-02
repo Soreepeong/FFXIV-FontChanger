@@ -83,7 +83,7 @@ template<typename T>
 bool App::FaceElementEditorDialog::TryEvaluate(const std::wstring& wstr, T& res, bool silent) {
 	exprtk::expression<double> expr;
 	exprtk::parser<double> parser;
-	if (parser.compile(XivRes::Unicode::Convert<std::string>(std::wstring_view(wstr).substr(1)), expr)) {
+	if (parser.compile(xivres::util::unicode::convert<std::string>(std::wstring_view(wstr).substr(1)), expr)) {
 		if constexpr (std::is_integral_v<T>)
 			res = static_cast<T>(std::round(expr.value()));
 		else
@@ -105,7 +105,7 @@ bool App::FaceElementEditorDialog::TryEvaluate(const std::wstring& wstr, T& res,
 		}
 
 		if (!silent)
-			MessageBoxW(m_controls->Window, XivRes::Unicode::Convert<std::wstring>(errors).c_str(), L"Error", MB_OK | MB_ICONWARNING);
+			MessageBoxW(m_controls->Window, xivres::util::unicode::convert<std::wstring>(errors).c_str(), L"Error", MB_OK | MB_ICONWARNING);
 		return false;
 	}
 }
@@ -163,7 +163,7 @@ INT_PTR App::FaceElementEditorDialog::FontCombo_OnCommand(uint16_t notiCode) {
 		return 0;
 
 	RepopulateFontSubComboBox();
-	m_element.Lookup.Name = XivRes::Unicode::Convert<std::string>(GetWindowString(m_controls->FontCombo));
+	m_element.Lookup.Name = xivres::util::unicode::convert<std::string>(GetWindowString(m_controls->FontCombo));
 	OnBaseFontChanged();
 	RefreshUnicodeBlockSearchResults();
 	return 0;
@@ -403,15 +403,15 @@ INT_PTR App::FaceElementEditorDialog::CustomRangeEdit_OnCommand(uint16_t notiCod
 			description += std::format(
 				L"U+{:04X} {}",
 				static_cast<uint32_t>(c1),
-				XivRes::Unicode::RepresentChar<std::wstring>(c1)
+				xivres::util::unicode::represent_codepoint<std::wstring>(c1)
 			);
 		} else {
 			description += std::format(
 				L"U+{:04X}~{:04X} {}~{}",
 				static_cast<uint32_t>(c1),
 				static_cast<uint32_t>(c2),
-				XivRes::Unicode::RepresentChar<std::wstring>(c1),
-				XivRes::Unicode::RepresentChar<std::wstring>(c2)
+				xivres::util::unicode::represent_codepoint<std::wstring>(c1),
+				xivres::util::unicode::represent_codepoint<std::wstring>(c2)
 			);
 		}
 	}
@@ -468,7 +468,7 @@ INT_PTR App::FaceElementEditorDialog::CodepointsMergeModeCombo_OnCommand(uint16_
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	if (const auto v = static_cast<XivRes::FontGenerator::MergedFontCodepointMode>(ComboBox_GetCurSel(m_controls->CodepointsMergeModeCombo));
+	if (const auto v = static_cast<xivres::fontgen::MergedFontCodepointMode>(ComboBox_GetCurSel(m_controls->CodepointsMergeModeCombo));
 		v != m_element.MergeMode) {
 		m_element.MergeMode = v;
 		OnWrappedFontChanged();
@@ -503,10 +503,10 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchResultList_OnCommand(uin
 		containingChars.reserve(8192);
 
 		for (const auto itemIndex : selItems) {
-			const auto& block = *reinterpret_cast<XivRes::Unicode::UnicodeBlocks::BlockDefinition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, itemIndex));
+			const auto& block = *reinterpret_cast<xivres::util::unicode::blocks::block_definition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, itemIndex));
 
 			for (auto it = std::ranges::lower_bound(charVec, block.First), it_ = std::ranges::upper_bound(charVec, block.Last); it != it_; ++it) {
-				XivRes::Unicode::RepresentChar(containingChars, *it);
+				xivres::util::unicode::represent_codepoint(containingChars, *it);
 				if (containingChars.size() >= 8192)
 					break;
 			}
@@ -526,7 +526,7 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchAddAll_OnCommand(uint16_
 	auto changed = false;
 	std::vector<char32_t> charVec(m_element.GetBaseFont()->GetAllCodepoints().begin(), m_element.GetBaseFont()->GetAllCodepoints().end());
 	for (int i = 0, i_ = ListBox_GetCount(m_controls->UnicodeBlockSearchResultList); i < i_; i++) {
-		const auto& block = *reinterpret_cast<const XivRes::Unicode::UnicodeBlocks::BlockDefinition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, i));
+		const auto& block = *reinterpret_cast<const xivres::util::unicode::blocks::block_definition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, i));
 		changed |= AddNewCodepointRange(block.First, block.Last, charVec);
 	}
 
@@ -546,7 +546,7 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchAdd_OnCommand(uint16_t n
 	auto changed = false;
 	std::vector<char32_t> charVec(m_element.GetBaseFont()->GetAllCodepoints().begin(), m_element.GetBaseFont()->GetAllCodepoints().end());
 	for (const auto itemIndex : selItems) {
-		const auto& block = *reinterpret_cast<const XivRes::Unicode::UnicodeBlocks::BlockDefinition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, itemIndex));
+		const auto& block = *reinterpret_cast<const xivres::util::unicode::blocks::block_definition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, itemIndex));
 		changed |= AddNewCodepointRange(block.First, block.Last, charVec);
 	}
 
@@ -571,7 +571,7 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	ComboBox_AddString(m_controls->FontRendererCombo, L"DirectWrite");
 	ComboBox_AddString(m_controls->FontRendererCombo, L"FreeType");
 	ComboBox_SetCurSel(m_controls->FontRendererCombo, static_cast<int>(m_element.Renderer));
-	ComboBox_SetText(m_controls->FontCombo, XivRes::Unicode::Convert<std::wstring>(m_element.Lookup.Name).c_str());
+	ComboBox_SetText(m_controls->FontCombo, xivres::util::unicode::convert<std::wstring>(m_element.Lookup.Name).c_str());
 	SetWindowNumber(m_controls->EmptyAscentEdit, m_element.RendererSpecific.Empty.Ascent);
 	SetWindowNumber(m_controls->EmptyLineHeightEdit, m_element.RendererSpecific.Empty.LineHeight);
 	Button_SetCheck(m_controls->FreeTypeNoHintingCheck, (m_element.RendererSpecific.FreeType.LoadFlags & FT_LOAD_NO_HINTING) ? TRUE : FALSE);
@@ -769,7 +769,7 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 }
 
 std::vector<std::pair<char32_t, char32_t>> App::FaceElementEditorDialog::ParseCustomRangeString() {
-	const auto input = XivRes::Unicode::Convert<std::u32string>(GetWindowString(m_controls->CustomRangeEdit));
+	const auto input = xivres::util::unicode::convert<std::u32string>(GetWindowString(m_controls->CustomRangeEdit));
 	size_t next = 0;
 	std::vector<std::pair<char32_t, char32_t>> ranges;
 	for (size_t i = 0; i < input.size(); i = next + 1) {
@@ -791,19 +791,19 @@ std::vector<std::pair<char32_t, char32_t>> App::FaceElementEditorDialog::ParseCu
 
 		if (part.starts_with(U"0x") || part.starts_with(U"0X") || part.starts_with(U"U+") || part.starts_with(U"u+") || part.starts_with(U"\\x") || part.starts_with(U"\\X")) {
 			if (const auto sep = part.find_first_of(U"-~:"); sep != std::u32string::npos) {
-				auto c1 = std::strtol(XivRes::Unicode::Convert<std::string>(part.substr(2, sep - 2)).c_str(), nullptr, 16);
+				auto c1 = std::strtol(xivres::util::unicode::convert<std::string>(part.substr(2, sep - 2)).c_str(), nullptr, 16);
 				auto part2 = part.substr(sep + 1);
 				while (!part2.empty() && part2.front() < 128 && std::isspace(part2.front()))
 					part2 = part2.substr(1);
 				if (part2.starts_with(U"0x") || part2.starts_with(U"0X") || part2.starts_with(U"U+") || part2.starts_with(U"u+") || part2.starts_with(U"\\x") || part2.starts_with(U"\\X"))
 					part2 = part2.substr(2);
-				auto c2 = std::strtol(XivRes::Unicode::Convert<std::string>(part2).c_str(), nullptr, 16);
+				auto c2 = std::strtol(xivres::util::unicode::convert<std::string>(part2).c_str(), nullptr, 16);
 				if (c1 < c2)
 					ranges.emplace_back(c1, c2);
 				else
 					ranges.emplace_back(c2, c1);
 			} else {
-				const auto c = std::strtol(XivRes::Unicode::Convert<std::string>(part.substr(2)).c_str(), nullptr, 16);
+				const auto c = std::strtol(xivres::util::unicode::convert<std::string>(part.substr(2)).c_str(), nullptr, 16);
 				ranges.emplace_back(c, c);
 			}
 		} else {
@@ -839,31 +839,31 @@ void App::FaceElementEditorDialog::AddCodepointRangeToListBox(int index, char32_
 	const auto right = std::ranges::upper_bound(charVec, c2);
 	const auto count = right - left;
 
-	const auto block = std::lower_bound(XivRes::Unicode::UnicodeBlocks::Blocks.begin(), XivRes::Unicode::UnicodeBlocks::Blocks.end(), c1, [](const auto& l, const auto& r) { return l.First < r; });
-	if (block != XivRes::Unicode::UnicodeBlocks::Blocks.end() && block->First == c1 && block->Last == c2) {
+	const auto block = std::lower_bound(xivres::util::unicode::blocks::all_blocks().begin(), xivres::util::unicode::blocks::all_blocks().end(), c1, [](const auto& l, const auto& r) { return l.First < r; });
+	if (block != xivres::util::unicode::blocks::all_blocks().end() && block->First == c1 && block->Last == c2) {
 		if (c1 == c2) {
 			ListBox_AddString(m_controls->CodepointsList, std::format(
 				L"U+{:04X} {} [{}]",
 				static_cast<uint32_t>(c1),
-				XivRes::Unicode::Convert<std::wstring>(block->Name),
-				XivRes::Unicode::RepresentChar<std::wstring>(c1)
+				xivres::util::unicode::convert<std::wstring>(block->Name),
+				xivres::util::unicode::represent_codepoint<std::wstring>(c1)
 			).c_str());
 		} else {
 			ListBox_AddString(m_controls->CodepointsList, std::format(
 				L"U+{:04X}~{:04X} {} ({}) {} ~ {}",
 				static_cast<uint32_t>(c1),
 				static_cast<uint32_t>(c2),
-				XivRes::Unicode::Convert<std::wstring>(block->Name),
+				xivres::util::unicode::convert<std::wstring>(block->Name),
 				count,
-				XivRes::Unicode::RepresentChar<std::wstring>(c1),
-				XivRes::Unicode::RepresentChar<std::wstring>(c2)
+				xivres::util::unicode::represent_codepoint<std::wstring>(c1),
+				xivres::util::unicode::represent_codepoint<std::wstring>(c2)
 			).c_str());
 		}
 	} else if (c1 == c2) {
 		ListBox_AddString(m_controls->CodepointsList, std::format(
 			L"U+{:04X} [{}]",
 			static_cast<int>(c1),
-			XivRes::Unicode::RepresentChar<std::wstring>(c1)
+			xivres::util::unicode::represent_codepoint<std::wstring>(c1)
 		).c_str());
 	} else {
 		ListBox_AddString(m_controls->CodepointsList, std::format(
@@ -871,21 +871,21 @@ void App::FaceElementEditorDialog::AddCodepointRangeToListBox(int index, char32_
 			static_cast<uint32_t>(c1),
 			static_cast<uint32_t>(c2),
 			count,
-			XivRes::Unicode::RepresentChar<std::wstring>(c1),
-			XivRes::Unicode::RepresentChar<std::wstring>(c2)
+			xivres::util::unicode::represent_codepoint<std::wstring>(c1),
+			xivres::util::unicode::represent_codepoint<std::wstring>(c2)
 		).c_str());
 	}
 }
 
 void App::FaceElementEditorDialog::RefreshUnicodeBlockSearchResults() {
-	const auto input = XivRes::Unicode::Convert<std::string>(GetWindowString(m_controls->UnicodeBlockSearchNameEdit));
-	const auto input32 = XivRes::Unicode::Convert<std::u32string>(input);
+	const auto input = xivres::util::unicode::convert<std::string>(GetWindowString(m_controls->UnicodeBlockSearchNameEdit));
+	const auto input32 = xivres::util::unicode::convert<std::u32string>(input);
 	ListBox_ResetContent(m_controls->UnicodeBlockSearchResultList);
 
 	const auto searchByChar = Button_GetCheck(m_controls->UnicodeBlockSearchShowBlocksWithAnyOfCharactersInput);
 
 	std::vector<char32_t> charVec(m_element.GetBaseFont()->GetAllCodepoints().begin(), m_element.GetBaseFont()->GetAllCodepoints().end());
-	for (const auto& block : XivRes::Unicode::UnicodeBlocks::Blocks) {
+	for (const auto& block : xivres::util::unicode::blocks::all_blocks()) {
 		const auto nameView = std::string_view(block.Name);
 		const auto it = std::search(nameView.begin(), nameView.end(), input.begin(), input.end(), [](char ch1, char ch2) {
 			return std::toupper(ch1) == std::toupper(ch2);
@@ -914,10 +914,10 @@ void App::FaceElementEditorDialog::RefreshUnicodeBlockSearchResults() {
 			L"U+{:04X}~{:04X} {} ({}) {} ~ {}",
 			static_cast<uint32_t>(block.First),
 			static_cast<uint32_t>(block.Last),
-			XivRes::Unicode::Convert<std::wstring>(nameView),
+			xivres::util::unicode::convert<std::wstring>(nameView),
 			right - left,
-			XivRes::Unicode::RepresentChar<std::wstring>(block.First),
-			XivRes::Unicode::RepresentChar<std::wstring>(block.Last)
+			xivres::util::unicode::represent_codepoint<std::wstring>(block.First),
+			xivres::util::unicode::represent_codepoint<std::wstring>(block.Last)
 		).c_str());
 		ListBox_SetItemData(m_controls->UnicodeBlockSearchResultList, ListBox_GetCount(m_controls->UnicodeBlockSearchResultList) - 1, &block);
 	}
@@ -1098,7 +1098,7 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 			for (auto& name : ValidFonts) {
 				ComboBox_AddString(m_controls->FontCombo, name.c_str());
 
-				auto curNameLower = XivRes::Unicode::Convert<std::wstring>(m_element.Lookup.Name);
+				auto curNameLower = xivres::util::unicode::convert<std::wstring>(m_element.Lookup.Name);
 				for (auto& c : curNameLower)
 					c = std::tolower(c);
 				for (auto& c : name)
@@ -1116,8 +1116,6 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 		case App::Structs::RendererEnum::DirectWrite:
 		case App::Structs::RendererEnum::FreeType:
 		{
-			using namespace XivRes::FontGenerator;
-
 			IDWriteFactory3Ptr factory;
 			SuccessOrThrow(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory3), reinterpret_cast<IUnknown**>(&factory)));
 
@@ -1163,7 +1161,7 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 				names.insert(names.begin() + insertAt, std::move(resLower));
 			}
 
-			auto curNameLower = XivRes::Unicode::Convert<std::wstring>(m_element.Lookup.Name);
+			auto curNameLower = xivres::util::unicode::convert<std::wstring>(m_element.Lookup.Name);
 			for (auto& c : curNameLower)
 				c = std::tolower(c);
 			if (const auto it = std::ranges::lower_bound(names, curNameLower); it != names.end() && *it == curNameLower)

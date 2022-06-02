@@ -32,23 +32,24 @@
 // https://github.com/Nomade040/nmd/blob/master/nmd_assembly.h
 #include "nmd_assembly.h"
 
-#include "XivRes/BinaryPackedFileStream.h"
-#include "XivRes/FontdataStream.h"
-#include "XivRes/GameReader.h"
-#include "XivRes/MipmapStream.h"
-#include "XivRes/PackedFileUnpackingStream.h"
-#include "XivRes/PixelFormats.h"
-#include "XivRes/TexturePackedFileStream.h"
-#include "XivRes/TextureStream.h"
-#include "XivRes/FontGenerator/WrappingFixedSizeFont.h"
-#include "XivRes/FontGenerator/DirectWriteFixedSizeFont.h"
-#include "XivRes/FontGenerator/FontdataPacker.h"
-#include "XivRes/FontGenerator/FreeTypeFixedSizeFont.h"
-#include "XivRes/FontGenerator/GameFontdataFixedSizeFont.h"
-#include "XivRes/FontGenerator/MergedFixedSizeFont.h"
-#include "XivRes/FontGenerator/TextMeasurer.h"
-#include "XivRes/FontGenerator/WrappingFixedSizeFont.h"
-#include "XivRes/Internal/TexturePreview.Windows.h"
+#include "xivres/packed_stream.standard.h"
+#include "xivres/packed_stream.texture.h"
+#include "xivres/fontdata.h"
+#include "xivres/installation.h"
+#include "xivres/texture.h"
+#include "xivres/texture.mipmap_stream.h"
+#include "xivres/unpacked_stream.h"
+#include "xivres/util.pixel_formats.h"
+#include "xivres/util.on_dtor.h"
+#include "xivres.fontgen/WrappingFixedSizeFont.h"
+#include "xivres.fontgen/DirectWriteFixedSizeFont.h"
+#include "xivres.fontgen/FontdataPacker.h"
+#include "xivres.fontgen/FreeTypeFixedSizeFont.h"
+#include "xivres.fontgen/GameFontdataFixedSizeFont.h"
+#include "xivres.fontgen/MergedFixedSizeFont.h"
+#include "xivres.fontgen/TextMeasurer.h"
+#include "xivres.fontgen/WrappingFixedSizeFont.h"
+#include "xivres/texture.preview.h"
 
 extern HINSTANCE g_hInstance;
 
@@ -87,3 +88,5 @@ inline void SetWindowNumber(HWND hwnd, T v) {
 	else
 		static_assert(!sizeof(T), "no match");
 }
+
+HRESULT SuccessOrThrow(HRESULT hr, std::initializer_list<HRESULT> acceptables = {});
