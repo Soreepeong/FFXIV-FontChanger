@@ -1,7 +1,7 @@
 ﻿#include "pch.h"
 #include "Structs.h"
 
-std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::game_font_Family family, float size) {
+std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::game_font_family family, float size) {
 	static std::map<xivres::font_type, xivres::fontgen::game_fontdata_set> s_fontSet;
 	static std::mutex s_mtx;
 
@@ -31,12 +31,12 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 
 	try {
 		switch (family) {
-			case xivres::fontgen::game_font_Family::AXIS:
-			case xivres::fontgen::game_font_Family::Jupiter:
-			case xivres::fontgen::game_font_Family::JupiterN:
-			case xivres::fontgen::game_font_Family::MiedingerMid:
-			case xivres::fontgen::game_font_Family::Meidinger:
-			case xivres::fontgen::game_font_Family::TrumpGothic:
+			case xivres::fontgen::game_font_family::AXIS:
+			case xivres::fontgen::game_font_family::Jupiter:
+			case xivres::fontgen::game_font_family::JupiterN:
+			case xivres::fontgen::game_font_family::MiedingerMid:
+			case xivres::fontgen::game_font_family::Meidinger:
+			case xivres::fontgen::game_font_family::TrumpGothic:
 			{
 				auto& font = s_fontSet[xivres::font_type::font];
 				if (!font) {
@@ -54,7 +54,7 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 				return font.get_font(family, size);
 			}
 
-			case xivres::fontgen::game_font_Family::ChnAXIS:
+			case xivres::fontgen::game_font_family::ChnAXIS:
 			{
 				auto& font = s_fontSet[xivres::font_type::chn_axis];
 				if (!font) {
@@ -72,7 +72,7 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 				return font.get_font(family, size);
 			}
 
-			case xivres::fontgen::game_font_Family::KrnAXIS:
+			case xivres::fontgen::game_font_family::KrnAXIS:
 			{
 				auto& font = s_fontSet[xivres::font_type::krn_axis];
 				if (!font) {
@@ -215,21 +215,21 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 
 				case RendererEnum::PrerenderedGameInstallation:
 					if (Lookup.Name == "AXIS")
-						m_baseFont = GetGameFont(xivres::fontgen::game_font_Family::AXIS, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::AXIS, Size);
 					else if (Lookup.Name == "Jupiter")
-						m_baseFont = GetGameFont(xivres::fontgen::game_font_Family::Jupiter, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::Jupiter, Size);
 					else if (Lookup.Name == "JupiterN")
-						m_baseFont = GetGameFont(xivres::fontgen::game_font_Family::JupiterN, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::JupiterN, Size);
 					else if (Lookup.Name == "Meidinger")
-						m_baseFont = GetGameFont(xivres::fontgen::game_font_Family::Meidinger, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::Meidinger, Size);
 					else if (Lookup.Name == "MiedingerMid")
-						m_baseFont = GetGameFont(xivres::fontgen::game_font_Family::MiedingerMid, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::MiedingerMid, Size);
 					else if (Lookup.Name == "TrumpGothic")
-						m_baseFont = GetGameFont(xivres::fontgen::game_font_Family::TrumpGothic, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::TrumpGothic, Size);
 					else if (Lookup.Name == "ChnAXIS")
-						m_baseFont = GetGameFont(xivres::fontgen::game_font_Family::ChnAXIS, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::ChnAXIS, Size);
 					else if (Lookup.Name == "KrnAXIS")
-						m_baseFont = GetGameFont(xivres::fontgen::game_font_Family::KrnAXIS, Size);
+						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::KrnAXIS, Size);
 					else
 						throw std::runtime_error("Invalid name");
 					break;

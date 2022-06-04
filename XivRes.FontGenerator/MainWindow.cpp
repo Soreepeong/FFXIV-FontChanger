@@ -836,7 +836,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 
 			auto texturesAll = std::make_shared<xivres::texture::stream>(mips[0]->Type, mips[0]->Width, mips[0]->Height, 1, 1, mips.size());
 			for (size_t i = 0; i < mips.size(); i++)
-				texturesAll->SetMipmap(0, i, mips[i]);
+				texturesAll->set_mipmap(0, i, mips[i]);
 
 			for (size_t i = 0; i < fdts.size(); i++)
 				resultFonts.emplace_back(fontSet->Faces[i]->Name, std::make_shared<xivres::fontgen::fontdata_fixed_size_font>(fdts[i], mips, fontSet->Faces[i]->Name, ""));
@@ -896,7 +896,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 
 			for (size_t i = 0; i < mips.size(); i++) {
 				progressDialog.ThrowIfCancelled();
-				textureOne.SetMipmap(0, 0, mips[i]);
+				textureOne.set_mipmap(0, 0, mips[i]);
 
 				std::ofstream out(basePath / std::format(pFontSet->TexFilenameFormat, i + 1), std::ios::binary);
 				size_t pos = 0;
@@ -1055,7 +1055,7 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 
 					const auto& mip = mips[i];
 					auto textureOne = std::make_shared<xivres::texture::stream>(mip->Type, mip->Width, mip->Height, 1, 1, 1);
-					textureOne->SetMipmap(0, 0, mip);
+					textureOne->set_mipmap(0, 0, mip);
 
 					xivres::compressing_packed_stream<xivres::texture_compressing_packer> packedStream(targetFileName, std::move(textureOne), compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
 
