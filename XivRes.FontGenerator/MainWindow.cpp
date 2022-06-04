@@ -899,7 +899,6 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 				textureOne.set_mipmap(0, 0, mips[i]);
 
 				std::ofstream out(basePath / std::format(pFontSet->TexFilenameFormat, i + 1), std::ios::binary);
-				size_t pos = 0;
 
 				for (size_t read, pos = 0; (read = textureOne.read(pos, &buf[0], buf.size())); pos += read) {
 					progressDialog.ThrowIfCancelled();
@@ -910,7 +909,6 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 			for (size_t i = 0; i < fdts.size(); i++) {
 				progressDialog.ThrowIfCancelled();
 				std::ofstream out(basePath / std::format("{}.fdt", pFontSet->Faces[i]->Name), std::ios::binary);
-				size_t pos = 0;
 
 				for (size_t read, pos = 0; (read = fdts[i]->read(pos, &buf[0], buf.size())); pos += read) {
 					progressDialog.ThrowIfCancelled();
