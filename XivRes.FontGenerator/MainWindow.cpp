@@ -6,6 +6,7 @@
 #include "GameFontReloader.h"
 #include "MainWindow.h"
 #include "ProgressDialog.h"
+#include "xivres/textools.h"
 
 struct ListViewCols {
 	enum : int {
@@ -930,7 +931,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode) {
 	using namespace xivres::fontgen;
 	static constexpr COMDLG_FILTERSPEC fileTypes[] = {
-		{ L"TTMP file (*.ttmp)", L"*.ttmp" },
+		{ L"TTMP2 file (*.ttmp2)", L"*.ttmp2" },
 		{ L"ZIP file (*.zip)", L"*.zip" },
 		{ L"All files (*.*)", L"*" },
 	};
@@ -945,7 +946,7 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 		SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(fileTypesSpan.size()), fileTypesSpan.data()));
 		SuccessOrThrow(pDialog->SetFileTypeIndex(0));
 		SuccessOrThrow(pDialog->SetTitle(L"Save"));
-		SuccessOrThrow(pDialog->SetFileName(std::format(L"{}.ttmp", m_path.filename().replace_extension(L"").wstring()).c_str()));
+		SuccessOrThrow(pDialog->SetFileName(std::format(L"{}.ttmp2", m_path.filename().replace_extension(L"").wstring()).c_str()));
 		SuccessOrThrow(pDialog->SetDefaultExtension(L"json"));
 		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
 		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
@@ -983,7 +984,10 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 
 		std::vector<std::tuple<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<std::shared_ptr<xivres::texture::memory_mipmap_stream>>, const Structs::FontSet&>> pairs;
 
-		std::stringstream ttmpl;
+		xivres::textools::mod_pack_json ttmpl;
+		ttmpl.TTMPVersion = "1.3s";
+		ttmpl.MinimumFrameworkVersion = "1.3.0.0";
+		ttmpl.Name = xivres::util::unicode::convert<std::string>(m_path.filename().replace_extension("").wstring());
 		uint64_t ttmpdPos = 0;
 
 		zip_fileinfo zi{};
@@ -1025,14 +1029,20 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 							c = std::tolower(c);
 					}
 
-					ttmpl << nlohmann::json::object({
-						{ "Name", targetFileName },
-						{ "Category", std::format("Font({})", xivres::util::unicode::convert<std::string>(m_path.filename().wstring())) },
-						{ "DatFile", "000000" },
-						{ "FullPath", targetFileNameLowerCase },
-						{ "ModOffset", ttmpdPos },
-						{ "ModSize", packedStream.size() },
-						}) << std::endl;
+					auto& mods_json = ttmpl.SimpleModsList.emplace_back();
+					mods_json.Name = targetFileName;
+					mods_json.Category = "Raw File Imports";
+					mods_json.DatFile = "000000";
+					mods_json.FullPath = targetFileNameLowerCase;
+					mods_json.ModOffset = ttmpdPos;
+					mods_json.ModSize = packedStream.size();
+					mods_json.IsDefault = true;
+					
+					auto& mod_pack = mods_json.ModPack.emplace();
+					mod_pack.Name = ttmpl.Name;
+					mod_pack.Author = ttmpl.Author;
+					mod_pack.Version = ttmpl.Version;
+					mod_pack.Url = ttmpl.Url;
 
 					for (uint64_t offset = 0, size = packedStream.size(); offset < size; offset += readBuf.size()) {
 						progressDialog.ThrowIfCancelled();
@@ -1063,14 +1073,20 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 							c = std::tolower(c);
 					}
 
-					ttmpl << nlohmann::json::object({
-						{ "Name", targetFileName },
-						{ "Category", std::format("Font({})", xivres::util::unicode::convert<std::string>(m_path.filename().wstring())) },
-						{ "DatFile", "000000" },
-						{ "FullPath", targetFileNameLowerCase },
-						{ "ModOffset", ttmpdPos },
-						{ "ModSize", packedStream.size() },
-						}) << std::endl;
+					auto& mods_json = ttmpl.SimpleModsList.emplace_back();
+					mods_json.Name = targetFileName;
+					mods_json.Category = "Raw File Imports";
+					mods_json.DatFile = "000000";
+					mods_json.FullPath = targetFileNameLowerCase;
+					mods_json.ModOffset = ttmpdPos;
+					mods_json.ModSize = packedStream.size();
+					mods_json.IsDefault = true;
+					
+					auto& mod_pack = mods_json.ModPack.emplace();
+					mod_pack.Name = ttmpl.Name;
+					mod_pack.Author = ttmpl.Author;
+					mod_pack.Version = ttmpl.Version;
+					mod_pack.Url = ttmpl.Url;
 
 					for (uint64_t offset = 0, size = packedStream.size(); offset < size; offset += readBuf.size()) {
 						progressDialog.ThrowIfCancelled();
@@ -1086,11 +1102,13 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 		}
 
 		{
-			const auto ttmpls = ttmpl.str();
+			auto jsonobj = nlohmann::json::object();
+			to_json(jsonobj, ttmpl);
+			const auto ttmpls = jsonobj.dump(1, '\t');
 			if (const auto err = zipOpenNewFileInZip3_64(zf, "TTMPL.mpl", &zi,
-				NULL, 0, NULL, 0, NULL /* comment*/,
-				compressionMode == CompressionMode::CompressAfterPacking ? Z_DEFLATED : 0,
-				compressionMode == CompressionMode::CompressAfterPacking ? Z_BEST_COMPRESSION : 0,
+				nullptr, 0, nullptr, 0, nullptr,
+				compressionMode != CompressionMode::DoNotCompress ? Z_DEFLATED : 0,
+				compressionMode != CompressionMode::DoNotCompress ? Z_BEST_COMPRESSION : 0,
 				0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY,
 				nullptr, crc32_z(0, reinterpret_cast<const uint8_t*>(&ttmpls[0]), ttmpls.size()), 0))
 				throw std::runtime_error(std::format("Failed to create TTMPL.mpl inside zip: {}", err));
