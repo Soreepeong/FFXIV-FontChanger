@@ -899,7 +899,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 				progressDialog.ThrowIfCancelled();
 				textureOne.set_mipmap(0, 0, mips[i]);
 
-				std::ofstream out(basePath / std::format(pFontSet->TexFilenameFormat, i + 1), std::ios::binary);
+				std::ofstream out(basePath / std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i + 1)), std::ios::binary);
 
 				for (size_t read, pos = 0; (read = textureOne.read(pos, &buf[0], buf.size())); pos += read) {
 					progressDialog.ThrowIfCancelled();
@@ -1058,7 +1058,7 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 				for (size_t i = 0; i < mips.size(); i++) {
 					progressDialog.ThrowIfCancelled();
 
-					const auto targetFileName = std::format("common/font/{}", std::format(pFontSet->TexFilenameFormat, i + 1));
+					const auto targetFileName = std::format("common/font/{}", std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i + 1)));
 					progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
 
 					const auto& mip = mips[i];
@@ -1577,18 +1577,17 @@ std::pair<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<st
 
 	{
 		progressDialog.UpdateStatusMessage("Resolving kerning pairs...");
-		xivres::util::thread_pool<Structs::Face*, size_t> pool;
+		xivres::util::thread_pool::task_waiter<std::pair<Structs::Face*, size_t>> waiter;
 		for (auto& pFace : fontSet.Faces) {
-			pool.Submit(pFace.get(), [pFace = pFace.get(), &progressDialog]()->size_t {
+			waiter.submit([pFace = pFace.get(), &progressDialog](auto&) -> std::pair<Structs::Face*, size_t>{
 				if (progressDialog.IsCancelled())
-					return 0;
-				return pFace->GetMergedFont()->all_kerning_pairs().size();
+					return {pFace, 0};
+				return {pFace, pFace->GetMergedFont()->all_kerning_pairs().size()};
 			});
 		}
-		pool.SubmitDoneAndWait();
 
 		std::vector<std::string> tooManyKernings;
-		for (std::optional<std::pair<Structs::Face*, size_t>> res; (res = pool.GetResult());) {
+		for (std::optional<std::pair<Structs::Face*, size_t>> res; (res = waiter.get());) {
 			const auto& [pFace, nKerns] = *res;
 			if (nKerns >= 65536)
 				tooManyKernings.emplace_back(std::format("\n{}: {}", pFace->Name, nKerns));
