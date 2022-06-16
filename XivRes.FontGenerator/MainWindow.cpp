@@ -1577,7 +1577,8 @@ std::pair<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<st
 
 	{
 		progressDialog.UpdateStatusMessage("Resolving kerning pairs...");
-		xivres::util::thread_pool::task_waiter<std::pair<Structs::Face*, size_t>> waiter;
+		xivres::util::thread_pool::pool pool(1);
+		xivres::util::thread_pool::task_waiter<std::pair<Structs::Face*, size_t>> waiter(pool);
 		for (auto& pFace : fontSet.Faces) {
 			waiter.submit([pFace = pFace.get(), &progressDialog](auto&) -> std::pair<Structs::Face*, size_t>{
 				if (progressDialog.IsCancelled())
