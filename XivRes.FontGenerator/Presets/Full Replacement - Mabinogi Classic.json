@@ -2,7 +2,7 @@
 	"fontSets": [
 		{
 			"discardStep": 1,
-			"expectedTexCount": 1,
+			"expectedTexCount": 4,
 			"faces": [
 				{
 					"elements": [

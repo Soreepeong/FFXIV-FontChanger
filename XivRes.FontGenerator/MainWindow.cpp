@@ -937,7 +937,7 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 	};
 	const auto fileTypesSpan = std::span(fileTypes);
 
-	std::wstring tmpPath, finalPath;
+	std::wstring finalPath;
 	try {
 		IFileSaveDialogPtr pDialog;
 		DWORD dwFlags;
@@ -967,16 +967,7 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 			CoTaskMemFree(pszFileName);
 		}
 
-		LARGE_INTEGER li;
-		QueryPerformanceCounter(&li);
-		tmpPath = std::format(L"{}.{:016X}.tmp", finalPath, li.QuadPart);
-
-		zlib_filefunc64_def ffunc;
-		fill_win32_filefunc64W(&ffunc);
-		zipFile zf = zipOpen2_64(&tmpPath[0], APPEND_STATUS_CREATE, nullptr, &ffunc);
-		if (!zf)
-			throw std::runtime_error("Failed to create target file");
-		auto zfclose = xivres::util::on_dtor([&zf]() { zipClose(zf, nullptr); });
+		xivres::textools::simple_ttmp2_writer writer(finalPath);
 
 		ProgressDialog progressDialog(m_hWnd, "Exporting...");
 		ShowWindow(m_hWnd, SW_HIDE);
@@ -984,164 +975,37 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 
 		std::vector<std::tuple<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<std::shared_ptr<xivres::texture::memory_mipmap_stream>>, const Structs::FontSet&>> pairs;
 
-		xivres::textools::mod_pack_json ttmpl;
-		ttmpl.TTMPVersion = "1.3s";
-		ttmpl.MinimumFrameworkVersion = "1.3.0.0";
-		ttmpl.Name = xivres::util::unicode::convert<std::string>(m_path.filename().replace_extension("").wstring());
-		uint64_t ttmpdPos = 0;
+		writer.begin_packed(compressionMode == CompressionMode::CompressAfterPacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
+		for (auto& pFontSet : m_multiFontSet.FontSets) {
+			auto [fdts, mips] = CompileCurrentFontSet(progressDialog, *pFontSet);
 
-		zip_fileinfo zi{};
-		zi.tmz_date.tm_sec = zi.tmz_date.tm_min = zi.tmz_date.tm_hour =
-			zi.tmz_date.tm_mday = zi.tmz_date.tm_mon = zi.tmz_date.tm_year = 0;
-		zi.dosDate = 0;
-		zi.internal_fa = 0;
-		zi.external_fa = 0;
-		FILETIME ft{}, ftLocal{};
-		GetSystemTimeAsFileTime(&ft);
-		FileTimeToLocalFileTime(&ft, &ftLocal);
-		FileTimeToDosDateTime(&ftLocal, ((LPWORD)&zi.dosDate) + 1, ((LPWORD)&zi.dosDate) + 0);
-
-		std::vector<uint8_t> readBuf(512 * 1024);
-		{
-			if (const auto err = zipOpenNewFileInZip3_64(zf, "TTMPD.mpd", &zi,
-				NULL, 0, NULL, 0, NULL /* comment*/,
-				compressionMode == CompressionMode::CompressAfterPacking ? Z_DEFLATED : 0,
-				compressionMode == CompressionMode::CompressAfterPacking ? Z_BEST_COMPRESSION : 0,
-				0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY,
-				nullptr, 0, 0))
-				throw std::runtime_error(std::format("Failed to create TTMPD.mpd inside zip: {}", err));
-			std::unique_ptr<std::remove_pointer_t<decltype(zf)>, decltype(zipCloseFileInZip)*> ziClose(zf, zipCloseFileInZip);
-
-			for (auto& pFontSet : m_multiFontSet.FontSets) {
-				auto [fdts, mips] = CompileCurrentFontSet(progressDialog, *pFontSet);
-
-				for (size_t i = 0; i < fdts.size(); i++) {
-					progressDialog.ThrowIfCancelled();
-
-					const auto targetFileName = std::format("common/font/{}.fdt", pFontSet->Faces[i]->Name);
-					progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
-
-					xivres::compressing_packed_stream<xivres::standard_compressing_packer> packedStream(targetFileName, fdts[i], compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
-
-					std::string targetFileNameLowerCase = targetFileName;
-					for (auto& c : targetFileNameLowerCase) {
-						if (0 < c && c < 0x80)
-							c = std::tolower(c);
-					}
-
-					auto& mods_json = ttmpl.SimpleModsList.emplace_back();
-					mods_json.Name = targetFileName;
-					mods_json.Category = "Raw File Imports";
-					mods_json.DatFile = "000000";
-					mods_json.FullPath = targetFileNameLowerCase;
-					mods_json.ModOffset = ttmpdPos;
-					mods_json.ModSize = packedStream.size();
-					mods_json.IsDefault = true;
-					
-					auto& mod_pack = mods_json.ModPack.emplace();
-					mod_pack.Name = ttmpl.Name;
-					mod_pack.Author = ttmpl.Author;
-					mod_pack.Version = ttmpl.Version;
-					mod_pack.Url = ttmpl.Url;
-
-					for (uint64_t offset = 0, size = packedStream.size(); offset < size; offset += readBuf.size()) {
-						progressDialog.ThrowIfCancelled();
-						const auto writeSize = static_cast<size_t>((std::min<uint64_t>)(size - offset, readBuf.size()));
-						packedStream.read_fully(offset, std::span(readBuf).subspan(0, writeSize));
-						if (const auto err = zipWriteInFileInZip(zf, &readBuf[0], static_cast<uint32_t>(writeSize)))
-							throw std::runtime_error(std::format("Failed to write to TTMPL.mpl inside zip: {}", err));
-
-						ttmpdPos += writeSize;
-					}
-				}
-
-				for (size_t i = 0; i < mips.size(); i++) {
-					progressDialog.ThrowIfCancelled();
-
-					const auto targetFileName = std::format("common/font/{}", std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i + 1)));
-					progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
-
-					const auto& mip = mips[i];
-					auto textureOne = std::make_shared<xivres::texture::stream>(mip->Type, mip->Width, mip->Height, 1, 1, 1);
-					textureOne->set_mipmap(0, 0, mip);
-
-					xivres::compressing_packed_stream<xivres::texture_compressing_packer> packedStream(targetFileName, std::move(textureOne), compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
-
-					std::string targetFileNameLowerCase = targetFileName;
-					for (auto& c : targetFileNameLowerCase) {
-						if (0 < c && c < 0x80)
-							c = std::tolower(c);
-					}
-
-					auto& mods_json = ttmpl.SimpleModsList.emplace_back();
-					mods_json.Name = targetFileName;
-					mods_json.Category = "Raw File Imports";
-					mods_json.DatFile = "000000";
-					mods_json.FullPath = targetFileNameLowerCase;
-					mods_json.ModOffset = ttmpdPos;
-					mods_json.ModSize = packedStream.size();
-					mods_json.IsDefault = true;
-					
-					auto& mod_pack = mods_json.ModPack.emplace();
-					mod_pack.Name = ttmpl.Name;
-					mod_pack.Author = ttmpl.Author;
-					mod_pack.Version = ttmpl.Version;
-					mod_pack.Url = ttmpl.Url;
-
-					for (uint64_t offset = 0, size = packedStream.size(); offset < size; offset += readBuf.size()) {
-						progressDialog.ThrowIfCancelled();
-						const auto writeSize = static_cast<size_t>((std::min<uint64_t>)(size - offset, readBuf.size()));
-						packedStream.read_fully(offset, std::span(readBuf).subspan(0, writeSize));
-						if (const auto err = zipWriteInFileInZip(zf, &readBuf[0], static_cast<uint32_t>(writeSize)))
-							throw std::runtime_error(std::format("Failed to write to TTMPL.mpl inside zip: {}", err));
-
-						ttmpdPos += writeSize;
-					}
-				}
-			}
-		}
-
-		{
-			auto jsonobj = nlohmann::json::object();
-			to_json(jsonobj, ttmpl);
-			const auto ttmpls = jsonobj.dump(1, '\t');
-			if (const auto err = zipOpenNewFileInZip3_64(zf, "TTMPL.mpl", &zi,
-				nullptr, 0, nullptr, 0, nullptr,
-				compressionMode != CompressionMode::DoNotCompress ? Z_DEFLATED : 0,
-				compressionMode != CompressionMode::DoNotCompress ? Z_BEST_COMPRESSION : 0,
-				0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY,
-				nullptr, crc32_z(0, reinterpret_cast<const uint8_t*>(&ttmpls[0]), ttmpls.size()), 0))
-				throw std::runtime_error(std::format("Failed to create TTMPL.mpl inside zip: {}", err));
-			std::unique_ptr<std::remove_pointer_t<decltype(zf)>, decltype(zipCloseFileInZip)*> ziClose(zf, zipCloseFileInZip);
-
-			for (size_t offset = 0; offset < ttmpls.size(); offset += readBuf.size()) {
+			for (size_t i = 0; i < fdts.size(); i++) {
 				progressDialog.ThrowIfCancelled();
 
-				const auto writeSize = (std::min<size_t>)(ttmpls.size() - offset, readBuf.size());
-				if (const auto err = zipWriteInFileInZip(zf, reinterpret_cast<const uint8_t*>(&ttmpls[offset]), static_cast<uint32_t>(writeSize)))
-					throw std::runtime_error(std::format("Failed to write to TTMPL.mpl inside zip: {}", err));
+				const auto targetFileName = std::format("common/font/{}.fdt", pFontSet->Faces[i]->Name);
+				progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
+
+				writer.add_packed(xivres::compressing_packed_stream<xivres::standard_compressing_packer>(targetFileName, fdts[i], compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION));
+			}
+
+			for (size_t i = 0; i < mips.size(); i++) {
+				progressDialog.ThrowIfCancelled();
+
+				const auto targetFileName = std::format("common/font/{}", std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i + 1)));
+				progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
+
+				const auto& mip = mips[i];
+				auto textureOne = std::make_shared<xivres::texture::stream>(mip->Type, mip->Width, mip->Height, 1, 1, 1);
+				textureOne->set_mipmap(0, 0, mip);
+
+				writer.add_packed(xivres::compressing_packed_stream<xivres::texture_compressing_packer>(targetFileName, std::move(textureOne), compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION));
 			}
 		}
-
-		zfclose.clear();
-
-		try {
-			std::filesystem::remove(finalPath);
-		} catch (...) {
-			// ignore
-		}
-		std::filesystem::rename(tmpPath, finalPath);
+		writer.close();
 
 	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
 		return 1;
 	} catch (const std::exception& e) {
-		if (!tmpPath.empty()) {
-			try {
-				std::filesystem::remove(tmpPath);
-			} catch (...) {
-				// ignore
-			}
-		}
 		MessageBoxW(m_hWnd, std::format(L"Failed to export: {}", xivres::util::unicode::convert<std::wstring>(e.what())).c_str(), GetWindowString(m_hWnd).c_str(), MB_OK | MB_ICONERROR);
 		return 1;
 	}
