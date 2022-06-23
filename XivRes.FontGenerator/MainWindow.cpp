@@ -187,11 +187,11 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 			(std::max<int>)(1, (rc.right - rc.left - m_nDrawLeft + m_nZoom - 1) / m_nZoom),
 			(std::max<int>)(1, (rc.bottom - rc.top - m_nDrawTop + m_nZoom - 1) / m_nZoom),
 			1,
-			xivres::texture::format::A8R8G8B8);
+			xivres::texture::formats::B8G8R8A8);
 
 		const auto pad = 16 / m_nZoom;
-		const auto buf = m_pMipmap->as_span<xivres::util::RGBA8888>();
-		std::ranges::fill(buf, xivres::util::RGBA8888{ 0x88, 0x88, 0x88, 0xFF });
+		const auto buf = m_pMipmap->as_span<xivres::util::b8g8r8a8>();
+		std::ranges::fill(buf, xivres::util::b8g8r8a8{ 0x88, 0x88, 0x88, 0xFF });
 
 		for (int y = pad; y < m_pMipmap->Height - pad; y++) {
 			for (int x = pad; x < m_pMipmap->Width - pad; x++)
@@ -235,12 +235,12 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 	bmih.biPlanes = 1;
 	bmih.biBitCount = 32;
 	bmih.biCompression = BI_BITFIELDS;
-	reinterpret_cast<xivres::util::RGBA8888*>(&bitfields[0])->SetFrom(255, 0, 0, 0);
-	reinterpret_cast<xivres::util::RGBA8888*>(&bitfields[1])->SetFrom(0, 255, 0, 0);
-	reinterpret_cast<xivres::util::RGBA8888*>(&bitfields[2])->SetFrom(0, 0, 255, 0);
+	reinterpret_cast<xivres::util::b8g8r8a8*>(&bitfields[0])->set_components(255, 0, 0, 0);
+	reinterpret_cast<xivres::util::b8g8r8a8*>(&bitfields[1])->set_components(0, 255, 0, 0);
+	reinterpret_cast<xivres::util::b8g8r8a8*>(&bitfields[2])->set_components(0, 0, 255, 0);
 	RECT rc;
 	GetClientRect(m_hWnd, &rc);
-	StretchDIBits(hdc, m_nDrawLeft, m_nDrawTop, m_pMipmap->Width * m_nZoom, m_pMipmap->Height * m_nZoom, 0, 0, m_pMipmap->Width, m_pMipmap->Height, &m_pMipmap->as_span<xivres::util::RGBA8888>()[0], &bmi, DIB_RGB_COLORS, SRCCOPY);
+	StretchDIBits(hdc, m_nDrawLeft, m_nDrawTop, m_pMipmap->Width * m_nZoom, m_pMipmap->Height * m_nZoom, 0, 0, m_pMipmap->Width, m_pMipmap->Height, &m_pMipmap->as_span<xivres::util::b8g8r8a8>()[0], &bmi, DIB_RGB_COLORS, SRCCOPY);
 	EndPaint(m_hWnd, &ps);
 
 	return 0;
