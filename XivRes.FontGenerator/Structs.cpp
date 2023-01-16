@@ -287,7 +287,7 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 			return std::format("game:{}:{:g}", Lookup.Name, Size);
 			break;
 		case RendererEnum::DirectWrite:
-			return std::format("directwrite:{}:{:g}:{:g}:{}:{}:{}:{}:{}:{}",
+			return std::format("directwrite:{}:{:g}:{:g}:{}:{}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
 				Lookup.Name,
 				Size,
 				Gamma,
@@ -296,18 +296,26 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				static_cast<uint32_t>(Lookup.Style),
 				static_cast<uint32_t>(RendererSpecific.DirectWrite.RenderMode),
 				static_cast<uint32_t>(RendererSpecific.DirectWrite.MeasureMode),
-				static_cast<uint32_t>(RendererSpecific.DirectWrite.GridFitMode)
+				static_cast<uint32_t>(RendererSpecific.DirectWrite.GridFitMode),
+				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M11),
+				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M12),
+				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M21),
+				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M22)
 			);
 			break;
 		case RendererEnum::FreeType:
-			return std::format("freetype:{}:{:g}:{:g}:{}:{}:{}:{}",
+			return std::format("freetype:{}:{:g}:{:g}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
 				Lookup.Name,
 				Size,
 				Gamma,
 				static_cast<uint32_t>(Lookup.Weight),
 				static_cast<uint32_t>(Lookup.Stretch),
 				static_cast<uint32_t>(Lookup.Style),
-				static_cast<uint32_t>(RendererSpecific.FreeType.LoadFlags)
+				static_cast<uint32_t>(RendererSpecific.FreeType.LoadFlags),
+				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M11),
+				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M12),
+				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M21),
+				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M22)
 			);
 			break;
 		default:
