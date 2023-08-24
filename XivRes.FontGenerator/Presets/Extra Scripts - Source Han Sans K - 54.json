@@ -2,7 +2,7 @@
 	"fontSets": [
 		{
 			"discardStep": 1,
-			"expectedTexCount": 4,
+			"expectedTexCount": 3,
 			"faces": [
 				{
 					"elements": [
@@ -794,7 +794,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 55.0,
+							"size": 54.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,

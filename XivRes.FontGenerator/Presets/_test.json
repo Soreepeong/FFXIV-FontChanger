@@ -1,0 +1,114 @@
+{
+	"fontSets": [
+		{
+			"discardStep": 1,
+			"expectedTexCount": 1,
+			"faces": [
+				{
+					"elements": [
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"name": "AXIS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 76,
+									"lineHeight": 96
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 0,
+							"size": 72.0,
+							"transformationMatrix": [
+								1.0,
+								0.0,
+								0.0,
+								1.0
+							],
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										32,
+										1114111
+									]
+								],
+								"horizontalOffset": 0,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"name": "Comic Sans MS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 73.0,
+							"transformationMatrix": [
+								1.0,
+								0.0,
+								0.0,
+								1.0
+							],
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										0,
+										127
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						}
+					],
+					"name": "AXIS_36",
+					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
+				}
+			],
+			"sideLength": 4096,
+			"texFilenameFormat": "font{}.tex"
+		}
+	]
+}
