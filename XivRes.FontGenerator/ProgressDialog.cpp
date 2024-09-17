@@ -7,7 +7,7 @@ struct App::ProgressDialog::ControlStruct {
 	HWND CancelButton = GetDlgItem(Window, IDCANCEL);
 	HWND StepNameStatic = GetDlgItem(Window, IDC_STATIC_STEPNAME);
 	HWND ProgrssBar = GetDlgItem(Window, IDC_PROGRESS);
-} *m_controls = nullptr;
+}* m_controls = nullptr;
 
 App::ProgressDialog::ProgressDialog(HWND hParentWnd, std::string windowTitle)
 	: m_hParentWnd(hParentWnd)
@@ -18,7 +18,7 @@ App::ProgressDialog::ProgressDialog(HWND hParentWnd, std::string windowTitle)
 
 	bool bFailed = false;
 	m_dialogThread = std::thread([this, &bFailed]() {
-		std::unique_ptr<std::remove_pointer<HGLOBAL>::type, decltype(FreeResource)*> hglob(LoadResource(g_hInstance, FindResourceW(g_hInstance, MAKEINTRESOURCE(IDD_PROGRESS), RT_DIALOG)), FreeResource);
+		std::unique_ptr<std::remove_pointer_t<HGLOBAL>, decltype(&FreeResource)> hglob(LoadResource(g_hInstance, FindResourceW(g_hInstance, MAKEINTRESOURCE(IDD_PROGRESS), RT_DIALOG)), &FreeResource);
 		if (-1 == DialogBoxIndirectParamW(
 			g_hInstance,
 			reinterpret_cast<DLGTEMPLATE*>(LockResource(hglob.get())),
@@ -100,15 +100,13 @@ INT_PTR App::ProgressDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 	switch (message) {
 		case WM_INITDIALOG:
 			return Dialog_OnInitDialog();
-		case WM_COMMAND:
-		{
+		case WM_COMMAND: {
 			switch (LOWORD(wParam)) {
 				case IDCANCEL: return CancelButton_OnCommand(HIWORD(wParam));
 			}
 			return 0;
 		}
-		case WM_CLOSE:
-		{
+		case WM_CLOSE: {
 			if (lParam == 1) {
 				SetForegroundWindow(m_hParentWnd);
 				EndDialog(m_controls->Window, 0);
@@ -116,8 +114,7 @@ INT_PTR App::ProgressDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 				return 1;
 			return 0;
 		}
-		case WM_DESTROY:
-		{
+		case WM_DESTROY: {
 			return 0;
 		}
 	}
@@ -127,7 +124,7 @@ INT_PTR App::ProgressDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 INT_PTR __stdcall App::ProgressDialog::DlgProcStatic(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	if (message == WM_INITDIALOG) {
 		auto& params = *reinterpret_cast<ProgressDialog*>(lParam);
-		params.m_controls = new ControlStruct{ hwnd };
+		params.m_controls = new ControlStruct{hwnd};
 		SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&params));
 		return params.DlgProc(message, wParam, lParam);
 	} else {

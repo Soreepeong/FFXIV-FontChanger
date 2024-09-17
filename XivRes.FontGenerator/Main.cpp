@@ -40,7 +40,7 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
 	//}
 
 	std::vector<std::wstring> args;
-	if (int nArgs{}; LPWSTR * szArgList = CommandLineToArgvW(GetCommandLineW(), &nArgs)) {
+	if (int nArgs{}; LPWSTR* szArgList = CommandLineToArgvW(GetCommandLineW(), &nArgs)) {
 		if (szArgList) {
 			for (int i = 0; i < nArgs; i++)
 				args.emplace_back(szArgList[i]);
@@ -81,14 +81,13 @@ HRESULT SuccessOrThrow(HRESULT hr, std::initializer_list<HRESULT> acceptables) {
 		0,
 		NULL);
 	if (pszMsg) {
-		std::unique_ptr<wchar_t, decltype(LocalFree)*> pszMsgFree(pszMsg, LocalFree);
+		std::unique_ptr<wchar_t, decltype(&LocalFree)> pszMsgFree(pszMsg, &LocalFree);
 
 		throw std::runtime_error(std::format(
 			"Error (HRESULT=0x{:08X}): {}",
 			static_cast<uint32_t>(hr),
 			xivres::util::unicode::convert<std::string>(std::wstring(pszMsg))
 		));
-
 	} else {
 		throw std::runtime_error(std::format(
 			"Error (HRESULT=0x{:08X})",

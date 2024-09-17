@@ -21,7 +21,7 @@ namespace GameFontReloader {
 	};
 
 	class GameProcess {
-		const std::unique_ptr<void, decltype(CloseHandle)*> m_hProcess;
+		const std::unique_ptr<void, decltype(&CloseHandle)> m_hProcess;
 		const HMODULE m_hModule;
 		const std::filesystem::path m_gameExePath;
 

@@ -9,7 +9,7 @@ namespace App {
 
 		HANDLE m_hReadyEvent = nullptr;
 
-		ControlStruct *m_controls;
+		ControlStruct* m_controls;
 
 		std::thread m_dialogThread;
 		bool m_bCancelled = false;

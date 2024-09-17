@@ -9,17 +9,17 @@ namespace App {
 
 	class FontEditorWindow : public BaseWindow {
 		static constexpr auto ClassName = L"FontEditorWindowClass";
-		static constexpr float NoBaseFontSizes[]{ 9.6f, 10.f, 12.f, 14.f, 16.f, 18.f, 18.4f, 20.f, 23.f, 34.f, 36.f, 40.f, 45.f, 46.f, 68.f, 90.f, };
+		static constexpr float NoBaseFontSizes[]{9.6f, 10.f, 12.f, 14.f, 16.f, 18.f, 18.4f, 20.f, 23.f, 34.f, 36.f, 40.f, 45.f, 46.f, 68.f, 90.f,};
 
-		enum : size_t {
+		enum : uint8_t {
 			Id_None,
 			Id_FaceListBox,
 			Id_FaceElementListView,
 			Id_Edit,
-			Id__Last,
+			Id_Last_,
 		};
 
-		enum class CompressionMode {
+		enum class CompressionMode : uint8_t {
 			CompressWhilePacking,
 			CompressAfterPacking,
 			DoNotCompress,
@@ -31,7 +31,7 @@ namespace App {
 		bool m_bPathIsNotReal = false;
 		std::filesystem::path m_path;
 		Structs::MultiFontSet m_multiFontSet;
-		Structs::FontSet* m_pFontSet;
+		Structs::FontSet* m_pFontSet = nullptr;
 		Structs::Face* m_pActiveFace = nullptr;
 
 		std::shared_ptr<xivres::texture::memory_mipmap_stream> m_pMipmap;
@@ -58,8 +58,12 @@ namespace App {
 
 	public:
 		FontEditorWindow(std::vector<std::wstring> args);
+		FontEditorWindow(FontEditorWindow&&) = delete;
+		FontEditorWindow(const FontEditorWindow&) = delete;
+		FontEditorWindow operator =(FontEditorWindow&&) = delete;
+		FontEditorWindow operator =(const FontEditorWindow&) = delete;
 
-		~FontEditorWindow();
+		~FontEditorWindow() override;
 
 		bool ConsumeDialogMessage(MSG& msg) override;
 
@@ -116,7 +120,7 @@ namespace App {
 		bool FaceElementsListView_DragProcessDragging(int16_t x, int16_t y);
 		LRESULT FaceElementsListView_OnDblClick(NMITEMACTIVATE& nmia);
 
-		void SetCurrentMultiFontSet(std::filesystem::path path);
+		void SetCurrentMultiFontSet(const std::filesystem::path& path);
 		void SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, std::filesystem::path path, bool fakePath);
 
 		void Changes_MarkFresh();
@@ -146,13 +150,13 @@ namespace App {
 						case ID_FILE_SAVEAS: return Menu_File_SaveAs(true);
 						case ID_FILE_SAVECOPYAS: return Menu_File_SaveAs(false);
 						case ID_FILE_EXIT: return Menu_File_Exit();
-						case ID_EDIT_ADD:return Menu_Edit_Add();
+						case ID_EDIT_ADD: return Menu_Edit_Add();
 						case ID_EDIT_CUT: return Menu_Edit_Cut();
 						case ID_EDIT_COPY: return Menu_Edit_Copy();
 						case ID_EDIT_PASTE: return Menu_Edit_Paste();
 						case ID_EDIT_DELETE: return Menu_Edit_Delete();
-						case ID_EDIT_SELECTALL:return Menu_Edit_SelectAll();
-						case ID_EDIT_DETAILS:return Menu_Edit_Details();
+						case ID_EDIT_SELECTALL: return Menu_Edit_SelectAll();
+						case ID_EDIT_DETAILS: return Menu_Edit_Details();
 						case ID_EDIT_DECREASEBASELINESHIFT: return Menu_Edit_ChangeParams(-1, 0, 0, 0);
 						case ID_EDIT_INCREASEBASELINESHIFT: return Menu_Edit_ChangeParams(+1, 0, 0, 0);
 						case ID_EDIT_DECREASEHORIZONTALOFFSET: return Menu_Edit_ChangeParams(0, -1, 0, 0);

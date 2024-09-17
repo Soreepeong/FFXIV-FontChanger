@@ -6,8 +6,8 @@ namespace App {
 	class FaceElementEditorDialog {
 		struct ControlStruct;
 
-		App::Structs::FaceElement& m_element;
-		App::Structs::FaceElement m_elementOriginal;
+		Structs::FaceElement& m_element;
+		Structs::FaceElement m_elementOriginal;
 		HWND m_hParentWnd;
 		bool m_bOpened = false;
 		std::function<void()> m_onFontChanged;
@@ -16,10 +16,14 @@ namespace App {
 
 		std::vector<IDWriteFontFamilyPtr> m_fontFamilies;
 
-		ControlStruct *m_controls = nullptr;
+		ControlStruct* m_controls = nullptr;
 
 	public:
-		FaceElementEditorDialog(HWND hParentWnd, App::Structs::FaceElement& element, std::function<void()> onFontChanged);
+		FaceElementEditorDialog(HWND hParentWnd, Structs::FaceElement& element, std::function<void()> onFontChanged);
+		FaceElementEditorDialog(FaceElementEditorDialog&&) = delete;
+		FaceElementEditorDialog(const FaceElementEditorDialog&) = delete;
+		FaceElementEditorDialog operator =(FaceElementEditorDialog&&) = delete;
+		FaceElementEditorDialog operator =(const FaceElementEditorDialog&) = delete;
 
 		~FaceElementEditorDialog();
 

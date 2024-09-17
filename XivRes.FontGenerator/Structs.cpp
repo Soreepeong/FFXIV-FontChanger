@@ -10,12 +10,12 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 	std::shared_ptr<xivres::fontgen::game_fontdata_set> strong;
 
 	auto pathconf = nlohmann::json::object();
-	pathconf["global"] = nlohmann::json::array({ R"(C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game)" });
+	pathconf["global"] = nlohmann::json::array({R"(C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game)"});
 	pathconf["chinese"] = nlohmann::json::array({
 		reinterpret_cast<const char*>(u8R"(C:\Program Files (x86)\上海数龙科技有限公司\最终幻想XIV\)"),
 		R"(C:\Program Files (x86)\SNDA\FFXIV\game)",
-		});
-	pathconf["korean"] = nlohmann::json::array({ R"(C:\Program Files (x86)\FINAL FANTASY XIV - KOREA\game)" });
+	});
+	pathconf["korean"] = nlohmann::json::array({R"(C:\Program Files (x86)\FINAL FANTASY XIV - KOREA\game)"});
 
 	try {
 		if (!exists(std::filesystem::path("config.json"))) {
@@ -25,9 +25,7 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			std::ifstream in("config.json");
 			pathconf = nlohmann::json::parse(in);
 		}
-	} catch (...) {
-
-	}
+	} catch (...) {}
 
 	try {
 		switch (family) {
@@ -36,16 +34,14 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			case xivres::fontgen::game_font_family::JupiterN:
 			case xivres::fontgen::game_font_family::MiedingerMid:
 			case xivres::fontgen::game_font_family::Meidinger:
-			case xivres::fontgen::game_font_family::TrumpGothic:
-			{
+			case xivres::fontgen::game_font_family::TrumpGothic: {
 				auto& font = s_fontSet[xivres::font_type::font];
 				if (!font) {
-					for (const auto validRegion : { "global", "chinese", "korean" }) {
+					for (const auto validRegion : {"global", "chinese", "korean"}) {
 						for (const auto& path : pathconf[validRegion]) {
 							try {
 								font = xivres::installation(path.get<std::string>()).get_fontdata_set(xivres::font_type::font);
-							} catch (...) {
-							}
+							} catch (...) {}
 						}
 					}
 					if (!font)
@@ -54,16 +50,14 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 				return font.get_font(family, size);
 			}
 
-			case xivres::fontgen::game_font_family::ChnAXIS:
-			{
+			case xivres::fontgen::game_font_family::ChnAXIS: {
 				auto& font = s_fontSet[xivres::font_type::chn_axis];
 				if (!font) {
-					for (const auto validRegion : { "chinese" }) {
+					for (const auto validRegion : {"chinese"}) {
 						for (const auto& path : pathconf[validRegion]) {
 							try {
 								font = xivres::installation(path.get<std::string>()).get_fontdata_set(xivres::font_type::chn_axis);
-							} catch (...) {
-							}
+							} catch (...) {}
 						}
 					}
 					if (!font)
@@ -72,16 +66,14 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 				return font.get_font(family, size);
 			}
 
-			case xivres::fontgen::game_font_family::KrnAXIS:
-			{
+			case xivres::fontgen::game_font_family::KrnAXIS: {
 				auto& font = s_fontSet[xivres::font_type::krn_axis];
 				if (!font) {
-					for (const auto validRegion : { "korean" }) {
+					for (const auto validRegion : {"korean"}) {
 						for (const auto& path : pathconf[validRegion]) {
 							try {
 								font = xivres::installation(path.get<std::string>()).get_fontdata_set(xivres::font_type::krn_axis);
-							} catch (...) {
-							}
+							} catch (...) {}
 						}
 					}
 					if (!font)
@@ -113,7 +105,7 @@ std::wstring App::Structs::LookupStruct::GetWeightString() const {
 		case DWRITE_FONT_WEIGHT_MEDIUM: return L"Medium";
 		case DWRITE_FONT_WEIGHT_SEMI_BOLD: return L"Semi Bold";
 		case DWRITE_FONT_WEIGHT_BOLD: return L"Bold";
-		case DWRITE_FONT_WEIGHT_EXTRA_BOLD:return L"Extra Bold";
+		case DWRITE_FONT_WEIGHT_EXTRA_BOLD: return L"Extra Bold";
 		case DWRITE_FONT_WEIGHT_BLACK: return L"Black";
 		case DWRITE_FONT_WEIGHT_EXTRA_BLACK: return L"Extra Black";
 		default: return std::format(L"{}", static_cast<int>(Weight));
@@ -198,11 +190,11 @@ std::pair<std::shared_ptr<xivres::stream>, int> App::Structs::LookupStruct::Reso
 	const void* pFragmentStart;
 	void* pFragmentContext;
 	SuccessOrThrow(stream->ReadFileFragment(&pFragmentStart, 0, fileSize, &pFragmentContext));
-	std::vector<uint8_t> buf(static_cast<size_t>(fileSize));
-	memcpy(&buf[0], pFragmentStart, buf.size());
+	std::vector<uint8_t> buf(fileSize);
+	memcpy(buf.data(), pFragmentStart, buf.size());
 	stream->ReleaseFileFragment(pFragmentContext);
 
-	return { std::make_shared<xivres::memory_stream>(std::move(buf)), face->GetIndex() };
+	return {std::make_shared<xivres::memory_stream>(std::move(buf)), face->GetIndex()};
 }
 
 const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceElement::GetBaseFont() const {
@@ -234,15 +226,13 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 						throw std::runtime_error("Invalid name");
 					break;
 
-				case RendererEnum::DirectWrite:
-				{
+				case RendererEnum::DirectWrite: {
 					auto [factory, font] = Lookup.ResolveFont();
 					m_baseFont = std::make_shared<xivres::fontgen::directwrite_fixed_size_font>(std::move(factory), std::move(font), Size, Gamma, TransformationMatrix, RendererSpecific.DirectWrite);
 					break;
 				}
 
-				case RendererEnum::FreeType:
-				{
+				case RendererEnum::FreeType: {
 					auto [pStream, index] = Lookup.ResolveStream();
 					m_baseFont = std::make_shared<xivres::fontgen::freetype_fixed_size_font>(*pStream, index, Size, Gamma, TransformationMatrix, RendererSpecific.FreeType);
 					break;
@@ -252,7 +242,6 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 					m_baseFont = std::make_shared<xivres::fontgen::empty_fixed_size_font>();
 					break;
 			}
-
 		} catch (...) {
 			m_baseFont = std::make_shared<xivres::fontgen::empty_fixed_size_font>(Size, RendererSpecific.Empty);
 		}
@@ -402,11 +391,11 @@ std::wstring App::Structs::FaceElement::GetLookupRepresentation() const {
 
 App::Structs::FaceElement::FaceElement() noexcept = default;
 
-App::Structs::FaceElement::FaceElement(FaceElement && r) noexcept : FaceElement() {
+App::Structs::FaceElement::FaceElement(FaceElement&& r) noexcept : FaceElement() {
 	swap(*this, r);
 }
 
-App::Structs::FaceElement::FaceElement(const FaceElement & r)
+App::Structs::FaceElement::FaceElement(const FaceElement& r)
 	: m_baseFont(r.m_baseFont)
 	, m_wrappedFont(r.m_wrappedFont)
 	, Size(r.Size)
@@ -416,21 +405,20 @@ App::Structs::FaceElement::FaceElement(const FaceElement & r)
 	, WrapModifiers(r.WrapModifiers)
 	, Renderer(r.Renderer)
 	, Lookup(r.Lookup)
-	, RendererSpecific(r.RendererSpecific) {
-}
+	, RendererSpecific(r.RendererSpecific) {}
 
-App::Structs::FaceElement App::Structs::FaceElement::operator=(FaceElement && r) noexcept {
+App::Structs::FaceElement App::Structs::FaceElement::operator=(FaceElement&& r) noexcept {
 	swap(*this, r);
 	return *this;
 }
 
-App::Structs::FaceElement App::Structs::FaceElement::operator=(const FaceElement & r) {
+App::Structs::FaceElement App::Structs::FaceElement::operator=(const FaceElement& r) {
 	auto r2(r);
 	swap(*this, r2);
 	return *this;
 }
 
-void App::Structs::swap(App::Structs::FaceElement & l, App::Structs::FaceElement & r) noexcept {
+void App::Structs::swap(FaceElement& l, FaceElement& r) noexcept {
 	if (&l == &r)
 		return;
 
@@ -466,31 +454,30 @@ void App::Structs::Face::OnElementChange() {
 
 App::Structs::Face::Face() noexcept = default;
 
-App::Structs::Face::Face(Face && r) noexcept : Face() {
+App::Structs::Face::Face(Face&& r) noexcept : Face() {
 	swap(*this, r);
 }
 
-App::Structs::Face::Face(const Face & r)
+App::Structs::Face::Face(const Face& r)
 	: MergedFont(r.MergedFont)
 	, PreviewText(r.PreviewText) {
-
 	Elements.reserve(r.Elements.size());
 	for (const auto& e : r.Elements)
 		Elements.emplace_back(std::make_unique<FaceElement>(*e));
 }
 
-App::Structs::Face& App::Structs::Face::operator=(Face && r) noexcept {
+App::Structs::Face& App::Structs::Face::operator=(Face&& r) noexcept {
 	swap(*this, r);
 	return *this;
 }
 
-App::Structs::Face& App::Structs::Face::operator=(const Face & r) {
+App::Structs::Face& App::Structs::Face::operator=(const Face& r) {
 	auto r2(r);
 	swap(*this, r2);
 	return *this;
 }
 
-void App::Structs::swap(App::Structs::Face & l, App::Structs::Face & r) noexcept {
+void App::Structs::swap(Face& l, Face& r) noexcept {
 	if (&l == &r)
 		return;
 
@@ -539,13 +526,13 @@ App::Structs::FontSet App::Structs::FontSet::NewFromTemplateFont(xivres::font_ty
 		std::vector<std::pair<char32_t, char32_t>> codepoints;
 		if (filename == "Jupiter_45" || filename == "Jupiter_90") {
 			previewText = "123,456,789.000!!!";
-			codepoints = { { U'0', U'9' }, { U'!', U'!' }, { U'.', U'.' }, { U',', U',' } };
+			codepoints = {{U'0', U'9'}, {U'!', U'!'}, {U'.', U'.'}, {U',', U','}};
 		} else if (filename.starts_with("Meidinger_")) {
 			previewText = "0123456789?!%+-./";
-			codepoints = { { 0x0000, 0x10FFFF } };
+			codepoints = {{0x0000, 0x10FFFF}};
 		} else {
 			previewText = GetDefaultPreviewText();
-			codepoints = { { 0x0000, 0x10FFFF } };
+			codepoints = {{0x0000, 0x10FFFF}};
 		}
 
 		auto& face = *res.Faces.emplace_back(std::make_unique<Face>());
@@ -566,7 +553,7 @@ App::Structs::FontSet App::Structs::FontSet::NewFromTemplateFont(xivres::font_ty
 	return res;
 }
 
-void App::Structs::from_json(const nlohmann::json & json, FontSet & value) {
+void App::Structs::from_json(const nlohmann::json& json, FontSet& value) {
 	if (!json.is_object()) {
 		value = {};
 		return;
@@ -583,7 +570,7 @@ void App::Structs::from_json(const nlohmann::json & json, FontSet & value) {
 	value.TexFilenameFormat = json.value<std::string>("texFilenameFormat", "");
 }
 
-void App::Structs::to_json(nlohmann::json & json, const FontSet & value) {
+void App::Structs::to_json(nlohmann::json& json, const FontSet& value) {
 	json = nlohmann::json::object();
 	auto& faces = *json.emplace("faces", nlohmann::json::array()).first;
 	for (const auto& e : value.Faces)
@@ -594,7 +581,7 @@ void App::Structs::to_json(nlohmann::json & json, const FontSet & value) {
 	json.emplace("texFilenameFormat", value.TexFilenameFormat);
 }
 
-void App::Structs::from_json(const nlohmann::json & json, Face & value) {
+void App::Structs::from_json(const nlohmann::json& json, Face& value) {
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
@@ -607,7 +594,7 @@ void App::Structs::from_json(const nlohmann::json & json, Face & value) {
 	value.PreviewText = json.value<std::string>("previewText", "");
 }
 
-void App::Structs::to_json(nlohmann::json & json, const Face & value) {
+void App::Structs::to_json(nlohmann::json& json, const Face& value) {
 	json = nlohmann::json::object();
 	json.emplace("name", value.Name);
 	auto& elements = *json.emplace("elements", nlohmann::json::array()).first;
@@ -616,7 +603,7 @@ void App::Structs::to_json(nlohmann::json & json, const Face & value) {
 	json.emplace("previewText", value.PreviewText);
 }
 
-void App::Structs::from_json(const nlohmann::json & json, FaceElement & value) {
+void App::Structs::from_json(const nlohmann::json& json, FaceElement& value) {
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
@@ -653,7 +640,7 @@ void App::Structs::from_json(const nlohmann::json & json, FaceElement & value) {
 		from_json(*it, value.RendererSpecific);
 	else
 		value.RendererSpecific = {};
-	
+
 	if (const auto it = json.find("transformationMatrix"); it != json.end() && it->is_array() && it->size() == 4) {
 		value.TransformationMatrix.M11 = it->at(0).get<float>();
 		value.TransformationMatrix.M12 = it->at(1).get<float>();
@@ -664,19 +651,19 @@ void App::Structs::from_json(const nlohmann::json & json, FaceElement & value) {
 	}
 }
 
-void App::Structs::to_json(nlohmann::json & json, const FaceElement & value) {
+void App::Structs::to_json(nlohmann::json& json, const FaceElement& value) {
 	json = nlohmann::json::object();
 	json.emplace("size", value.Size);
 	json.emplace("gamma", value.Gamma);
 	json.emplace("mergeMode", value.MergeMode);
 	json.emplace("wrapModifiers", value.WrapModifiers);
-	json.emplace("transformationMatrix", nlohmann::json::array({ value.TransformationMatrix.M11, value.TransformationMatrix.M12, value.TransformationMatrix.M21, value.TransformationMatrix.M22, }));
+	json.emplace("transformationMatrix", nlohmann::json::array({value.TransformationMatrix.M11, value.TransformationMatrix.M12, value.TransformationMatrix.M21, value.TransformationMatrix.M22,}));
 	json.emplace("renderer", static_cast<int>(value.Renderer));
 	json.emplace("lookup", value.Lookup);
 	json.emplace("renderSpecific", value.RendererSpecific);
 }
 
-void App::Structs::from_json(const nlohmann::json & json, RendererSpecificStruct & value) {
+void App::Structs::from_json(const nlohmann::json& json, RendererSpecificStruct& value) {
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
@@ -702,27 +689,27 @@ void App::Structs::from_json(const nlohmann::json & json, RendererSpecificStruct
 		value.DirectWrite = {};
 }
 
-void App::Structs::to_json(nlohmann::json & json, const RendererSpecificStruct & value) {
+void App::Structs::to_json(nlohmann::json& json, const RendererSpecificStruct& value) {
 	json = nlohmann::json::object();
 	json.emplace("empty", nlohmann::json::object({
-		{ "ascent", value.Empty.Ascent },
-		{ "lineHeight", value.Empty.LineHeight },
-		}));
+		{"ascent", value.Empty.Ascent},
+		{"lineHeight", value.Empty.LineHeight},
+	}));
 	json.emplace("freetype", nlohmann::json::object({
-		{ "noHinting", !!(value.FreeType.LoadFlags & FT_LOAD_NO_HINTING) },
-		{ "noBitmap", !!(value.FreeType.LoadFlags & FT_LOAD_NO_BITMAP) },
-		{ "forceAutohint", !!(value.FreeType.LoadFlags & FT_LOAD_FORCE_AUTOHINT) },
-		{ "noAutohint", !!(value.FreeType.LoadFlags & FT_LOAD_NO_AUTOHINT) },
-		{ "renderMode", static_cast<int>(value.FreeType.RenderMode) },
-		}));
+		{"noHinting", !!(value.FreeType.LoadFlags & FT_LOAD_NO_HINTING)},
+		{"noBitmap", !!(value.FreeType.LoadFlags & FT_LOAD_NO_BITMAP)},
+		{"forceAutohint", !!(value.FreeType.LoadFlags & FT_LOAD_FORCE_AUTOHINT)},
+		{"noAutohint", !!(value.FreeType.LoadFlags & FT_LOAD_NO_AUTOHINT)},
+		{"renderMode", static_cast<int>(value.FreeType.RenderMode)},
+	}));
 	json.emplace("directwrite", nlohmann::json::object({
-		{ "renderMode", static_cast<int>(value.DirectWrite.RenderMode) },
-		{ "measureMode", static_cast<int>(value.DirectWrite.MeasureMode) },
-		{ "gridFitMode", static_cast<int>(value.DirectWrite.GridFitMode) },
-		}));
+		{"renderMode", static_cast<int>(value.DirectWrite.RenderMode)},
+		{"measureMode", static_cast<int>(value.DirectWrite.MeasureMode)},
+		{"gridFitMode", static_cast<int>(value.DirectWrite.GridFitMode)},
+	}));
 }
 
-void xivres::fontgen::from_json(const nlohmann::json & json, xivres::fontgen::wrap_modifiers & value) {
+void xivres::fontgen::from_json(const nlohmann::json& json, wrap_modifiers& value) {
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
@@ -752,11 +739,11 @@ void xivres::fontgen::from_json(const nlohmann::json & json, xivres::fontgen::wr
 	if (const auto it = json.find("codepointReplacements"); it != json.end() && it->is_object()) {
 		for (const auto& item : it->items()) {
 			auto vs = item.value().get<std::string>();
-			char32_t l = xivres::util::unicode::UReplacement;
-			char32_t r = xivres::util::unicode::UReplacement;
-			xivres::util::unicode::decode(l, item.key().c_str(), item.key().size());
-			xivres::util::unicode::decode(r, vs.c_str(), vs.size());
-			if (l == xivres::util::unicode::UReplacement || r == xivres::util::unicode::UReplacement)
+			char32_t l = util::unicode::UReplacement;
+			char32_t r = util::unicode::UReplacement;
+			util::unicode::decode(l, item.key().c_str(), item.key().size());
+			util::unicode::decode(r, vs.c_str(), vs.size());
+			if (l == util::unicode::UReplacement || r == util::unicode::UReplacement)
 				continue;
 
 			value.CodepointReplacements.emplace(l, r);
@@ -764,11 +751,11 @@ void xivres::fontgen::from_json(const nlohmann::json & json, xivres::fontgen::wr
 	}
 }
 
-void xivres::fontgen::to_json(nlohmann::json & json, const xivres::fontgen::wrap_modifiers & value) {
+void xivres::fontgen::to_json(nlohmann::json& json, const wrap_modifiers& value) {
 	json = nlohmann::json::object();
 	auto& codepoints = *json.emplace("codepoints", nlohmann::json::array()).first;
 	for (const auto& c : value.Codepoints)
-		codepoints.emplace_back(nlohmann::json::array({ static_cast<uint32_t>(c.first), static_cast<uint32_t>(c.second) }));
+		codepoints.emplace_back(nlohmann::json::array({static_cast<uint32_t>(c.first), static_cast<uint32_t>(c.second)}));
 	json.emplace("letterSpacing", value.LetterSpacing);
 	json.emplace("horizontalOffset", value.HorizontalOffset);
 	json.emplace("baselineShift", value.BaselineShift);
@@ -777,7 +764,7 @@ void xivres::fontgen::to_json(nlohmann::json & json, const xivres::fontgen::wrap
 		codepointReplacements[xivres::util::unicode::convert_from_codepoint<std::string>(from)] = xivres::util::unicode::convert_from_codepoint<std::string>(to);
 }
 
-void App::Structs::from_json(const nlohmann::json & json, LookupStruct & value) {
+void App::Structs::from_json(const nlohmann::json& json, LookupStruct& value) {
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
@@ -787,7 +774,7 @@ void App::Structs::from_json(const nlohmann::json & json, LookupStruct & value) 
 	value.Style = static_cast<DWRITE_FONT_STYLE>(json.value<int>("style", DWRITE_FONT_STYLE_NORMAL));
 }
 
-void App::Structs::to_json(nlohmann::json & json, const LookupStruct & value) {
+void App::Structs::to_json(nlohmann::json& json, const LookupStruct& value) {
 	json = nlohmann::json::object();
 	json.emplace("name", value.Name);
 	json.emplace("weight", static_cast<int>(value.Weight));
@@ -836,5 +823,5 @@ const char* App::Structs::GetDefaultPreviewText() {
 		u8"\r\n"
 		u8"\r\n"
 		// almost every script covered by Nirmala UI has too much triple character gpos entries to be usable in game, so don't bother
-		);
+	);
 }

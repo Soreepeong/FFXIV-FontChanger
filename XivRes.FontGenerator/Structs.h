@@ -42,7 +42,7 @@ namespace App::Structs {
 		float Size = 0.f;
 		float Gamma = 1.f;
 		xivres::fontgen::codepoint_merge_mode MergeMode = xivres::fontgen::codepoint_merge_mode::AddNew;
-		xivres::fontgen::font_render_transformation_matrix TransformationMatrix{ 1.f, 0.f, 0.f, 1.f };
+		xivres::fontgen::font_render_transformation_matrix TransformationMatrix{1.f, 0.f, 0.f, 1.f};
 		xivres::fontgen::wrap_modifiers WrapModifiers;
 		RendererEnum Renderer = RendererEnum::Empty;
 		LookupStruct Lookup;

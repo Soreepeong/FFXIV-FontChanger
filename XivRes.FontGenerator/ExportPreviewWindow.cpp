@@ -5,7 +5,7 @@
 LRESULT App::ExportPreviewWindow::Window_OnCreate(HWND hwnd) {
 	m_hWnd = hwnd;
 
-	NONCLIENTMETRICSW ncm = { sizeof(NONCLIENTMETRICSW) };
+	NONCLIENTMETRICSW ncm = {sizeof(NONCLIENTMETRICSW)};
 	SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof ncm, &ncm, 0);
 	m_hUiFont = CreateFontIndirectW(&ncm.lfMessageFont);
 
@@ -66,6 +66,7 @@ LRESULT App::ExportPreviewWindow::Window_OnPaint() {
 			BITMAPINFOHEADER bmih;
 			DWORD bitfields[3];
 		};
+
 		BITMAPINFO bmi{};
 	};
 
@@ -75,11 +76,11 @@ LRESULT App::ExportPreviewWindow::Window_OnPaint() {
 		m_bNeedRedraw = false;
 		const auto pad = 16;
 		const auto buf = m_pMipmap->as_span<xivres::util::b8g8r8a8>();
-		std::ranges::fill(buf, xivres::util::b8g8r8a8{ 0x88, 0x88, 0x88, 0xFF });
+		std::ranges::fill(buf, xivres::util::b8g8r8a8{0x88, 0x88, 0x88, 0xFF});
 
 		for (int y = pad; y < m_pMipmap->Height - pad; y++) {
 			for (int x = pad; x < m_pMipmap->Width - pad; x++)
-				buf[y * m_pMipmap->Width + x] = { 0x00, 0x00, 0x00, 0xFF };
+				buf[y * m_pMipmap->Width + x] = {0x00, 0x00, 0x00, 0xFF};
 		}
 
 		auto sel = ListBox_GetCurSel(m_hFacesListBox);
@@ -89,7 +90,7 @@ LRESULT App::ExportPreviewWindow::Window_OnPaint() {
 			xivres::fontgen::text_measurer(font)
 				.max_width(m_pMipmap->Width - pad * 2)
 				.measure(GetWindowString(m_hEdit))
-				.draw_to(*m_pMipmap, font, 16, 16, { 0xFF, 0xFF, 0xFF, 0xFF }, { 0, 0, 0, 0 });
+				.draw_to(*m_pMipmap, font, 16, 16, {0xFF, 0xFF, 0xFF, 0xFF}, {0, 0, 0, 0});
 		}
 	}
 
@@ -102,7 +103,7 @@ LRESULT App::ExportPreviewWindow::Window_OnPaint() {
 	reinterpret_cast<xivres::util::b8g8r8a8*>(&bitfields[0])->set_components(255, 0, 0, 0);
 	reinterpret_cast<xivres::util::b8g8r8a8*>(&bitfields[1])->set_components(0, 255, 0, 0);
 	reinterpret_cast<xivres::util::b8g8r8a8*>(&bitfields[2])->set_components(0, 0, 255, 0);
-	StretchDIBits(hdc, m_nDrawLeft, m_nDrawTop, m_pMipmap->Width, m_pMipmap->Height, 0, 0, m_pMipmap->Width, m_pMipmap->Height, &m_pMipmap->as_span<xivres::util::b8g8r8a8>()[0], &bmi, DIB_RGB_COLORS, SRCCOPY);
+	StretchDIBits(hdc, m_nDrawLeft, m_nDrawTop, m_pMipmap->Width, m_pMipmap->Height, 0, 0, m_pMipmap->Width, m_pMipmap->Height, m_pMipmap->as_span<xivres::util::b8g8r8a8>().data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
 	EndPaint(m_hWnd, &ps);
 
 	return 0;
@@ -128,8 +129,7 @@ LRESULT App::ExportPreviewWindow::Edit_OnCommand(uint16_t commandId) {
 
 LRESULT App::ExportPreviewWindow::FaceListBox_OnCommand(uint16_t commandId) {
 	switch (commandId) {
-		case LBN_SELCHANGE:
-		{
+		case LBN_SELCHANGE: {
 			m_bNeedRedraw = true;
 			InvalidateRect(m_hWnd, nullptr, FALSE);
 			return 0;
@@ -180,7 +180,7 @@ App::ExportPreviewWindow::ExportPreviewWindow(std::vector<std::pair<std::string,
 	wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
 	wcex.hbrBackground = GetStockBrush(WHITE_BRUSH);
 	wcex.lpszClassName = ClassName;
-	wcex.lpfnWndProc = ExportPreviewWindow::WndProcInitial;
+	wcex.lpfnWndProc = WndProcInitial;
 
 	RegisterClassExW(&wcex);
 

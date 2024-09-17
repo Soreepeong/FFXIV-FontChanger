@@ -12,6 +12,7 @@ namespace App {
 			Id_Edit,
 			Id__Last,
 		};
+
 		static constexpr auto FaceListBoxWidth = 160;
 		static constexpr auto EditHeight = 160;
 

@@ -20,7 +20,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_BITMAP_H
-#include FT_OUTLINE_H 
+#include FT_OUTLINE_H
 #include FT_GLYPH_H
 
 #include <zlib.h>
@@ -61,7 +61,7 @@ _COM_SMARTPTR_TYPEDEF(IDWriteFactory, __uuidof(IDWriteFactory));
 
 inline std::wstring GetWindowString(HWND hwnd, bool trim = false) {
 	std::wstring buf(GetWindowTextLengthW(hwnd) + static_cast<size_t>(1), L'\0');
-	buf.resize(GetWindowTextW(hwnd, &buf[0], static_cast<int>(buf.size())));
+	buf.resize(GetWindowTextW(hwnd, buf.data(), static_cast<int>(buf.size())));
 	if (trim) {
 		const auto l = buf.find_first_not_of(L"\t\r\n ");
 		if (l == std::wstring::npos)

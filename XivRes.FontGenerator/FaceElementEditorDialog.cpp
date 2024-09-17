@@ -49,15 +49,15 @@ struct App::FaceElementEditorDialog::ControlStruct {
 	HWND TransformationMatrixReset = GetDlgItem(Window, IDC_BUTTON_TRANSFORMATIONMATRIX_RESET);
 };
 
-App::FaceElementEditorDialog::FaceElementEditorDialog(HWND hParentWnd, App::Structs::FaceElement& element, std::function<void()> onFontChanged)
-	: m_hParentWnd(hParentWnd)
-	, m_element(element)
+App::FaceElementEditorDialog::FaceElementEditorDialog(HWND hParentWnd, Structs::FaceElement& element, std::function<void()> onFontChanged)
+	: m_element(element)
 	, m_elementOriginal(element)
-	, m_onFontChanged(onFontChanged) {
-	std::unique_ptr<std::remove_pointer<HGLOBAL>::type, decltype(FreeResource)*> hglob(LoadResource(g_hInstance, FindResourceW(g_hInstance, MAKEINTRESOURCE(IDD_FACEELEMENTEDITOR), RT_DIALOG)), FreeResource);
+	, m_hParentWnd(hParentWnd)
+	, m_onFontChanged(std::move(onFontChanged)) {
+	const std::unique_ptr<std::remove_pointer_t<HGLOBAL>, decltype(&FreeResource)> hglob(LoadResource(g_hInstance, FindResourceW(g_hInstance, MAKEINTRESOURCE(IDD_FACEELEMENTEDITOR), RT_DIALOG)), &FreeResource);
 	CreateDialogIndirectParamW(
 		g_hInstance,
-		reinterpret_cast<DLGTEMPLATE*>(LockResource(hglob.get())),
+		static_cast<DLGTEMPLATE*>(LockResource(hglob.get())),
 		m_hParentWnd,
 		DlgProcStatic,
 		reinterpret_cast<LPARAM>(this));
@@ -89,7 +89,6 @@ bool App::FaceElementEditorDialog::TryEvaluate(const std::wstring& wstr, T& res,
 		else
 			res = static_cast<T>(expr.value());
 		return true;
-
 	} else {
 		std::string errors;
 		if (parser.error_count() == 1)
@@ -100,7 +99,7 @@ bool App::FaceElementEditorDialog::TryEvaluate(const std::wstring& wstr, T& res,
 			const auto error = parser.get_error(i);
 			errors += std::format("\n* {:02} [{}] {}",
 				error.token.position,
-				exprtk::parser_error::to_str(error.mode),
+				to_str(error.mode),
 				error.diagnostic);
 		}
 
@@ -121,7 +120,7 @@ bool App::FaceElementEditorDialog::TryGetOrEvaluateValueInto(HWND hwnd, T& res, 
 			void(TryEvaluate(wstr, newValue, true));
 	}
 
-	if (newValue == res)
+	if (newValue == res)  // NOLINT(clang-diagnostic-float-equal)
 		return false;
 
 	res = newValue;
@@ -150,7 +149,7 @@ INT_PTR App::FaceElementEditorDialog::FontRendererCombo_OnCommand(uint16_t notiC
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	m_element.Renderer = static_cast<App::Structs::RendererEnum>(ComboBox_GetCurSel(m_controls->FontRendererCombo));
+	m_element.Renderer = static_cast<Structs::RendererEnum>(ComboBox_GetCurSel(m_controls->FontRendererCombo));
 	SetControlsEnabledOrDisabled();
 	RepopulateFontCombobox();
 	OnBaseFontChanged();
@@ -236,8 +235,8 @@ INT_PTR App::FaceElementEditorDialog::FontStretchCombo_OnCommand(uint16_t notiCo
 		newStretch = DWRITE_FONT_STRETCH_ULTRA_EXPANDED;
 	else
 		newStretch = DWRITE_FONT_STRETCH_NORMAL;
-	if (newStretch != newStretch) {
-		newStretch = newStretch;
+	if (newStretch != m_element.Lookup.Stretch) {
+		m_element.Lookup.Stretch = newStretch;
 		OnBaseFontChanged();
 	}
 	return 0;
@@ -371,7 +370,7 @@ INT_PTR App::FaceElementEditorDialog::TransformationMatrixEdit_OnCommand(int ind
 			(&m_controls->TransformationMatrixM11Edit)[index],
 			(&m_element.TransformationMatrix.M11)[index],
 			(&m_elementOriginal.TransformationMatrix.M11)[index])
-		) {
+	) {
 		OnBaseFontChanged();
 	}
 	return 0;
@@ -416,7 +415,7 @@ INT_PTR App::FaceElementEditorDialog::CustomRangeEdit_OnCommand(uint16_t notiCod
 		}
 	}
 
-	Edit_SetText(m_controls->CustomRangePreview, &description[0]);
+	Edit_SetText(m_controls->CustomRangePreview, description.data());
 
 	return 0;
 }
@@ -453,7 +452,7 @@ INT_PTR App::FaceElementEditorDialog::CodepointsDeleteButton_OnCommand(uint16_t 
 	if (selItems.empty())
 		return 0;
 
-	ListBox_GetSelItems(m_controls->CodepointsList, static_cast<int>(selItems.size()), &selItems[0]);
+	ListBox_GetSelItems(m_controls->CodepointsList, static_cast<int>(selItems.size()), selItems.data());
 	std::ranges::sort(selItems, std::greater<>());
 	for (const auto itemIndex : selItems) {
 		m_element.WrapModifiers.Codepoints.erase(m_element.WrapModifiers.Codepoints.begin() + itemIndex);
@@ -495,7 +494,7 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchResultList_OnCommand(uin
 		if (selItems.empty())
 			return 0;
 
-		ListBox_GetSelItems(m_controls->UnicodeBlockSearchResultList, static_cast<int>(selItems.size()), &selItems[0]);
+		ListBox_GetSelItems(m_controls->UnicodeBlockSearchResultList, static_cast<int>(selItems.size()), selItems.data());
 
 		std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 		std::wstring containingChars;
@@ -541,7 +540,7 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchAdd_OnCommand(uint16_t n
 	if (selItems.empty())
 		return 0;
 
-	ListBox_GetSelItems(m_controls->UnicodeBlockSearchResultList, static_cast<int>(selItems.size()), &selItems[0]);
+	ListBox_GetSelItems(m_controls->UnicodeBlockSearchResultList, static_cast<int>(selItems.size()), selItems.data());
 
 	auto changed = false;
 	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
@@ -622,25 +621,22 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 
 
 	for (const auto& controlHwnd : {
-		m_controls->EmptyAscentEdit,
-		m_controls->EmptyLineHeightEdit,
-		m_controls->AdjustmentBaselineShiftEdit,
-		m_controls->AdjustmentLetterSpacingEdit,
-		m_controls->AdjustmentHorizontalOffsetEdit
-		}) {
+		     m_controls->EmptyAscentEdit,
+		     m_controls->EmptyLineHeightEdit,
+		     m_controls->AdjustmentBaselineShiftEdit,
+		     m_controls->AdjustmentLetterSpacingEdit,
+		     m_controls->AdjustmentHorizontalOffsetEdit
+	     }) {
 		SetWindowSubclass(controlHwnd, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
 			const auto minValue = -128, maxValue = 127;
 			if (msg == WM_KEYDOWN && wParam == VK_DOWN && !GetWindowString(hWnd).starts_with(L"=")) {
 				SetWindowNumber(hWnd, (std::max)(minValue, GetWindowNumber<int>(hWnd) + 1));
 				return 0;
-
 			} else if (msg == WM_KEYDOWN && wParam == VK_UP && !GetWindowString(hWnd).starts_with(L"=")) {
 				SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<int>(hWnd) - 1));
 				return 0;
-
 			} else if (msg == WM_GETDLGCODE && wParam == VK_RETURN && GetWindowString(hWnd).starts_with(L"=")) {
 				return DefSubclassProc(hWnd, msg, wParam, lParam) | DLGC_WANTALLKEYS;
-
 			} else if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
 				if (const auto wstr = GetWindowString(hWnd); wstr.starts_with(L"=")) {
 					if (int r; reinterpret_cast<FaceElementEditorDialog*>(dwRefData)->TryEvaluate(wstr, r))
@@ -654,21 +650,18 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	}
 
 	for (const auto& controlHwnd : {
-		m_controls->AdjustmentGammaEdit,
-		}) {
+		     m_controls->AdjustmentGammaEdit,
+	     }) {
 		SetWindowSubclass(controlHwnd, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
 			const auto minValue = 1.f, maxValue = 3.f;
 			if (msg == WM_KEYDOWN && wParam == VK_DOWN && !GetWindowString(hWnd).starts_with(L"=")) {
 				SetWindowNumber(hWnd, (std::max)(minValue, GetWindowNumber<float>(hWnd) + 0.1f));
 				return 0;
-
 			} else if (msg == WM_KEYDOWN && wParam == VK_UP && !GetWindowString(hWnd).starts_with(L"=")) {
 				SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - 0.1f));
 				return 0;
-
 			} else if (msg == WM_GETDLGCODE && wParam == VK_RETURN && GetWindowString(hWnd).starts_with(L"=")) {
 				return DefSubclassProc(hWnd, msg, wParam, lParam) | DLGC_WANTALLKEYS;
-
 			} else if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
 				if (const auto wstr = GetWindowString(hWnd); wstr.starts_with(L"=")) {
 					if (float r; reinterpret_cast<FaceElementEditorDialog*>(dwRefData)->TryEvaluate(wstr, r))
@@ -682,8 +675,8 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	}
 
 	for (const auto& controlHwnd : {
-		m_controls->FontSizeEdit,
-		}) {
+		     m_controls->FontSizeEdit,
+	     }) {
 		SetWindowSubclass(controlHwnd, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
 			const auto minValue = 8.f, maxValue = 255.f;
 			if (msg == WM_KEYDOWN && wParam == VK_DOWN && !GetWindowString(hWnd).starts_with(L"=")) {
@@ -692,17 +685,14 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 				else
 					SetWindowNumber(hWnd, (std::max)(minValue, GetWindowNumber<float>(hWnd) + 1.f));
 				return 0;
-
 			} else if (msg == WM_KEYDOWN && wParam == VK_UP && !GetWindowString(hWnd).starts_with(L"=")) {
 				if (GetKeyState(VK_CONTROL) & 0x8000)
 					SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - 0.1f));
 				else
 					SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - 1.f));
 				return 0;
-
 			} else if (msg == WM_GETDLGCODE && wParam == VK_RETURN && GetWindowString(hWnd).starts_with(L"=")) {
 				return DefSubclassProc(hWnd, msg, wParam, lParam) | DLGC_WANTALLKEYS;
-
 			} else if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
 				if (const auto wstr = GetWindowString(hWnd); wstr.starts_with(L"=")) {
 					if (float r; reinterpret_cast<FaceElementEditorDialog*>(dwRefData)->TryEvaluate(wstr, r))
@@ -716,11 +706,11 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	}
 
 	for (const auto& controlHwnd : {
-		m_controls->TransformationMatrixM11Edit,
-		m_controls->TransformationMatrixM12Edit,
-		m_controls->TransformationMatrixM21Edit,
-		m_controls->TransformationMatrixM22Edit,
-		}) {
+		     m_controls->TransformationMatrixM11Edit,
+		     m_controls->TransformationMatrixM12Edit,
+		     m_controls->TransformationMatrixM21Edit,
+		     m_controls->TransformationMatrixM22Edit,
+	     }) {
 		SetWindowSubclass(controlHwnd, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
 			const auto minValue = -100.f, maxValue = 100.f;
 			if (msg == WM_KEYDOWN && wParam == VK_DOWN && !GetWindowString(hWnd).starts_with(L"=")) {
@@ -729,17 +719,14 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 				else
 					SetWindowNumber(hWnd, (std::max)(minValue, GetWindowNumber<float>(hWnd) + 0.1f));
 				return 0;
-
 			} else if (msg == WM_KEYDOWN && wParam == VK_UP && !GetWindowString(hWnd).starts_with(L"=")) {
 				if (GetKeyState(VK_CONTROL) & 0x8000)
 					SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - 0.01f));
 				else
 					SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - 0.1f));
 				return 0;
-
 			} else if (msg == WM_GETDLGCODE && wParam == VK_RETURN && GetWindowString(hWnd).starts_with(L"=")) {
 				return DefSubclassProc(hWnd, msg, wParam, lParam) | DLGC_WANTALLKEYS;
-
 			} else if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
 				if (const auto wstr = GetWindowString(hWnd); wstr.starts_with(L"=")) {
 					if (float r; reinterpret_cast<FaceElementEditorDialog*>(dwRefData)->TryEvaluate(wstr, r))
@@ -770,9 +757,8 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 
 std::vector<std::pair<char32_t, char32_t>> App::FaceElementEditorDialog::ParseCustomRangeString() {
 	const auto input = xivres::util::unicode::convert<std::u32string>(GetWindowString(m_controls->CustomRangeEdit));
-	size_t next = 0;
 	std::vector<std::pair<char32_t, char32_t>> ranges;
-	for (size_t i = 0; i < input.size(); i = next + 1) {
+	for (size_t i = 0, next; i < input.size(); i = next + 1) {
 		next = input.find_first_of(U",;", i);
 		std::u32string_view part;
 		if (next == std::u32string::npos) {
@@ -925,7 +911,7 @@ void App::FaceElementEditorDialog::RefreshUnicodeBlockSearchResults() {
 
 void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 	switch (m_element.Renderer) {
-		case App::Structs::RendererEnum::Empty:
+		case Structs::RendererEnum::Empty:
 			EnableWindow(m_controls->FontCombo, FALSE);
 			EnableWindow(m_controls->FontSizeEdit, TRUE);
 			EnableWindow(m_controls->FontWeightCombo, FALSE);
@@ -962,7 +948,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->UnicodeBlockSearchAdd, FALSE);
 			break;
 
-		case App::Structs::RendererEnum::PrerenderedGameInstallation:
+		case Structs::RendererEnum::PrerenderedGameInstallation:
 			EnableWindow(m_controls->FontCombo, TRUE);
 			EnableWindow(m_controls->FontSizeEdit, TRUE);
 			EnableWindow(m_controls->FontWeightCombo, FALSE);
@@ -999,7 +985,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->UnicodeBlockSearchAdd, TRUE);
 			break;
 
-		case App::Structs::RendererEnum::DirectWrite:
+		case Structs::RendererEnum::DirectWrite:
 			EnableWindow(m_controls->FontCombo, TRUE);
 			EnableWindow(m_controls->FontSizeEdit, TRUE);
 			EnableWindow(m_controls->FontWeightCombo, TRUE);
@@ -1036,7 +1022,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->UnicodeBlockSearchAdd, TRUE);
 			break;
 
-		case App::Structs::RendererEnum::FreeType:
+		case Structs::RendererEnum::FreeType:
 			EnableWindow(m_controls->FontCombo, TRUE);
 			EnableWindow(m_controls->FontSizeEdit, TRUE);
 			EnableWindow(m_controls->FontWeightCombo, TRUE);
@@ -1078,33 +1064,31 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 	ComboBox_ResetContent(m_controls->FontCombo);
 	switch (m_element.Renderer) {
-		case App::Structs::RendererEnum::Empty:
+		case Structs::RendererEnum::Empty:
 			break;
 
-		case App::Structs::RendererEnum::PrerenderedGameInstallation:
-		{
-			std::array<std::wstring, 8> ValidFonts{ {
-				L"AXIS",
-				L"Jupiter",
-				L"JupiterN",
-				L"Meidinger",
-				L"MiedingerMid",
-				L"TrumpGothic",
-				L"ChnAXIS",
-				L"KrnAXIS",
-			} };
+		case Structs::RendererEnum::PrerenderedGameInstallation: {
+			std::array<std::wstring, 8> ValidFonts{
+				{
+					L"AXIS",
+					L"Jupiter",
+					L"JupiterN",
+					L"Meidinger",
+					L"MiedingerMid",
+					L"TrumpGothic",
+					L"ChnAXIS",
+					L"KrnAXIS",
+				}
+			};
 
 			auto anySel = false;
 			for (auto& name : ValidFonts) {
 				ComboBox_AddString(m_controls->FontCombo, name.c_str());
 
-				auto curNameLower = xivres::util::unicode::convert<std::wstring>(m_element.Lookup.Name);
-				for (auto& c : curNameLower)
-					c = std::tolower(c);
-				for (auto& c : name)
-					c = std::tolower(c);
-				if (curNameLower != name)
+				const auto curNameLower = xivres::util::unicode::convert<std::wstring>(m_element.Lookup.Name);
+				if (lstrcmpiW(curNameLower.c_str(), name.c_str()) != 0)
 					continue;
+
 				anySel = true;
 				ComboBox_SetCurSel(m_controls->FontCombo, ComboBox_GetCount(m_controls->FontCombo) - 1);
 			}
@@ -1113,9 +1097,8 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 			break;
 		}
 
-		case App::Structs::RendererEnum::DirectWrite:
-		case App::Structs::RendererEnum::FreeType:
-		{
+		case Structs::RendererEnum::DirectWrite:
+		case Structs::RendererEnum::FreeType: {
 			IDWriteFactory3Ptr factory;
 			SuccessOrThrow(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory3), reinterpret_cast<IUnknown**>(&factory)));
 
@@ -1146,13 +1129,12 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 					continue;
 
 				std::wstring res(length + 1, L'\0');
-				if (FAILED(strings->GetString(index, &res[0], length + 1)))
+				if (FAILED(strings->GetString(index, res.data(), length + 1)))
 					continue;
 				res.resize(length);
 
 				std::wstring resLower = res;
-				for (auto& c : resLower)
-					c = std::tolower(c);
+				CharLowerBuffW(resLower.data(), static_cast<DWORD>(resLower.size()));
 
 				const auto insertAt = std::ranges::lower_bound(names, resLower) - names.begin();
 
@@ -1162,8 +1144,7 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 			}
 
 			auto curNameLower = xivres::util::unicode::convert<std::wstring>(m_element.Lookup.Name);
-			for (auto& c : curNameLower)
-				c = std::tolower(c);
+			CharLowerBuffW(curNameLower.data(), static_cast<DWORD>(curNameLower.size()));
 			if (const auto it = std::ranges::lower_bound(names, curNameLower); it != names.end() && *it == curNameLower)
 				ComboBox_SetCurSel(m_controls->FontCombo, it - names.begin());
 			else
@@ -1183,8 +1164,7 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 	ComboBox_ResetContent(m_controls->FontStretchCombo);
 
 	switch (m_element.Renderer) {
-		case App::Structs::RendererEnum::PrerenderedGameInstallation:
-		{
+		case Structs::RendererEnum::PrerenderedGameInstallation: {
 			ComboBox_AddString(m_controls->FontWeightCombo, L"400 (Normal/Regular)");
 			ComboBox_AddString(m_controls->FontStyleCombo, L"Normal");
 			ComboBox_AddString(m_controls->FontStretchCombo, L"Normal");
@@ -1197,9 +1177,8 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 			break;
 		}
 
-		case App::Structs::RendererEnum::DirectWrite:
-		case App::Structs::RendererEnum::FreeType:
-		{
+		case Structs::RendererEnum::DirectWrite:
+		case Structs::RendererEnum::FreeType: {
 			const auto curSel = (std::max)(0, (std::min)(static_cast<int>(m_fontFamilies.size() - 1), ComboBox_GetCurSel(m_controls->FontCombo)));
 			const auto& family = m_fontFamilies[curSel];
 			std::set<DWRITE_FONT_WEIGHT> weights;
@@ -1233,17 +1212,28 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 
 			for (const auto v : weights) {
 				switch (v) {
-					case 100: ComboBox_AddString(m_controls->FontWeightCombo, L"100 (Thin)"); break;
-					case 200: ComboBox_AddString(m_controls->FontWeightCombo, L"200 (Extra Light/Ultra Light)"); break;
-					case 300: ComboBox_AddString(m_controls->FontWeightCombo, L"300 (Light)"); break;
-					case 350: ComboBox_AddString(m_controls->FontWeightCombo, L"350 (Semi Light)"); break;
-					case 400: ComboBox_AddString(m_controls->FontWeightCombo, L"400 (Normal/Regular)"); break;
-					case 500: ComboBox_AddString(m_controls->FontWeightCombo, L"500 (Medium)"); break;
-					case 600: ComboBox_AddString(m_controls->FontWeightCombo, L"600 (Semi Bold/Demibold)"); break;
-					case 700: ComboBox_AddString(m_controls->FontWeightCombo, L"700 (Bold)"); break;
-					case 800: ComboBox_AddString(m_controls->FontWeightCombo, L"800 (Extra Bold/Ultra Bold)"); break;
-					case 900: ComboBox_AddString(m_controls->FontWeightCombo, L"900 (Black/Heavy)"); break;
-					case 950: ComboBox_AddString(m_controls->FontWeightCombo, L"950 (Extra Black/Ultra Black)"); break;
+					case 100: ComboBox_AddString(m_controls->FontWeightCombo, L"100 (Thin)");
+						break;
+					case 200: ComboBox_AddString(m_controls->FontWeightCombo, L"200 (Extra Light/Ultra Light)");
+						break;
+					case 300: ComboBox_AddString(m_controls->FontWeightCombo, L"300 (Light)");
+						break;
+					case 350: ComboBox_AddString(m_controls->FontWeightCombo, L"350 (Semi Light)");
+						break;
+					case 400: ComboBox_AddString(m_controls->FontWeightCombo, L"400 (Normal/Regular)");
+						break;
+					case 500: ComboBox_AddString(m_controls->FontWeightCombo, L"500 (Medium)");
+						break;
+					case 600: ComboBox_AddString(m_controls->FontWeightCombo, L"600 (Semi Bold/Demibold)");
+						break;
+					case 700: ComboBox_AddString(m_controls->FontWeightCombo, L"700 (Bold)");
+						break;
+					case 800: ComboBox_AddString(m_controls->FontWeightCombo, L"800 (Extra Bold/Ultra Bold)");
+						break;
+					case 900: ComboBox_AddString(m_controls->FontWeightCombo, L"900 (Black/Heavy)");
+						break;
+					case 950: ComboBox_AddString(m_controls->FontWeightCombo, L"950 (Extra Black/Ultra Black)");
+						break;
 					default: ComboBox_AddString(m_controls->FontWeightCombo, std::format(L"{}", static_cast<int>(v)).c_str());
 				}
 
@@ -1255,9 +1245,12 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 
 			for (const auto v : styles) {
 				switch (v) {
-					case DWRITE_FONT_STYLE_NORMAL: ComboBox_AddString(m_controls->FontStyleCombo, L"Normal"); break;
-					case DWRITE_FONT_STYLE_OBLIQUE: ComboBox_AddString(m_controls->FontStyleCombo, L"Oblique"); break;
-					case DWRITE_FONT_STYLE_ITALIC: ComboBox_AddString(m_controls->FontStyleCombo, L"Italic"); break;
+					case DWRITE_FONT_STYLE_NORMAL: ComboBox_AddString(m_controls->FontStyleCombo, L"Normal");
+						break;
+					case DWRITE_FONT_STYLE_OBLIQUE: ComboBox_AddString(m_controls->FontStyleCombo, L"Oblique");
+						break;
+					case DWRITE_FONT_STYLE_ITALIC: ComboBox_AddString(m_controls->FontStyleCombo, L"Italic");
+						break;
 					default: continue;
 				}
 
@@ -1269,15 +1262,24 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 
 			for (const auto v : stretches) {
 				switch (v) {
-					case DWRITE_FONT_STRETCH_ULTRA_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Ultra Condensed"); break;
-					case DWRITE_FONT_STRETCH_EXTRA_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Extra Condensed"); break;
-					case DWRITE_FONT_STRETCH_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Condensed"); break;
-					case DWRITE_FONT_STRETCH_SEMI_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Semi Condensed"); break;
-					case DWRITE_FONT_STRETCH_NORMAL: ComboBox_AddString(m_controls->FontStretchCombo, L"Normal"); break;
-					case DWRITE_FONT_STRETCH_SEMI_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Semi Expanded"); break;
-					case DWRITE_FONT_STRETCH_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Expanded"); break;
-					case DWRITE_FONT_STRETCH_EXTRA_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Extra Expanded"); break;
-					case DWRITE_FONT_STRETCH_ULTRA_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Ultra Expanded"); break;
+					case DWRITE_FONT_STRETCH_ULTRA_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Ultra Condensed");
+						break;
+					case DWRITE_FONT_STRETCH_EXTRA_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Extra Condensed");
+						break;
+					case DWRITE_FONT_STRETCH_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Condensed");
+						break;
+					case DWRITE_FONT_STRETCH_SEMI_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Semi Condensed");
+						break;
+					case DWRITE_FONT_STRETCH_NORMAL: ComboBox_AddString(m_controls->FontStretchCombo, L"Normal");
+						break;
+					case DWRITE_FONT_STRETCH_SEMI_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Semi Expanded");
+						break;
+					case DWRITE_FONT_STRETCH_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Expanded");
+						break;
+					case DWRITE_FONT_STRETCH_EXTRA_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Extra Expanded");
+						break;
+					case DWRITE_FONT_STRETCH_ULTRA_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Ultra Expanded");
+						break;
 					default: continue;
 				}
 
@@ -1314,8 +1316,7 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 	switch (message) {
 		case WM_INITDIALOG:
 			return Dialog_OnInitDialog();
-		case WM_COMMAND:
-		{
+		case WM_COMMAND: {
 			switch (LOWORD(wParam)) {
 				case IDOK: return OkButton_OnCommand(HIWORD(wParam));
 				case IDCANCEL: return CancelButton_OnCommand(HIWORD(wParam));
@@ -1360,14 +1361,12 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 			}
 			return 0;
 		}
-		case WM_CLOSE:
-		{
+		case WM_CLOSE: {
 			EndDialog(m_controls->Window, 0);
 			m_bOpened = false;
 			return 0;
 		}
-		case WM_DESTROY:
-		{
+		case WM_DESTROY: {
 			m_bOpened = false;
 			return 0;
 		}
@@ -1378,7 +1377,7 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 INT_PTR __stdcall App::FaceElementEditorDialog::DlgProcStatic(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	if (message == WM_INITDIALOG) {
 		auto& params = *reinterpret_cast<FaceElementEditorDialog*>(lParam);
-		params.m_controls = new ControlStruct{ hwnd };
+		params.m_controls = new ControlStruct{hwnd};
 		SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&params));
 		return params.DlgProc(message, wParam, lParam);
 	} else {
