@@ -899,7 +899,8 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 				progressDialog.ThrowIfCancelled();
 				textureOne.set_mipmap(0, 0, mips[i]);
 
-				std::ofstream out(basePath / std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i + 1)), std::ios::binary);
+				const auto i1 = i + 1;
+				std::ofstream out(basePath / std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i1)), std::ios::binary);
 
 				for (size_t read, pos = 0; (read = textureOne.read(pos, &buf[0], buf.size())); pos += read) {
 					progressDialog.ThrowIfCancelled();
@@ -991,7 +992,8 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 			for (size_t i = 0; i < mips.size(); i++) {
 				progressDialog.ThrowIfCancelled();
 
-				const auto targetFileName = std::format("common/font/{}", std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i + 1)));
+				const auto i1 = i + 1;
+				const auto targetFileName = std::format("common/font/{}", std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i1)));
 				progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
 
 				const auto& mip = mips[i];

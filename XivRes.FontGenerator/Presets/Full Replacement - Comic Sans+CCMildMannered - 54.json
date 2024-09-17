@@ -113,7 +113,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -138,7 +138,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 11.0,
+							"size": 10.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -271,7 +271,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -296,7 +296,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 13.0,
+							"size": 12.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -429,7 +429,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -454,7 +454,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 15.0,
+							"size": 14.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -587,7 +587,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -612,7 +612,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 19.0,
+							"size": 18.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -985,7 +985,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -1010,7 +1010,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 55.0,
+							"size": 54.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -1259,7 +1259,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -1417,7 +1417,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -1575,7 +1575,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -1672,7 +1672,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 1,
 								"weight": 400
@@ -1720,7 +1720,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -1878,7 +1878,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -1975,7 +1975,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 1,
 								"weight": 400
@@ -2023,7 +2023,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -2125,7 +2125,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -2227,7 +2227,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -2329,7 +2329,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -2487,7 +2487,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 700
@@ -2512,7 +2512,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 11.0,
+							"size": 10.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -2645,7 +2645,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 700
@@ -2670,7 +2670,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 13.0,
+							"size": 12.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -2803,7 +2803,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 700
@@ -2828,7 +2828,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 15.0,
+							"size": 14.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -2961,7 +2961,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 700
@@ -2986,7 +2986,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 19.0,
+							"size": 18.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -3179,7 +3179,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -3204,7 +3204,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 55.0,
+							"size": 54.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -3405,7 +3405,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -3563,7 +3563,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -3588,7 +3588,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 24.0,
+							"size": 23.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -3721,7 +3721,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -3746,7 +3746,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 36.0,
+							"size": 34.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -3879,7 +3879,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "CCMildMannered",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -3904,7 +3904,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 71.0,
+							"size": 68.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,

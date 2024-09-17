@@ -1,9 +1,6 @@
 ﻿using Dalamud.Configuration;
 using Dalamud.Plugin;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using static FontChangerForDalamud.CantBelieveItsNotCpp;
 
 namespace FontChangerForDalamud {
     [Serializable]
@@ -15,9 +12,9 @@ namespace FontChangerForDalamud {
         // the below exist just to make saving less cumbersome
 
         [NonSerialized]
-        private DalamudPluginInterface? _pluginInterface;
+        private IDalamudPluginInterface? _pluginInterface;
 
-        public void Initialize(DalamudPluginInterface pluginInterface) {
+        public void Initialize(IDalamudPluginInterface pluginInterface) {
             _pluginInterface = pluginInterface;
         }
 

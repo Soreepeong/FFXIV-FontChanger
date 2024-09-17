@@ -2,7 +2,7 @@
 	"fontSets": [
 		{
 			"discardStep": 1,
-			"expectedTexCount": 4,
+			"expectedTexCount": 1,
 			"faces": [
 				{
 					"elements": [
@@ -46,7 +46,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -94,63 +94,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -204,7 +148,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -252,63 +196,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -362,7 +250,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -410,63 +298,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -520,7 +352,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -556,7 +388,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 19.0,
+							"size": 18.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -568,63 +400,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 19.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -934,6 +710,186 @@
 								"style": 0,
 								"weight": 400
 							},
+							"mergeMode": 2,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 56.0,
+							"transformationMatrix": [
+								1.0,
+								0.0,
+								0.0,
+								1.0
+							],
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										0,
+										127
+									],
+									[
+										128,
+										255
+									],
+									[
+										256,
+										383
+									],
+									[
+										384,
+										591
+									],
+									[
+										688,
+										767
+									],
+									[
+										880,
+										1023
+									],
+									[
+										1024,
+										1279
+									],
+									[
+										4352,
+										4607
+									],
+									[
+										7680,
+										7935
+									],
+									[
+										8192,
+										8303
+									],
+									[
+										8304,
+										8351
+									],
+									[
+										8352,
+										8399
+									],
+									[
+										8448,
+										8527
+									],
+									[
+										8528,
+										8591
+									],
+									[
+										8592,
+										8703
+									],
+									[
+										8704,
+										8959
+									],
+									[
+										8960,
+										9215
+									],
+									[
+										9312,
+										9471
+									],
+									[
+										9472,
+										9599
+									],
+									[
+										9600,
+										9631
+									],
+									[
+										9632,
+										9727
+									],
+									[
+										9728,
+										9983
+									],
+									[
+										12288,
+										12351
+									],
+									[
+										12352,
+										12447
+									],
+									[
+										12448,
+										12543
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										12800,
+										13055
+									],
+									[
+										13056,
+										13311
+									],
+									[
+										19968,
+										40959
+									],
+									[
+										44032,
+										55215
+									],
+									[
+										63744,
+										64255
+									],
+									[
+										64256,
+										64335
+									],
+									[
+										65280,
+										65519
+									],
+									[
+										65520,
+										65535
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"name": "Gulim",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
 							"mergeMode": 1,
 							"renderSpecific": {
 								"directwrite": {
@@ -979,122 +935,6 @@
 									]
 								],
 								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 2,
-									"renderMode": 5
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 55.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 1,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										0,
-										127
-									],
-									[
-										128,
-										255
-									],
-									[
-										256,
-										383
-									],
-									[
-										384,
-										591
-									],
-									[
-										688,
-										767
-									],
-									[
-										880,
-										1023
-									],
-									[
-										1024,
-										1279
-									],
-									[
-										7680,
-										7935
-									],
-									[
-										8192,
-										8303
-									],
-									[
-										8304,
-										8351
-									],
-									[
-										8352,
-										8399
-									],
-									[
-										8448,
-										8527
-									],
-									[
-										8528,
-										8591
-									],
-									[
-										8704,
-										8959
-									],
-									[
-										9472,
-										9599
-									],
-									[
-										9632,
-										9727
-									],
-									[
-										9728,
-										9983
-									],
-									[
-										64256,
-										64335
-									]
-								],
-								"horizontalOffset": 2,
 								"letterSpacing": 0
 							}
 						},
@@ -1148,7 +988,7 @@
 						}
 					],
 					"name": "AXIS_36",
-					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ifi\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
+					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
 				},
 				{
 					"elements": [
@@ -1192,7 +1032,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -1240,63 +1080,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 16.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -1350,7 +1134,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -1398,63 +1182,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 20.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -1508,7 +1236,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -1556,63 +1284,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 23.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -1642,8 +1314,8 @@
 									"renderMode": 4
 								},
 								"empty": {
-									"ascent": 51,
-									"lineHeight": 61
+									"ascent": 43,
+									"lineHeight": 52
 								},
 								"freetype": {
 									"forceAutohint": false,
@@ -1672,7 +1344,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "Gulim",
 								"stretch": 5,
 								"style": 1,
 								"weight": 400
@@ -1697,7 +1369,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 74.0,
+							"size": 69.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -1713,14 +1385,14 @@
 										33
 									]
 								],
-								"horizontalOffset": -4,
-								"letterSpacing": -10
+								"horizontalOffset": -6,
+								"letterSpacing": -12
 							}
 						},
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "Gulim",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -1761,8 +1433,8 @@
 										57
 									]
 								],
-								"horizontalOffset": 6,
-								"letterSpacing": 0
+								"horizontalOffset": 0,
+								"letterSpacing": -2
 							}
 						}
 					],
@@ -1811,7 +1483,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -1859,67 +1531,11 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 3,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 46.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
-								"horizontalOffset": 2,
+								"horizontalOffset": 3,
 								"letterSpacing": 0
 							}
 						}
@@ -1945,8 +1561,8 @@
 									"renderMode": 4
 								},
 								"empty": {
-									"ascent": 101,
-									"lineHeight": 121
+									"ascent": 87,
+									"lineHeight": 105
 								},
 								"freetype": {
 									"forceAutohint": false,
@@ -1975,7 +1591,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "Gulim",
 								"stretch": 5,
 								"style": 1,
 								"weight": 400
@@ -2000,7 +1616,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 148.0,
+							"size": 138.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -2016,14 +1632,14 @@
 										33
 									]
 								],
-								"horizontalOffset": -8,
-								"letterSpacing": -20
+								"horizontalOffset": -12,
+								"letterSpacing": -24
 							}
 						},
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "Gulim",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -2064,8 +1680,8 @@
 										57
 									]
 								],
-								"horizontalOffset": 12,
-								"letterSpacing": 0
+								"horizontalOffset": 0,
+								"letterSpacing": -4
 							}
 						}
 					],
@@ -2114,7 +1730,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2125,12 +1741,12 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "Gulim",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
 							},
-							"mergeMode": 2,
+							"mergeMode": 1,
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
@@ -2162,8 +1778,28 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										0,
-										127
+										32,
+										32
+									],
+									[
+										33,
+										33
+									],
+									[
+										37,
+										37
+									],
+									[
+										43,
+										43
+									],
+									[
+										45,
+										57
+									],
+									[
+										63,
+										63
 									]
 								],
 								"horizontalOffset": 0,
@@ -2216,7 +1852,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2227,12 +1863,12 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "Gulim",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
 							},
-							"mergeMode": 2,
+							"mergeMode": 1,
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
@@ -2264,8 +1900,28 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										0,
-										127
+										32,
+										32
+									],
+									[
+										33,
+										33
+									],
+									[
+										37,
+										37
+									],
+									[
+										43,
+										43
+									],
+									[
+										45,
+										57
+									],
+									[
+										63,
+										63
 									]
 								],
 								"horizontalOffset": 0,
@@ -2318,7 +1974,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2329,12 +1985,12 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"name": "Gulim",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
 							},
-							"mergeMode": 2,
+							"mergeMode": 1,
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
@@ -2366,8 +2022,28 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										0,
-										127
+										32,
+										32
+									],
+									[
+										33,
+										33
+									],
+									[
+										37,
+										37
+									],
+									[
+										43,
+										43
+									],
+									[
+										45,
+										57
+									],
+									[
+										63,
+										63
 									]
 								],
 								"horizontalOffset": 0,
@@ -2420,7 +2096,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2468,63 +2144,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 700
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2578,7 +2198,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2626,63 +2246,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 700
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2736,7 +2300,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2784,63 +2348,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 700
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2894,7 +2402,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2942,67 +2450,11 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 700
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 19.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -3015,60 +2467,12 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
-								"name": "AXIS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 2,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 51,
-									"lineHeight": 66
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 0,
-							"size": 54.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										0,
-										1114111
-									]
-								],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.0,
-							"lookup": {
 								"name": "MiedingerMid",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
 							},
-							"mergeMode": 1,
+							"mergeMode": 0,
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
@@ -3101,19 +2505,7 @@
 								"codepoints": [
 									[
 										0,
-										127
-									],
-									[
-										128,
-										255
-									],
-									[
-										256,
-										383
-									],
-									[
-										768,
-										879
+										1114111
 									]
 								],
 								"horizontalOffset": 0,
@@ -3132,8 +2524,8 @@
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
-									"measureMode": 2,
-									"renderMode": 5
+									"measureMode": 1,
+									"renderMode": 4
 								},
 								"empty": {
 									"ascent": 0,
@@ -3148,7 +2540,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 56.0,
+							"size": 38.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -3160,135 +2552,11 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": -4
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 2,
-									"renderMode": 5
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 55.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 1,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
 										0,
-										127
-									],
-									[
-										128,
-										255
-									],
-									[
-										256,
-										383
-									],
-									[
-										384,
-										591
-									],
-									[
-										688,
-										767
-									],
-									[
-										880,
-										1023
-									],
-									[
-										1024,
-										1279
-									],
-									[
-										7680,
-										7935
-									],
-									[
-										8192,
-										8303
-									],
-									[
-										8304,
-										8351
-									],
-									[
-										8352,
-										8399
-									],
-									[
-										8448,
-										8527
-									],
-									[
-										8528,
-										8591
-									],
-									[
-										8704,
-										8959
-									],
-									[
-										9472,
-										9599
-									],
-									[
-										9632,
-										9727
-									],
-									[
-										9728,
-										9983
-									],
-									[
-										64256,
-										64335
+										1114111
 									]
 								],
-								"horizontalOffset": 2,
+								"horizontalOffset": 4,
 								"letterSpacing": 0
 							}
 						}
@@ -3338,7 +2606,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -3386,67 +2654,11 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -3496,7 +2708,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -3544,67 +2756,11 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 24.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -3654,7 +2810,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -3690,7 +2846,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 36.0,
+							"size": 34.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -3702,67 +2858,11 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 36.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -3812,7 +2912,7 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -3832,62 +2932,6 @@
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
-									"measureMode": 2,
-									"renderMode": 5
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 70.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": -3,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										4352,
-										4607
-									],
-									[
-										12592,
-										12687
-									],
-									[
-										44032,
-										55215
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": -4
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
 									"measureMode": 1,
 									"renderMode": 4
 								},
@@ -3904,7 +2948,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 71.0,
+							"size": 68.0,
 							"transformationMatrix": [
 								1.0,
 								0.0,
@@ -3912,15 +2956,15 @@
 								1.0
 							],
 							"wrapModifiers": {
-								"baselineShift": 0,
+								"baselineShift": -1,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										32,
+										0,
 										1114111
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 2,
 								"letterSpacing": 0
 							}
 						}
