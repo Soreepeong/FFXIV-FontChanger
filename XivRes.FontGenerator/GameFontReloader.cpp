@@ -8,15 +8,14 @@ inline T NotNull(T v) {
 	return v;
 }
 
-static const char Framework_GetUiModulePatternText[] = "\x48\x8B\x0D\x00\x00\x00\x00" "\x4C\x89\xA4\x24\x00\x00\x00\x00" "\xE8\x00\x00\x00\x00\x80\x7B\x1D\x01";
-static const char Framework_GetUiModulePatternMask[] = "\xFF\xFF\xFF\x00\x00\x00\x00" "\xFF\xFF\xFF\xFF\x00\x00\x00\x00" "\xFF\x00\x00\x00\x00\xFF\xFF\xFF\xFF";
+static const char Framework_GetUiModulePatternText[] = "\x48\x8B\x0D\x00\x00\x00\x00" "\x4C\x89\x00\x24\x00\x00\x00\x00" "\xE8\x00\x00\x00\x00\x80\x7B\x1D\x01";
+static const char Framework_GetUiModulePatternMask[] = "\xFF\xFF\xFF\x00\x00\x00\x00" "\xFF\xFF\x00\xFF\x00\x00\x00\x00" "\xFF\x00\x00\x00\x00\xFF\xFF\xFF\xFF";
 static const size_t Framework_GetUiModulePattern_FrameworkOffsetOffset = 3;
 static const size_t Framework_GetUiModulePattern_GetUiModuleOffsetOffset = 16;
 
-static const char PatternText[] = "\x40\x56\x41\x54\x41\x55\x41\x57\x48\x81\xec\x00\x00\x00\x00\x48\x8b\x05\x00\x00\x00\x00\x48\x33\xc4\x48\x89\x84\x24\x00\x00\x00\x00\x44\x88\x44\x24\x00\x45\x0f\xb6\xf8";
-static const char PatternMask[] = "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00\x00\x00\x00\xFF\xFF\xFF\x00\x00\x00\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00\x00\x00\x00\xFF\xFF\xFF\xFF\x00\xFF\xFF\xFF\xFF";
-static const char Pattern2Text[] = "\x48\x8D\x05\x00\x00\x00\x00";
-static const char Pattern2Mask[] = "\xFB\xFF\xDF\x00\x00\x00\x00";
+static const char FontDef_PatternText[] = "\x48\x8d\x00\x00\x00\x00\x00\x48\x8d\x00\x00\x00\x00\x00\x48\x0f\x45\x00\xeb\x07\x48\x8d\x00\x00\x00\x00\x00";
+static const char FontDef_PatternMask[] = "\xFF\xFF\x00\x00\x00\x00\x00\xFF\xFF\x00\x00\x00\x00\x00\xFF\xFF\xFF\x00\xFF\xFF\xFF\xFF\x00\x00\x00\x00\x00";
+static const size_t FontDef_HqSetOffset = 23;
 
 static std::span<char> LookupForData(std::span<char> range, std::span<const char> pattern, std::span<const char> mask) {
 	for (size_t i = 0, i_ = range.size() - pattern.size(); i < i_; ++i) {
@@ -68,6 +67,8 @@ static HMODULE GetFirstModule(HANDLE hProcess) {
 		EnumProcessModules(hProcess, modules.data(), static_cast<DWORD>(std::span(modules).size_bytes()), &needed);
 	} while (std::span(modules).size_bytes() < needed);
 	modules.resize(needed / sizeof HMODULE);
+	if (modules.empty())
+		throw std::runtime_error("Process not accessible");
 	return modules[0];
 }
 
@@ -116,27 +117,25 @@ GameFontReloader::GameProcess::GameProcess(DWORD pid)
 			m_pfnFrameworkGetUiModule = realBase + rvaGetUiModule;
 		}
 
-		if (const auto found = LookupForData(section, PatternText, PatternMask); !found.empty()) {
-			for (std::span<char> range2 = std::span(&found.back() + 1, 128), f; !(f = LookupForData(range2, Pattern2Mask, Pattern2Text)).empty(); range2 = range2.subspan(&f[1] - range2.data())) {
-				auto rva = &f.back() + *reinterpret_cast<int*>(&f[3]) - buf.data();
-				rva = rva + sectionHeader.VirtualAddress - sectionHeader.PointerToRawData;
+		if (const auto found = LookupForData(section, FontDef_PatternText, FontDef_PatternMask); !found.empty()) {
+			auto rvaBase = found.data() - buf.data() + sectionHeader.VirtualAddress - sectionHeader.PointerToRawData;
+			auto rva = rvaBase + FontDef_HqSetOffset + 4 + *reinterpret_cast<int*>(&found[FontDef_HqSetOffset]);
 
-				const auto& fontSetSection = rva2sec(rva);
-				auto& fontSet = m_sets.emplace_back();
-				auto& originals = m_originals.emplace_back() = *reinterpret_cast<FontSetInGame*>(&buf[rva - fontSetSection.VirtualAddress + fontSetSection.PointerToRawData]);
-				m_setAddresses.emplace_back(realBase + rva);
+			const auto& fontSetSection = rva2sec(rva);
+			auto& fontSet = m_sets.emplace_back();
+			auto& originals = m_originals.emplace_back() = *reinterpret_cast<FontSetInGame*>(&buf[rva - fontSetSection.VirtualAddress + fontSetSection.PointerToRawData]);
+			m_setAddresses.emplace_back(realBase + rva);
 
-				for (size_t i = 0; i < 0x29; i++) {
-					auto& sourceItem = originals.Faces[i];
-					auto& targetItem = fontSet.Faces[i];
-					const auto& texPatternSection = va2sec(sourceItem.TexPattern);
-					const auto& fdtSection = va2sec(sourceItem.Fdt);
-					targetItem.TexPattern = &buf[va2rva(sourceItem.TexPattern) + texPatternSection.PointerToRawData - texPatternSection.VirtualAddress];
-					targetItem.Fdt = &buf[va2rva(sourceItem.Fdt) + fdtSection.PointerToRawData - fdtSection.VirtualAddress];
-					targetItem.TexCount = sourceItem.TexCount;
-					sourceItem.TexPattern = sourceItem.TexPattern + (realBase - imageBase);
-					sourceItem.Fdt = sourceItem.Fdt + (realBase - imageBase);
-				}
+			for (size_t i = 0; i < 0x29; i++) {
+				auto& sourceItem = originals.Faces[i];
+				auto& targetItem = fontSet.Faces[i];
+				const auto& texPatternSection = va2sec(sourceItem.TexPattern);
+				const auto& fdtSection = va2sec(sourceItem.Fdt);
+				targetItem.TexPattern = &buf[va2rva(sourceItem.TexPattern) + texPatternSection.PointerToRawData - texPatternSection.VirtualAddress];
+				targetItem.Fdt = &buf[va2rva(sourceItem.Fdt) + fdtSection.PointerToRawData - fdtSection.VirtualAddress];
+				targetItem.TexCount = sourceItem.TexCount;
+				sourceItem.TexPattern = sourceItem.TexPattern + (realBase - imageBase);
+				sourceItem.Fdt = sourceItem.Fdt + (realBase - imageBase);
 			}
 		}
 	}
