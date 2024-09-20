@@ -276,6 +276,10 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_hotReloadFontType == xivres::font_type::krn_axis ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_HOTRELOAD_FONT_KRNAXIS, FALSE, &mii);
 	}
+	{
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapFontLobbyToFont ? MFS_CHECKED : 0)};
+		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTLOBBY, FALSE, &mii);
+	}
 	return 0;
 }
 
@@ -919,21 +923,37 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 				textureOne.set_mipmap(0, 0, mips[i]);
 
 				const auto i1 = i + 1;
-				std::ofstream out(basePath / std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i1)), std::ios::binary);
+				const auto path = basePath / std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i1));
+				std::ofstream out(path, std::ios::binary);
 
 				for (size_t read, pos = 0; (read = textureOne.read(pos, buf.data(), buf.size())); pos += read) {
 					progressDialog.ThrowIfCancelled();
 					out.write(buf.data(), read);
 				}
+
+				out.close();
+
+				if (m_multiFontSet.ExportMapFontLobbyToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
+					const auto path2 = basePath / std::format("font_lobby{}.tex", i1);
+					std::filesystem::copy(path, path2, std::filesystem::copy_options::overwrite_existing);
+				}
 			}
 
 			for (size_t i = 0; i < fdts.size(); i++) {
 				progressDialog.ThrowIfCancelled();
-				std::ofstream out(basePath / std::format("{}.fdt", pFontSet->Faces[i]->Name), std::ios::binary);
+				const auto path = basePath / std::format("{}.fdt", pFontSet->Faces[i]->Name);
+				std::ofstream out(path, std::ios::binary);
 
 				for (size_t read, pos = 0; (read = fdts[i]->read(pos, buf.data(), buf.size())); pos += read) {
 					progressDialog.ThrowIfCancelled();
 					out.write(buf.data(), read);
+				}
+
+				out.close();
+
+				if (m_multiFontSet.ExportMapFontLobbyToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
+					const auto path2 = basePath / std::format("{}_lobby.fdt", pFontSet->Faces[i]->Name);
+					std::filesystem::copy(path, path2, std::filesystem::copy_options::overwrite_existing);
 				}
 			}
 		}
@@ -998,6 +1018,9 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 		for (auto& pFontSet : m_multiFontSet.FontSets) {
 			auto [fdts, mips] = CompileCurrentFontSet(progressDialog, *pFontSet);
 
+			auto& modsList = writer.ttmpl().SimpleModsList;
+			const auto beginIndex = modsList.size();
+
 			for (size_t i = 0; i < fdts.size(); i++) {
 				progressDialog.ThrowIfCancelled();
 
@@ -1020,6 +1043,26 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 
 				writer.add_packed(xivres::compressing_packed_stream<xivres::texture_compressing_packer>(targetFileName, std::move(textureOne), compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION));
 			}
+
+			const auto endIndex = modsList.size();
+
+			if (m_multiFontSet.ExportMapFontLobbyToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
+				modsList.reserve(modsList.size() + endIndex - beginIndex);
+				for (size_t i = beginIndex; i < endIndex; i++) {
+					xivres::textools::mods_json tmp = modsList[i];
+					if (tmp.FullPath.ends_with(".fdt")) {
+						tmp.Name.erase(tmp.Name.size() - 4, 4);
+						tmp.Name.append("_lobby.fdt");
+					} else if (tmp.FullPath.ends_with(".tex")) {
+						tmp.Name.insert(tmp.Name.size() - 4, "_lobby");
+					} else {
+						continue;
+					}
+
+					tmp.FullPath = xivres::util::unicode::convert<std::string>(tmp.Name, &xivres::util::unicode::lower);
+					modsList.push_back(tmp);
+				}
+			}
 		}
 		writer.close();
 	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
@@ -1029,6 +1072,12 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 		return 1;
 	}
 
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::Menu_Export_MapFontLobby() {
+	m_multiFontSet.ExportMapFontLobbyToFont = !m_multiFontSet.ExportMapFontLobbyToFont;
+	Changes_MarkDirty();
 	return 0;
 }
 

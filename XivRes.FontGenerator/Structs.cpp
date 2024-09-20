@@ -797,6 +797,8 @@ void App::Structs::from_json(const nlohmann::json& json, MultiFontSet& value) {
 			value.FontSets.emplace_back(std::make_unique<FontSet>(o.get<FontSet>()));
 		}
 	}
+
+	value.ExportMapFontLobbyToFont = json.value("exportMapFontLobbyToFont", true);
 }
 
 void App::Structs::to_json(nlohmann::json& json, const MultiFontSet& value) {
@@ -805,6 +807,8 @@ void App::Structs::to_json(nlohmann::json& json, const MultiFontSet& value) {
 	for (const auto& set : value.FontSets) {
 		to_json(fontSets.emplace_back(), *set);
 	}
+
+	json["exportMapFontLobbyToFont"] = value.ExportMapFontLobbyToFont;
 }
 
 const char* App::Structs::GetDefaultPreviewText() {

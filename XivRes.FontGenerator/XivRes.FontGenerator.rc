@@ -370,6 +370,8 @@ BEGIN
         MENUITEM "Export to .ttmp TexTools ModPack file (Compress &while packing)", ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING
         MENUITEM "Export to .ttmp TexTools ModPack file (Compress &after packing)", ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING
         MENUITEM "Export to .ttmp TexTools ModPack file (Do &not compress)", ID_EXPORT_TOTTMP_DONOTCOMPRESS
+        MENUITEM SEPARATOR
+        MENUITEM "Additionally &map font_lobby{} to font{}", ID_EXPORT_MAPFONTLOBBY
     END
     POPUP "Hot &Reload"
     BEGIN

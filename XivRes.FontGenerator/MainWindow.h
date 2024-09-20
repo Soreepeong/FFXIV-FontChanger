@@ -106,6 +106,7 @@ namespace App {
 		LRESULT Menu_Export_Preview();
 		LRESULT Menu_Export_Raw();
 		LRESULT Menu_Export_TTMP(CompressionMode compressionMode);
+		LRESULT Menu_Export_MapFontLobby();
 
 		LRESULT Menu_HotReload_Reload(bool restore);
 		LRESULT Menu_HotReload_Font(xivres::font_type mode);
@@ -190,6 +191,7 @@ namespace App {
 						case ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING: return Menu_Export_TTMP(CompressionMode::CompressWhilePacking);
 						case ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING: return Menu_Export_TTMP(CompressionMode::CompressAfterPacking);
 						case ID_EXPORT_TOTTMP_DONOTCOMPRESS: return Menu_Export_TTMP(CompressionMode::DoNotCompress);
+						case ID_EXPORT_MAPFONTLOBBY: return Menu_Export_MapFontLobby();
 						case ID_HOTRELOAD_RELOAD: return Menu_HotReload_Reload(false);
 						case ID_HOTRELOAD_RESTORE: return Menu_HotReload_Reload(true);
 						case ID_HOTRELOAD_FONT_AUTO: return Menu_HotReload_Font(xivres::font_type::undefined);

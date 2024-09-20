@@ -108,6 +108,7 @@ namespace App::Structs {
 
 	struct MultiFontSet {
 		std::vector<std::unique_ptr<FontSet>> FontSets;
+		bool ExportMapFontLobbyToFont = true;
 	};
 
 	void to_json(nlohmann::json& json, const LookupStruct& value);
