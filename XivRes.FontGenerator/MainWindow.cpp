@@ -1054,7 +1054,7 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 						tmp.Name.erase(tmp.Name.size() - 4, 4);
 						tmp.Name.append("_lobby.fdt");
 					} else if (tmp.FullPath.ends_with(".tex")) {
-						tmp.Name.insert(tmp.Name.size() - 4, "_lobby");
+						tmp.Name.insert(tmp.Name.size() - 5, "_lobby");
 					} else {
 						continue;
 					}
