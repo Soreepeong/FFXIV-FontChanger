@@ -1,4 +1,4 @@
-# FFXIV Font Generator
+# Font Mod Generator for FFXIV
 Create a font mod for your game, to change the font displayed and/or add support for scripts of languages that aren't natively supported by the game.
 
 | Program | Example |
