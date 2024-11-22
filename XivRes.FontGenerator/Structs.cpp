@@ -41,8 +41,12 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 						for (const auto& path : pathconf[validRegion]) {
 							try {
 								font = xivres::installation(path.get<std::string>()).get_fontdata_set(xivres::font_type::font);
+								break;
 							} catch (...) {}
 						}
+
+						if (font)
+							break;
 					}
 					if (!font)
 						throw std::runtime_error("Font not found in given path");
