@@ -214,7 +214,14 @@
     <ClCompile Include="FaceElementEditorDialog.cpp" />
     <ClCompile Include="GameFontReloader.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="MainWindow.Controls.cpp" />
     <ClCompile Include="MainWindow.cpp" />
+    <ClCompile Include="MainWindow.Menu.Edit.cpp" />
+    <ClCompile Include="MainWindow.Menu.Export.cpp" />
+    <ClCompile Include="MainWindow.Menu.File.cpp" />
+    <ClCompile Include="MainWindow.Menu.HotReload.cpp" />
+    <ClCompile Include="MainWindow.Menu.View.cpp" />
+    <ClCompile Include="MainWindow.Window.cpp" />
     <ClCompile Include="nmd_assembly.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
@@ -241,6 +248,7 @@
     <ClInclude Include="ExportPreviewWindow.h" />
     <ClInclude Include="FaceElementEditorDialog.h" />
     <ClInclude Include="GameFontReloader.h" />
+    <ClInclude Include="MainWindow.Internal.h" />
     <ClInclude Include="nmd_assembly.h" />
     <ClInclude Include="ProgressDialog.h" />
     <ClInclude Include="Structs.h" />
