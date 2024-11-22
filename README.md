@@ -1,4 +1,4 @@
-# FFXIV Font Generator
+# Font Mod Generator for FFXIV
 Create a font mod for your game, to change the font displayed and/or add support for scripts of languages that aren't natively supported by the game.
 
 | Program | Example |
@@ -24,3 +24,8 @@ Create a font mod for your game, to change the font displayed and/or add support
 4. Try editing anything you can and see what happens. Alternatively, use `File > Open` and open a preset file to see examples.
 5. Once finished, use `Export > Export to .ttmp TexTools ModPack file (Compress while packing)`, and import the file using whatever modding tool of your choice.
 6. If the game is running, `Hot Reload` can be used if you do not want to restart the game. Note that this feature is not reliable and may crash your game.
+
+## Notes
+* The game will reject characters outside BMP(U+10000 and later) from being input. You can ignore any glyphs past U+FFFE when choosing the glyph ranges.
+* `AXIS_36` glyphs have a maximum ratio limit that are from the corresponding glyphs in `AXIS_18`. If glyphs in `AXIS_18` are narrower than `AXIS_36` when scaled to the same height, `AXIS_36` will not be laid out as you would have expected.
+* `font` can have up to 7 texture files. 6 for `font_lobby`, 10 for `KrnAXIS` and 20 for `ChnAXIS`.
