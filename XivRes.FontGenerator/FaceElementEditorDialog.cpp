@@ -44,8 +44,6 @@ struct App::FaceElementEditorDialog::ControlStruct {
 	HWND TransformationMatrixM12Edit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_M12);
 	HWND TransformationMatrixM21Edit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_M21);
 	HWND TransformationMatrixM22Edit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_M22);
-	HWND TransformationMatrixDXEdit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_DX);
-	HWND TransformationMatrixDYEdit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_DY);
 	HWND TransformationMatrixHelp = GetDlgItem(Window, IDC_BUTTON_TRANSFORMATIONMATRIX_HELP);
 	HWND TransformationMatrixReset = GetDlgItem(Window, IDC_BUTTON_TRANSFORMATIONMATRIX_RESET);
 };
@@ -55,7 +53,10 @@ App::FaceElementEditorDialog::FaceElementEditorDialog(HWND hParentWnd, Structs::
 	, m_elementOriginal(element)
 	, m_hParentWnd(hParentWnd)
 	, m_onFontChanged(std::move(onFontChanged)) {
-	const std::unique_ptr<std::remove_pointer_t<HGLOBAL>, decltype(&FreeResource)> hglob(LoadResource(g_hInstance, FindResourceW(g_hInstance, MAKEINTRESOURCE(IDD_FACEELEMENTEDITOR), RT_DIALOG)), &FreeResource);
+	auto res = FindResourceExW(g_hInstance, RT_DIALOG, MAKEINTRESOURCEW(IDD_FACEELEMENTEDITOR), g_langId);
+	if (!res)
+		res = FindResourceW(g_hInstance, MAKEINTRESOURCEW(IDD_FACEELEMENTEDITOR), RT_DIALOG);
+	std::unique_ptr<std::remove_pointer_t<HGLOBAL>, decltype(&FreeResource)> hglob(LoadResource(g_hInstance, res), &FreeResource);
 	CreateDialogIndirectParamW(
 		g_hInstance,
 		static_cast<DLGTEMPLATE*>(LockResource(hglob.get())),
@@ -91,21 +92,24 @@ bool App::FaceElementEditorDialog::TryEvaluate(const std::wstring& wstr, T& res,
 			res = static_cast<T>(expr.value());
 		return true;
 	} else {
-		std::string errors;
-		if (parser.error_count() == 1)
-			errors = "Failed to evaluate expression due to following error.";
-		else
-			errors = "Failed to evaluate expression due to following errors.";
+		std::wstring errors(GetStringResource(IDS_ERROR_MATHEXPREVAL_BODY));
 		for (size_t i = 0; i < parser.error_count(); i++) {
 			const auto error = parser.get_error(i);
-			errors += std::format("\n* {:02} [{}] {}",
-				error.token.position,
-				to_str(error.mode),
-				error.diagnostic);
+			errors += xivres::util::unicode::convert<std::wstring>(
+				std::format(
+					"\n* {:02} [{}] {}",
+					error.token.position,
+					to_str(error.mode),
+					error.diagnostic));
 		}
 
-		if (!silent)
-			MessageBoxW(m_controls->Window, xivres::util::unicode::convert<std::wstring>(errors).c_str(), L"Error", MB_OK | MB_ICONWARNING);
+		if (!silent) {
+			MessageBoxW(
+				m_controls->Window,
+				errors.c_str(),
+				std::wstring(GetStringResource(IDS_ERROR_MATHEXPREVAL_TITLE)).c_str(),
+				MB_OK | MB_ICONWARNING);
+		}
 		return false;
 	}
 }
@@ -150,11 +154,14 @@ INT_PTR App::FaceElementEditorDialog::FontRendererCombo_OnCommand(uint16_t notiC
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	m_element.Renderer = static_cast<Structs::RendererEnum>(ComboBox_GetCurSel(m_controls->FontRendererCombo));
-	SetControlsEnabledOrDisabled();
-	RepopulateFontCombobox();
-	OnBaseFontChanged();
-	RefreshUnicodeBlockSearchResults();
+	if (const auto v = GetComboboxSelData<Structs::RendererEnum>(m_controls->FontRendererCombo);
+		v != m_element.Renderer) {
+		m_element.Renderer = v;
+		SetControlsEnabledOrDisabled();
+		RepopulateFontCombobox();
+		OnBaseFontChanged();
+		RefreshUnicodeBlockSearchResults();
+	}
 	return 0;
 }
 
@@ -162,8 +169,28 @@ INT_PTR App::FaceElementEditorDialog::FontCombo_OnCommand(uint16_t notiCode) {
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
+	IDWriteLocalizedStringsPtr names;
+	if (FAILED(m_fontFamilies[ComboBox_GetCurSel(m_controls->FontCombo)]->GetFamilyNames(&names)))
+		return -1;
+
+	UINT32 index;
+	if (BOOL exists; FAILED(names->FindLocaleName(L"en-us", &index, &exists)) || !exists) {
+		if (FAILED(names->FindLocaleName(L"en", &index, &exists)) || !exists)
+			index = 0;
+	}
+
+	UINT32 length;
+	if (FAILED(names->GetStringLength(index, &length)))
+		return -1;
+
+	std::wstring name(length + 1, L'\0');
+	if (FAILED(names->GetString(index, name.data(), length + 1)))
+		return -1;
+
+	name.resize(length);
+
+	m_element.Lookup.Name = xivres::util::unicode::convert<std::string>(name);
 	RepopulateFontSubComboBox();
-	m_element.Lookup.Name = xivres::util::unicode::convert<std::string>(GetWindowString(m_controls->FontCombo));
 	OnBaseFontChanged();
 	RefreshUnicodeBlockSearchResults();
 	return 0;
@@ -182,11 +209,9 @@ INT_PTR App::FaceElementEditorDialog::FontWeightCombo_OnCommand(uint16_t notiCod
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	const auto index = ComboBox_GetCurSel(m_controls->FontWeightCombo);
-	const auto newWeight = static_cast<DWRITE_FONT_WEIGHT>(
-		static_cast<uint32_t>(ComboBox_GetItemData(m_controls->FontWeightCombo, index)));
-	if (newWeight != m_element.Lookup.Weight) {
-		m_element.Lookup.Weight = newWeight;
+	if (const auto v = GetComboboxSelData<DWRITE_FONT_WEIGHT>(m_controls->FontWeightCombo);
+		v != m_element.Lookup.Weight) {
+		m_element.Lookup.Weight = v;
 		OnBaseFontChanged();
 	}
 	return 0;
@@ -196,11 +221,9 @@ INT_PTR App::FaceElementEditorDialog::FontStyleCombo_OnCommand(uint16_t notiCode
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	const auto index = ComboBox_GetCurSel(m_controls->FontStyleCombo);
-	const auto newStyle = static_cast<DWRITE_FONT_STYLE>(
-		static_cast<uint32_t>(ComboBox_GetItemData(m_controls->FontStyleCombo, index)));
-	if (newStyle != m_element.Lookup.Style) {
-		m_element.Lookup.Style = newStyle;
+	if (const auto v = GetComboboxSelData<DWRITE_FONT_STYLE>(m_controls->FontStyleCombo); 
+		v != m_element.Lookup.Style) {
+		m_element.Lookup.Style = v;
 		OnBaseFontChanged();
 	}
 	return 0;
@@ -210,11 +233,9 @@ INT_PTR App::FaceElementEditorDialog::FontStretchCombo_OnCommand(uint16_t notiCo
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	const auto index = ComboBox_GetCurSel(m_controls->FontStretchCombo);
-	const auto newStretch = static_cast<DWRITE_FONT_STRETCH>(
-		static_cast<uint32_t>(ComboBox_GetItemData(m_controls->FontStretchCombo, index)));
-	if (newStretch != m_element.Lookup.Stretch) {
-		m_element.Lookup.Stretch = newStretch;
+	if (const auto v = GetComboboxSelData<DWRITE_FONT_STRETCH>(m_controls->FontStretchCombo); 
+		v != m_element.Lookup.Stretch) {
+		m_element.Lookup.Stretch = v;
 		OnBaseFontChanged();
 	}
 	return 0;
@@ -276,7 +297,7 @@ INT_PTR App::FaceElementEditorDialog::FreeTypeRenderModeCombo_OnCommand(uint16_t
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	if (const auto v = static_cast<FT_Render_Mode>(ComboBox_GetCurSel(m_controls->FreeTypeRenderModeCombo));
+	if (const auto v = GetComboboxSelData<FT_Render_Mode>(m_controls->FreeTypeRenderModeCombo);
 		v != m_element.RendererSpecific.FreeType.RenderMode) {
 		m_element.RendererSpecific.FreeType.RenderMode = v;
 		OnBaseFontChanged();
@@ -288,7 +309,7 @@ INT_PTR App::FaceElementEditorDialog::DirectWriteRenderModeCombo_OnCommand(uint1
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	if (const auto v = static_cast<DWRITE_RENDERING_MODE>(ComboBox_GetCurSel(m_controls->DirectWriteRenderModeCombo));
+	if (const auto v = GetComboboxSelData<DWRITE_RENDERING_MODE>(m_controls->DirectWriteRenderModeCombo);
 		v != m_element.RendererSpecific.DirectWrite.RenderMode) {
 		m_element.RendererSpecific.DirectWrite.RenderMode = v;
 		OnBaseFontChanged();
@@ -300,7 +321,7 @@ INT_PTR App::FaceElementEditorDialog::DirectWriteMeasureModeCombo_OnCommand(uint
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	if (const auto v = static_cast<DWRITE_MEASURING_MODE>(ComboBox_GetCurSel(m_controls->DirectWriteMeasureModeCombo));
+	if (const auto v = GetComboboxSelData<DWRITE_MEASURING_MODE>(m_controls->DirectWriteMeasureModeCombo);
 		v != m_element.RendererSpecific.DirectWrite.MeasureMode) {
 		m_element.RendererSpecific.DirectWrite.MeasureMode = v;
 		OnBaseFontChanged();
@@ -312,7 +333,7 @@ INT_PTR App::FaceElementEditorDialog::DirectWriteGridFitModeCombo_OnCommand(uint
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	if (const auto v = static_cast<DWRITE_GRID_FIT_MODE>(ComboBox_GetCurSel(m_controls->DirectWriteGridFitModeCombo));
+	if (const auto v = GetComboboxSelData<DWRITE_GRID_FIT_MODE>(m_controls->DirectWriteGridFitModeCombo);
 		v != m_element.RendererSpecific.DirectWrite.GridFitMode) {
 		m_element.RendererSpecific.DirectWrite.GridFitMode = v;
 		OnBaseFontChanged();
@@ -372,7 +393,13 @@ INT_PTR App::FaceElementEditorDialog::TransformationMatrixEdit_OnCommand(int ind
 }
 
 INT_PTR App::FaceElementEditorDialog::TransformationMatrixHelpButton_OnCommand(uint16_t notiCode) {
-	ShellExecuteW(m_controls->Window, L"open", L"https://en.wikipedia.org/wiki/Transformation_matrix#Examples_in_2_dimensions", nullptr, nullptr, SW_SHOW);
+	ShellExecuteW(
+		m_controls->Window,
+		L"open",
+		std::wstring(GetStringResource(IDS_URL_TRANSFORMATIONMATRIXWIKI)).c_str(),
+		nullptr,
+		nullptr,
+		SW_SHOW);
 	return 0;
 }
 
@@ -551,7 +578,13 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchAdd_OnCommand(uint16_t n
 }
 
 INT_PTR App::FaceElementEditorDialog::ExpressionHelpButton_OnCommand(uint16_t notiCode) {
-	ShellExecuteW(m_controls->Window, L"open", L"https://www.partow.net/programming/exprtk/index.html", nullptr, nullptr, SW_SHOW);
+	ShellExecuteW(
+		m_controls->Window,
+		L"open",
+		std::wstring(GetStringResource(IDS_URL_MATHEXPRHELP)).c_str(),
+		nullptr,
+		nullptr,
+		SW_SHOW);
 	return 0;
 }
 
@@ -560,11 +593,15 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	SetControlsEnabledOrDisabled();
 	RepopulateFontCombobox();
 	RefreshUnicodeBlockSearchResults();
-	ComboBox_AddString(m_controls->FontRendererCombo, L"Empty");
-	ComboBox_AddString(m_controls->FontRendererCombo, L"Prerendered (Game)");
-	ComboBox_AddString(m_controls->FontRendererCombo, L"DirectWrite");
-	ComboBox_AddString(m_controls->FontRendererCombo, L"FreeType");
-	ComboBox_SetCurSel(m_controls->FontRendererCombo, static_cast<int>(m_element.Renderer));
+	SetComboboxContent<Structs::RendererEnum>(
+		m_controls->FontRendererCombo,
+		m_element.Renderer,
+		{
+			std::make_pair(Structs::RendererEnum::Empty, IDS_RENDERER_EMPTY),
+			std::make_pair(Structs::RendererEnum::PrerenderedGameInstallation, IDS_RENDERER_PRERENDERED_GAME),
+			std::make_pair(Structs::RendererEnum::DirectWrite, IDS_RENDERER_DIRECTWRITE),
+			std::make_pair(Structs::RendererEnum::FreeType, IDS_RENDERER_FREETYPE),
+		});
 	ComboBox_SetText(m_controls->FontCombo, xivres::util::unicode::convert<std::wstring>(m_element.Lookup.Name).c_str());
 	SetWindowNumber(m_controls->EmptyAscentEdit, m_element.RendererSpecific.Empty.Ascent);
 	SetWindowNumber(m_controls->EmptyLineHeightEdit, m_element.RendererSpecific.Empty.LineHeight);
@@ -572,28 +609,45 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	Button_SetCheck(m_controls->FreeTypeNoBitmapCheck, (m_element.RendererSpecific.FreeType.LoadFlags & FT_LOAD_NO_BITMAP) ? TRUE : FALSE);
 	Button_SetCheck(m_controls->FreeTypeForceAutohintCheck, (m_element.RendererSpecific.FreeType.LoadFlags & FT_LOAD_FORCE_AUTOHINT) ? TRUE : FALSE);
 	Button_SetCheck(m_controls->FreeTypeNoAutohintCheck, (m_element.RendererSpecific.FreeType.LoadFlags & FT_LOAD_NO_AUTOHINT) ? TRUE : FALSE);
-	ComboBox_AddString(m_controls->FreeTypeRenderModeCombo, L"Normal");
-	ComboBox_AddString(m_controls->FreeTypeRenderModeCombo, L"Light");
-	ComboBox_AddString(m_controls->FreeTypeRenderModeCombo, L"Mono");
-	ComboBox_AddString(m_controls->FreeTypeRenderModeCombo, L"LCD (Probably not what you want)");
-	ComboBox_AddString(m_controls->FreeTypeRenderModeCombo, L"LCD_V (Probably not what you want)");
-	ComboBox_AddString(m_controls->FreeTypeRenderModeCombo, L"SDF");
-	ComboBox_SetCurSel(m_controls->FreeTypeRenderModeCombo, static_cast<int>(m_element.RendererSpecific.FreeType.RenderMode));
-	ComboBox_AddString(m_controls->DirectWriteRenderModeCombo, L"Default");
-	ComboBox_AddString(m_controls->DirectWriteRenderModeCombo, L"Aliased");
-	ComboBox_AddString(m_controls->DirectWriteRenderModeCombo, L"GDI Classic");
-	ComboBox_AddString(m_controls->DirectWriteRenderModeCombo, L"GDI Natural");
-	ComboBox_AddString(m_controls->DirectWriteRenderModeCombo, L"Natural");
-	ComboBox_AddString(m_controls->DirectWriteRenderModeCombo, L"Natural Symmetric");
-	ComboBox_SetCurSel(m_controls->DirectWriteRenderModeCombo, static_cast<int>(m_element.RendererSpecific.DirectWrite.RenderMode));
-	ComboBox_AddString(m_controls->DirectWriteMeasureModeCombo, L"Natural");
-	ComboBox_AddString(m_controls->DirectWriteMeasureModeCombo, L"GDI Classic");
-	ComboBox_AddString(m_controls->DirectWriteMeasureModeCombo, L"GDI Natural");
-	ComboBox_SetCurSel(m_controls->DirectWriteMeasureModeCombo, static_cast<int>(m_element.RendererSpecific.DirectWrite.MeasureMode));
-	ComboBox_AddString(m_controls->DirectWriteGridFitModeCombo, L"Default");
-	ComboBox_AddString(m_controls->DirectWriteGridFitModeCombo, L"Disabled");
-	ComboBox_AddString(m_controls->DirectWriteGridFitModeCombo, L"Enabled");
-	ComboBox_SetCurSel(m_controls->DirectWriteGridFitModeCombo, static_cast<int>(m_element.RendererSpecific.DirectWrite.GridFitMode));
+	
+	SetComboboxContent<FT_Render_Mode>(
+		m_controls->FreeTypeRenderModeCombo,
+		m_element.RendererSpecific.FreeType.RenderMode,
+		{
+			std::make_pair(FT_RENDER_MODE_NORMAL, IDS_FREETYPE_RENDERMODE_NORMAL),
+			std::make_pair(FT_RENDER_MODE_LIGHT, IDS_FREETYPE_RENDERMODE_LIGHT),
+			std::make_pair(FT_RENDER_MODE_MONO, IDS_FREETYPE_RENDERMODE_MONO),
+		});
+	
+	SetComboboxContent<DWRITE_RENDERING_MODE>(
+		m_controls->DirectWriteRenderModeCombo,
+		m_element.RendererSpecific.DirectWrite.RenderMode,
+		{
+			std::make_pair(DWRITE_RENDERING_MODE_DEFAULT, IDS_DIRECTWRITE_RENDERMODE_DEFAULT),
+			std::make_pair(DWRITE_RENDERING_MODE_ALIASED, IDS_DIRECTWRITE_RENDERMODE_ALIASED),
+			std::make_pair(DWRITE_RENDERING_MODE_GDI_CLASSIC, IDS_DIRECTWRITE_RENDERMODE_GDI_CLASSIC),
+			std::make_pair(DWRITE_RENDERING_MODE_GDI_NATURAL, IDS_DIRECTWRITE_RENDERMODE_GDI_NATURAL),
+			std::make_pair(DWRITE_RENDERING_MODE_NATURAL, IDS_DIRECTWRITE_RENDERMODE_NATURAL),
+			std::make_pair(DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC, IDS_DIRECTWRITE_RENDERMODE_NATURAL_SYMMETRIC),
+		});
+	
+	SetComboboxContent<DWRITE_MEASURING_MODE>(
+		m_controls->DirectWriteMeasureModeCombo,
+		m_element.RendererSpecific.DirectWrite.MeasureMode,
+		{
+			std::make_pair(DWRITE_MEASURING_MODE_NATURAL, IDS_DIRECTWRITE_MEASUREMODE_NATURAL),
+			std::make_pair(DWRITE_MEASURING_MODE_GDI_CLASSIC, IDS_DIRECTWRITE_MEASUREMODE_GDI_CLASSIC),
+			std::make_pair(DWRITE_MEASURING_MODE_GDI_NATURAL, IDS_DIRECTWRITE_MEASUREMODE_GDI_NATURAL),
+		});
+	
+	SetComboboxContent<DWRITE_GRID_FIT_MODE>(
+		m_controls->DirectWriteGridFitModeCombo,
+		m_element.RendererSpecific.DirectWrite.GridFitMode,
+		{
+			std::make_pair(DWRITE_GRID_FIT_MODE_DEFAULT, IDS_DIRECTWRITE_GRIDFITMODE_DEFAULT),
+			std::make_pair(DWRITE_GRID_FIT_MODE_DISABLED, IDS_DIRECTWRITE_GRIDFITMODE_DISABLED),
+			std::make_pair(DWRITE_GRID_FIT_MODE_ENABLED, IDS_DIRECTWRITE_GRIDFITMODE_ENABLED),
+		});
 
 	SetWindowNumber(m_controls->AdjustmentBaselineShiftEdit, m_element.WrapModifiers.BaselineShift);
 	SetWindowNumber(m_controls->AdjustmentLetterSpacingEdit, m_element.WrapModifiers.LetterSpacing);
@@ -604,16 +658,19 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	for (int i = 0, i_ = static_cast<int>(m_element.WrapModifiers.Codepoints.size()); i < i_; i++)
 		AddCodepointRangeToListBox(i, m_element.WrapModifiers.Codepoints[i].first, m_element.WrapModifiers.Codepoints[i].second, charVec);
 
-	ComboBox_AddString(m_controls->CodepointsMergeModeCombo, L"Add new glyphs");
-	ComboBox_AddString(m_controls->CodepointsMergeModeCombo, L"Add all glyphs");
-	ComboBox_AddString(m_controls->CodepointsMergeModeCombo, L"Replace existing glyphs");
-	ComboBox_SetCurSel(m_controls->CodepointsMergeModeCombo, static_cast<int>(m_element.MergeMode));
+	SetComboboxContent<xivres::fontgen::codepoint_merge_mode>(
+		m_controls->CodepointsMergeModeCombo,
+		m_element.MergeMode,
+		{
+			std::make_pair(xivres::fontgen::codepoint_merge_mode::AddNew, IDS_CODEPOINTMERGEMODE_ADDNEW),
+			std::make_pair(xivres::fontgen::codepoint_merge_mode::AddAll, IDS_CODEPOINTMERGEMODE_ADDALL),
+			std::make_pair(xivres::fontgen::codepoint_merge_mode::Replace, IDS_CODEPOINTMERGEMODE_REPLACE),
+		});
 
 	SetWindowNumber(m_controls->TransformationMatrixM11Edit, m_element.TransformationMatrix.M11);
 	SetWindowNumber(m_controls->TransformationMatrixM12Edit, m_element.TransformationMatrix.M12);
 	SetWindowNumber(m_controls->TransformationMatrixM21Edit, m_element.TransformationMatrix.M21);
 	SetWindowNumber(m_controls->TransformationMatrixM22Edit, m_element.TransformationMatrix.M22);
-
 
 	for (const auto& controlHwnd : {
 		     m_controls->EmptyAscentEdit,
@@ -1106,6 +1163,8 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 
 			m_fontFamilies.clear();
 			std::vector<std::wstring> names;
+			auto curNameLower = xivres::util::unicode::convert<std::wstring>(m_element.Lookup.Name);
+			CharLowerBuffW(curNameLower.data(), static_cast<DWORD>(curNameLower.size()));
 			for (uint32_t i = 0, i_ = coll->GetFontFamilyCount(); i < i_; i++) {
 				IDWriteFontFamilyPtr family;
 				IDWriteLocalizedStringsPtr strings;
@@ -1116,12 +1175,15 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 				if (FAILED(family->GetFamilyNames(&strings)))
 					continue;
 
+				uint32_t indexEng;
+				if (BOOL exists; FAILED(strings->FindLocaleName(L"en-us", &indexEng, &exists)) || !exists) {
+					if (FAILED(strings->FindLocaleName(L"en", &indexEng, &exists)) || !exists)
+						indexEng = 0;
+				}
+
 				uint32_t index;
-				BOOL exists;
-				if (FAILED(strings->FindLocaleName(L"en-us", &index, &exists)))
-					continue;
-				if (exists)
-					index = 0;
+				if (BOOL exists; FAILED(strings->FindLocaleName(g_localeName.c_str(), &index, &exists)) || !exists)
+					index = indexEng;
 
 				uint32_t length;
 				if (FAILED(strings->GetStringLength(index, &length)))
@@ -1139,15 +1201,26 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 
 				ComboBox_InsertString(m_controls->FontCombo, insertAt, res.c_str());
 				m_fontFamilies.insert(m_fontFamilies.begin() + insertAt, std::move(family));
+
+				if (curNameLower == resLower) {
+					ComboBox_SetCurSel(m_controls->FontCombo, insertAt);
+				} else if (indexEng != index) {
+					if (FAILED(strings->GetStringLength(indexEng, &length)))
+						continue;
+
+					std::wstring res(length + 1, L'\0');
+					if (FAILED(strings->GetString(indexEng, res.data(), length + 1)))
+						continue;
+					res.resize(length);
+
+					CharLowerBuffW(res.data(), static_cast<DWORD>(res.size()));
+					if (curNameLower == res)
+						ComboBox_SetCurSel(m_controls->FontCombo, insertAt);
+				}
+
 				names.insert(names.begin() + insertAt, std::move(resLower));
 			}
 
-			auto curNameLower = xivres::util::unicode::convert<std::wstring>(m_element.Lookup.Name);
-			CharLowerBuffW(curNameLower.data(), static_cast<DWORD>(curNameLower.size()));
-			if (const auto it = std::ranges::lower_bound(names, curNameLower); it != names.end() && *it == curNameLower)
-				ComboBox_SetCurSel(m_controls->FontCombo, it - names.begin());
-			else
-				ComboBox_SetCurSel(m_controls->FontCombo, -1);
 			break;
 		}
 		default:
@@ -1165,24 +1238,29 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 
 	switch (m_element.Renderer) {
 		case Structs::RendererEnum::PrerenderedGameInstallation: {
-			ComboBox_SetItemData(
+			ComboBox_SetCurSel(
 				m_controls->FontWeightCombo,
-				ComboBox_AddString(m_controls->FontWeightCombo, L"400 (Normal/Regular)"),
-				400);
-			ComboBox_SetItemData(
+				ComboBox_SetItemData(
+					m_controls->FontWeightCombo,
+					ComboBox_AddString(
+						m_controls->FontWeightCombo,
+						std::wstring(GetStringResource(IDS_FONTWEIGHT_400)).c_str()),
+					m_element.Lookup.Weight = DWRITE_FONT_WEIGHT_NORMAL));
+			ComboBox_SetCurSel(
 				m_controls->FontStyleCombo,
-				ComboBox_AddString(m_controls->FontStyleCombo, L"Normal"),
-				DWRITE_FONT_STYLE_NORMAL);
-			ComboBox_SetItemData(
-				m_controls->FontStretchCombo,
-				ComboBox_AddString(m_controls->FontStretchCombo, L"Normal"),
-				DWRITE_FONT_STRETCH_NORMAL);
-			ComboBox_SetCurSel(m_controls->FontWeightCombo, 0);
-			ComboBox_SetCurSel(m_controls->FontStyleCombo, 0);
-			ComboBox_SetCurSel(m_controls->FontStretchCombo, 0);
-			m_element.Lookup.Weight = DWRITE_FONT_WEIGHT_NORMAL;
-			m_element.Lookup.Style = DWRITE_FONT_STYLE_NORMAL;
-			m_element.Lookup.Stretch = DWRITE_FONT_STRETCH_NORMAL;
+				ComboBox_SetItemData(
+					m_controls->FontStyleCombo,
+					ComboBox_AddString(
+						m_controls->FontStyleCombo,
+						std::wstring(GetStringResource(IDS_FONTSTYLE_NORMAL)).c_str()),
+					m_element.Lookup.Style = DWRITE_FONT_STYLE_NORMAL));
+			ComboBox_SetCurSel(
+				m_controls->FontStretchCombo, ComboBox_SetItemData(
+					m_controls->FontStretchCombo,
+					ComboBox_AddString(
+						m_controls->FontStretchCombo,
+						std::wstring(GetStringResource(IDS_FONTSTRETCH_NORMAL)).c_str()),
+					m_element.Lookup.Stretch = DWRITE_FONT_STRETCH_NORMAL));
 			break;
 		}
 
@@ -1247,46 +1325,48 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 					closestStretch = v;
 			}
 
+			std::wstring text;
 			for (const auto v : weights) {
-				int index;
 				switch (v) {
 					case 100:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"100 (Thin)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_100));
 						break;
 					case 200:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"200 (Extra Light/Ultra Light)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_200));
 						break;
 					case 300:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"300 (Light)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_300));
 						break;
 					case 350:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"350 (Semi Light)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_350));
 						break;
 					case 400:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"400 (Normal/Regular)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_400));
 						break;
 					case 500:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"500 (Medium)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_500));
 						break;
 					case 600:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"600 (Semi Bold/Demibold)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_600));
 						break;
 					case 700:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"700 (Bold)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_700));
 						break;
 					case 800:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"800 (Extra Bold/Ultra Bold)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_800));
 						break;
 					case 900:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"900 (Black/Heavy)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_900));
 						break;
 					case 950:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, L"950 (Extra Black/Ultra Black)");
+						text = std::wstring(GetStringResource(IDS_FONTWEIGHT_950));
 						break;
 					default:
-						index = ComboBox_AddString(m_controls->FontWeightCombo, std::format(L"{}", static_cast<int>(v)).c_str());
+						text = std::format(L"{}", static_cast<int>(v)).c_str();
 						break;
 				}
+
+				const auto index = ComboBox_AddString(m_controls->FontWeightCombo, text.c_str());
 				ComboBox_SetItemData(m_controls->FontWeightCombo, index, static_cast<uint32_t>(v));
 
 				if (v == closestWeight) {
@@ -1296,19 +1376,21 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 			}
 
 			for (const auto v : styles) {
-				int index;
 				switch (v) {
 					case DWRITE_FONT_STYLE_NORMAL:
-						index = ComboBox_AddString(m_controls->FontStyleCombo, L"Normal");
+						text = std::wstring(GetStringResource(IDS_FONTSTYLE_NORMAL));
 						break;
 					case DWRITE_FONT_STYLE_OBLIQUE:
-						index = ComboBox_AddString(m_controls->FontStyleCombo, L"Oblique");
+						text = std::wstring(GetStringResource(IDS_FONTSTYLE_OBLIQUE));
 						break;
 					case DWRITE_FONT_STYLE_ITALIC:
-						index = ComboBox_AddString(m_controls->FontStyleCombo, L"Italic");
+						text = std::wstring(GetStringResource(IDS_FONTSTYLE_ITALIC));
 						break;
-					default: continue;
+					default:
+						continue;
 				}
+
+				const auto index = ComboBox_AddString(m_controls->FontStyleCombo, text.c_str());
 				ComboBox_SetItemData(m_controls->FontStyleCombo, index, static_cast<uint32_t>(v));
 
 				if (v == closestStyle) {
@@ -1318,37 +1400,39 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 			}
 
 			for (const auto v : stretches) {
-				int index;
 				switch (v) {
 					case DWRITE_FONT_STRETCH_ULTRA_CONDENSED:
-						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Ultra Condensed");
+						text = std::wstring(GetStringResource(IDS_FONTSTRETCH_ULTRA_CONDENSED));
 						break;
 					case DWRITE_FONT_STRETCH_EXTRA_CONDENSED:
-						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Extra Condensed");
+						text = std::wstring(GetStringResource(IDS_FONTSTRETCH_EXTRA_CONDENSED));
 						break;
 					case DWRITE_FONT_STRETCH_CONDENSED:
-						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Condensed");
+						text = std::wstring(GetStringResource(IDS_FONTSTRETCH_CONDENSED));
 						break;
 					case DWRITE_FONT_STRETCH_SEMI_CONDENSED:
-						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Semi Condensed");
+						text = std::wstring(GetStringResource(IDS_FONTSTRETCH_SEMI_CONDENSED));
 						break;
 					case DWRITE_FONT_STRETCH_NORMAL:
-						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Normal");
+						text = std::wstring(GetStringResource(IDS_FONTSTRETCH_NORMAL));
 						break;
 					case DWRITE_FONT_STRETCH_SEMI_EXPANDED:
-						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Semi Expanded");
+						text = std::wstring(GetStringResource(IDS_FONTSTRETCH_SEMI_EXPANDED));
 						break;
 					case DWRITE_FONT_STRETCH_EXPANDED:
-						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Expanded");
+						text = std::wstring(GetStringResource(IDS_FONTSTRETCH_EXPANDED));
 						break;
 					case DWRITE_FONT_STRETCH_EXTRA_EXPANDED:
-						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Extra Expanded");
+						text = std::wstring(GetStringResource(IDS_FONTSTRETCH_EXTRA_EXPANDED));
 						break;
 					case DWRITE_FONT_STRETCH_ULTRA_EXPANDED:
-						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Ultra Expanded");
+						text = std::wstring(GetStringResource(IDS_FONTSTRETCH_ULTRA_EXPANDED));
 						break;
-					default: continue;
+					default:
+						continue;
 				}
+
+				const auto index = ComboBox_AddString(m_controls->FontStretchCombo, text.c_str());
 				ComboBox_SetItemData(m_controls->FontStretchCombo, index, static_cast<uint32_t>(v));
 
 				if (v == closestStretch) {

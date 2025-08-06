@@ -5,7 +5,7 @@ namespace App {
 		struct ControlStruct;
 
 		const HWND m_hParentWnd;
-		const std::string m_windowTitle;
+		const std::wstring m_windowTitle;
 
 		HANDLE m_hReadyEvent = nullptr;
 
@@ -15,7 +15,7 @@ namespace App {
 		bool m_bCancelled = false;
 
 	public:
-		ProgressDialog(HWND hParentWnd, std::string windowTitle);
+		ProgressDialog(HWND hParentWnd, std::wstring windowTitle);
 
 		~ProgressDialog();
 
@@ -28,7 +28,8 @@ namespace App {
 
 		bool IsCancelled() const;
 
-		void UpdateStatusMessage(const std::string& s);
+		void UpdateStatusMessage(const std::wstring& s);
+		void UpdateStatusMessage(std::wstring_view s);
 
 		void UpdateProgress(float progress);
 

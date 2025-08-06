@@ -5,12 +5,13 @@
 #include "MainWindow.Internal.h"
 #include "ProgressDialog.h"
 #include "xivres/textools.h"
+#include "resource.h"
 
 LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 	using namespace xivres::fontgen;
 
 	try {
-		ProgressDialog progressDialog(m_hWnd, "Exporting...");
+		ProgressDialog progressDialog(m_hWnd, std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTRAW)));
 		ShowWindow(m_hWnd, SW_HIDE);
 		const auto hideWhilePacking = xivres::util::on_dtor([this]() { ShowWindow(m_hWnd, SW_SHOW); });
 
@@ -33,8 +34,25 @@ LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 		return 0;
 	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
 		return 1;
+	} catch (const WException& e) {
+		MessageBoxW(
+			m_hWnd,
+			std::format(
+				L"{}\n\n{}",
+				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
+				e.what()).c_str(),
+			GetWindowString(m_hWnd).c_str(),
+			MB_OK | MB_ICONERROR);
+		return 1;
 	} catch (const std::exception& e) {
-		MessageBoxW(m_hWnd, std::format(L"Failed to export: {}", xivres::util::unicode::convert<std::wstring>(e.what())).c_str(), GetWindowString(m_hWnd).c_str(), MB_OK | MB_ICONERROR);
+		MessageBoxW(
+			m_hWnd,
+			std::format(
+				L"{}\n\n{}",
+				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
+				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
+			GetWindowString(m_hWnd).c_str(),
+			MB_OK | MB_ICONERROR);
 		return 1;
 	}
 }
@@ -47,7 +65,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 		DWORD dwFlags;
 		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
 		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_Export));
-		SuccessOrThrow(pDialog->SetTitle(L"Export raw"));
+		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTRAW)).c_str()));
 		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
 		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM | FOS_PICKFOLDERS));
 		switch (SuccessOrThrow(pDialog->Show(m_hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
@@ -65,7 +83,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 		std::unique_ptr<std::remove_pointer_t<PWSTR>, decltype(&CoTaskMemFree)> pszFileNamePtr(pszFileName, &CoTaskMemFree);
 		const auto basePath = std::filesystem::path(pszFileName);
 
-		ProgressDialog progressDialog(m_hWnd, "Exporting...");
+		ProgressDialog progressDialog(m_hWnd, std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTRAW)));
 		ShowWindow(m_hWnd, SW_HIDE);
 		const auto hideWhilePacking = xivres::util::on_dtor([this]() { ShowWindow(m_hWnd, SW_SHOW); });
 
@@ -73,7 +91,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 			const auto [fdts, mips] = CompileCurrentFontSet(progressDialog, *pFontSet);
 
 			progressDialog.UpdateProgress(std::nanf(""));
-			progressDialog.UpdateStatusMessage("Writing to files...");
+			progressDialog.UpdateStatusMessage(GetStringResource(IDS_EXPORTPROGRESS_WRITINGTOFILES));
 
 			std::vector<char> buf(32768);
 			xivres::texture::stream textureOne(mips[0]->Type, mips[0]->Width, mips[0]->Height, 1, 1, 1);
@@ -93,9 +111,25 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 
 				out.close();
 
-				if (m_multiFontSet.ExportMapFontLobbyToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
-					const auto path2 = basePath / std::format("font_lobby{}.tex", i1);
-					std::filesystem::copy(path, path2, std::filesystem::copy_options::overwrite_existing);
+				if (pFontSet->TexFilenameFormat == "font{}.tex") {
+					if (m_multiFontSet.ExportMapFontLobbyToFont) {
+						copy(
+							path,
+							basePath / std::format("font_lobby{}.tex", i1),
+							std::filesystem::copy_options::overwrite_existing);
+					}
+					if (m_multiFontSet.ExportMapChnAxisToFont) {
+						copy(
+							path,
+							basePath / std::format("font_chn_{}.tex", i1),
+							std::filesystem::copy_options::overwrite_existing);
+					}
+					if (m_multiFontSet.ExportMapFontLobbyToFont) {
+						copy(
+							path,
+							basePath / std::format("font_krn_{}.tex", i1),
+							std::filesystem::copy_options::overwrite_existing);
+					}
 				}
 			}
 
@@ -111,16 +145,57 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 
 				out.close();
 
-				if (m_multiFontSet.ExportMapFontLobbyToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
-					const auto path2 = basePath / std::format("{}_lobby.fdt", pFontSet->Faces[i]->Name);
-					std::filesystem::copy(path, path2, std::filesystem::copy_options::overwrite_existing);
+				if (pFontSet->TexFilenameFormat == "font{}.tex") {
+					if (m_multiFontSet.ExportMapFontLobbyToFont) {
+						copy(
+							path,
+							basePath / std::format("{}_lobby.fdt", pFontSet->Faces[i]->Name),
+							std::filesystem::copy_options::overwrite_existing);
+					}
+					if (m_multiFontSet.ExportMapChnAxisToFont) {
+						if (pFontSet->Faces[i]->Name == "AXIS_12")
+							copy(path, basePath / "ChnAXIS_120.fdt", std::filesystem::copy_options::overwrite_existing);
+						else if (pFontSet->Faces[i]->Name == "AXIS_14")
+							copy(path, basePath / "ChnAXIS_140.fdt", std::filesystem::copy_options::overwrite_existing);
+						else if (pFontSet->Faces[i]->Name == "AXIS_18")
+							copy(path, basePath / "ChnAXIS_180.fdt", std::filesystem::copy_options::overwrite_existing);
+						else if (pFontSet->Faces[i]->Name == "AXIS_36")
+							copy(path, basePath / "ChnAXIS_360.fdt", std::filesystem::copy_options::overwrite_existing);
+					}
+					if (m_multiFontSet.ExportMapKrnAxisToFont) {
+						if (pFontSet->Faces[i]->Name == "AXIS_12")
+							copy(path, basePath / "KrnAXIS_120.fdt", std::filesystem::copy_options::overwrite_existing);
+						else if (pFontSet->Faces[i]->Name == "AXIS_14")
+							copy(path, basePath / "KrnAXIS_140.fdt", std::filesystem::copy_options::overwrite_existing);
+						else if (pFontSet->Faces[i]->Name == "AXIS_18")
+							copy(path, basePath / "KrnAXIS_180.fdt", std::filesystem::copy_options::overwrite_existing);
+						else if (pFontSet->Faces[i]->Name == "AXIS_36")
+							copy(path, basePath / "KrnAXIS_360.fdt", std::filesystem::copy_options::overwrite_existing);
+					}
 				}
 			}
 		}
 	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
 		return 1;
+	} catch (const WException& e) {
+		MessageBoxW(
+			m_hWnd,
+			std::format(
+				L"{}\n\n{}",
+				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
+				e.what()).c_str(),
+			GetWindowString(m_hWnd).c_str(),
+			MB_OK | MB_ICONERROR);
+		return 1;
 	} catch (const std::exception& e) {
-		MessageBoxW(m_hWnd, std::format(L"Failed to export: {}", xivres::util::unicode::convert<std::wstring>(e.what())).c_str(), GetWindowString(m_hWnd).c_str(), MB_OK | MB_ICONERROR);
+		MessageBoxW(
+			m_hWnd,
+			std::format(
+				L"{}\n\n{}",
+				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
+				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
+			GetWindowString(m_hWnd).c_str(),
+			MB_OK | MB_ICONERROR);
 		return 1;
 	}
 
@@ -144,8 +219,8 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_Export));
 		SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(fileTypesSpan.size()), fileTypesSpan.data()));
 		SuccessOrThrow(pDialog->SetFileTypeIndex(0));
-		SuccessOrThrow(pDialog->SetTitle(L"Save"));
-		SuccessOrThrow(pDialog->SetFileName(std::format(L"{}.ttmp2", m_path.filename().replace_extension(L"").wstring()).c_str()));
+		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTTTMP)).c_str()));
+		SuccessOrThrow(pDialog->SetFileName(std::format(L"{}.ttmp2", std::filesystem::path(GetCurrentFileName()).replace_extension(L"").wstring()).c_str()));
 		SuccessOrThrow(pDialog->SetDefaultExtension(L"json"));
 		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
 		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
@@ -168,7 +243,7 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 
 		xivres::textools::simple_ttmp2_writer writer(finalPath);
 
-		ProgressDialog progressDialog(m_hWnd, "Exporting...");
+		ProgressDialog progressDialog(m_hWnd, std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTTTMP)));
 		ShowWindow(m_hWnd, SW_HIDE);
 		const auto hideWhilePacking = xivres::util::on_dtor([this]() { ShowWindow(m_hWnd, SW_SHOW); });
 
@@ -185,7 +260,11 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 				progressDialog.ThrowIfCancelled();
 
 				const auto targetFileName = std::format("common/font/{}.fdt", pFontSet->Faces[i]->Name);
-				progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
+				const auto targetFileNameW = xivres::util::unicode::convert<std::wstring>(targetFileName);
+				progressDialog.UpdateStatusMessage(
+					std::vformat(
+						GetStringResource(IDS_EXPORTPROGRESS_WRITINGFILE),
+						std::make_wformat_args(targetFileNameW)));
 
 				writer.add_packed(xivres::compressing_packed_stream<xivres::standard_compressing_packer>(targetFileName, fdts[i], compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION));
 			}
@@ -195,7 +274,11 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 
 				const auto i1 = i + 1;
 				const auto targetFileName = std::format("common/font/{}", std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i1)));
-				progressDialog.UpdateStatusMessage(std::format("Packing file: {}", targetFileName));
+				const auto targetFileNameW = xivres::util::unicode::convert<std::wstring>(targetFileName);
+				progressDialog.UpdateStatusMessage(
+					std::vformat(
+						GetStringResource(IDS_EXPORTPROGRESS_WRITINGFILE),
+						std::make_wformat_args(targetFileNameW)));
 
 				const auto& mip = mips[i];
 				auto textureOne = std::make_shared<xivres::texture::stream>(mip->Type, mip->Width, mip->Height, 1, 1, 1);
@@ -223,12 +306,83 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 					modsList.push_back(tmp);
 				}
 			}
+
+			if (m_multiFontSet.ExportMapChnAxisToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
+				modsList.reserve(modsList.size() + endIndex - beginIndex);
+				for (size_t i = beginIndex; i < endIndex; i++) {
+					xivres::textools::mods_json tmp = modsList[i];
+					if (tmp.FullPath.ends_with("/AXIS_12.fdt")) {
+						tmp.Name.erase(tmp.Name.size() - 11, 11);
+						tmp.Name.append("ChnAXIS_120.fdt");
+					} else if (tmp.FullPath.ends_with("/AXIS_14.fdt")) {
+						tmp.Name.erase(tmp.Name.size() - 11, 11);
+						tmp.Name.append("ChnAXIS_140.fdt");
+					} else if (tmp.FullPath.ends_with("/AXIS_18.fdt")) {
+						tmp.Name.erase(tmp.Name.size() - 11, 11);
+						tmp.Name.append("ChnAXIS_180.fdt");
+					} else if (tmp.FullPath.ends_with("/AXIS_36.fdt")) {
+						tmp.Name.erase(tmp.Name.size() - 11, 11);
+						tmp.Name.append("ChnAXIS_360.fdt");
+					} else if (tmp.FullPath.ends_with(".tex")) {
+						tmp.Name.insert(tmp.Name.size() - 5, "_chn_");
+					} else {
+						continue;
+					}
+
+					tmp.FullPath = xivres::util::unicode::convert<std::string>(tmp.Name, &xivres::util::unicode::lower);
+					modsList.push_back(tmp);
+				}
+			}
+
+			if (m_multiFontSet.ExportMapKrnAxisToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
+				modsList.reserve(modsList.size() + endIndex - beginIndex);
+				for (size_t i = beginIndex; i < endIndex; i++) {
+					xivres::textools::mods_json tmp = modsList[i];
+					if (tmp.FullPath.ends_with("/AXIS_12.fdt")) {
+						tmp.Name.erase(tmp.Name.size() - 11, 11);
+						tmp.Name.append("KrnAXIS_120.fdt");
+					} else if (tmp.FullPath.ends_with("/AXIS_14.fdt")) {
+						tmp.Name.erase(tmp.Name.size() - 11, 11);
+						tmp.Name.append("KrnAXIS_140.fdt");
+					} else if (tmp.FullPath.ends_with("/AXIS_18.fdt")) {
+						tmp.Name.erase(tmp.Name.size() - 11, 11);
+						tmp.Name.append("KrnAXIS_180.fdt");
+					} else if (tmp.FullPath.ends_with("/AXIS_36.fdt")) {
+						tmp.Name.erase(tmp.Name.size() - 11, 11);
+						tmp.Name.append("KrnAXIS_360.fdt");
+					} else if (tmp.FullPath.ends_with(".tex")) {
+						tmp.Name.insert(tmp.Name.size() - 5, "_krn_");
+					} else {
+						continue;
+					}
+
+					tmp.FullPath = xivres::util::unicode::convert<std::string>(tmp.Name, &xivres::util::unicode::lower);
+					modsList.push_back(tmp);
+				}
+			}
 		}
 		writer.close();
 	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
 		return 1;
+	} catch (const WException& e) {
+		MessageBoxW(
+			m_hWnd,
+			std::format(
+				L"{}\n\n{}",
+				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
+				e.what()).c_str(),
+			GetWindowString(m_hWnd).c_str(),
+			MB_OK | MB_ICONERROR);
+		return 1;
 	} catch (const std::exception& e) {
-		MessageBoxW(m_hWnd, std::format(L"Failed to export: {}", xivres::util::unicode::convert<std::wstring>(e.what())).c_str(), GetWindowString(m_hWnd).c_str(), MB_OK | MB_ICONERROR);
+		MessageBoxW(
+			m_hWnd,
+			std::format(
+				L"{}\n\n{}",
+				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
+				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
+			GetWindowString(m_hWnd).c_str(),
+			MB_OK | MB_ICONERROR);
 		return 1;
 	}
 

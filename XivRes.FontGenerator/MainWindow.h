@@ -27,8 +27,8 @@ namespace App {
 		const std::vector<std::wstring> m_args;
 
 		bool m_bChanged = false;
-		bool m_bPathIsNotReal = false;
-		std::filesystem::path m_path;
+		// std::filesystem::path m_path;
+		IShellItemPtr m_currentShellItem;
 		Structs::MultiFontSet m_multiFontSet;
 		Structs::FontSet* m_pFontSet = nullptr;
 		Structs::Face* m_pActiveFace = nullptr;
@@ -51,7 +51,6 @@ namespace App {
 		int m_nDrawLeft{};
 		int m_nDrawTop{};
 		int m_nZoom = 1;
-		xivres::font_type m_hotReloadFontType = xivres::font_type::undefined;
 
 		bool m_bIsReorderingFaceElementList = false;
 
@@ -82,6 +81,7 @@ namespace App {
 		LRESULT Menu_File_Open();
 		LRESULT Menu_File_Save();
 		LRESULT Menu_File_SaveAs(bool changeCurrentFile);
+		LRESULT Menu_File_Language(const char* language);
 		LRESULT Menu_File_Exit();
 
 		LRESULT Menu_Edit_Add();
@@ -107,9 +107,6 @@ namespace App {
 		LRESULT Menu_Export_TTMP(CompressionMode compressionMode);
 		LRESULT Menu_Export_MapFontLobby();
 
-		LRESULT Menu_HotReload_Reload(bool restore);
-		LRESULT Menu_HotReload_Font(xivres::font_type mode);
-
 		LRESULT Edit_OnCommand(uint16_t commandId);
 
 		LRESULT FaceListBox_OnCommand(uint16_t commandId);
@@ -120,10 +117,11 @@ namespace App {
 		bool FaceElementsListView_DragProcessDragging(int16_t x, int16_t y);
 		LRESULT FaceElementsListView_OnDblClick(NMITEMACTIVATE& nmia);
 
-		[[nodiscard]] double GetZoom() const;
+		[[nodiscard]] double GetZoom() const noexcept;
 
-		void SetCurrentMultiFontSet(const std::filesystem::path& path);
-		void SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, std::filesystem::path path, bool fakePath);
+		void SetCurrentMultiFontSet(IShellItemPtr path);
+		void SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, IShellItemPtr path, bool fakePath);
+		std::wstring GetCurrentFileName();
 
 		void Changes_MarkFresh();
 		void Changes_MarkDirty();

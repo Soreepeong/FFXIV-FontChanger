@@ -168,25 +168,21 @@ LRESULT App::FontEditorWindow::FaceElementsListView_OnDblClick(NMITEMACTIVATE& n
 	return 0;
 }
 
-double App::FontEditorWindow::GetZoom() const {
-	try {
-		const auto hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
-		UINT newDpiX = 96;
-		UINT newDpiY = 96;
+double App::FontEditorWindow::GetZoom() const noexcept {
+	const auto hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
+	UINT newDpiX = 96;
+	UINT newDpiY = 96;
 
-		if (FAILED(GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, &newDpiX, &newDpiY))) {
-			MONITORINFOEXW mi{};
-			mi.cbSize = static_cast<DWORD>(sizeof MONITORINFOEXW);
-			GetMonitorInfoW(hMonitor, &mi);
-			if (const auto hdc = CreateDCW(L"DISPLAY", mi.szDevice, nullptr, nullptr)) {
-				newDpiX = GetDeviceCaps(hdc, LOGPIXELSX);
-				newDpiY = GetDeviceCaps(hdc, LOGPIXELSY);
-				DeleteDC(hdc);
-			}
+	if (FAILED(GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, &newDpiX, &newDpiY))) {
+		MONITORINFOEXW mi{};
+		mi.cbSize = static_cast<DWORD>(sizeof MONITORINFOEXW);
+		GetMonitorInfoW(hMonitor, &mi);
+		if (const auto hdc = CreateDCW(L"DISPLAY", mi.szDevice, nullptr, nullptr)) {
+			newDpiX = GetDeviceCaps(hdc, LOGPIXELSX);
+			newDpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+			DeleteDC(hdc);
 		}
-		return std::min(newDpiY, newDpiX) / 96.;
-	} catch (const std::exception&) {
-		// uninterested in handling errors here
-		return 1.;
 	}
+
+	return std::min(newDpiY, newDpiX) / 96.;
 }

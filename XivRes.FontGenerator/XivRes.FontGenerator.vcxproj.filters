@@ -25,19 +25,25 @@
     <ClCompile Include="ProgressDialog.cpp">
       <Filter>Source\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="nmd_assembly.cpp">
-      <Filter>Project Items</Filter>
+    <ClCompile Include="FontGeneratorConfig.cpp" />
+    <ClCompile Include="MainWindow.Window.cpp">
+      <Filter>Source\Windows</Filter>
     </ClCompile>
-    <ClCompile Include="GameFontReloader.cpp">
-      <Filter>Source</Filter>
+    <ClCompile Include="MainWindow.Controls.cpp">
+      <Filter>Source\Windows</Filter>
     </ClCompile>
-    <ClCompile Include="MainWindow.Controls.cpp" />
-    <ClCompile Include="MainWindow.Menu.Edit.cpp" />
-    <ClCompile Include="MainWindow.Menu.Export.cpp" />
-    <ClCompile Include="MainWindow.Menu.File.cpp" />
-    <ClCompile Include="MainWindow.Menu.HotReload.cpp" />
-    <ClCompile Include="MainWindow.Menu.View.cpp" />
-    <ClCompile Include="MainWindow.Window.cpp" />
+    <ClCompile Include="MainWindow.Menu.Edit.cpp">
+      <Filter>Source\Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="MainWindow.Menu.Export.cpp">
+      <Filter>Source\Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="MainWindow.Menu.File.cpp">
+      <Filter>Source\Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="MainWindow.Menu.View.cpp">
+      <Filter>Source\Windows</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Project Items">
@@ -78,13 +84,10 @@
     <ClInclude Include="ProgressDialog.h">
       <Filter>Source\Dialogs</Filter>
     </ClInclude>
-    <ClInclude Include="nmd_assembly.h">
-      <Filter>Project Items</Filter>
+    <ClInclude Include="FontGeneratorConfig.h" />
+    <ClInclude Include="MainWindow.Internal.h">
+      <Filter>Source\Windows</Filter>
     </ClInclude>
-    <ClInclude Include="GameFontReloader.h">
-      <Filter>Source</Filter>
-    </ClInclude>
-    <ClInclude Include="MainWindow.Internal.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json">
@@ -95,10 +98,5 @@
     <ResourceCompile Include="XivRes.FontGenerator.rc">
       <Filter>Project Items</Filter>
     </ResourceCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <MASM Include="CallAtkModuleVf43.asm">
-      <Filter>Source</Filter>
-    </MASM>
   </ItemGroup>
 </Project>

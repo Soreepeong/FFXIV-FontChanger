@@ -48,6 +48,8 @@ namespace App {
 
 		static LRESULT WINAPI WndProcInitial(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+		[[nodiscard]] double GetZoom() const noexcept;
+
 		ExportPreviewWindow(std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::fixed_size_font>>> fonts);
 
 	public:

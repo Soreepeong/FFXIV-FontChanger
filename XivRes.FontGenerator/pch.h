@@ -16,6 +16,7 @@
 #include <shellapi.h>
 #include <ShellScalingApi.h>
 #include <ShObjIdl.h>
+#include <ShlGuid.h>
 
 #include <exprtk.hpp>
 
@@ -32,9 +33,6 @@
 #include <minizip/iowin32.h>
 
 #include <nlohmann/json.hpp>
-
-// https://github.com/Nomade040/nmd/blob/master/nmd_assembly.h
-#include "nmd_assembly.h"
 
 #include "xivres.fontgen/directwrite_fixed_size_font.h"
 #include "xivres.fontgen/fontdata_fixed_size_font.h"
@@ -55,6 +53,9 @@
 #include "xivres/util.pixel_formats.h"
 
 extern HINSTANCE g_hInstance;
+extern struct FontGeneratorConfig g_config;
+extern WORD g_langId;
+extern std::wstring g_localeName;
 
 _COM_SMARTPTR_TYPEDEF(IFileSaveDialog, __uuidof(IFileSaveDialog));
 _COM_SMARTPTR_TYPEDEF(IFileOpenDialog, __uuidof(IFileOpenDialog));
@@ -77,6 +78,11 @@ inline std::wstring GetWindowString(HWND hwnd, bool trim = false) {
 	return buf;
 }
 
+HRESULT SuccessOrThrow(HRESULT hr, std::initializer_list<HRESULT> acceptables = {});
+
+std::wstring_view GetStringResource(UINT id, UINT langId);
+std::wstring_view GetStringResource(UINT id);
+
 template<typename T>
 inline T GetWindowNumber(HWND hwnd) {
 	return static_cast<T>(std::wcstod(GetWindowString(hwnd, true).c_str(), nullptr));
@@ -92,4 +98,31 @@ inline void SetWindowNumber(HWND hwnd, T v) {
 		static_assert(!sizeof(T), "no match");
 }
 
-HRESULT SuccessOrThrow(HRESULT hr, std::initializer_list<HRESULT> acceptables = {});
+template<typename T, typename = std::enable_if_t<(sizeof(T) <= sizeof(LPARAM))>>
+inline void SetComboboxContent(HWND hCombo, T currentValue, std::initializer_list<std::pair<T, UINT>> args) {
+	ComboBox_ResetContent(hCombo);
+	std::wstring text;
+	for (const auto& [val, resId] : args) {
+		text = GetStringResource(resId);
+		const auto index = ComboBox_AddString(hCombo, text.c_str());
+		ComboBox_SetItemData(hCombo, index, val);
+		if (currentValue == val)
+			ComboBox_SetCurSel(hCombo, index);
+	}
+}
+
+template<typename T, typename = std::enable_if_t<(sizeof(T) <= sizeof(LPARAM))>>
+inline T GetComboboxSelData(HWND hCombo) {
+	return static_cast<T>(ComboBox_GetItemData(hCombo, ComboBox_GetCurSel(hCombo)));
+}
+
+class WException {
+	std::wstring m_msg;
+
+public:
+	WException(std::wstring msg) : m_msg(msg) {}
+
+	const std::wstring& what() const {
+		return m_msg;
+	}
+};

@@ -41,13 +41,17 @@ LRESULT App::ExportPreviewWindow::Window_OnSize() {
 	RECT rc;
 	GetClientRect(m_hWnd, &rc);
 
+	const auto zoom = GetZoom();
+	const auto scaledFaceListBoxWidth = static_cast<int>(FaceListBoxWidth * zoom);
+	const auto scaledEditHeight = static_cast<int>(EditHeight * zoom);
+
 	auto hdwp = BeginDeferWindowPos(Id__Last);
-	hdwp = DeferWindowPos(hdwp, m_hFacesListBox, nullptr, 0, 0, FaceListBoxWidth, rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
-	hdwp = DeferWindowPos(hdwp, m_hEdit, nullptr, FaceListBoxWidth, 0, (std::max<int>)(0, rc.right - rc.left - FaceListBoxWidth), EditHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+	hdwp = DeferWindowPos(hdwp, m_hFacesListBox, nullptr, 0, 0, scaledFaceListBoxWidth, rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
+	hdwp = DeferWindowPos(hdwp, m_hEdit, nullptr, scaledFaceListBoxWidth, 0, (std::max<int>)(0, rc.right - rc.left - scaledFaceListBoxWidth), scaledEditHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 	EndDeferWindowPos(hdwp);
 
-	m_nDrawLeft = FaceListBoxWidth;
-	m_nDrawTop = EditHeight;
+	m_nDrawLeft = scaledFaceListBoxWidth;
+	m_nDrawTop = scaledEditHeight;
 	m_pMipmap = std::make_shared<xivres::texture::memory_mipmap_stream>(
 		(std::max<int>)(32, rc.right - rc.left - m_nDrawLeft),
 		(std::max<int>)(32, rc.bottom - rc.top - m_nDrawTop),
@@ -170,6 +174,25 @@ LRESULT WINAPI App::ExportPreviewWindow::WndProcInitial(HWND hwnd, UINT msg, WPA
 	SetWindowLongPtrW(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProcStatic));
 
 	return pImpl->WndProc(hwnd, msg, wParam, lParam);
+}
+
+double App::ExportPreviewWindow::GetZoom() const noexcept {
+	const auto hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
+	UINT newDpiX = 96;
+	UINT newDpiY = 96;
+
+	if (FAILED(GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, &newDpiX, &newDpiY))) {
+		MONITORINFOEXW mi{};
+		mi.cbSize = static_cast<DWORD>(sizeof MONITORINFOEXW);
+		GetMonitorInfoW(hMonitor, &mi);
+		if (const auto hdc = CreateDCW(L"DISPLAY", mi.szDevice, nullptr, nullptr)) {
+			newDpiX = GetDeviceCaps(hdc, LOGPIXELSX);
+			newDpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+			DeleteDC(hdc);
+		}
+	}
+
+	return std::min(newDpiY, newDpiX) / 96.;
 }
 
 App::ExportPreviewWindow::ExportPreviewWindow(std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::fixed_size_font>>> fonts) : m_fonts(fonts) {

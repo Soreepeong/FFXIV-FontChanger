@@ -86,6 +86,14 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 				return font.get_font(family, size);
 			}
 		}
+	} catch (const WException& e) {
+		static bool showed = false;
+		if (!showed) {
+			showed = true;
+			MessageBoxW(nullptr, std::format(
+				L"Failed to find corresponding game installation ({}). Specify it in config.json. Delete config.json and run this program again to start anew. Suppressing this message from now on.",
+				e.what()).c_str(), L"Error", MB_OK);
+		}
 	} catch (const std::exception& e) {
 		static bool showed = false;
 		if (!showed) {
@@ -821,7 +829,9 @@ void App::Structs::from_json(const nlohmann::json& json, MultiFontSet& value) {
 		}
 	}
 
-	value.ExportMapFontLobbyToFont = json.value("exportMapFontLobbyToFont", true);
+	value.ExportMapFontLobbyToFont = json.value("exportMapFontLobbyToFont", false);
+	value.ExportMapChnAxisToFont = json.value("exportMapChnAxisToFont", false);
+	value.ExportMapKrnAxisToFont = json.value("exportMapKrnAxisToFont", false);
 }
 
 void App::Structs::to_json(nlohmann::json& json, const MultiFontSet& value) {
@@ -832,6 +842,8 @@ void App::Structs::to_json(nlohmann::json& json, const MultiFontSet& value) {
 	}
 
 	json["exportMapFontLobbyToFont"] = value.ExportMapFontLobbyToFont;
+	json["exportMapChnAxisToFont"] = value.ExportMapChnAxisToFont;
+	json["exportMapKrnAxisToFont"] = value.ExportMapKrnAxisToFont;
 }
 
 const char* App::Structs::GetDefaultPreviewText() {
