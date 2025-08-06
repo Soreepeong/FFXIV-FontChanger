@@ -56,6 +56,8 @@ namespace App {
 
 		INT_PTR FontStretchCombo_OnCommand(uint16_t notiCode);
 
+		INT_PTR FontFeaturesList_OnCommand(uint16_t notiCode);
+
 		INT_PTR EmptyAscentEdit_OnCommand(uint16_t notiCode);
 
 		INT_PTR EmptyLineHeightEdit_OnCommand(uint16_t notiCode);

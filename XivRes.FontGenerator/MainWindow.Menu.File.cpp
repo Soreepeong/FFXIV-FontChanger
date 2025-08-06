@@ -56,7 +56,7 @@ LRESULT App::FontEditorWindow::Menu_File_Open() {
 		DWORD dwFlags;
 		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
 		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_Json));
-		SuccessOrThrow(pDialog->SetFileTypes(fileTypesSpan.size(), fileTypesSpan.data()));
+		SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(fileTypesSpan.size()), fileTypesSpan.data()));
 		SuccessOrThrow(pDialog->SetFileTypeIndex(0));
 		SuccessOrThrow(pDialog->SetTitle(L"Open"));
 		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
@@ -115,7 +115,7 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 		DWORD dwFlags;
 		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER));
 		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_Json));
-		SuccessOrThrow(pDialog->SetFileTypes(fileTypesSpan.size(), fileTypesSpan.data()));
+		SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(fileTypesSpan.size()), fileTypesSpan.data()));
 		SuccessOrThrow(pDialog->SetFileTypeIndex(0));
 		SuccessOrThrow(pDialog->SetTitle(L"Save"));
 		SuccessOrThrow(pDialog->SetDefaultExtension(L"json"));

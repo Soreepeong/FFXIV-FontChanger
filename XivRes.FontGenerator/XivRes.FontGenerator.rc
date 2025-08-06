@@ -1,5 +1,7 @@
 // Microsoft Visual C++ generated resource script.
 //
+#pragma code_page(65001)
+
 #include "resource.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
@@ -13,11 +15,183 @@
 #undef APSTUDIO_READONLY_SYMBOLS
 
 /////////////////////////////////////////////////////////////////////////////
+// Korean (Korea) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_KOR)
+LANGUAGE LANG_KOREAN, SUBLANG_DEFAULT
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDR_FONTEDITOR MENU
+BEGIN
+    POPUP "파일(&F)"
+    BEGIN
+        POPUP "새로 만들기(&N)"
+        BEGIN
+            MENUITEM "일반 용도 (font) (&M)",           ID_FILE_NEW_MAINGAMEFONT
+            MENUITEM "로비 전용 (font_lobby) (&L)",     ID_FILE_NEW_LOBBYFONT
+            MENUITEM "중국판 (ChnAXIS) (&C)",          ID_FILE_NEW_CHNAXIS
+            MENUITEM "한국판 (KrnAXIS) (&K)",          ID_FILE_NEW_KRNAXIS
+        END
+        MENUITEM "열기(&O)\tCtrl+O",              ID_FILE_OPEN
+        MENUITEM "저장하기(&S)\tCtrl+S",            ID_FILE_SAVE
+        MENUITEM "다른 이름으로 저장하기(&A)\tCtrl+Shift+S", ID_FILE_SAVEAS
+        MENUITEM "복사본 저장하기(&C)",                ID_FILE_SAVECOPYAS
+        MENUITEM SEPARATOR
+        MENUITEM "끝내기(&X)\tCtrl+Q",             ID_FILE_EXIT
+    END
+    POPUP "편집(&E)"
+    BEGIN
+        MENUITEM "추가(&A)\tIns",                 ID_EDIT_ADD
+        MENUITEM "잘라내기(&C)\tCtrl+X",            ID_EDIT_CUT
+        MENUITEM "복사(&C)\tCtrl+C",              ID_EDIT_COPY
+        MENUITEM "붙여넣기(&P)\tCtrl+V",            ID_EDIT_PASTE
+        MENUITEM "지우기(&D)\tDel",                ID_EDIT_DELETE
+        MENUITEM "모두 선택(&S)\tCtrl+A",           ID_EDIT_SELECTALL
+        MENUITEM SEPARATOR
+        MENUITEM "자세히(&E)\tEnter",              ID_EDIT_DETAILS
+        MENUITEM SEPARATOR
+        MENUITEM "베이스라인 시프트 감소(위로)\tW",         ID_EDIT_DECREASEBASELINESHIFT
+        MENUITEM "베이스라인 시프트 증가(아래로)\tS",        ID_EDIT_INCREASEBASELINESHIFT
+        MENUITEM "가로 오프셋 감소(왼쪽으로)\tA",          ID_EDIT_DECREASEHORIZONTALOFFSET
+        MENUITEM "가로 오프셋 증가(오른쪽으로)\tD",         ID_EDIT_INCREASEHORIZONTALOFFSET
+        MENUITEM "자간 감소\tQ",                    ID_EDIT_DECREASELETTERSPACING
+        MENUITEM "자간 증가\tE",                    ID_EDIT_INCREASELETTERSPACING
+        MENUITEM "폰트 크기 감소 (-1px)\t[",          ID_EDIT_DECREASEFONTSIZEBY1
+        MENUITEM "폰트 크기 증가 (+1px)\t]",          ID_EDIT_INCREASEFONTSIZEBY1
+        MENUITEM "폰트 크기 감소 (-0.5px)\tShift+[",  ID_EDIT_DECREASEFONTSIZEBY0_2
+        MENUITEM "폰트 크기 증가 (+0.5px)\tShift+]",  ID_EDIT_INCREASEFONTSIZEBY0_2
+        MENUITEM "병합 방법 변경\tO",                 ID_EDIT_TOGGLEMERGEMODE
+        MENUITEM "병합 순서 앞으로 밀기\t,3",            ID_EDIT_MOVEUP
+        MENUITEM "병합 순서 뒤로 밀기\t.",              ID_EDIT_MOVEDOWN
+        MENUITEM "선택 항목의 비어있는 복사본 만들기\tC",      ID_EDIT_CREATEEMPTYCOPYFROMSELECTION
+    END
+    POPUP "보기(&V)"
+    BEGIN
+        MENUITEM "다음 폰트(&N)\tCtrl+Tab",         ID_VIEW_NEXTFONT
+        MENUITEM "이전 폰트(&P)\tCtrl+Shift+Tab",   ID_VIEW_PREVIOUSFONT
+        MENUITEM SEPARATOR
+        MENUITEM "미리보기에 자동 개행(word wrap) 포함(&W)\tP", ID_VIEW_WORDWRAP, CHECKED
+        MENUITEM "미리보기에 자간 조정(kerning) 포함(&K)\tK", ID_VIEW_KERNING, CHECKED
+        MENUITEM "줄 정보 표시(&L)\tL",              ID_VIEW_SHOWLINEMETRICS, CHECKED
+        MENUITEM SEPARATOR
+        MENUITEM "&100%\t1",                    ID_VIEW_100
+        MENUITEM "&200%\t2",                    ID_VIEW_200
+        MENUITEM "&300%\t3",                    ID_VIEW_300
+        MENUITEM "&400%\t4",                    ID_VIEW_400
+        MENUITEM "&500%\t5",                    ID_VIEW_500
+        MENUITEM "&600%\t6",                    ID_VIEW_600
+        MENUITEM "&700%\t7",                    ID_VIEW_700
+        MENUITEM "&800%\t8",                    ID_VIEW_800
+        MENUITEM "&900%\t9",                    ID_VIEW_900
+    END
+    POPUP "내보내기(&X)"
+    BEGIN
+        MENUITEM "미리 보기(&P)\tCtrl+P",           ID_EXPORT_PREVIEW
+        MENUITEM SEPARATOR
+        MENUITEM ".fdt 및 .tex 파일로 내보내기(&F)",    ID_EXPORT_RAW
+        MENUITEM ".ttmp 텍스툴 모드팩 파일로 내보내기 (파일별 압축)(&W)", ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING
+        MENUITEM ".ttmp 텍스툴 모드팩 파일로 내보내기 (전체 압축)(&A)", ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING
+        MENUITEM ".ttmp 텍스툴 모드팩 파일로 내보내기 (압축하지 않음)(&N)", ID_EXPORT_TOTTMP_DONOTCOMPRESS
+        MENUITEM SEPARATOR
+        MENUITEM "일반 용도 폰트를 로비에서도 사용하기 (font_lobby 접근 시 font 사용)(&M)", ID_EXPORT_MAPFONTLOBBY
+    END
+END
+
+#endif    // Korean (Korea) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
 // English (United States) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
-#pragma code_page(1252)
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDR_FONTEDITOR MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        POPUP "&New"
+        BEGIN
+            MENUITEM "&Main Game Font",             ID_FILE_NEW_MAINGAMEFONT
+            MENUITEM "&Lobby Font",                 ID_FILE_NEW_LOBBYFONT
+            MENUITEM "&ChnAXIS",                    ID_FILE_NEW_CHNAXIS
+            MENUITEM "&KrnAXIS",                    ID_FILE_NEW_KRNAXIS
+        END
+        MENUITEM "&Open\tCtrl+O",               ID_FILE_OPEN
+        MENUITEM "&Save\tCtrl+S",               ID_FILE_SAVE
+        MENUITEM "Save &As\tCtrl+Shift+S",      ID_FILE_SAVEAS
+        MENUITEM "Save &Copy As",               ID_FILE_SAVECOPYAS
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit\tCtrl+Q",               ID_FILE_EXIT
+    END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "&Add\tIns",                   ID_EDIT_ADD
+        MENUITEM "&Cut\tCtrl+X",                ID_EDIT_CUT
+        MENUITEM "&Copy\tCtrl+C",               ID_EDIT_COPY
+        MENUITEM "&Paste\tCtrl+V",              ID_EDIT_PASTE
+        MENUITEM "&Delete\tDel",                ID_EDIT_DELETE
+        MENUITEM "&Select All\tCtrl+A",         ID_EDIT_SELECTALL
+        MENUITEM SEPARATOR
+        MENUITEM "D&etails\tEnter",             ID_EDIT_DETAILS
+        MENUITEM SEPARATOR
+        MENUITEM "Decrease Baseline Shift(Upwards)\tW", ID_EDIT_DECREASEBASELINESHIFT
+        MENUITEM "Increase Baseline Shift(Downwards)\tS", ID_EDIT_INCREASEBASELINESHIFT
+        MENUITEM "Decrease Horizontal Offset(Leftwards)\tA", ID_EDIT_DECREASEHORIZONTALOFFSET
+        MENUITEM "Increase Horizontal Offset(Rightwards)\tD", ID_EDIT_INCREASEHORIZONTALOFFSET
+        MENUITEM "Decrease Letter Spacing\tQ",  ID_EDIT_DECREASELETTERSPACING
+        MENUITEM "Increase Letter Spacing\tE",  ID_EDIT_INCREASELETTERSPACING
+        MENUITEM "Decrease Font Size by 1px\t[", ID_EDIT_DECREASEFONTSIZEBY1
+        MENUITEM "Increase Font Size by 1px\t]", ID_EDIT_INCREASEFONTSIZEBY1
+        MENUITEM "Decrease Font Size by 0.2px\tShift+[", ID_EDIT_DECREASEFONTSIZEBY0_2
+        MENUITEM "Increase Font Size by 0.2px\tShift+]", ID_EDIT_INCREASEFONTSIZEBY0_2
+        MENUITEM "Toggle Merge Mode\tO",        ID_EDIT_TOGGLEMERGEMODE
+        MENUITEM "Move Up\t,",                  ID_EDIT_MOVEUP
+        MENUITEM "Move Down\t.",                ID_EDIT_MOVEDOWN
+        MENUITEM "Create Empty Copy From Selection\tC", ID_EDIT_CREATEEMPTYCOPYFROMSELECTION
+    END
+    POPUP "&View"
+    BEGIN
+        MENUITEM "&Next Font\tCtrl+Tab",        ID_VIEW_NEXTFONT
+        MENUITEM "&Previous Font\tCtrl+Shift+Tab", ID_VIEW_PREVIOUSFONT
+        MENUITEM SEPARATOR
+        MENUITEM "Preview with &Word Wrap\tP",  ID_VIEW_WORDWRAP, CHECKED
+        MENUITEM "Preview with &Kerning\tK",    ID_VIEW_KERNING, CHECKED
+        MENUITEM "Show &Line Metrics\tL",       ID_VIEW_SHOWLINEMETRICS, CHECKED
+        MENUITEM SEPARATOR
+        MENUITEM "&100%\t1",                    ID_VIEW_100
+        MENUITEM "&200%\t2",                    ID_VIEW_200
+        MENUITEM "&300%\t3",                    ID_VIEW_300
+        MENUITEM "&400%\t4",                    ID_VIEW_400
+        MENUITEM "&500%\t5",                    ID_VIEW_500
+        MENUITEM "&600%\t6",                    ID_VIEW_600
+        MENUITEM "&700%\t7",                    ID_VIEW_700
+        MENUITEM "&800%\t8",                    ID_VIEW_800
+        MENUITEM "&900%\t9",                    ID_VIEW_900
+    END
+    POPUP "E&xport"
+    BEGIN
+        MENUITEM "&Preview\tCtrl+P",            ID_EXPORT_PREVIEW
+        MENUITEM SEPARATOR
+        MENUITEM "Export to .&fdt and .tex files", ID_EXPORT_RAW
+        MENUITEM "Export to .ttmp TexTools ModPack file (Compress &while packing)", ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING
+        MENUITEM "Export to .ttmp TexTools ModPack file (Compress &after packing)", ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING
+        MENUITEM "Export to .ttmp TexTools ModPack file (Do &not compress)", ID_EXPORT_TOTTMP_DONOTCOMPRESS
+        MENUITEM SEPARATOR
+        MENUITEM "Additionally &map font_lobby{} to font{}", ID_EXPORT_MAPFONTLOBBY
+    END
+END
+
 
 #ifdef APSTUDIO_INVOKED
 /////////////////////////////////////////////////////////////////////////////
@@ -50,86 +224,88 @@ END
 // Dialog
 //
 
-IDD_FACEELEMENTEDITOR DIALOGEX 0, 0, 615, 362
+IDD_FACEELEMENTEDITOR DIALOGEX 0, 0, 530, 408
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_APPWINDOW
 CAPTION "Face Element Editor"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,504,342,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,558,342,50,14
-    GROUPBOX        "&Font",IDC_STATIC,6,6,162,120
+    DEFPUSHBUTTON   "OK",IDOK,417,387,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,471,387,50,14
+    GROUPBOX        "&Font",IDC_STATIC,6,6,162,354
     LTEXT           "Renderer",IDC_STATIC,12,18,48,12,SS_CENTERIMAGE
     COMBOBOX        IDC_COMBO_FONT_RENDERER,60,18,102,12,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Font",IDC_STATIC,12,36,48,12,SS_CENTERIMAGE
     COMBOBOX        IDC_COMBO_FONT,60,36,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Si&ze",IDC_STATIC,12,54,48,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_EDIT_FONT_SIZE,60,54,102,12,ES_AUTOHSCROLL,WS_EX_RIGHT
     LTEXT           "&Weight",IDC_STATIC,12,72,48,12,SS_CENTERIMAGE
     COMBOBOX        IDC_COMBO_FONT_WEIGHT,60,72,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Style",IDC_STATIC,12,90,48,12,SS_CENTERIMAGE
     COMBOBOX        IDC_COMBO_FONT_STYLE,60,90,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Stretch",IDC_STATIC,12,108,48,12,SS_CENTERIMAGE
     COMBOBOX        IDC_COMBO_FONT_STRETCH,60,108,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "&Empty",IDC_STATIC,6,132,162,48
-    LTEXT           "Ascent",IDC_STATIC,12,144,48,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_EDIT_EMPTY_ASCENT,60,144,102,12,ES_RIGHT | ES_AUTOHSCROLL,WS_EX_RIGHT
-    LTEXT           "Line Height",IDC_STATIC,12,162,48,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_EDIT_EMPTY_LINEHEIGHT,60,162,102,12,ES_RIGHT | ES_AUTOHSCROLL,WS_EX_RIGHT
-    GROUPBOX        "Free&Type",IDC_STATIC,6,186,162,66
-    CONTROL         "No Hinting",IDC_CHECK_FREETYPE_NOHINTING,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,198,72,12
-    CONTROL         "No Bitmap",IDC_CHECK_FREETYPE_NOBITMAP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,90,198,72,12
-    CONTROL         "No Autohint",IDC_CHECK_FREETYPE_NOAUTOHINT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,217,72,12
-    CONTROL         "Force Autohint",IDC_CHECK_FREETYPE_FORCEAUTOHINT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,90,217,72,12
-    LTEXT           "Render Mode",IDC_STATIC,12,234,48,12,SS_CENTERIMAGE
-    COMBOBOX        IDC_COMBO_FREETYPE_RENDERMODE,60,234,102,12,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "&DirectWrite",IDC_STATIC,174,6,162,66
-    LTEXT           "Render Mode",IDC_STATIC,180,17,48,12,SS_CENTERIMAGE
-    COMBOBOX        IDC_COMBO_DIRECTWRITE_RENDERMODE,228,17,102,12,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Measure Mode",IDC_STATIC,180,35,48,12,SS_CENTERIMAGE
-    COMBOBOX        IDC_COMBO_DIRECTWRITE_MEASUREMODE,228,35,102,12,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Grid Fit Mode",IDC_STATIC,180,53,48,12,SS_CENTERIMAGE
-    COMBOBOX        IDC_COMBO_DIRECTWRITE_GRIDFITMODE,228,53,102,12,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "&Adjustments",IDC_STATIC,174,78,162,84
-    LTEXT           "&Baseline Shift",IDC_STATIC,180,89,48,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_EDIT_ADJUSTMENT_BASELINESHIFT,228,89,102,14,ES_RIGHT | ES_AUTOHSCROLL
-    LTEXT           "&Letter Spacing",IDC_STATIC,180,107,48,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_EDIT_ADJUSTMENT_LETTERSPACING,228,107,102,14,ES_RIGHT | ES_AUTOHSCROLL
-    LTEXT           "Horz. &Offset",IDC_STATIC,180,125,48,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_EDIT_ADJUSTMENT_HORIZONTALOFFSET,228,125,102,14,ES_RIGHT | ES_AUTOHSCROLL
-    LTEXT           "&Gamma",IDC_STATIC,180,143,48,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_EDIT_ADJUSTMENT_GAMMA,228,143,102,14,ES_RIGHT | ES_AUTOHSCROLL
-    GROUPBOX        "Transformation &Matrix",IDC_STATIC,174,167,162,85
-    LTEXT           "m1_",IDC_STATIC,204,174,18,12,SS_CENTERIMAGE
-    LTEXT           "m2_",IDC_STATIC,270,174,18,12,SS_CENTERIMAGE
-    LTEXT           "m_1",IDC_STATIC,180,185,18,12,SS_CENTERIMAGE
-    LTEXT           "m_2",IDC_STATIC,180,204,18,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_EDIT_TRANSFORMATIONMATRIX_M11,204,185,60,12,ES_AUTOHSCROLL | ES_WANTRETURN,WS_EX_RIGHT
-    EDITTEXT        IDC_EDIT_TRANSFORMATIONMATRIX_M12,270,185,60,12,ES_AUTOHSCROLL | ES_WANTRETURN,WS_EX_RIGHT
-    EDITTEXT        IDC_EDIT_TRANSFORMATIONMATRIX_M21,204,204,60,12,ES_AUTOHSCROLL | ES_WANTRETURN,WS_EX_RIGHT
-    EDITTEXT        IDC_EDIT_TRANSFORMATIONMATRIX_M22,270,204,60,12,ES_AUTOHSCROLL | ES_WANTRETURN,WS_EX_RIGHT
-    PUSHBUTTON      "Help (Wikipedia)",IDC_BUTTON_TRANSFORMATIONMATRIX_HELP,204,221,60,14
-    PUSHBUTTON      "Reset",IDC_BUTTON_TRANSFORMATIONMATRIX_RESET,270,221,60,14
-    GROUPBOX        "Add Custom Codepoint &Range",IDC_STATIC,6,258,330,78
-    EDITTEXT        IDC_EDIT_ADDCUSTOMRANGE_INPUT,12,270,318,12,ES_AUTOHSCROLL
-    PUSHBUTTON      "Add",IDC_BUTTON_ADDCUSTOMRANGE_ADD,264,312,66,18
-    EDITTEXT        IDC_EDIT_ADDCUSTOMRANGE_PREVIEW,12,288,246,42,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
-    GROUPBOX        "&Codepoints",IDC_STATIC,342,6,264,150
-    LISTBOX         IDC_LIST_CODEPOINTS,348,18,252,108,LBS_NOINTEGRALHEIGHT | LBS_EXTENDEDSEL | WS_VSCROLL | WS_TABSTOP
-    COMBOBOX        IDC_COMBO_CODEPOINTS_MERGEMODE,348,132,114,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    PUSHBUTTON      "Clear",IDC_BUTTON_CODEPOINTS_CLEAR,468,132,66,18
-    PUSHBUTTON      "Delete",IDC_BUTTON_CODEPOINTS_DELETE,534,132,66,18
-    GROUPBOX        "Find and Add &Unicode Block",IDC_STATIC,342,162,264,174
-    LTEXT           "Search",IDC_STATIC,348,174,36,12,SS_CENTERIMAGE
-    EDITTEXT        IDC_EDIT_UNICODEBLOCKS_SEARCH,384,174,66,12,ES_AUTOHSCROLL
+    LTEXT           "Features",IDC_STATIC,12,126,48,12,SS_CENTERIMAGE
+    LISTBOX         IDC_LIST_FONT_FEATURES,60,126,102,222,LBS_SORT | LBS_MULTIPLESEL | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "&Empty",IDC_STATIC,174,6,162,48
+    LTEXT           "Ascent",IDC_STATIC,180,18,48,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_EDIT_EMPTY_ASCENT,228,18,102,12,ES_RIGHT | ES_AUTOHSCROLL,WS_EX_RIGHT
+    LTEXT           "Line Height",IDC_STATIC,180,36,48,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_EDIT_EMPTY_LINEHEIGHT,228,36,102,12,ES_RIGHT | ES_AUTOHSCROLL,WS_EX_RIGHT
+    GROUPBOX        "Free&Type",IDC_STATIC,174,60,162,60
+    CONTROL         "No Hinting",IDC_CHECK_FREETYPE_NOHINTING,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,180,72,72,12
+    CONTROL         "No Bitmap",IDC_CHECK_FREETYPE_NOBITMAP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,258,72,72,12
+    CONTROL         "No Autohint",IDC_CHECK_FREETYPE_NOAUTOHINT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,180,84,72,12
+    CONTROL         "Force Autohint",IDC_CHECK_FREETYPE_FORCEAUTOHINT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,258,84,72,12
+    LTEXT           "Render Mode",IDC_STATIC,180,102,48,12,SS_CENTERIMAGE
+    COMBOBOX        IDC_COMBO_FREETYPE_RENDERMODE,228,102,102,12,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "&DirectWrite",IDC_STATIC,174,126,162,66
+    LTEXT           "Render Mode",IDC_STATIC,180,137,48,12,SS_CENTERIMAGE
+    COMBOBOX        IDC_COMBO_DIRECTWRITE_RENDERMODE,228,137,102,12,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Measure Mode",IDC_STATIC,180,155,48,12,SS_CENTERIMAGE
+    COMBOBOX        IDC_COMBO_DIRECTWRITE_MEASUREMODE,228,155,102,12,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Grid Fit Mode",IDC_STATIC,180,173,48,12,SS_CENTERIMAGE
+    COMBOBOX        IDC_COMBO_DIRECTWRITE_GRIDFITMODE,228,173,102,12,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "&Adjustments",IDC_STATIC,174,198,162,84
+    LTEXT           "&Baseline Shift",IDC_STATIC,180,209,48,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_EDIT_ADJUSTMENT_BASELINESHIFT,228,209,102,14,ES_RIGHT | ES_AUTOHSCROLL
+    LTEXT           "&Letter Spacing",IDC_STATIC,180,227,48,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_EDIT_ADJUSTMENT_LETTERSPACING,228,227,102,14,ES_RIGHT | ES_AUTOHSCROLL
+    LTEXT           "Horz. &Offset",IDC_STATIC,180,245,48,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_EDIT_ADJUSTMENT_HORIZONTALOFFSET,228,245,102,14,ES_RIGHT | ES_AUTOHSCROLL
+    LTEXT           "&Gamma",IDC_STATIC,180,263,48,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_EDIT_ADJUSTMENT_GAMMA,228,263,102,14,ES_RIGHT | ES_AUTOHSCROLL
+    GROUPBOX        "Transformation &Matrix",IDC_STATIC,174,288,162,72
+    LTEXT           "m1_",IDC_STATIC,204,295,18,12,SS_CENTERIMAGE
+    LTEXT           "m2_",IDC_STATIC,270,295,18,12,SS_CENTERIMAGE
+    LTEXT           "m_1",IDC_STATIC,180,306,18,12,SS_CENTERIMAGE
+    LTEXT           "m_2",IDC_STATIC,180,325,18,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_EDIT_TRANSFORMATIONMATRIX_M11,204,306,60,12,ES_AUTOHSCROLL | ES_WANTRETURN,WS_EX_RIGHT
+    EDITTEXT        IDC_EDIT_TRANSFORMATIONMATRIX_M12,270,306,60,12,ES_AUTOHSCROLL | ES_WANTRETURN,WS_EX_RIGHT
+    EDITTEXT        IDC_EDIT_TRANSFORMATIONMATRIX_M21,204,325,60,12,ES_AUTOHSCROLL | ES_WANTRETURN,WS_EX_RIGHT
+    EDITTEXT        IDC_EDIT_TRANSFORMATIONMATRIX_M22,270,325,60,12,ES_AUTOHSCROLL | ES_WANTRETURN,WS_EX_RIGHT
+    PUSHBUTTON      "Help (Wikipedia)",IDC_BUTTON_TRANSFORMATIONMATRIX_HELP,204,342,60,14
+    PUSHBUTTON      "Reset",IDC_BUTTON_TRANSFORMATIONMATRIX_RESET,270,342,60,14
+    GROUPBOX        "&Codepoints",IDC_STATIC,342,6,186,108
+    LISTBOX         IDC_LIST_CODEPOINTS,348,18,174,78,LBS_NOINTEGRALHEIGHT | LBS_EXTENDEDSEL | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_CODEPOINTS_MERGEMODE,348,99,87,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Clear",IDC_BUTTON_CODEPOINTS_CLEAR,438,99,42,12
+    PUSHBUTTON      "Delete",IDC_BUTTON_CODEPOINTS_DELETE,480,99,42,12
+    GROUPBOX        "Find and Add &Unicode Block",IDC_STATIC,342,120,186,159
+    LTEXT           "Search",IDC_STATIC,348,132,36,12,SS_CENTERIMAGE
+    EDITTEXT        IDC_EDIT_UNICODEBLOCKS_SEARCH,384,132,138,12,ES_AUTOHSCROLL
     CONTROL         "Show blocks with any of characters input",IDC_CHECK_UNICODEBLOCKS_SHOWBLOCKSWITHANYOFCHARACTERSINPUT,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,456,174,144,12
-    LISTBOX         IDC_LIST_UNICODEBLOCKS_SEARCHRESULTS,348,191,252,97,LBS_NOINTEGRALHEIGHT | LBS_EXTENDEDSEL | WS_VSCROLL | WS_TABSTOP
-    EDITTEXT        IDC_EDIT_UNICODEBLOCKS_RANGEPREVIEW,348,294,180,36,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
-    PUSHBUTTON      "Add All",IDC_BUTTON_UNICODEBLOCKS_ADDALL,534,294,68,18
-    PUSHBUTTON      "Add Selected",IDC_BUTTON_UNICODEBLOCKS_ADD,534,312,68,18
-    PUSHBUTTON      "Help (Expression)",IDC_BUTTON_EXPRESSION_HELP,6,342,84,14
-    LTEXT           "For any number input, begin text with =(equal sign), and then press Enter to evaluate as a math expression.\nOtherwise, hold (Ctrl+)Up/Down key combos to increase or decrease values.",IDC_STATIC,96,342,402,18,0,WS_EX_TRANSPARENT
-    EDITTEXT        IDC_EDIT_FONT_SIZE,60,54,102,12,ES_AUTOHSCROLL,WS_EX_RIGHT
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,384,147,144,12
+    LISTBOX         IDC_LIST_UNICODEBLOCKS_SEARCHRESULTS,348,162,174,79,LBS_NOINTEGRALHEIGHT | LBS_EXTENDEDSEL | WS_VSCROLL | WS_TABSTOP
+    EDITTEXT        IDC_EDIT_UNICODEBLOCKS_RANGEPREVIEW,348,243,114,30,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
+    PUSHBUTTON      "Add All",IDC_BUTTON_UNICODEBLOCKS_ADDALL,465,243,57,15
+    PUSHBUTTON      "Add Selected",IDC_BUTTON_UNICODEBLOCKS_ADD,465,258,57,15
+    GROUPBOX        "Add Custom Codepoint &Range",IDC_STATIC,342,282,186,78
+    EDITTEXT        IDC_EDIT_ADDCUSTOMRANGE_INPUT,348,294,114,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "Add",IDC_BUTTON_ADDCUSTOMRANGE_ADD,465,294,57,12
+    EDITTEXT        IDC_EDIT_ADDCUSTOMRANGE_PREVIEW,348,312,174,45,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
+    PUSHBUTTON      "Help (Expression)",IDC_BUTTON_EXPRESSION_HELP,6,366,84,14
+    LTEXT           "For any number input, begin text with =(equal sign), and then press Enter to evaluate as a math expression.\nOtherwise, hold (Ctrl+)Up/Down key combos to increase or decrease values.",IDC_STATIC,96,366,432,18,0,WS_EX_TRANSPARENT
 END
 
 IDD_PROGRESS DIALOGEX 0, 0, 309, 80
@@ -154,9 +330,9 @@ BEGIN
     IDD_FACEELEMENTEDITOR, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 608
+        RIGHTMARGIN, 523
         TOPMARGIN, 7
-        BOTTOMMARGIN, 355
+        BOTTOMMARGIN, 401
     END
 
     IDD_PROGRESS, DIALOG
@@ -291,102 +467,6 @@ BEGIN
     IDC_COMBO_DIRECTWRITE_GRIDFITMODE, 0x403, 8, 0
 0x6e45, 0x6261, 0x656c, 0x0064, 
     0
-END
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// Menu
-//
-
-IDR_FONTEDITOR MENU
-BEGIN
-    POPUP "&File"
-    BEGIN
-        POPUP "&New"
-        BEGIN
-            MENUITEM "&Main Game Font",             ID_FILE_NEW_MAINGAMEFONT
-            MENUITEM "&Lobby Font",                 ID_FILE_NEW_LOBBYFONT
-            MENUITEM "&ChnAXIS",                    ID_FILE_NEW_CHNAXIS
-            MENUITEM "&KrnAXIS",                    ID_FILE_NEW_KRNAXIS
-        END
-        MENUITEM "&Open\tCtrl+O",               ID_FILE_OPEN
-        MENUITEM "&Save\tCtrl+S",               ID_FILE_SAVE
-        MENUITEM "Save &As\tCtrl+Shift+S",      ID_FILE_SAVEAS
-        MENUITEM "Save &Copy As",               ID_FILE_SAVECOPYAS
-        MENUITEM SEPARATOR
-        MENUITEM "E&xit\tCtrl+Q",               ID_FILE_EXIT
-    END
-    POPUP "&Edit"
-    BEGIN
-        MENUITEM "&Add\tIns",                   ID_EDIT_ADD
-        MENUITEM "&Cut\tCtrl+X",                ID_EDIT_CUT
-        MENUITEM "&Copy\tCtrl+C",               ID_EDIT_COPY
-        MENUITEM "&Paste\tCtrl+V",              ID_EDIT_PASTE
-        MENUITEM "&Delete\tDel",                ID_EDIT_DELETE
-        MENUITEM "&Select All\tCtrl+A",         ID_EDIT_SELECTALL
-        MENUITEM SEPARATOR
-        MENUITEM "D&etails\tEnter",             ID_EDIT_DETAILS
-        MENUITEM SEPARATOR
-        MENUITEM "Decrease Baseline Shift(Upwards)\tW", ID_EDIT_DECREASEBASELINESHIFT
-        MENUITEM "Increase Baseline Shift(Downwards)\tS", ID_EDIT_INCREASEBASELINESHIFT
-        MENUITEM "Decrease Horizontal Offset(Leftwards)\tA", ID_EDIT_DECREASEHORIZONTALOFFSET
-        MENUITEM "Increase Horizontal Offset(Rightwards)\tD", ID_EDIT_INCREASEHORIZONTALOFFSET
-        MENUITEM "Decrease Letter Spacing\tQ",  ID_EDIT_DECREASELETTERSPACING
-        MENUITEM "Increase Letter Spacing\tE",  ID_EDIT_INCREASELETTERSPACING
-        MENUITEM "Decrease Font Size by 1px\t[", ID_EDIT_DECREASEFONTSIZEBY1
-        MENUITEM "Increase Font Size by 1px\t]", ID_EDIT_INCREASEFONTSIZEBY1
-        MENUITEM "Decrease Font Size by 0.2px\tShift+[", ID_EDIT_DECREASEFONTSIZEBY0_2
-        MENUITEM "Increase Font Size by 0.2px\tShift+]", ID_EDIT_INCREASEFONTSIZEBY0_2
-        MENUITEM "Toggle Merge Mode\tO",        ID_EDIT_TOGGLEMERGEMODE
-        MENUITEM "Move Up\t,",                  ID_EDIT_MOVEUP
-        MENUITEM "Move Down\t.",                ID_EDIT_MOVEDOWN
-        MENUITEM "Create Empty Copy From Selection\tC", ID_EDIT_CREATEEMPTYCOPYFROMSELECTION
-    END
-    POPUP "&View"
-    BEGIN
-        MENUITEM "&Next Font\tCtrl+Tab",        ID_VIEW_NEXTFONT
-        MENUITEM "&Previous Font\tCtrl+Shift+Tab", ID_VIEW_PREVIOUSFONT
-        MENUITEM SEPARATOR
-        MENUITEM "Preview with &Word Wrap\tP",  ID_VIEW_WORDWRAP, CHECKED
-        MENUITEM "Preview with &Kerning\tK",    ID_VIEW_KERNING, CHECKED
-        MENUITEM "Show &Line Metrics\tL",       ID_VIEW_SHOWLINEMETRICS, CHECKED
-        MENUITEM SEPARATOR
-        MENUITEM "&100%\t1",                    ID_VIEW_100
-        MENUITEM "&200%\t2",                    ID_VIEW_200
-        MENUITEM "&300%\t3",                    ID_VIEW_300
-        MENUITEM "&400%\t4",                    ID_VIEW_400
-        MENUITEM "&500%\t5",                    ID_VIEW_500
-        MENUITEM "&600%\t6",                    ID_VIEW_600
-        MENUITEM "&700%\t7",                    ID_VIEW_700
-        MENUITEM "&800%\t8",                    ID_VIEW_800
-        MENUITEM "&900%\t9",                    ID_VIEW_900
-    END
-    POPUP "E&xport"
-    BEGIN
-        MENUITEM "&Preview\tCtrl+P",            ID_EXPORT_PREVIEW
-        MENUITEM SEPARATOR
-        MENUITEM "Export to .&fdt and .tex files", ID_EXPORT_RAW
-        MENUITEM "Export to .ttmp TexTools ModPack file (Compress &while packing)", ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING
-        MENUITEM "Export to .ttmp TexTools ModPack file (Compress &after packing)", ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING
-        MENUITEM "Export to .ttmp TexTools ModPack file (Do &not compress)", ID_EXPORT_TOTTMP_DONOTCOMPRESS
-        MENUITEM SEPARATOR
-        MENUITEM "Additionally &map font_lobby{} to font{}", ID_EXPORT_MAPFONTLOBBY
-    END
-    POPUP "Hot &Reload"
-    BEGIN
-        MENUITEM "&Reload fonts in all running instances of games", ID_HOTRELOAD_RELOAD
-        MENUITEM "Restore to &default",         ID_HOTRELOAD_RESTORE
-        MENUITEM SEPARATOR
-        MENUITEM "&Auto",                       ID_HOTRELOAD_FONT_AUTO, CHECKED
-        MENUITEM "font (&F)",                   ID_HOTRELOAD_FONT_FONT
-        MENUITEM "font_lobby (&L)",             ID_HOTRELOAD_FONT_LOBBY
-        MENUITEM "chn_axis (&C)",               ID_HOTRELOAD_FONT_CHNAXIS
-        MENUITEM "krn_axis (&K)",               ID_HOTRELOAD_FONT_KRNAXIS
-        MENUITEM SEPARATOR
-        MENUITEM "This feature may cause running game to crash.", ID_HOTRELOAD_THISFEATUREMAYCAUSERUNNINGGAMETOCRASH, INACTIVE
-        MENUITEM "Export fdt/tex combo to Penumbra mod directory to use this feature.", ID_HOTRELOAD_EXPORTFDT, INACTIVE
-    END
 END
 
 

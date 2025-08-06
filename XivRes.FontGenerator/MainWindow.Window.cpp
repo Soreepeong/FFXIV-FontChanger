@@ -107,14 +107,43 @@ LRESULT App::FontEditorWindow::Window_OnSize() {
 	RECT rc;
 	GetClientRect(m_hWnd, &rc);
 
+	const auto zoom = GetZoom();
+	const auto scaledFaceListBoxWidth = static_cast<int>(FaceListBoxWidth * zoom);
+	const auto scaledListViewHeight = static_cast<int>(ListViewHeight * zoom);
+	const auto scaledEditHeight = static_cast<int>(EditHeight * zoom);
+
 	auto hdwp = BeginDeferWindowPos(Id_Last_);
-	hdwp = DeferWindowPos(hdwp, m_hFacesListBox, nullptr, 0, 0, FaceListBoxWidth, rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
-	hdwp = DeferWindowPos(hdwp, m_hFaceElementsListView, nullptr, FaceListBoxWidth, 0, (std::max<int>)(0, rc.right - rc.left - FaceListBoxWidth), ListViewHeight, SWP_NOZORDER | SWP_NOACTIVATE);
-	hdwp = DeferWindowPos(hdwp, m_hEdit, nullptr, FaceListBoxWidth, ListViewHeight, (std::max<int>)(0, rc.right - rc.left - FaceListBoxWidth), EditHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+	hdwp = DeferWindowPos(
+		hdwp,
+		m_hFacesListBox,
+		nullptr,
+		0,
+		0,
+		scaledFaceListBoxWidth,
+		rc.bottom - rc.top,
+		SWP_NOZORDER | SWP_NOACTIVATE);
+	hdwp = DeferWindowPos(
+		hdwp,
+		m_hFaceElementsListView,
+		nullptr,
+		scaledFaceListBoxWidth,
+		0,
+		(std::max<int>)(0, rc.right - rc.left - scaledFaceListBoxWidth),
+		scaledListViewHeight,
+		SWP_NOZORDER | SWP_NOACTIVATE);
+	hdwp = DeferWindowPos(
+		hdwp,
+		m_hEdit,
+		nullptr,
+		scaledFaceListBoxWidth,
+		scaledListViewHeight,
+		(std::max<int>)(0, rc.right - rc.left - scaledFaceListBoxWidth),
+		scaledEditHeight,
+		SWP_NOZORDER | SWP_NOACTIVATE);
 	EndDeferWindowPos(hdwp);
 
-	m_nDrawLeft = FaceListBoxWidth;
-	m_nDrawTop = EditHeight + ListViewHeight;
+	m_nDrawLeft = scaledFaceListBoxWidth;
+	m_nDrawTop = scaledEditHeight + scaledListViewHeight;
 	m_bNeedRedraw = true;
 
 	return 0;

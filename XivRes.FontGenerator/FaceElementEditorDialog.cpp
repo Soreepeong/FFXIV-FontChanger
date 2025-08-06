@@ -12,6 +12,7 @@ struct App::FaceElementEditorDialog::ControlStruct {
 	HWND FontWeightCombo = GetDlgItem(Window, IDC_COMBO_FONT_WEIGHT);
 	HWND FontStyleCombo = GetDlgItem(Window, IDC_COMBO_FONT_STYLE);
 	HWND FontStretchCombo = GetDlgItem(Window, IDC_COMBO_FONT_STRETCH);
+	HWND FontFeaturesList = GetDlgItem(Window, IDC_LIST_FONT_FEATURES);
 	HWND EmptyAscentEdit = GetDlgItem(Window, IDC_EDIT_EMPTY_ASCENT);
 	HWND EmptyLineHeightEdit = GetDlgItem(Window, IDC_EDIT_EMPTY_LINEHEIGHT);
 	HWND FreeTypeNoHintingCheck = GetDlgItem(Window, IDC_CHECK_FREETYPE_NOHINTING);
@@ -181,8 +182,11 @@ INT_PTR App::FaceElementEditorDialog::FontWeightCombo_OnCommand(uint16_t notiCod
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	if (const auto w = static_cast<DWRITE_FONT_WEIGHT>(GetWindowNumber<int>(m_controls->FontWeightCombo)); w != m_element.Lookup.Weight) {
-		m_element.Lookup.Weight = w;
+	const auto index = ComboBox_GetCurSel(m_controls->FontWeightCombo);
+	const auto newWeight = static_cast<DWRITE_FONT_WEIGHT>(
+		static_cast<uint32_t>(ComboBox_GetItemData(m_controls->FontWeightCombo, index)));
+	if (newWeight != m_element.Lookup.Weight) {
+		m_element.Lookup.Weight = newWeight;
 		OnBaseFontChanged();
 	}
 	return 0;
@@ -192,15 +196,9 @@ INT_PTR App::FaceElementEditorDialog::FontStyleCombo_OnCommand(uint16_t notiCode
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	DWRITE_FONT_STYLE newStyle;
-	if (const auto prevText = GetWindowString(m_controls->FontStyleCombo); prevText == L"Normal")
-		newStyle = DWRITE_FONT_STYLE_NORMAL;
-	else if (prevText == L"Oblique")
-		newStyle = DWRITE_FONT_STYLE_OBLIQUE;
-	else if (prevText == L"Italic")
-		newStyle = DWRITE_FONT_STYLE_ITALIC;
-	else
-		newStyle = DWRITE_FONT_STYLE_NORMAL;
+	const auto index = ComboBox_GetCurSel(m_controls->FontStyleCombo);
+	const auto newStyle = static_cast<DWRITE_FONT_STYLE>(
+		static_cast<uint32_t>(ComboBox_GetItemData(m_controls->FontStyleCombo, index)));
 	if (newStyle != m_element.Lookup.Style) {
 		m_element.Lookup.Style = newStyle;
 		OnBaseFontChanged();
@@ -212,33 +210,30 @@ INT_PTR App::FaceElementEditorDialog::FontStretchCombo_OnCommand(uint16_t notiCo
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	DWRITE_FONT_STRETCH newStretch;
-	if (const auto prevText = GetWindowString(m_controls->FontStretchCombo); prevText == L"Ultra Condensed")
-		newStretch = DWRITE_FONT_STRETCH_ULTRA_CONDENSED;
-	else if (prevText == L"Extra Condensed")
-		newStretch = DWRITE_FONT_STRETCH_EXTRA_CONDENSED;
-	else if (prevText == L"Condensed")
-		newStretch = DWRITE_FONT_STRETCH_CONDENSED;
-	else if (prevText == L"Semi Condensed")
-		newStretch = DWRITE_FONT_STRETCH_SEMI_CONDENSED;
-	else if (prevText == L"Normal")
-		newStretch = DWRITE_FONT_STRETCH_NORMAL;
-	else if (prevText == L"Medium")
-		newStretch = DWRITE_FONT_STRETCH_MEDIUM;
-	else if (prevText == L"Semi Expanded")
-		newStretch = DWRITE_FONT_STRETCH_SEMI_EXPANDED;
-	else if (prevText == L"Expanded")
-		newStretch = DWRITE_FONT_STRETCH_EXPANDED;
-	else if (prevText == L"Extra Expanded")
-		newStretch = DWRITE_FONT_STRETCH_EXTRA_EXPANDED;
-	else if (prevText == L"Ultra Expanded")
-		newStretch = DWRITE_FONT_STRETCH_ULTRA_EXPANDED;
-	else
-		newStretch = DWRITE_FONT_STRETCH_NORMAL;
+	const auto index = ComboBox_GetCurSel(m_controls->FontStretchCombo);
+	const auto newStretch = static_cast<DWRITE_FONT_STRETCH>(
+		static_cast<uint32_t>(ComboBox_GetItemData(m_controls->FontStretchCombo, index)));
 	if (newStretch != m_element.Lookup.Stretch) {
 		m_element.Lookup.Stretch = newStretch;
 		OnBaseFontChanged();
 	}
+	return 0;
+}
+
+INT_PTR App::FaceElementEditorDialog::FontFeaturesList_OnCommand(uint16_t notiCode) {
+	if (notiCode != LBN_SELCHANGE)
+		return 0;
+
+	std::vector<int> selections;
+	selections.resize(ListBox_GetSelCount(m_controls->FontFeaturesList));
+	ListBox_GetSelItems(m_controls->FontFeaturesList, selections.size(), selections.data());
+
+	m_element.Lookup.Features.clear();
+	for (const auto& sel : selections) {
+		const auto tag = static_cast<DWRITE_FONT_FEATURE_TAG>(ListBox_GetItemData(m_controls->FontFeaturesList, sel));
+		m_element.Lookup.Features.insert(tag);
+	}
+	OnBaseFontChanged();
 	return 0;
 }
 
@@ -917,6 +912,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontWeightCombo, FALSE);
 			EnableWindow(m_controls->FontStyleCombo, FALSE);
 			EnableWindow(m_controls->FontStretchCombo, FALSE);
+			EnableWindow(m_controls->FontFeaturesList, FALSE);
 			EnableWindow(m_controls->EmptyAscentEdit, TRUE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, TRUE);
 			EnableWindow(m_controls->FreeTypeNoHintingCheck, FALSE);
@@ -954,6 +950,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontWeightCombo, FALSE);
 			EnableWindow(m_controls->FontStyleCombo, FALSE);
 			EnableWindow(m_controls->FontStretchCombo, FALSE);
+			EnableWindow(m_controls->FontFeaturesList, FALSE);
 			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
 			EnableWindow(m_controls->FreeTypeNoHintingCheck, FALSE);
@@ -991,6 +988,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontWeightCombo, TRUE);
 			EnableWindow(m_controls->FontStyleCombo, TRUE);
 			EnableWindow(m_controls->FontStretchCombo, TRUE);
+			EnableWindow(m_controls->FontFeaturesList, TRUE);
 			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
 			EnableWindow(m_controls->FreeTypeNoHintingCheck, FALSE);
@@ -1028,6 +1026,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontWeightCombo, TRUE);
 			EnableWindow(m_controls->FontStyleCombo, TRUE);
 			EnableWindow(m_controls->FontStretchCombo, TRUE);
+			EnableWindow(m_controls->FontFeaturesList, FALSE);
 			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
 			EnableWindow(m_controls->FreeTypeNoHintingCheck, TRUE);
@@ -1162,12 +1161,22 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 	ComboBox_ResetContent(m_controls->FontWeightCombo);
 	ComboBox_ResetContent(m_controls->FontStyleCombo);
 	ComboBox_ResetContent(m_controls->FontStretchCombo);
+	ListBox_ResetContent(m_controls->FontFeaturesList);
 
 	switch (m_element.Renderer) {
 		case Structs::RendererEnum::PrerenderedGameInstallation: {
-			ComboBox_AddString(m_controls->FontWeightCombo, L"400 (Normal/Regular)");
-			ComboBox_AddString(m_controls->FontStyleCombo, L"Normal");
-			ComboBox_AddString(m_controls->FontStretchCombo, L"Normal");
+			ComboBox_SetItemData(
+				m_controls->FontWeightCombo,
+				ComboBox_AddString(m_controls->FontWeightCombo, L"400 (Normal/Regular)"),
+				400);
+			ComboBox_SetItemData(
+				m_controls->FontStyleCombo,
+				ComboBox_AddString(m_controls->FontStyleCombo, L"Normal"),
+				DWRITE_FONT_STYLE_NORMAL);
+			ComboBox_SetItemData(
+				m_controls->FontStretchCombo,
+				ComboBox_AddString(m_controls->FontStretchCombo, L"Normal"),
+				DWRITE_FONT_STRETCH_NORMAL);
 			ComboBox_SetCurSel(m_controls->FontWeightCombo, 0);
 			ComboBox_SetCurSel(m_controls->FontStyleCombo, 0);
 			ComboBox_SetCurSel(m_controls->FontStretchCombo, 0);
@@ -1179,19 +1188,47 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 
 		case Structs::RendererEnum::DirectWrite:
 		case Structs::RendererEnum::FreeType: {
+			IDWriteFactory3Ptr factory;
+			SuccessOrThrow(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory3), reinterpret_cast<IUnknown**>(&factory)));
+
+			IDWriteTextAnalyzerPtr analyzer;
+			SuccessOrThrow(factory->CreateTextAnalyzer(&analyzer));
+
+			IDWriteTextAnalyzer2Ptr analyzer2;
+			SuccessOrThrow(analyzer->QueryInterface(&analyzer2));
+			
 			const auto curSel = (std::max)(0, (std::min)(static_cast<int>(m_fontFamilies.size() - 1), ComboBox_GetCurSel(m_controls->FontCombo)));
 			const auto& family = m_fontFamilies[curSel];
 			std::set<DWRITE_FONT_WEIGHT> weights;
 			std::set<DWRITE_FONT_STYLE> styles;
 			std::set<DWRITE_FONT_STRETCH> stretches;
+			std::set<DWRITE_FONT_FEATURE_TAG> featureTags;
+
 			for (uint32_t i = 0, i_ = family->GetFontCount(); i < i_; i++) {
 				IDWriteFontPtr font;
 				if (FAILED(family->GetFont(i, &font)))
 					continue;
 
+				if (font->GetSimulations() != DWRITE_FONT_SIMULATIONS_NONE
+					&& m_element.Renderer == Structs::RendererEnum::FreeType)
+					continue;
+
 				weights.insert(font->GetWeight());
 				styles.insert(font->GetStyle());
 				stretches.insert(font->GetStretch());
+				if (IDWriteFontFacePtr face; SUCCEEDED(font->CreateFontFace(&face))) {
+					DWRITE_FONT_FEATURE_TAG tags[256];
+					UINT32 tagCount{};
+					if (SUCCEEDED(analyzer2->GetTypographicFeatures(
+						face,
+						{0, DWRITE_SCRIPT_SHAPES_DEFAULT},
+						nullptr,
+						_countof(tags),
+						&tagCount,
+						tags))) {
+						featureTags.insert(tags, tags + tagCount);
+					}
+				}
 			}
 
 			auto closestWeight = *weights.begin();
@@ -1211,31 +1248,46 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 			}
 
 			for (const auto v : weights) {
+				int index;
 				switch (v) {
-					case 100: ComboBox_AddString(m_controls->FontWeightCombo, L"100 (Thin)");
+					case 100:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"100 (Thin)");
 						break;
-					case 200: ComboBox_AddString(m_controls->FontWeightCombo, L"200 (Extra Light/Ultra Light)");
+					case 200:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"200 (Extra Light/Ultra Light)");
 						break;
-					case 300: ComboBox_AddString(m_controls->FontWeightCombo, L"300 (Light)");
+					case 300:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"300 (Light)");
 						break;
-					case 350: ComboBox_AddString(m_controls->FontWeightCombo, L"350 (Semi Light)");
+					case 350:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"350 (Semi Light)");
 						break;
-					case 400: ComboBox_AddString(m_controls->FontWeightCombo, L"400 (Normal/Regular)");
+					case 400:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"400 (Normal/Regular)");
 						break;
-					case 500: ComboBox_AddString(m_controls->FontWeightCombo, L"500 (Medium)");
+					case 500:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"500 (Medium)");
 						break;
-					case 600: ComboBox_AddString(m_controls->FontWeightCombo, L"600 (Semi Bold/Demibold)");
+					case 600:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"600 (Semi Bold/Demibold)");
 						break;
-					case 700: ComboBox_AddString(m_controls->FontWeightCombo, L"700 (Bold)");
+					case 700:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"700 (Bold)");
 						break;
-					case 800: ComboBox_AddString(m_controls->FontWeightCombo, L"800 (Extra Bold/Ultra Bold)");
+					case 800:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"800 (Extra Bold/Ultra Bold)");
 						break;
-					case 900: ComboBox_AddString(m_controls->FontWeightCombo, L"900 (Black/Heavy)");
+					case 900:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"900 (Black/Heavy)");
 						break;
-					case 950: ComboBox_AddString(m_controls->FontWeightCombo, L"950 (Extra Black/Ultra Black)");
+					case 950:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, L"950 (Extra Black/Ultra Black)");
 						break;
-					default: ComboBox_AddString(m_controls->FontWeightCombo, std::format(L"{}", static_cast<int>(v)).c_str());
+					default:
+						index = ComboBox_AddString(m_controls->FontWeightCombo, std::format(L"{}", static_cast<int>(v)).c_str());
+						break;
 				}
+				ComboBox_SetItemData(m_controls->FontWeightCombo, index, static_cast<uint32_t>(v));
 
 				if (v == closestWeight) {
 					ComboBox_SetCurSel(m_controls->FontWeightCombo, ComboBox_GetCount(m_controls->FontWeightCombo) - 1);
@@ -1244,15 +1296,20 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 			}
 
 			for (const auto v : styles) {
+				int index;
 				switch (v) {
-					case DWRITE_FONT_STYLE_NORMAL: ComboBox_AddString(m_controls->FontStyleCombo, L"Normal");
+					case DWRITE_FONT_STYLE_NORMAL:
+						index = ComboBox_AddString(m_controls->FontStyleCombo, L"Normal");
 						break;
-					case DWRITE_FONT_STYLE_OBLIQUE: ComboBox_AddString(m_controls->FontStyleCombo, L"Oblique");
+					case DWRITE_FONT_STYLE_OBLIQUE:
+						index = ComboBox_AddString(m_controls->FontStyleCombo, L"Oblique");
 						break;
-					case DWRITE_FONT_STYLE_ITALIC: ComboBox_AddString(m_controls->FontStyleCombo, L"Italic");
+					case DWRITE_FONT_STYLE_ITALIC:
+						index = ComboBox_AddString(m_controls->FontStyleCombo, L"Italic");
 						break;
 					default: continue;
 				}
+				ComboBox_SetItemData(m_controls->FontStyleCombo, index, static_cast<uint32_t>(v));
 
 				if (v == closestStyle) {
 					ComboBox_SetCurSel(m_controls->FontStyleCombo, ComboBox_GetCount(m_controls->FontStyleCombo) - 1);
@@ -1261,32 +1318,58 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 			}
 
 			for (const auto v : stretches) {
+				int index;
 				switch (v) {
-					case DWRITE_FONT_STRETCH_ULTRA_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Ultra Condensed");
+					case DWRITE_FONT_STRETCH_ULTRA_CONDENSED:
+						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Ultra Condensed");
 						break;
-					case DWRITE_FONT_STRETCH_EXTRA_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Extra Condensed");
+					case DWRITE_FONT_STRETCH_EXTRA_CONDENSED:
+						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Extra Condensed");
 						break;
-					case DWRITE_FONT_STRETCH_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Condensed");
+					case DWRITE_FONT_STRETCH_CONDENSED:
+						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Condensed");
 						break;
-					case DWRITE_FONT_STRETCH_SEMI_CONDENSED: ComboBox_AddString(m_controls->FontStretchCombo, L"Semi Condensed");
+					case DWRITE_FONT_STRETCH_SEMI_CONDENSED:
+						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Semi Condensed");
 						break;
-					case DWRITE_FONT_STRETCH_NORMAL: ComboBox_AddString(m_controls->FontStretchCombo, L"Normal");
+					case DWRITE_FONT_STRETCH_NORMAL:
+						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Normal");
 						break;
-					case DWRITE_FONT_STRETCH_SEMI_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Semi Expanded");
+					case DWRITE_FONT_STRETCH_SEMI_EXPANDED:
+						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Semi Expanded");
 						break;
-					case DWRITE_FONT_STRETCH_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Expanded");
+					case DWRITE_FONT_STRETCH_EXPANDED:
+						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Expanded");
 						break;
-					case DWRITE_FONT_STRETCH_EXTRA_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Extra Expanded");
+					case DWRITE_FONT_STRETCH_EXTRA_EXPANDED:
+						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Extra Expanded");
 						break;
-					case DWRITE_FONT_STRETCH_ULTRA_EXPANDED: ComboBox_AddString(m_controls->FontStretchCombo, L"Ultra Expanded");
+					case DWRITE_FONT_STRETCH_ULTRA_EXPANDED:
+						index = ComboBox_AddString(m_controls->FontStretchCombo, L"Ultra Expanded");
 						break;
 					default: continue;
 				}
+				ComboBox_SetItemData(m_controls->FontStretchCombo, index, static_cast<uint32_t>(v));
 
 				if (v == closestStretch) {
 					ComboBox_SetCurSel(m_controls->FontStretchCombo, ComboBox_GetCount(m_controls->FontStretchCombo) - 1);
 					m_element.Lookup.Stretch = v;
 				}
+			}
+
+			for (const auto v : featureTags) {
+				const auto index = ListBox_AddString(
+					m_controls->FontFeaturesList,
+					std::format(
+						L"{}{}{}{}",
+						static_cast<wchar_t>((static_cast<uint32_t>(v) >> 0) & 0xFF),
+						static_cast<wchar_t>((static_cast<uint32_t>(v) >> 8) & 0xFF),
+						static_cast<wchar_t>((static_cast<uint32_t>(v) >> 16) & 0xFF),
+						static_cast<wchar_t>((static_cast<uint32_t>(v) >> 24) & 0xFF)
+						).c_str());
+				ListBox_SetItemData(m_controls->FontFeaturesList, index, static_cast<uint32_t>(v));
+				if (m_element.Lookup.Features.contains(v))
+					ListBox_SetSel(m_controls->FontFeaturesList, TRUE, index);
 			}
 			break;
 		}
@@ -1326,6 +1409,7 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 				case IDC_COMBO_FONT_WEIGHT: return FontWeightCombo_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_FONT_STYLE: return FontStyleCombo_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_FONT_STRETCH: return FontStretchCombo_OnCommand(HIWORD(wParam));
+				case IDC_LIST_FONT_FEATURES: return FontFeaturesList_OnCommand(HIWORD(wParam));
 				case IDC_EDIT_EMPTY_ASCENT: return EmptyAscentEdit_OnCommand(HIWORD(wParam));
 				case IDC_EDIT_EMPTY_LINEHEIGHT: return EmptyLineHeightEdit_OnCommand(HIWORD(wParam));
 				case IDC_CHECK_FREETYPE_NOHINTING:

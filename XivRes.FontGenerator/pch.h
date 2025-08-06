@@ -7,13 +7,15 @@
 
 #include <Windows.h>
 #include <windowsx.h>
-#include <CommCtrl.h>
-#include <ShObjIdl.h>
+
 #include <comdef.h>
+#include <CommCtrl.h>
 #include <dwrite.h>
-#include <shellapi.h>
 #include <PathCch.h>
 #include <Psapi.h>
+#include <shellapi.h>
+#include <ShellScalingApi.h>
+#include <ShObjIdl.h>
 
 #include <exprtk.hpp>
 
@@ -24,7 +26,9 @@
 #include FT_GLYPH_H
 
 #include <zlib.h>
+
 #include <minizip/zip.h>
+
 #include <minizip/iowin32.h>
 
 #include <nlohmann/json.hpp>
@@ -32,6 +36,13 @@
 // https://github.com/Nomade040/nmd/blob/master/nmd_assembly.h
 #include "nmd_assembly.h"
 
+#include "xivres.fontgen/directwrite_fixed_size_font.h"
+#include "xivres.fontgen/fontdata_fixed_size_font.h"
+#include "xivres.fontgen/fontdata_packer.h"
+#include "xivres.fontgen/freetype_fixed_size_font.h"
+#include "xivres.fontgen/merged_fixed_size_font.h"
+#include "xivres.fontgen/text_measurer.h"
+#include "xivres.fontgen/wrapping_fixed_size_font.h"
 #include "xivres/fontdata.h"
 #include "xivres/installation.h"
 #include "xivres/packed_stream.standard.h"
@@ -40,15 +51,8 @@
 #include "xivres/texture.mipmap_stream.h"
 #include "xivres/texture.preview.h"
 #include "xivres/unpacked_stream.h"
-#include "xivres/util.pixel_formats.h"
 #include "xivres/util.on_dtor.h"
-#include "xivres.fontgen/directwrite_fixed_size_font.h"
-#include "xivres.fontgen/fontdata_packer.h"
-#include "xivres.fontgen/freetype_fixed_size_font.h"
-#include "xivres.fontgen/fontdata_fixed_size_font.h"
-#include "xivres.fontgen/merged_fixed_size_font.h"
-#include "xivres.fontgen/text_measurer.h"
-#include "xivres.fontgen/wrapping_fixed_size_font.h"
+#include "xivres/util.pixel_formats.h"
 
 extern HINSTANCE g_hInstance;
 

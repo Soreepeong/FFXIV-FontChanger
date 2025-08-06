@@ -120,6 +120,8 @@ namespace App {
 		bool FaceElementsListView_DragProcessDragging(int16_t x, int16_t y);
 		LRESULT FaceElementsListView_OnDblClick(NMITEMACTIVATE& nmia);
 
+		[[nodiscard]] double GetZoom() const;
+
 		void SetCurrentMultiFontSet(const std::filesystem::path& path);
 		void SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, std::filesystem::path path, bool fakePath);
 

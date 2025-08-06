@@ -23,7 +23,7 @@ App::FontEditorWindow::FontEditorWindow(std::vector<std::wstring> args)
 	RegisterClassExW(&wcex);
 
 	CreateWindowExW(0, ClassName, L"Font Editor", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-		CW_USEDEFAULT, CW_USEDEFAULT, 1200, 640,
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 		nullptr, nullptr, nullptr, this);
 }
 

@@ -54,6 +54,8 @@
 #define IDC_EDIT1                       1051
 #define IDC_EDIT_FONT_SIZE              1051
 #define IDC_COMBO_CODEPOINTS_MERGEMODE  1052
+#define IDC_LIST_FONTFEATURES           1053
+#define IDC_LIST_FONT_FEATURES          1053
 #define ID_FILE_OPEN                    40003
 #define ID_FILE_SAVE                    40004
 #define ID_FILE_SAVEAS                  40005
@@ -153,7 +155,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        110
 #define _APS_NEXT_COMMAND_VALUE         40177
-#define _APS_NEXT_CONTROL_VALUE         1053
+#define _APS_NEXT_CONTROL_VALUE         1054
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

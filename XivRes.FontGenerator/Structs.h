@@ -18,6 +18,7 @@ namespace App::Structs {
 		DWRITE_FONT_WEIGHT Weight = DWRITE_FONT_WEIGHT_REGULAR;
 		DWRITE_FONT_STRETCH Stretch = DWRITE_FONT_STRETCH_NORMAL;
 		DWRITE_FONT_STYLE Style = DWRITE_FONT_STYLE_NORMAL;
+		std::set<DWRITE_FONT_FEATURE_TAG> Features;
 
 		std::wstring GetWeightString() const;
 		std::wstring GetStretchString() const;

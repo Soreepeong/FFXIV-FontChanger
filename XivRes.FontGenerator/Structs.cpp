@@ -232,7 +232,11 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 
 				case RendererEnum::DirectWrite: {
 					auto [factory, font] = Lookup.ResolveFont();
-					m_baseFont = std::make_shared<xivres::fontgen::directwrite_fixed_size_font>(std::move(factory), std::move(font), Size, Gamma, TransformationMatrix, RendererSpecific.DirectWrite);
+					auto specifics = RendererSpecific.DirectWrite;
+					specifics.Features.clear();
+					for (const auto& f : Lookup.Features)
+						specifics.Features.push_back({ .nameTag = f, .parameter = 1 });
+					m_baseFont = std::make_shared<xivres::fontgen::directwrite_fixed_size_font>(std::move(factory), std::move(font), Size, Gamma, TransformationMatrix, specifics);
 					break;
 				}
 
@@ -776,6 +780,13 @@ void App::Structs::from_json(const nlohmann::json& json, LookupStruct& value) {
 	value.Weight = static_cast<DWRITE_FONT_WEIGHT>(json.value<int>("weight", DWRITE_FONT_WEIGHT_NORMAL));
 	value.Stretch = static_cast<DWRITE_FONT_STRETCH>(json.value<int>("stretch", DWRITE_FONT_STRETCH_NORMAL));
 	value.Style = static_cast<DWRITE_FONT_STYLE>(json.value<int>("style", DWRITE_FONT_STYLE_NORMAL));
+	value.Features.clear();
+	if (const auto it = json.find("features"); it != json.end() && it->is_array()) {
+		for (const auto& [_, v] : it->items()) {
+			const auto vs = v.get<std::string>();
+			value.Features.insert(static_cast<DWRITE_FONT_FEATURE_TAG>(*reinterpret_cast<const uint32_t*>(vs.c_str())));
+		}
+	}
 }
 
 void App::Structs::to_json(nlohmann::json& json, const LookupStruct& value) {
@@ -784,6 +795,14 @@ void App::Structs::to_json(nlohmann::json& json, const LookupStruct& value) {
 	json.emplace("weight", static_cast<int>(value.Weight));
 	json.emplace("stretch", static_cast<int>(value.Stretch));
 	json.emplace("style", static_cast<int>(value.Style));
+
+	auto features = nlohmann::json::array();
+	for (const auto& v : value.Features) {
+		char buf[5]{};
+		*reinterpret_cast<uint32_t*>(buf) = static_cast<uint32_t>(v);
+		features.emplace_back(buf);
+	}
+	json.emplace("features", features);
 }
 
 void App::Structs::from_json(const nlohmann::json& json, MultiFontSet& value) {

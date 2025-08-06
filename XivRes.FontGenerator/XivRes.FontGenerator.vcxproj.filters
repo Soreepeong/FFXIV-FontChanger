@@ -31,6 +31,13 @@
     <ClCompile Include="GameFontReloader.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="MainWindow.Controls.cpp" />
+    <ClCompile Include="MainWindow.Menu.Edit.cpp" />
+    <ClCompile Include="MainWindow.Menu.Export.cpp" />
+    <ClCompile Include="MainWindow.Menu.File.cpp" />
+    <ClCompile Include="MainWindow.Menu.HotReload.cpp" />
+    <ClCompile Include="MainWindow.Menu.View.cpp" />
+    <ClCompile Include="MainWindow.Window.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Project Items">
@@ -77,6 +84,7 @@
     <ClInclude Include="GameFontReloader.h">
       <Filter>Source</Filter>
     </ClInclude>
+    <ClInclude Include="MainWindow.Internal.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json">
