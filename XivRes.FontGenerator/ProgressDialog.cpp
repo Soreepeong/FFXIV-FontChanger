@@ -23,8 +23,8 @@ App::ProgressDialog::ProgressDialog(HWND hParentWnd, std::wstring windowTitle)
 				g_hInstance,
 				FindResourceExW(
 					g_hInstance,
-					MAKEINTRESOURCE(IDD_PROGRESS),
 					RT_DIALOG,
+					MAKEINTRESOURCE(IDD_PROGRESS),
 					g_langId)),
 			&FreeResource);
 		if (!hglob) {

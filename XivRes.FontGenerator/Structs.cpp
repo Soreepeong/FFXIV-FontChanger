@@ -1,5 +1,6 @@
 ﻿#include "pch.h"
 #include "Structs.h"
+#include "resource.h"
 
 std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::game_font_family family, float size) {
 	static std::map<xivres::font_type, xivres::fontgen::game_fontdata_set> s_fontSet;
@@ -27,6 +28,7 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 		}
 	} catch (...) {}
 
+	static bool showedGameNotFoundError = false;
 	try {
 		switch (family) {
 			case xivres::fontgen::game_font_family::AXIS:
@@ -87,20 +89,19 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			}
 		}
 	} catch (const WException& e) {
-		static bool showed = false;
-		if (!showed) {
-			showed = true;
-			MessageBoxW(nullptr, std::format(
-				L"Failed to find corresponding game installation ({}). Specify it in config.json. Delete config.json and run this program again to start anew. Suppressing this message from now on.",
-				e.what()).c_str(), L"Error", MB_OK);
+		if (!showedGameNotFoundError) {
+			showedGameNotFoundError = true;
+			ShowErrorMessageBox(nullptr, IDS_ERROR_GAMENOTFOUND_BODY, e);
+		}
+	} catch (const std::system_error& e) {
+		if (!showedGameNotFoundError) {
+			showedGameNotFoundError = true;
+			ShowErrorMessageBox(nullptr, IDS_ERROR_GAMENOTFOUND_BODY, e);
 		}
 	} catch (const std::exception& e) {
-		static bool showed = false;
-		if (!showed) {
-			showed = true;
-			MessageBoxW(nullptr, std::format(
-				L"Failed to find corresponding game installation ({}). Specify it in config.json. Delete config.json and run this program again to start anew. Suppressing this message from now on.",
-				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(), L"Error", MB_OK);
+		if (!showedGameNotFoundError) {
+			showedGameNotFoundError = true;
+			ShowErrorMessageBox(nullptr, IDS_ERROR_GAMENOTFOUND_BODY, e);
 		}
 	}
 
@@ -287,12 +288,10 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 	switch (Renderer) {
 		case RendererEnum::Empty:
 			return std::format("empty:{:g}:{}:{}", Size, RendererSpecific.Empty.Ascent, RendererSpecific.Empty.LineHeight);
-			break;
 		case RendererEnum::PrerenderedGameInstallation:
 			return std::format("game:{}:{:g}", Lookup.Name, Size);
-			break;
-		case RendererEnum::DirectWrite:
-			return std::format("directwrite:{}:{:g}:{:g}:{}:{}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
+		case RendererEnum::DirectWrite: {
+			auto res = std::format("directwrite:{}:{:g}:{:g}:{}:{}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
 				Lookup.Name,
 				Size,
 				Gamma,
@@ -307,7 +306,17 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M21),
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M22)
 			);
-			break;
+			for (const auto& v : Lookup.Features) {
+				res += std::format(
+					":{}{}{}{}",
+					static_cast<char>((static_cast<uint32_t>(v) >> 0) & 0xFF),
+					static_cast<char>((static_cast<uint32_t>(v) >> 8) & 0xFF),
+					static_cast<char>((static_cast<uint32_t>(v) >> 16) & 0xFF),
+					static_cast<char>((static_cast<uint32_t>(v) >> 24) & 0xFF)
+				);
+			}
+			return res;
+		}
 		case RendererEnum::FreeType:
 			return std::format("freetype:{}:{:g}:{:g}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
 				Lookup.Name,
@@ -322,7 +331,6 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M21),
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M22)
 			);
-			break;
 		default:
 			throw std::runtime_error("Invalid renderer");
 	}

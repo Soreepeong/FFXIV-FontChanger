@@ -69,24 +69,13 @@ LRESULT App::FontEditorWindow::Menu_File_Open() {
 		SuccessOrThrow(pDialog->GetResult(&pResult));
 		SetCurrentMultiFontSet(std::move(pResult));
 	} catch (const WException& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_OPENFILEFAILURE_BODY),
-				e.what()).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
+		return 1;
+	} catch (const std::system_error& e) {
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
 		return 1;
 	} catch (const std::exception& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_OPENFILEFAILURE_BODY),
-				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
 		return 1;
 	}
 
@@ -100,11 +89,17 @@ LRESULT App::FontEditorWindow::Menu_File_Save() {
 	try {
 		const auto dump = nlohmann::json(m_multiFontSet).dump(1, '\t');
 
-		IStreamPtr strm;
-		SuccessOrThrow(m_currentShellItem->BindToHandler(nullptr, BHID_Stream, IID_IStream, reinterpret_cast<void**>(&strm)));
+		IBindCtxPtr bindCtx;
+		SuccessOrThrow(CreateBindCtx(0, &bindCtx));
 
-		SuccessOrThrow(strm->SetSize({}));
-		SuccessOrThrow(strm->Seek({}, SEEK_SET, nullptr));
+		BIND_OPTS bindOpts{
+			.cbStruct = sizeof bindOpts,
+			.grfMode = STGM_WRITE | STGM_SHARE_EXCLUSIVE | STGM_CREATE,
+		};
+		SuccessOrThrow(bindCtx->SetBindOptions(&bindOpts));
+
+		IStreamPtr strm;
+		SuccessOrThrow(m_currentShellItem->BindToHandler(bindCtx, BHID_Stream, IID_IStream, reinterpret_cast<void**>(&strm)));
 
 		for (std::span remaining(dump); !remaining.empty();) {
 			ULONG written;
@@ -116,24 +111,13 @@ LRESULT App::FontEditorWindow::Menu_File_Save() {
 
 		Changes_MarkFresh();
 	} catch (const WException& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_SAVEFILEFAILURE_BODY),
-				e.what()).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
+		return 1;
+	} catch (const std::system_error& e) {
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
 		return 1;
 	} catch (const std::exception& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_SAVEFILEFAILURE_BODY),
-				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
 		return 1;
 	}
 
@@ -152,6 +136,15 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 
 	try {
 		const auto dump = nlohmann::json(m_multiFontSet).dump(1, '\t');
+
+		IBindCtxPtr bindCtx;
+		SuccessOrThrow(CreateBindCtx(0, &bindCtx));
+
+		BIND_OPTS bindOpts{
+			.cbStruct = sizeof bindOpts,
+			.grfMode = STGM_WRITE | STGM_SHARE_EXCLUSIVE | STGM_CREATE,
+		};
+		SuccessOrThrow(bindCtx->SetBindOptions(&bindOpts));
 
 		IFileSaveDialogPtr pDialog;
 		DWORD dwFlags;
@@ -173,10 +166,7 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 		SuccessOrThrow(pDialog->GetResult(&pResult));
 
 		IStreamPtr strm;
-		SuccessOrThrow(pResult->BindToHandler(nullptr, BHID_Stream, IID_IStream, reinterpret_cast<void**>(&strm)));
-
-		SuccessOrThrow(strm->SetSize({}));
-		SuccessOrThrow(strm->Seek({}, SEEK_SET, nullptr));
+		SuccessOrThrow(pResult->BindToHandler(bindCtx, BHID_Stream, IID_IStream, reinterpret_cast<void**>(&strm)));
 
 		for (std::span remaining(dump); !remaining.empty();) {
 			ULONG written;
@@ -193,24 +183,13 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 			Changes_MarkFresh();
 		}
 	} catch (const WException& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_SAVEFILEFAILURE_BODY),
-				e.what()).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
+		return 1;
+	} catch (const std::system_error& e) {
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
 		return 1;
 	} catch (const std::exception& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_SAVEFILEFAILURE_BODY),
-				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
 		return 1;
 	}
 

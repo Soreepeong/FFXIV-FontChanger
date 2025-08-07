@@ -108,23 +108,14 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 			SuccessOrThrow(SHCreateItemFromParsingName(m_args[1].c_str(), nullptr, IID_PPV_ARGS(&shellItem)));
 			SetCurrentMultiFontSet(std::move(shellItem));
 		} catch (const WException& e) {
-			MessageBoxW(
-				m_hWnd,
-				std::format(
-					L"{}\n\n{}",
-					GetStringResource(IDS_ERROR_OPENFILEFAILURE_BODY),
-					e.what()).c_str(),
-				GetWindowString(m_hWnd).c_str(),
-				MB_OK | MB_ICONERROR);
+			ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
+			return 1;
+		} catch (const std::system_error& e) {
+			ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
+			return 1;
 		} catch (const std::exception& e) {
-			MessageBoxW(
-				m_hWnd,
-				std::format(
-					L"{}\n\n{}",
-					GetStringResource(IDS_ERROR_OPENFILEFAILURE_BODY),
-					xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
-				GetWindowString(m_hWnd).c_str(),
-				MB_OK | MB_ICONERROR);
+			ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
+			return 1;
 		}
 	}
 	if (!m_currentShellItem)
@@ -384,6 +375,8 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING: return Menu_Export_TTMP(CompressionMode::CompressAfterPacking);
 				case ID_EXPORT_TOTTMP_DONOTCOMPRESS: return Menu_Export_TTMP(CompressionMode::DoNotCompress);
 				case ID_EXPORT_MAPFONTLOBBY: return Menu_Export_MapFontLobby();
+				case ID_EXPORT_MAPFONTCHNAXIS: return Menu_Export_MapFontChnAxis();
+				case ID_EXPORT_MAPFONTKRNAXIS: return Menu_Export_MapFontKrnAxis();
 			}
 			break;
 

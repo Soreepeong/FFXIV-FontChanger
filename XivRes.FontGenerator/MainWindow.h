@@ -106,6 +106,8 @@ namespace App {
 		LRESULT Menu_Export_Raw();
 		LRESULT Menu_Export_TTMP(CompressionMode compressionMode);
 		LRESULT Menu_Export_MapFontLobby();
+		LRESULT Menu_Export_MapFontChnAxis();
+		LRESULT Menu_Export_MapFontKrnAxis();
 
 		LRESULT Edit_OnCommand(uint16_t commandId);
 

@@ -56,15 +56,15 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
 				g_langId = LANGIDFROMLCID(LocaleNameToLCID(g_localeName.c_str(), LOCALE_ALLOW_NEUTRAL_NAMES));
 			}
 		}
+	} catch (const WException& e) {
+		ShowErrorMessageBox(nullptr, IDS_ERROR_OPENFILEFAILURE_BODY, e);
+		return 1;
+	} catch (const std::system_error& e) {
+		ShowErrorMessageBox(nullptr, IDS_ERROR_OPENFILEFAILURE_BODY, e);
+		return 1;
 	} catch (const std::exception& e) {
-		MessageBoxW(
-			nullptr,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_CONFIGFILEERROR, g_langId),
-				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
-			std::wstring(GetStringResource(IDS_APP, g_langId)).c_str(),
-			MB_OK | MB_ICONWARNING);
+		ShowErrorMessageBox(nullptr, IDS_ERROR_OPENFILEFAILURE_BODY, e);
+		return 1;
 	}
 
 	App::FontEditorWindow window(std::move(args));
@@ -133,9 +133,72 @@ std::wstring_view GetStringResource(UINT uId, UINT langId) {
 			FreeResource(hglob);
 		}
 	}
-	return pwsz ? std::wstring_view{pwsz + 1, static_cast<size_t>(*pwsz)} : std::wstring_view{};
+	return pwsz ? std::wstring_view{ pwsz + 1, static_cast<size_t>(*pwsz) } : std::wstring_view{};
 }
 
 std::wstring_view GetStringResource(UINT id) {
 	return GetStringResource(id, g_langId);
+}
+
+static std::wstring OemCpToWString(std::string_view sv) {
+	std::wstring buf(MultiByteToWideChar(CP_OEMCP, 0, sv.data(), static_cast<int>(sv.size()), nullptr, 0), L'\0');
+	MultiByteToWideChar(CP_OEMCP, 0, sv.data(), static_cast<int>(sv.size()), buf.data(), static_cast<int>(buf.size()));
+	return buf;
+}
+
+void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const WException& e) {
+	MessageBoxW(
+		hParent,
+		std::format(
+			L"{}\n\n{}",
+			GetStringResource(preambleStringResID),
+			e.what()).c_str(),
+		hParent
+		? GetWindowString(hParent).c_str()
+		: std::wstring(GetStringResource(IDS_APP)).c_str(),
+		MB_OK | MB_ICONERROR);
+}
+
+void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const std::system_error& e) {
+	std::wstring errorText;
+	if (e.code().category() != std::system_category()) {
+		LPWSTR pErrorText = nullptr;
+		FormatMessageW(
+			FORMAT_MESSAGE_FROM_SYSTEM
+			| FORMAT_MESSAGE_ALLOCATE_BUFFER
+			| FORMAT_MESSAGE_IGNORE_INSERTS,
+			nullptr,
+			e.code().value(),
+			g_langId,
+			reinterpret_cast<LPWSTR>(&pErrorText), // output 
+			0, // minimum size for output buffer
+			nullptr);  // arguments - see note 
+		if (nullptr != pErrorText) {
+			errorText = pErrorText;
+			LocalFree(pErrorText);
+		}
+	}
+	MessageBoxW(
+		hParent,
+		std::format(
+			L"{}\n\n{}",
+			GetStringResource(preambleStringResID),
+			errorText.empty() ? OemCpToWString(e.what()) : errorText).c_str(),
+		hParent
+		? GetWindowString(hParent).c_str()
+		: std::wstring(GetStringResource(IDS_APP)).c_str(),
+		MB_OK | MB_ICONERROR);
+}
+
+void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const std::exception& e) {
+	MessageBoxW(
+		hParent,
+		std::format(
+			L"{}\n\n{}",
+			GetStringResource(preambleStringResID),
+			OemCpToWString(e.what())).c_str(),
+		hParent
+		? GetWindowString(hParent).c_str()
+		: std::wstring(GetStringResource(IDS_APP)).c_str(),
+		MB_OK | MB_ICONERROR);
 }

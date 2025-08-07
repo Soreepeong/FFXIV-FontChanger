@@ -313,7 +313,23 @@ std::pair<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<st
 	while (!packer.wait(std::chrono::milliseconds(200))) {
 		progressDialog.ThrowIfCancelled();
 
-		progressDialog.UpdateStatusMessage(xivres::util::unicode::convert<std::wstring>(packer.progress_description()));
+		switch (packer.progress_description()) {
+			case xivres::fontgen::fontdata_packer::progress_status_t::prepare_source_fonts:
+				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_PREPARESOURCEFONTS));
+				break;
+			case xivres::fontgen::fontdata_packer::progress_status_t::prepare_target_fonts:
+				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_PREPARETARGETFONTS));
+				break;
+			case xivres::fontgen::fontdata_packer::progress_status_t::discover_glyphs:
+				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_DISCOVERGLYPHS));
+				break;
+			case xivres::fontgen::fontdata_packer::progress_status_t::measure_glyphs:
+				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_MEASUREGLYPHS));
+				break;
+			case xivres::fontgen::fontdata_packer::progress_status_t::layout_and_draw:
+				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_LAYOUTANDDRAW));
+				break;
+		}
 		progressDialog.UpdateProgress(packer.progress_scaled());
 	}
 	if (const auto err = packer.get_error_if_failed(); !err.empty())

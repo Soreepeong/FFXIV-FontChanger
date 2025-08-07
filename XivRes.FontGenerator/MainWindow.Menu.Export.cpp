@@ -35,24 +35,13 @@ LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
 		return 1;
 	} catch (const WException& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
-				e.what()).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
+		return 1;
+	} catch (const std::system_error& e) {
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
 		return 1;
 	} catch (const std::exception& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
-				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
 		return 1;
 	}
 }
@@ -178,24 +167,13 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
 		return 1;
 	} catch (const WException& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
-				e.what()).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
+		return 1;
+	} catch (const std::system_error& e) {
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
 		return 1;
 	} catch (const std::exception& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
-				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
 		return 1;
 	}
 
@@ -311,19 +289,19 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 				modsList.reserve(modsList.size() + endIndex - beginIndex);
 				for (size_t i = beginIndex; i < endIndex; i++) {
 					xivres::textools::mods_json tmp = modsList[i];
-					if (tmp.FullPath.ends_with("/AXIS_12.fdt")) {
+					if (tmp.Name.ends_with("/AXIS_12.fdt")) {
 						tmp.Name.erase(tmp.Name.size() - 11, 11);
 						tmp.Name.append("ChnAXIS_120.fdt");
-					} else if (tmp.FullPath.ends_with("/AXIS_14.fdt")) {
+					} else if (tmp.Name.ends_with("/AXIS_14.fdt")) {
 						tmp.Name.erase(tmp.Name.size() - 11, 11);
 						tmp.Name.append("ChnAXIS_140.fdt");
-					} else if (tmp.FullPath.ends_with("/AXIS_18.fdt")) {
+					} else if (tmp.Name.ends_with("/AXIS_18.fdt")) {
 						tmp.Name.erase(tmp.Name.size() - 11, 11);
 						tmp.Name.append("ChnAXIS_180.fdt");
-					} else if (tmp.FullPath.ends_with("/AXIS_36.fdt")) {
+					} else if (tmp.Name.ends_with("/AXIS_36.fdt")) {
 						tmp.Name.erase(tmp.Name.size() - 11, 11);
 						tmp.Name.append("ChnAXIS_360.fdt");
-					} else if (tmp.FullPath.ends_with(".tex")) {
+					} else if (tmp.Name.ends_with(".tex")) {
 						tmp.Name.insert(tmp.Name.size() - 5, "_chn_");
 					} else {
 						continue;
@@ -338,19 +316,19 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 				modsList.reserve(modsList.size() + endIndex - beginIndex);
 				for (size_t i = beginIndex; i < endIndex; i++) {
 					xivres::textools::mods_json tmp = modsList[i];
-					if (tmp.FullPath.ends_with("/AXIS_12.fdt")) {
+					if (tmp.Name.ends_with("/AXIS_12.fdt")) {
 						tmp.Name.erase(tmp.Name.size() - 11, 11);
 						tmp.Name.append("KrnAXIS_120.fdt");
-					} else if (tmp.FullPath.ends_with("/AXIS_14.fdt")) {
+					} else if (tmp.Name.ends_with("/AXIS_14.fdt")) {
 						tmp.Name.erase(tmp.Name.size() - 11, 11);
 						tmp.Name.append("KrnAXIS_140.fdt");
-					} else if (tmp.FullPath.ends_with("/AXIS_18.fdt")) {
+					} else if (tmp.Name.ends_with("/AXIS_18.fdt")) {
 						tmp.Name.erase(tmp.Name.size() - 11, 11);
 						tmp.Name.append("KrnAXIS_180.fdt");
-					} else if (tmp.FullPath.ends_with("/AXIS_36.fdt")) {
+					} else if (tmp.Name.ends_with("/AXIS_36.fdt")) {
 						tmp.Name.erase(tmp.Name.size() - 11, 11);
 						tmp.Name.append("KrnAXIS_360.fdt");
-					} else if (tmp.FullPath.ends_with(".tex")) {
+					} else if (tmp.Name.ends_with(".tex")) {
 						tmp.Name.insert(tmp.Name.size() - 5, "_krn_");
 					} else {
 						continue;
@@ -365,24 +343,13 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
 		return 1;
 	} catch (const WException& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
-				e.what()).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
+		return 1;
+	} catch (const std::system_error& e) {
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
 		return 1;
 	} catch (const std::exception& e) {
-		MessageBoxW(
-			m_hWnd,
-			std::format(
-				L"{}\n\n{}",
-				GetStringResource(IDS_ERROR_EXPORTFAILURE_BODY),
-				xivres::util::unicode::convert<std::wstring>(e.what())).c_str(),
-			GetWindowString(m_hWnd).c_str(),
-			MB_OK | MB_ICONERROR);
+		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
 		return 1;
 	}
 
@@ -391,6 +358,18 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 
 LRESULT App::FontEditorWindow::Menu_Export_MapFontLobby() {
 	m_multiFontSet.ExportMapFontLobbyToFont = !m_multiFontSet.ExportMapFontLobbyToFont;
+	Changes_MarkDirty();
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::Menu_Export_MapFontChnAxis() {
+	m_multiFontSet.ExportMapChnAxisToFont = !m_multiFontSet.ExportMapChnAxisToFont;
+	Changes_MarkDirty();
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::Menu_Export_MapFontKrnAxis() {
+	m_multiFontSet.ExportMapKrnAxisToFont = !m_multiFontSet.ExportMapKrnAxisToFont;
 	Changes_MarkDirty();
 	return 0;
 }
