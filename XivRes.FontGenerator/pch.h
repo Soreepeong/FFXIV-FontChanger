@@ -2,8 +2,11 @@
 #define NOMINMAX
 
 #include <cmath>
+#include <exception>
 #include <iostream>
 #include <ranges>
+#include <string>
+#include <string_view>
 
 #include <Windows.h>
 #include <windowsx.h>
@@ -52,6 +55,8 @@
 #include "xivres/util.on_dtor.h"
 #include "xivres/util.pixel_formats.h"
 
+#include "MiscUtil.h"
+
 extern HINSTANCE g_hInstance;
 extern struct FontGeneratorConfig g_config;
 extern WORD g_langId;
@@ -77,14 +82,6 @@ inline std::wstring GetWindowString(HWND hwnd, bool trim = false) {
 	}
 	return buf;
 }
-
-HRESULT SuccessOrThrow(HRESULT hr, std::initializer_list<HRESULT> acceptables = {});
-
-void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const class WException& e);
-void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const class std::system_error& e);
-void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const class std::exception& e);
-std::wstring_view GetStringResource(UINT id, UINT langId);
-std::wstring_view GetStringResource(UINT id);
 
 template<typename T>
 inline T GetWindowNumber(HWND hwnd) {

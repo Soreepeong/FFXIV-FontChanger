@@ -589,32 +589,6 @@ BEGIN
 END
 
 
-#ifdef APSTUDIO_INVOKED
-/////////////////////////////////////////////////////////////////////////////
-//
-// TEXTINCLUDE
-//
-
-1 TEXTINCLUDE 
-BEGIN
-    "resource.h\0"
-END
-
-2 TEXTINCLUDE 
-BEGIN
-    "#include ""winres.h""\r\n"
-    "\0"
-END
-
-3 TEXTINCLUDE 
-BEGIN
-    "\r\n"
-    "\0"
-END
-
-#endif    // APSTUDIO_INVOKED
-
-
 /////////////////////////////////////////////////////////////////////////////
 //
 // Dialog
@@ -866,6 +840,32 @@ BEGIN
 END
 
 
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""winres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
 /////////////////////////////////////////////////////////////////////////////
 //
 // Accelerator
@@ -1045,6 +1045,165 @@ BEGIN
     IDS_COMPILESTATUS_DISCOVERGLYPHS "Discovering glyphs..."
     IDS_COMPILESTATUS_MEASUREGLYPHS "Measuring glyphs..."
     IDS_COMPILESTATUS_LAYOUTANDDRAW "Laying out and drawing glyphs..."
+    IDS_OPENTYPEFEATURE_AALT "Access All Alternates"
+    IDS_OPENTYPEFEATURE_ABVF "Above-base Forms"
+    IDS_OPENTYPEFEATURE_ABVM "Above-base Mark Positioning"
+    IDS_OPENTYPEFEATURE_ABVS "Above-base Substitutions"
+    IDS_OPENTYPEFEATURE_AFRC "Alternative Fractions"
+    IDS_OPENTYPEFEATURE_AKHN "Akhand"
+    IDS_OPENTYPEFEATURE_APKN "Kerning for Alternate Proportional Widths"
+    IDS_OPENTYPEFEATURE_BLWF "Below-base Forms"
+    IDS_OPENTYPEFEATURE_BLWM "Below-base Mark Positioning"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_OPENTYPEFEATURE_BLWS "Below-base Substitutions"
+    IDS_OPENTYPEFEATURE_CALT "Contextual Alternates"
+    IDS_OPENTYPEFEATURE_CASE "Case-sensitive Forms"
+    IDS_OPENTYPEFEATURE_CCMP "Glyph Composition / Decomposition"
+    IDS_OPENTYPEFEATURE_CFAR "Conjunct Form After Ro"
+    IDS_OPENTYPEFEATURE_CHWS "Contextual Half-width Spacing"
+    IDS_OPENTYPEFEATURE_CJCT "Conjunct Forms"
+    IDS_OPENTYPEFEATURE_CLIG "Contextual Ligatures"
+    IDS_OPENTYPEFEATURE_CPCT "Centered CJK Punctuation"
+    IDS_OPENTYPEFEATURE_CPSP "Capital Spacing"
+    IDS_OPENTYPEFEATURE_CSWH "Contextual Swash"
+    IDS_OPENTYPEFEATURE_CURS "Cursive Positioning"
+    IDS_OPENTYPEFEATURE_CV00 "Character Variant {}"
+    IDS_OPENTYPEFEATURE_C2PC "Petite Capitals From Capitals"
+    IDS_OPENTYPEFEATURE_C2SC "Small Capitals From Capitals"
+    IDS_OPENTYPEFEATURE_DIST "Distances"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_OPENTYPEFEATURE_DLIG "Discretionary Ligatures"
+    IDS_OPENTYPEFEATURE_DNOM "Denominators"
+    IDS_OPENTYPEFEATURE_DTLS "Dotless Forms"
+    IDS_OPENTYPEFEATURE_EXPT "Expert Forms"
+    IDS_OPENTYPEFEATURE_FALT "Final Glyph on Line Alternates"
+    IDS_OPENTYPEFEATURE_FIN2 "Terminal Forms #2"
+    IDS_OPENTYPEFEATURE_FIN3 "Terminal Forms #3"
+    IDS_OPENTYPEFEATURE_FINA "Terminal Forms"
+    IDS_OPENTYPEFEATURE_FLAC "Flattened Accent Forms"
+    IDS_OPENTYPEFEATURE_FRAC "Fractions"
+    IDS_OPENTYPEFEATURE_FWID "Full Widths"
+    IDS_OPENTYPEFEATURE_HALF "Half Forms"
+    IDS_OPENTYPEFEATURE_HALN "Halant Forms"
+    IDS_OPENTYPEFEATURE_HALT "Alternate Half Widths"
+    IDS_OPENTYPEFEATURE_HIST "Historical Forms"
+    IDS_OPENTYPEFEATURE_HKNA "Horizontal Kana Alternates"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_OPENTYPEFEATURE_HLIG "Historical Ligatures"
+    IDS_OPENTYPEFEATURE_HNGL "Hangul"
+    IDS_OPENTYPEFEATURE_HOJO "Hojo Kanji Forms (JIS X 0212-1990 Kanji Forms)"
+    IDS_OPENTYPEFEATURE_HWID "Half Widths"
+    IDS_OPENTYPEFEATURE_INIT "Initial Forms"
+    IDS_OPENTYPEFEATURE_ISOL "Isolated Forms"
+    IDS_OPENTYPEFEATURE_ITAL "Italics"
+    IDS_OPENTYPEFEATURE_JALT "Justification Alternates"
+    IDS_OPENTYPEFEATURE_JP78 "JIS78 Forms"
+    IDS_OPENTYPEFEATURE_JP83 "JIS83 Forms"
+    IDS_OPENTYPEFEATURE_JP90 "JIS90 Forms"
+    IDS_OPENTYPEFEATURE_JP04 "JIS2004 Forms"
+    IDS_OPENTYPEFEATURE_KERN "Kerning"
+    IDS_OPENTYPEFEATURE_LFBD "Left Bounds"
+    IDS_OPENTYPEFEATURE_LIGA "Standard Ligatures"
+    IDS_OPENTYPEFEATURE_LJMO "Leading Jamo Forms"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_OPENTYPEFEATURE_LNUM "Lining Figures"
+    IDS_OPENTYPEFEATURE_LOCL "Localized Forms"
+    IDS_OPENTYPEFEATURE_LTRA "Left-to-right Alternates"
+    IDS_OPENTYPEFEATURE_LTRM "Left-to-right Mirrored Forms"
+    IDS_OPENTYPEFEATURE_MARK "Mark Positioning"
+    IDS_OPENTYPEFEATURE_MED2 "Medial Forms #2"
+    IDS_OPENTYPEFEATURE_MEDI "Medial Forms"
+    IDS_OPENTYPEFEATURE_MGRK "Mathematical Greek"
+    IDS_OPENTYPEFEATURE_MKMK "Mark to Mark Positioning"
+    IDS_OPENTYPEFEATURE_MSET "Mark Positioning via Substitution"
+    IDS_OPENTYPEFEATURE_NALT "Alternate Annotation Forms"
+    IDS_OPENTYPEFEATURE_NLCK "NLC Kanji Forms"
+    IDS_OPENTYPEFEATURE_NUKT "Nukta Forms"
+    IDS_OPENTYPEFEATURE_NUMR "Numerators"
+    IDS_OPENTYPEFEATURE_ONUM "Oldstyle Figures"
+    IDS_OPENTYPEFEATURE_OPBD "Optical Bounds"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_OPENTYPEFEATURE_ORDN "Ordinals"
+    IDS_OPENTYPEFEATURE_ORNM "Ornaments"
+    IDS_OPENTYPEFEATURE_PALT "Proportional Alternate Widths"
+    IDS_OPENTYPEFEATURE_PCAP "Petite Capitals"
+    IDS_OPENTYPEFEATURE_PKNA "Proportional Kana"
+    IDS_OPENTYPEFEATURE_PNUM "Proportional Figures"
+    IDS_OPENTYPEFEATURE_PREF "Pre-base Forms"
+    IDS_OPENTYPEFEATURE_PRES "Pre-base Substitutions"
+    IDS_OPENTYPEFEATURE_PSTF "Post-base Forms"
+    IDS_OPENTYPEFEATURE_PSTS "Post-base Substitutions"
+    IDS_OPENTYPEFEATURE_PWID "Proportional Widths"
+    IDS_OPENTYPEFEATURE_QWID "Quarter Widths"
+    IDS_OPENTYPEFEATURE_RAND "Randomize"
+    IDS_OPENTYPEFEATURE_RCLT "Required Contextual Alternates"
+    IDS_OPENTYPEFEATURE_RKRF "Rakar Forms"
+    IDS_OPENTYPEFEATURE_RLIG "Required Ligatures"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_OPENTYPEFEATURE_RPHF "Reph Form"
+    IDS_OPENTYPEFEATURE_RTBD "Right Bounds"
+    IDS_OPENTYPEFEATURE_RTLA "Right-to-left Alternates"
+    IDS_OPENTYPEFEATURE_RTLM "Right-to-left Mirrored Forms"
+    IDS_OPENTYPEFEATURE_RUBY "Ruby Notation Forms"
+    IDS_OPENTYPEFEATURE_RVRN "Required Variation Alternates"
+    IDS_OPENTYPEFEATURE_SALT "Stylistic Alternates"
+    IDS_OPENTYPEFEATURE_SINF "Scientific Inferiors"
+    IDS_OPENTYPEFEATURE_SIZE "Optical size"
+    IDS_OPENTYPEFEATURE_SMCP "Small Capitals"
+    IDS_OPENTYPEFEATURE_SMPL "Simplified Forms"
+    IDS_OPENTYPEFEATURE_SS00 "Stylistic Set {}"
+    IDS_OPENTYPEFEATURE_SSTY "Math Script-style Alternates"
+    IDS_OPENTYPEFEATURE_STCH "Stretching Glyph Decomposition"
+    IDS_OPENTYPEFEATURE_SUBS "Subscript"
+    IDS_OPENTYPEFEATURE_SUPS "Superscript"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_OPENTYPEFEATURE_SWSH "Swash"
+    IDS_OPENTYPEFEATURE_TITL "Titling"
+    IDS_OPENTYPEFEATURE_TJMO "Trailing Jamo Forms"
+    IDS_OPENTYPEFEATURE_TNAM "Traditional Name Forms"
+    IDS_OPENTYPEFEATURE_TNUM "Tabular Figures"
+    IDS_OPENTYPEFEATURE_TRAD "Traditional Forms"
+    IDS_OPENTYPEFEATURE_TWID "Third Widths"
+    IDS_OPENTYPEFEATURE_UNIC "Unicase"
+    IDS_OPENTYPEFEATURE_VALT "Alternate Vertical Metrics"
+    IDS_OPENTYPEFEATURE_VAPK 
+                            "Kerning for Alternate Proportional Vertical Metrics"
+    IDS_OPENTYPEFEATURE_VATU "Vattu Variants"
+    IDS_OPENTYPEFEATURE_VCHW "Vertical Contextual Half-width Spacing"
+    IDS_OPENTYPEFEATURE_VERT "Vertical Alternates"
+    IDS_OPENTYPEFEATURE_VHAL "Alternate Vertical Half Metrics"
+    IDS_OPENTYPEFEATURE_VJMO "Vowel Jamo Forms"
+    IDS_OPENTYPEFEATURE_VKNA "Vertical Kana Alternates"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_OPENTYPEFEATURE_VKRN "Vertical Kerning"
+    IDS_OPENTYPEFEATURE_VPAL "Proportional Alternate Vertical Metrics"
+    IDS_OPENTYPEFEATURE_VRT2 "Vertical Alternates and Rotation"
+    IDS_OPENTYPEFEATURE_VRTR "Vertical Alternates for Rotation"
+    IDS_OPENTYPEFEATURE_ZERO "Slashed Zero"
 END
 
 #endif    // English (United States) resources

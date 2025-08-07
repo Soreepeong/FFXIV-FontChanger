@@ -223,6 +223,7 @@
     <ClCompile Include="MainWindow.Menu.File.cpp" />
     <ClCompile Include="MainWindow.Menu.View.cpp" />
     <ClCompile Include="MainWindow.Window.cpp" />
+    <ClCompile Include="MiscUtil.cpp" />
     <ClCompile Include="ProgressDialog.cpp" />
     <ClCompile Include="Structs.cpp" />
     <ClCompile Include="pch.cpp">
@@ -241,6 +242,7 @@
     <ClInclude Include="FaceElementEditorDialog.h" />
     <ClInclude Include="FontGeneratorConfig.h" />
     <ClInclude Include="MainWindow.Internal.h" />
+    <ClInclude Include="MiscUtil.h" />
     <ClInclude Include="ProgressDialog.h" />
     <ClInclude Include="Structs.h" />
     <ClInclude Include="MainWindow.h" />

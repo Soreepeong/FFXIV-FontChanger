@@ -44,6 +44,7 @@
     <ClCompile Include="MainWindow.Menu.View.cpp">
       <Filter>Source\Windows</Filter>
     </ClCompile>
+    <ClCompile Include="MiscUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Project Items">
@@ -88,6 +89,7 @@
     <ClInclude Include="MainWindow.Internal.h">
       <Filter>Source\Windows</Filter>
     </ClInclude>
+    <ClInclude Include="MiscUtil.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json">

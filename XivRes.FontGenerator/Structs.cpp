@@ -306,15 +306,8 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M21),
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M22)
 			);
-			for (const auto& v : Lookup.Features) {
-				res += std::format(
-					":{}{}{}{}",
-					static_cast<char>((static_cast<uint32_t>(v) >> 0) & 0xFF),
-					static_cast<char>((static_cast<uint32_t>(v) >> 8) & 0xFF),
-					static_cast<char>((static_cast<uint32_t>(v) >> 16) & 0xFF),
-					static_cast<char>((static_cast<uint32_t>(v) >> 24) & 0xFF)
-				);
-			}
+			for (const auto& v : Lookup.Features)
+				res += std::format(":{}", std::string_view(reinterpret_cast<const char*>(&v), 4));
 			return res;
 		}
 		case RendererEnum::FreeType:

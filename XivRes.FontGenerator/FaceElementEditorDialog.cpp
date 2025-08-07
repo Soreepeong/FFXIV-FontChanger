@@ -1445,12 +1445,9 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 				const auto index = ListBox_AddString(
 					m_controls->FontFeaturesList,
 					std::format(
-						L"{}{}{}{}",
-						static_cast<wchar_t>((static_cast<uint32_t>(v) >> 0) & 0xFF),
-						static_cast<wchar_t>((static_cast<uint32_t>(v) >> 8) & 0xFF),
-						static_cast<wchar_t>((static_cast<uint32_t>(v) >> 16) & 0xFF),
-						static_cast<wchar_t>((static_cast<uint32_t>(v) >> 24) & 0xFF)
-						).c_str());
+						L"{}: {}",
+						xivres::util::unicode::convert<std::wstring>(std::string_view(reinterpret_cast<const char*>(&v), 4)),
+						GetOpenTypeFeatureName(v)).c_str());
 				ListBox_SetItemData(m_controls->FontFeaturesList, index, static_cast<uint32_t>(v));
 				if (m_element.Lookup.Features.contains(v))
 					ListBox_SetSel(m_controls->FontFeaturesList, TRUE, index);
