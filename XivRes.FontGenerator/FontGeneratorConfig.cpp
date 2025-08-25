@@ -18,17 +18,17 @@ void from_json(const nlohmann::json& json, FontGeneratorConfig& value) {
 	value = {};
 	if (auto it = json.find("global"); it != json.end() && it->is_array()) {
 		for (const auto& [_, p] : it->items())
-			value.Global.push_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
+			value.Global.emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
 	}
 
 	if (auto it = json.find("china"); it != json.end() && it->is_array()) {
 		for (const auto& [_, p] : it->items())
-			value.China.push_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
+			value.China.emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
 	}
 
 	if (auto it = json.find("korea"); it != json.end() && it->is_array()) {
 		for (const auto& [_, p] : it->items())
-			value.Korea.push_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
+			value.Korea.emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
 	}
 
 	value.Language = json.value("Language", "");

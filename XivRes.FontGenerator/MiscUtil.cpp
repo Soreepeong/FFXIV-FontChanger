@@ -47,7 +47,7 @@ std::wstring_view GetStringResource(UINT uId, UINT langId) {
 	if (hrsrc) {
 		const auto hglob = LoadResource(g_hInstance, hrsrc);
 		if (hglob) {
-			pwsz = reinterpret_cast<LPCWSTR>(LockResource(hglob));
+			pwsz = static_cast<LPCWSTR>(LockResource(hglob));
 			if (pwsz) {
 				// okay now walk the string table
 				for (int i = uId & 15; i > 0; --i)
@@ -61,7 +61,12 @@ std::wstring_view GetStringResource(UINT uId, UINT langId) {
 }
 
 std::wstring_view GetStringResource(UINT id) {
-	return GetStringResource(id, g_langId);
+	if (const auto res = GetStringResource(id, g_langId); !res.empty())
+		return res;
+
+	LPWSTR lpBuffer;
+	const auto length = LoadStringW(g_hInstance, id, reinterpret_cast<LPWSTR>(&lpBuffer), 0);
+	return {lpBuffer, static_cast<size_t>(length)};
 }
 
 static std::wstring OemCpToWString(std::string_view sv) {

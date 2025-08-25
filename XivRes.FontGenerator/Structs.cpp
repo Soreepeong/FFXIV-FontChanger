@@ -1,5 +1,7 @@
 ﻿#include "pch.h"
 #include "Structs.h"
+
+#include "FontGeneratorConfig.h"
 #include "resource.h"
 
 std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::game_font_family family, float size) {
@@ -9,24 +11,6 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 	const auto lock = std::lock_guard(s_mtx);
 
 	std::shared_ptr<xivres::fontgen::game_fontdata_set> strong;
-
-	auto pathconf = nlohmann::json::object();
-	pathconf["global"] = nlohmann::json::array({R"(C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game)"});
-	pathconf["chinese"] = nlohmann::json::array({
-		reinterpret_cast<const char*>(u8R"(C:\Program Files (x86)\上海数龙科技有限公司\最终幻想XIV\)"),
-		R"(C:\Program Files (x86)\SNDA\FFXIV\game)",
-	});
-	pathconf["korean"] = nlohmann::json::array({R"(C:\Program Files (x86)\FINAL FANTASY XIV - KOREA\game)"});
-
-	try {
-		if (!exists(std::filesystem::path("config.json"))) {
-			std::ofstream out("config.json");
-			out << pathconf;
-		} else {
-			std::ifstream in("config.json");
-			pathconf = nlohmann::json::parse(in);
-		}
-	} catch (...) {}
 
 	static bool showedGameNotFoundError = false;
 	try {
@@ -39,10 +23,10 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			case xivres::fontgen::game_font_family::TrumpGothic: {
 				auto& font = s_fontSet[xivres::font_type::font];
 				if (!font) {
-					for (const auto validRegion : {"global", "chinese", "korean"}) {
-						for (const auto& path : pathconf[validRegion]) {
+					for (const auto pathList : {g_config.Global, g_config.China, g_config.Korea}) {
+						for (const auto& path : pathList) {
 							try {
-								font = xivres::installation(path.get<std::string>()).get_fontdata_set(xivres::font_type::font);
+								font = xivres::installation(path).get_fontdata_set(xivres::font_type::font);
 								break;
 							} catch (...) {}
 						}
@@ -59,10 +43,10 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			case xivres::fontgen::game_font_family::ChnAXIS: {
 				auto& font = s_fontSet[xivres::font_type::chn_axis];
 				if (!font) {
-					for (const auto validRegion : {"chinese"}) {
-						for (const auto& path : pathconf[validRegion]) {
+					for (const auto pathList : {g_config.China}) {
+						for (const auto& path : pathList) {
 							try {
-								font = xivres::installation(path.get<std::string>()).get_fontdata_set(xivres::font_type::chn_axis);
+								font = xivres::installation(path).get_fontdata_set(xivres::font_type::chn_axis);
 							} catch (...) {}
 						}
 					}
@@ -75,10 +59,10 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			case xivres::fontgen::game_font_family::KrnAXIS: {
 				auto& font = s_fontSet[xivres::font_type::krn_axis];
 				if (!font) {
-					for (const auto validRegion : {"korean"}) {
-						for (const auto& path : pathconf[validRegion]) {
+					for (const auto pathList : {g_config.Korea}) {
+						for (const auto& path : pathList) {
 							try {
-								font = xivres::installation(path.get<std::string>()).get_fontdata_set(xivres::font_type::krn_axis);
+								font = xivres::installation(path).get_fontdata_set(xivres::font_type::krn_axis);
 							} catch (...) {}
 						}
 					}

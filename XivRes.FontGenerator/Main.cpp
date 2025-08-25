@@ -23,7 +23,7 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
 		return -1;
 
 	std::vector<std::wstring> args;
-	if (int nArgs{}; LPWSTR * szArgList = CommandLineToArgvW(GetCommandLineW(), &nArgs)) {
+	if (int nArgs{}; LPWSTR* szArgList = CommandLineToArgvW(GetCommandLineW(), &nArgs)) {
 		if (szArgList) {
 			for (int i = 0; i < nArgs; i++)
 				args.emplace_back(szArgList[i]);
