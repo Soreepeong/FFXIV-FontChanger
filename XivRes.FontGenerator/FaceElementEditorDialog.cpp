@@ -169,27 +169,34 @@ INT_PTR App::FaceElementEditorDialog::FontCombo_OnCommand(uint16_t notiCode) {
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	IDWriteLocalizedStringsPtr names;
-	if (FAILED(m_fontFamilies[ComboBox_GetCurSel(m_controls->FontCombo)]->GetFamilyNames(&names)))
-		return -1;
+	if (m_element.Renderer == Structs::RendererEnum::DirectWrite || m_element.Renderer == Structs::RendererEnum::FreeType) {
+		IDWriteLocalizedStringsPtr names;
+		if (FAILED(m_fontFamilies[ComboBox_GetCurSel(m_controls->FontCombo)]->GetFamilyNames(&names)))
+			return -1;
 
-	UINT32 index;
-	if (BOOL exists; FAILED(names->FindLocaleName(L"en-us", &index, &exists)) || !exists) {
-		if (FAILED(names->FindLocaleName(L"en", &index, &exists)) || !exists)
-			index = 0;
+		UINT32 index;
+		if (BOOL exists; FAILED(names->FindLocaleName(L"en-us", &index, &exists)) || !exists) {
+			if (FAILED(names->FindLocaleName(L"en", &index, &exists)) || !exists)
+				index = 0;
+		}
+
+		UINT32 length;
+		if (FAILED(names->GetStringLength(index, &length)))
+			return -1;
+
+		std::wstring name(length + 1, L'\0');
+		if (FAILED(names->GetString(index, name.data(), length + 1)))
+			return -1;
+
+		name.resize(length);
+
+		m_element.Lookup.Name = xivres::util::unicode::convert<std::string>(name);
+	} else {
+		std::wstring name(ComboBox_GetTextLength(m_controls->FontCombo) + 1, L'\0');
+		name.resize(ComboBox_GetText(m_controls->FontCombo, name.data(), name.size()));
+		m_element.Lookup.Name = xivres::util::unicode::convert<std::string>(name);
 	}
 
-	UINT32 length;
-	if (FAILED(names->GetStringLength(index, &length)))
-		return -1;
-
-	std::wstring name(length + 1, L'\0');
-	if (FAILED(names->GetString(index, name.data(), length + 1)))
-		return -1;
-
-	name.resize(length);
-
-	m_element.Lookup.Name = xivres::util::unicode::convert<std::string>(name);
 	RepopulateFontSubComboBox();
 	OnBaseFontChanged();
 	RefreshUnicodeBlockSearchResults();
