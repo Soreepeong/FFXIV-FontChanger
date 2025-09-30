@@ -6,8 +6,7 @@ const FontGeneratorConfig FontGeneratorConfig::Default{
 		R"(C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game)",
 	},
 	.China = {
-		u8R"(C:\Program Files (x86)\上海数龙科技有限公司\最终幻想XIV\)",
-		R"(C:\Program Files (x86)\SNDA\FFXIV\game)",
+		u8R"(C:\Program Files (x86)\上海数龙科技有限公司\最终幻想XIV\game)",
 	},
 	.Korea = {
 		R"(C:\Program Files (x86)\FINAL FANTASY XIV - KOREA\game)",
