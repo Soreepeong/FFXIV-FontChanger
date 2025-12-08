@@ -1131,7 +1131,7 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 			break;
 
 		case Structs::RendererEnum::PrerenderedGameInstallation: {
-			std::array<std::wstring, 8> ValidFonts{
+			std::array<std::wstring, 9> ValidFonts{
 				{
 					L"AXIS",
 					L"Jupiter",
@@ -1141,6 +1141,7 @@ void App::FaceElementEditorDialog::RepopulateFontCombobox() {
 					L"TrumpGothic",
 					L"ChnAXIS",
 					L"KrnAXIS",
+					L"tcaxis",
 				}
 			};
 

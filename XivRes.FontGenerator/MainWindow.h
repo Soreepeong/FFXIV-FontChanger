@@ -108,6 +108,7 @@ namespace App {
 		LRESULT Menu_Export_MapFontLobby();
 		LRESULT Menu_Export_MapFontChnAxis();
 		LRESULT Menu_Export_MapFontKrnAxis();
+		LRESULT Menu_Export_MapFontTCAxis();
 
 		LRESULT Edit_OnCommand(uint16_t commandId);
 

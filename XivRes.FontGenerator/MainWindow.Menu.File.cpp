@@ -30,6 +30,10 @@ LRESULT App::FontEditorWindow::Menu_File_New(xivres::font_type fontType) {
 			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
 			mfs.FontSets.back()->ExpectedTexCount = 9;
 			break;
+		case xivres::font_type::tc_axis:
+			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
+			mfs.FontSets.back()->ExpectedTexCount = 20;
+			break;
 	}
 
 	SetCurrentMultiFontSet(std::move(mfs), nullptr, true);

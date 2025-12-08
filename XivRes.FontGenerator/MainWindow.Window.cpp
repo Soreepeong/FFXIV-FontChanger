@@ -285,6 +285,10 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapKrnAxisToFont ? MFS_CHECKED : 0) };
 		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTKRNAXIS, FALSE, &mii);
 	}
+	{
+		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapKrnAxisToFont ? MFS_CHECKED : 0) };
+		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTTCAXIS, FALSE, &mii);
+	}
 	return 0;
 }
 
@@ -325,6 +329,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_FILE_NEW_MAINGAMEFONT: return Menu_File_New(xivres::font_type::font);
 				case ID_FILE_NEW_LOBBYFONT: return Menu_File_New(xivres::font_type::font_lobby);
 				case ID_FILE_NEW_CHNAXIS: return Menu_File_New(xivres::font_type::chn_axis);
+		        case ID_FILE_NEW_TCAXIS: return Menu_File_New(xivres::font_type::tc_axis);
 				case ID_FILE_NEW_KRNAXIS: return Menu_File_New(xivres::font_type::krn_axis);
 				case ID_FILE_OPEN: return Menu_File_Open();
 				case ID_FILE_SAVE: return Menu_File_Save();
@@ -377,6 +382,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EXPORT_MAPFONTLOBBY: return Menu_Export_MapFontLobby();
 				case ID_EXPORT_MAPFONTCHNAXIS: return Menu_Export_MapFontChnAxis();
 				case ID_EXPORT_MAPFONTKRNAXIS: return Menu_Export_MapFontKrnAxis();
+			    case ID_EXPORT_MAPFONTTCAXIS: return Menu_Export_MapFontTCAxis();
 			}
 			break;
 

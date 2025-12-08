@@ -6,6 +6,7 @@ struct FontGeneratorConfig {
 	std::vector<std::filesystem::path> Global;
 	std::vector<std::filesystem::path> China;
 	std::vector<std::filesystem::path> Korea;
+	std::vector<std::filesystem::path> TraditionalChinese;
 
 	std::string Language;
 

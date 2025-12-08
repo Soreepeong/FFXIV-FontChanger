@@ -23,7 +23,7 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			case xivres::fontgen::game_font_family::TrumpGothic: {
 				auto& font = s_fontSet[xivres::font_type::font];
 				if (!font) {
-					for (const auto pathList : {g_config.Global, g_config.China, g_config.Korea}) {
+					for (const auto pathList : {g_config.Global, g_config.China, g_config.Korea, g_config.TraditionalChinese}) {
 						for (const auto& path : pathList) {
 							try {
 								font = xivres::installation(path).get_fontdata_set(xivres::font_type::font);
@@ -63,6 +63,22 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 						for (const auto& path : pathList) {
 							try {
 								font = xivres::installation(path).get_fontdata_set(xivres::font_type::krn_axis);
+							} catch (...) {}
+						}
+					}
+					if (!font)
+						throw std::runtime_error("Font not found in given path");
+				}
+				return font.get_font(family, size);
+			}
+			
+			case xivres::fontgen::game_font_family::tcaxis: {
+				auto& font = s_fontSet[xivres::font_type::tc_axis];
+				if (!font) {
+					for (const auto pathList : {g_config.TraditionalChinese}) {
+						for (const auto& path : pathList) {
+							try {
+								font = xivres::installation(path).get_fontdata_set(xivres::font_type::tc_axis);
 							} catch (...) {}
 						}
 					}
@@ -219,6 +235,8 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::ChnAXIS, Size);
 					else if (Lookup.Name == "KrnAXIS")
 						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::KrnAXIS, Size);
+					else if (Lookup.Name == "tcaxis")
+						m_baseFont = GetGameFont(xivres::fontgen::game_font_family::tcaxis, Size);
 					else
 						throw std::runtime_error("Invalid name");
 					break;

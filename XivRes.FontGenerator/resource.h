@@ -272,6 +272,7 @@
 #define ID_FILE_NEW_LOBBYFONT           40013
 #define ID_FILE_NEW_CHNAXIS             40014
 #define ID_FILE_NEW_KRNAXIS             40015
+#define ID_FILE_NEW_TCAXIS              40016
 #define ID_FILE_EXIT                    40036
 #define ID_EXPORT_RAW                   40059
 #define ID_EXPORT_PREVIEW               40062
@@ -318,6 +319,7 @@
 #define ID_EXPORT_ADDITIONALLYMAPCHNAXIS 40178
 #define ID_EXPORT_MAPFONTCHNAXIS        40179
 #define ID_EXPORT_MAPFONTKRNAXIS        40180
+#define ID_EXPORT_MAPFONTTCAXIS 40189
 #define ID_FILE_LANGUAGE                40181
 #define ID_LANGUAGE_ENGLISH             40182
 #define ID_LANGUAGE_KOREAN              40183

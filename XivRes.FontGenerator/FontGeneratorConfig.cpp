@@ -11,6 +11,9 @@ const FontGeneratorConfig FontGeneratorConfig::Default{
 	.Korea = {
 		R"(C:\Program Files (x86)\FINAL FANTASY XIV - KOREA\game)",
 	},
+	.TraditionalChinese = {
+		R"(C:\Program Files (x86)\USERJOY GAMES\FINAL FANTASY XIV TC\game)",
+	},
 };
 
 void from_json(const nlohmann::json& json, FontGeneratorConfig& value) {
@@ -28,6 +31,11 @@ void from_json(const nlohmann::json& json, FontGeneratorConfig& value) {
 	if (auto it = json.find("korea"); it != json.end() && it->is_array()) {
 		for (const auto& [_, p] : it->items())
 			value.Korea.emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
+	}
+	
+	if (auto it = json.find("traditionalchinese"); it != json.end() && it->is_array()) {
+		for (const auto& [_, p] : it->items())
+			value.TraditionalChinese.emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
 	}
 
 	value.Language = json.value("Language", "");
@@ -50,6 +58,11 @@ void to_json(nlohmann::json& json, const FontGeneratorConfig& value) {
 	for (const auto& p : value.Korea)
 		arr.emplace_back(xivres::util::unicode::convert<std::string>(p.wstring()));
 	json.emplace("korea", std::move(arr));
+	
+	arr = {};
+	for (const auto& p : value.TraditionalChinese)
+		arr.emplace_back(xivres::util::unicode::convert<std::string>(p.wstring()));
+	json.emplace("traditionalchinese", std::move(arr));
 
 	json.emplace("Language", value.Language);
 }

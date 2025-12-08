@@ -161,6 +161,16 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 						else if (pFontSet->Faces[i]->Name == "AXIS_36")
 							copy(path, basePath / "KrnAXIS_360.fdt", std::filesystem::copy_options::overwrite_existing);
 					}
+					if (m_multiFontSet.ExportMapTCAxisToFont) {
+						if (pFontSet->Faces[i]->Name == "AXIS_12")
+							copy(path, basePath / "tcaxis_120.fdt", std::filesystem::copy_options::overwrite_existing);
+						else if (pFontSet->Faces[i]->Name == "AXIS_14")
+							copy(path, basePath / "tcaxis_140.fdt", std::filesystem::copy_options::overwrite_existing);
+						else if (pFontSet->Faces[i]->Name == "AXIS_18")
+							copy(path, basePath / "tcaxis_180.fdt", std::filesystem::copy_options::overwrite_existing);
+						else if (pFontSet->Faces[i]->Name == "AXIS_36")
+							copy(path, basePath / "tcaxis_360.fdt", std::filesystem::copy_options::overwrite_existing);
+					}
 				}
 			}
 		}
@@ -370,6 +380,12 @@ LRESULT App::FontEditorWindow::Menu_Export_MapFontChnAxis() {
 
 LRESULT App::FontEditorWindow::Menu_Export_MapFontKrnAxis() {
 	m_multiFontSet.ExportMapKrnAxisToFont = !m_multiFontSet.ExportMapKrnAxisToFont;
+	Changes_MarkDirty();
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::Menu_Export_MapFontTCAxis() {
+	m_multiFontSet.ExportMapTCAxisToFont = !m_multiFontSet.ExportMapTCAxisToFont;
 	Changes_MarkDirty();
 	return 0;
 }
