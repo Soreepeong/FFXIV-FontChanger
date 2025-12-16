@@ -112,7 +112,7 @@ namespace App::Structs {
 		bool ExportMapFontLobbyToFont = true;
 		bool ExportMapChnAxisToFont = true;
 		bool ExportMapKrnAxisToFont = true;
-		bool ExportMapTCAxisToFont = true;
+		bool ExportMapTcAxisToFont = true;
 	};
 
 	void to_json(nlohmann::json& json, const LookupStruct& value);

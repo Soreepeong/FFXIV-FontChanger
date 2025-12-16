@@ -193,7 +193,7 @@ INT_PTR App::FaceElementEditorDialog::FontCombo_OnCommand(uint16_t notiCode) {
 		m_element.Lookup.Name = xivres::util::unicode::convert<std::string>(name);
 	} else {
 		std::wstring name(ComboBox_GetTextLength(m_controls->FontCombo) + 1, L'\0');
-		name.resize(ComboBox_GetText(m_controls->FontCombo, name.data(), name.size()));
+		name.resize(ComboBox_GetText(m_controls->FontCombo, name.data(), static_cast<int>(name.size())));
 		m_element.Lookup.Name = xivres::util::unicode::convert<std::string>(name);
 	}
 

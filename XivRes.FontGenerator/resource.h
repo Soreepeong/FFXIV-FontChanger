@@ -327,13 +327,14 @@
 #define ID_FILE_LANGUAGE_AUTO           40185
 #define ID_FILE_LANGUAGE_ENGLISH        40186
 #define ID_FILE_LANGUAGE_KOREAN         40187
+#define ID_FILE_LANGUAGE_CHINESE        40188
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        186
-#define _APS_NEXT_COMMAND_VALUE         40188
+#define _APS_NEXT_COMMAND_VALUE         40189
 #define _APS_NEXT_CONTROL_VALUE         1054
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

@@ -262,6 +262,10 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_KOREAN, FALSE, &mii);
 	}
 	{
+		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "zh-hans" ? MFS_CHECKED : 0) };
+		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_CHINESE, FALSE, &mii);
+	}
+	{
 		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bWordWrap ? MFS_CHECKED : 0) };
 		SetMenuItemInfoW(hMenu, ID_VIEW_WORDWRAP, FALSE, &mii);
 	}
@@ -286,7 +290,7 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTKRNAXIS, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapKrnAxisToFont ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapTcAxisToFont ? MFS_CHECKED : 0) };
 		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTTCAXIS, FALSE, &mii);
 	}
 	return 0;
@@ -338,6 +342,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_FILE_LANGUAGE_AUTO: return Menu_File_Language("");
 				case ID_FILE_LANGUAGE_ENGLISH: return Menu_File_Language("en-us");
 				case ID_FILE_LANGUAGE_KOREAN: return Menu_File_Language("ko-kr");
+				case ID_FILE_LANGUAGE_CHINESE: return Menu_File_Language("zh-hans");
 				case ID_FILE_EXIT: return Menu_File_Exit();
 				case ID_EDIT_ADD: return Menu_Edit_Add();
 				case ID_EDIT_CUT: return Menu_Edit_Cut();

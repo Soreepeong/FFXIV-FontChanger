@@ -835,6 +835,7 @@ void App::Structs::from_json(const nlohmann::json& json, MultiFontSet& value) {
 	value.ExportMapFontLobbyToFont = json.value("exportMapFontLobbyToFont", false);
 	value.ExportMapChnAxisToFont = json.value("exportMapChnAxisToFont", false);
 	value.ExportMapKrnAxisToFont = json.value("exportMapKrnAxisToFont", false);
+	value.ExportMapTcAxisToFont = json.value("exportMapTcAxisToFont", false);
 }
 
 void App::Structs::to_json(nlohmann::json& json, const MultiFontSet& value) {
@@ -847,6 +848,7 @@ void App::Structs::to_json(nlohmann::json& json, const MultiFontSet& value) {
 	json["exportMapFontLobbyToFont"] = value.ExportMapFontLobbyToFont;
 	json["exportMapChnAxisToFont"] = value.ExportMapChnAxisToFont;
 	json["exportMapKrnAxisToFont"] = value.ExportMapKrnAxisToFont;
+	json["exportMapTcAxisToFont"] = value.ExportMapTcAxisToFont;
 }
 
 const char* App::Structs::GetDefaultPreviewText() {
