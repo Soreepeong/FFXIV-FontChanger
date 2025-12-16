@@ -1559,8 +1559,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,0,0,10
- PRODUCTVERSION 0,0,0,10
+ FILEVERSION 0,0,0,11
+ PRODUCTVERSION 0,0,0,11
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -1577,12 +1577,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Soreepeong"
             VALUE "FileDescription", "FFXIV Font Mod Generator"
-            VALUE "FileVersion", "0.0.0.10"
+            VALUE "FileVersion", "0.0.0.11"
             VALUE "InternalName", "XivRes.FontGenerator.exe"
             VALUE "LegalCopyright", "Copyright (C) 2025"
             VALUE "OriginalFilename", "XivRes.FontGenerator.exe"
             VALUE "ProductName", "FFXIV Font Mod Generator"
-            VALUE "ProductVersion", "0.0.0.10"
+            VALUE "ProductVersion", "0.0.0.11"
         END
     END
     BLOCK "VarFileInfo"
