@@ -2,6 +2,7 @@
 
 #include "BaseWindow.h"
 #include "Structs.h"
+#include "MainWindow.Internal.h"
 
 namespace App {
 	class FaceElementEditorDialog;
@@ -24,6 +25,12 @@ namespace App {
 			DoNotCompress,
 		};
 
+		enum class VerticalSplitter : uint8_t {
+			None,
+			ListEdit,
+			EditPreview,
+		};
+
 		const std::vector<std::wstring> m_args;
 
 		bool m_bChanged = false;
@@ -40,6 +47,16 @@ namespace App {
 		bool m_bKerning = false;
 		bool m_bShowLineMetrics = true;
 
+		int m_listViewHeightDip = ListViewHeight;
+		int m_editHeightDip = EditHeight;
+		int m_scaledListViewHeight = 0;
+		int m_scaledEditHeight = 0;
+		int m_splitterThicknessPx = 0;
+		int m_splitterListEditTop = 0;
+		int m_splitterListEditBottom = 0;
+		int m_splitterEditPreviewTop = 0;
+		int m_splitterEditPreviewBottom = 0;
+
 		HWND m_hWnd{};
 		HACCEL m_hAccelerator{};
 		HFONT m_hUiFont{};
@@ -53,6 +70,7 @@ namespace App {
 		int m_nZoom = 1;
 
 		bool m_bIsReorderingFaceElementList = false;
+		VerticalSplitter m_activeSplitter = VerticalSplitter::None;
 
 	public:
 		FontEditorWindow(std::vector<std::wstring> args);
@@ -73,6 +91,7 @@ namespace App {
 		LRESULT Window_OnPaint();
 		LRESULT Window_OnInitMenuPopup(HMENU hMenu, int index, bool isWindowMenu);
 		LRESULT Window_OnMouseMove(uint16_t states, int16_t x, int16_t y);
+		LRESULT Window_OnMouseLButtonDown(uint16_t states, int16_t x, int16_t y);
 		LRESULT Window_OnMouseLButtonUp(uint16_t states, int16_t x, int16_t y);
 		LRESULT Window_OnDestroy();
 		void Window_Redraw();
@@ -121,6 +140,10 @@ namespace App {
 		LRESULT FaceElementsListView_OnDblClick(NMITEMACTIVATE& nmia);
 
 		[[nodiscard]] double GetZoom() const noexcept;
+
+		VerticalSplitter HitTestSplitter(int16_t x, int16_t y) const;
+		void UpdateSplitterDragPosition(int16_t y);
+		void EndSplitterDrag();
 
 		void SetCurrentMultiFontSet(IShellItemPtr path);
 		void SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, IShellItemPtr path, bool fakePath);
