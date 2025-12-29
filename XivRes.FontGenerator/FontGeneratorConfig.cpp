@@ -1,5 +1,6 @@
 ﻿#include "pch.h"
 #include "FontGeneratorConfig.h"
+#include "MainWindow.Internal.h"
 
 const FontGeneratorConfig FontGeneratorConfig::Default{
 	.Global = {
@@ -14,6 +15,8 @@ const FontGeneratorConfig FontGeneratorConfig::Default{
 	.TraditionalChinese = {
 		R"(C:\Program Files (x86)\USERJOY GAMES\FINAL FANTASY XIV TC\game)",
 	},
+	.FaceElementListViewHeight = ::FaceElementListViewHeight,
+	.PreviewEditHeight = ::PreviewEditHeight,
 };
 
 void from_json(const nlohmann::json& json, FontGeneratorConfig& value) {
@@ -37,6 +40,13 @@ void from_json(const nlohmann::json& json, FontGeneratorConfig& value) {
 		for (const auto& [_, p] : it->items())
 			value.TraditionalChinese.emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
 	}
+
+	value.FaceElementListViewHeight = (std::max)(
+		json.value("FaceElementListViewHeight", FaceElementListViewHeight),
+		MinFaceElementListViewHeight);
+	value.PreviewEditHeight = (std::max)(
+		json.value("PreviewEditHeight", PreviewEditHeight),
+		MinPreviewEditHeight);
 
 	value.Language = json.value("Language", "");
 }
@@ -64,6 +74,9 @@ void to_json(nlohmann::json& json, const FontGeneratorConfig& value) {
 		arr.emplace_back(xivres::util::unicode::convert<std::string>(p.wstring()));
 	json.emplace("traditionalchinese", std::move(arr));
 
+	json.emplace("FaceElementListViewHeight", value.FaceElementListViewHeight);
+	json.emplace("PreviewEditHeight", value.PreviewEditHeight);
+
 	json.emplace("Language", value.Language);
 }
 
@@ -76,6 +89,18 @@ std::filesystem::path FontGeneratorConfig::GetConfigPath() {
 			static_cast<DWORD>(path.size())));
 
 	return std::filesystem::path(path).parent_path() / "config.json";
+}
+
+void FontGeneratorConfig::MarkDirty() {
+	Dirty = true;
+}
+
+void FontGeneratorConfig::SaveIfDirty() {
+	if (!Dirty)
+		return;
+
+	Dirty = false;
+	Save();
 }
 
 void FontGeneratorConfig::Save() const {

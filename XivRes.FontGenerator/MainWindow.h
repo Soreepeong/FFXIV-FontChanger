@@ -47,8 +47,6 @@ namespace App {
 		bool m_bKerning = false;
 		bool m_bShowLineMetrics = true;
 
-		int m_listViewHeightDip = ListViewHeight;
-		int m_editHeightDip = EditHeight;
 		int m_scaledListViewHeight = 0;
 		int m_scaledEditHeight = 0;
 		int m_splitterThicknessPx = 0;
@@ -67,13 +65,22 @@ namespace App {
 
 		int m_nDrawLeft{};
 		int m_nDrawTop{};
-		int m_nZoom = 1;
+		int m_nZoom = PreviewZoomOne;
 
+		int m_nPreviewScrollX = 0;
 		int m_nPreviewScrollY = 0;
+		int m_nPreviewContentWidth = 0;
 		int m_nPreviewContentHeight = 0;
+		bool m_nPreviewMayScroll = false;
 
 		bool m_bIsReorderingFaceElementList = false;
 		VerticalSplitter m_activeSplitter = VerticalSplitter::None;
+
+		struct {
+			bool Active{};
+			POINT StartPosition{};
+			POINT DragRelativePosition{};
+		} m_previewPan;
 
 	public:
 		FontEditorWindow(std::vector<std::wstring> args);
@@ -97,6 +104,8 @@ namespace App {
 		LRESULT Window_OnMouseLButtonDown(uint16_t states, int16_t x, int16_t y);
 		LRESULT Window_OnMouseLButtonUp(uint16_t states, int16_t x, int16_t y);
 		LRESULT Window_OnMouseWheel(int16_t delta, int16_t x, int16_t y);
+		LRESULT Window_OnSetCursor(HWND hContainer, int hittest, int wm);
+		LRESULT Window_OnCaptureChanged(HWND newCapture);
 		LRESULT Window_OnDestroy();
 		void Window_Redraw();
 

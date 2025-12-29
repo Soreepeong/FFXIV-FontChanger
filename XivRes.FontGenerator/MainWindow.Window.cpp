@@ -131,25 +131,25 @@ LRESULT App::FontEditorWindow::Window_OnSize() {
 	GetClientRect(m_hWnd, &rc);
 
 	const auto zoom = GetZoom();
-	const auto scaledFaceListBoxWidth = static_cast<int>(FaceListBoxWidth * zoom);
+	const auto scaledFaceListBoxWidth = static_cast<int>(std::lround(FaceListBoxWidth * zoom));
 	const auto availableHeight = rc.bottom - rc.top;
 
 	auto splitterThickness = static_cast<int>(std::lround(SplitterThickness * zoom));
 	splitterThickness = (std::max)(2, splitterThickness);
 	splitterThickness = (std::min<int>)(splitterThickness, (std::max<int>)(1, availableHeight / 8));
 
-	const auto minListPx = static_cast<int>(std::lround(MinListViewHeight * zoom));
-	const auto minEditPx = static_cast<int>(std::lround(MinEditHeight * zoom));
+	const auto minListPx = static_cast<int>(std::lround(MinFaceElementListViewHeight * zoom));
+	const auto minEditPx = static_cast<int>(std::lround(MinPreviewEditHeight * zoom));
 	const auto minPreviewPx = static_cast<int>(std::lround(MinPreviewHeight * zoom));
 
-	auto listViewHeightPx = static_cast<int>(std::lround(m_listViewHeightDip * zoom));
-	auto editHeightPx = static_cast<int>(std::lround(m_editHeightDip * zoom));
+	auto listViewHeightPx = static_cast<int>(std::lround(g_config.FaceElementListViewHeight * zoom));
+	auto editHeightPx = static_cast<int>(std::lround(g_config.PreviewEditHeight * zoom));
 
 	listViewHeightPx = (std::max)(minListPx, listViewHeightPx);
 	editHeightPx = (std::max)(minEditPx, editHeightPx);
 
-	auto previewHeightPx = availableHeight - listViewHeightPx - editHeightPx - splitterThickness * 2;
-	if (previewHeightPx < minPreviewPx) {
+	if (const auto previewHeightPx = availableHeight - listViewHeightPx - editHeightPx - splitterThickness * 2;
+		previewHeightPx < minPreviewPx) {
 		auto deficit = minPreviewPx - previewHeightPx;
 		const auto reduceEdit = (std::min<int>)(deficit, editHeightPx - minEditPx);
 		editHeightPx -= reduceEdit;
@@ -157,9 +157,9 @@ LRESULT App::FontEditorWindow::Window_OnSize() {
 		if (deficit > 0) {
 			const auto reduceList = (std::min<int>)(deficit, listViewHeightPx - minListPx);
 			listViewHeightPx -= reduceList;
-			deficit -= reduceList;
+			// deficit -= reduceList;
 		}
-		previewHeightPx = (std::max<int>)(0, availableHeight - listViewHeightPx - editHeightPx - splitterThickness * 2);
+		// previewHeightPx = (std::max<int>)(0, availableHeight - listViewHeightPx - editHeightPx - splitterThickness * 2);
 	}
 
 	m_scaledListViewHeight = (std::max)(0, listViewHeightPx);
@@ -221,50 +221,65 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 		m_bNeedRedraw = false;
 
 		m_pMipmap = std::make_shared<xivres::texture::memory_mipmap_stream>(
-			(std::max<int>)(1, (clientRect.right - clientRect.left - m_nDrawLeft + m_nZoom - 1) / m_nZoom),
-			(std::max<int>)(1, (clientRect.bottom - clientRect.top - m_nDrawTop + m_nZoom - 1) / m_nZoom),
+			(std::max<int>)(1, (clientRect.right - clientRect.left - m_nDrawLeft) * PreviewZoomOne / m_nZoom),
+			(std::max<int>)(1, (clientRect.bottom - clientRect.top - m_nDrawTop) * PreviewZoomOne / m_nZoom),
 			1,
 			xivres::texture::formats::B8G8R8A8);
 
-		const auto pad = 16 / m_nZoom;
+		const auto pad = 16 * m_nZoom / PreviewZoomOne;
 		const auto buf = m_pMipmap->as_span<xivres::util::b8g8r8a8>();
 		std::ranges::fill(buf, xivres::util::b8g8r8a8{ 0x88, 0x88, 0x88, 0xFF });
 
-		for (int y = pad; y < m_pMipmap->Height - pad; y++) {
-			for (int x = pad; x < m_pMipmap->Width - pad; x++)
+		const auto measured = [&]() -> std::optional<xivres::fontgen::text_measure_result> {
+			if (!m_pActiveFace || m_pActiveFace->PreviewText.empty())
+				return std::nullopt;
+
+			return xivres::fontgen::text_measurer(*m_pActiveFace->GetMergedFont())
+				.max_width(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
+				.use_kerning(m_bKerning)
+				.measure(m_pActiveFace->PreviewText);
+		}();
+
+		if (measured) {
+			m_nPreviewContentWidth = measured->Occupied.width();
+			m_nPreviewContentHeight = measured->Occupied.height();
+			const auto maxScrollX = (std::max)(0, m_nPreviewContentWidth + pad * 2 - m_pMipmap->Width);
+			const auto maxScrollY = (std::max)(0, m_nPreviewContentHeight + pad * 2 - m_pMipmap->Height);
+			m_nPreviewScrollX = std::clamp(m_nPreviewScrollX, 0, maxScrollX);
+			m_nPreviewScrollY = std::clamp(m_nPreviewScrollY, 0, maxScrollY);
+			m_nPreviewMayScroll = maxScrollX || maxScrollY;
+		} else {
+			m_nPreviewContentHeight = 0;
+			m_nPreviewScrollX = 0;
+			m_nPreviewScrollY = 0;
+			m_nPreviewMayScroll = false;
+		}
+
+		const RECT previewContentRect = {
+			.left = (std::max)(0, pad - m_nPreviewScrollX),
+			.top = (std::max)(0, pad - m_nPreviewScrollY),
+			.right = (std::max<int>)(
+				(std::min<int>)(m_nPreviewContentWidth + pad - m_nPreviewScrollX, m_pMipmap->Width),
+				m_pMipmap->Width - pad),
+			.bottom = (std::max<int>)(
+				(std::min<int>)(m_nPreviewContentHeight + pad - m_nPreviewScrollY, m_pMipmap->Height),
+				m_pMipmap->Height - pad),
+		};
+		for (int y = previewContentRect.top; y < previewContentRect.bottom; y++) {
+			for (int x = previewContentRect.left; x < previewContentRect.right; x++)
 				buf[y * m_pMipmap->Width + x] = { 0x00, 0x00, 0x00, 0xFF };
 		}
 
 		if (m_pActiveFace) {
-			auto& face = *m_pActiveFace;
+			const auto& mergedFont = *m_pActiveFace->GetMergedFont();
 
-			const auto& mergedFont = *face.GetMergedFont();
-
-			const auto measured = [&]() -> std::optional<decltype(xivres::fontgen::text_measurer(mergedFont).measure(face.PreviewText))> {
-				if (face.PreviewText.empty())
-					return std::nullopt;
-
-				return xivres::fontgen::text_measurer(mergedFont)
-					.max_width(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
-					.use_kerning(m_bKerning)
-					.measure(face.PreviewText);
-			}();
-
-			if (measured) {
-				m_nPreviewContentHeight = measured->Occupied.height();
-				const auto maxScroll = (std::max)(0, m_nPreviewContentHeight + pad * 2 - m_pMipmap->Height);
-				m_nPreviewScrollY = (std::min)(m_nPreviewScrollY, maxScroll);
-			} else {
-				m_nPreviewContentHeight = 0;
-				m_nPreviewScrollY = 0;
-			}
-
-			if (int lineHeight = mergedFont.line_height(), ascent = mergedFont.ascent(); lineHeight > 0 && m_bShowLineMetrics) {
+			if (int lineHeight = mergedFont.line_height(), ascent = mergedFont.ascent();
+				lineHeight > 0 && m_bShowLineMetrics) {
 				if (ascent < lineHeight) {
 					for (int y = pad - m_nPreviewScrollY, y_ = m_pMipmap->Height - pad; y < y_; y += lineHeight) {
 						if (y + ascent >= pad) {
 							for (int y2 = y + ascent, y2_ = (std::min)(y_, y + lineHeight); y2 < y2_; y2++)
-								for (int x = pad; x < m_pMipmap->Width - pad; x++)
+								for (int x = previewContentRect.left; x < previewContentRect.right; x++)
 									buf[y2 * m_pMipmap->Width + x] = { 0x33, 0x33, 0x33, 0xFF };
 						}
 					}
@@ -272,7 +287,7 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 					for (int y = pad - m_nPreviewScrollY, y_ = m_pMipmap->Height - pad; y < y_; y += 2 * lineHeight) {
 						if (y + lineHeight >= pad) {
 							for (int y2 = y + lineHeight, y2_ = (std::min)(y_, y + 2 * lineHeight); y2 < y2_; y2++)
-								for (int x = pad, x_ = m_pMipmap->Width - pad; x < x_; x++)
+								for (int x = previewContentRect.left; x < previewContentRect.right; x++)
 									buf[y2 * m_pMipmap->Width + x] = { 0x33, 0x33, 0x33, 0xFF };
 						}
 					}
@@ -280,7 +295,13 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 			}
 
 			if (measured) {
-				measured->draw_to(*m_pMipmap, mergedFont, pad, pad - m_nPreviewScrollY, { 0xFF, 0xFF, 0xFF, 0xFF }, { 0, 0, 0, 0 });
+				measured->draw_to(
+					*m_pMipmap,
+					mergedFont,
+					pad - m_nPreviewScrollX,
+					pad - m_nPreviewScrollY,
+					{ 0xFF, 0xFF, 0xFF, 0xFF },
+					{ 0, 0, 0, 0 });
 			}
 		}
 	}
@@ -304,7 +325,20 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 	reinterpret_cast<xivres::util::b8g8r8a8*>(&bmi.bmiColors[0])->set_components(255, 0, 0, 0);
 	reinterpret_cast<xivres::util::b8g8r8a8*>(&bmi.bmiColors[1])->set_components(0, 255, 0, 0);
 	reinterpret_cast<xivres::util::b8g8r8a8*>(&bmi.bmiColors[2])->set_components(0, 0, 255, 0);
-	StretchDIBits(hdc, m_nDrawLeft, m_nDrawTop, m_pMipmap->Width * m_nZoom, m_pMipmap->Height * m_nZoom, 0, 0, m_pMipmap->Width, m_pMipmap->Height, m_pMipmap->as_span<xivres::util::b8g8r8a8>().data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
+	StretchDIBits(
+		hdc,
+		m_nDrawLeft,
+		m_nDrawTop,
+		m_pMipmap->Width * m_nZoom / PreviewZoomOne,
+		m_pMipmap->Height * m_nZoom / PreviewZoomOne,
+		0,
+		0,
+		m_pMipmap->Width,
+		m_pMipmap->Height,
+		m_pMipmap->as_span<xivres::util::b8g8r8a8>().data(),
+		&bmi,
+		DIB_RGB_COLORS,
+		SRCCOPY);
 	EndPaint(m_hWnd, &ps);
 
 	return 0;
@@ -312,7 +346,7 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 
 LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bool isWindowMenu) {
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "" ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language.empty() ? MFS_CHECKED : 0) };
 		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_AUTO, FALSE, &mii);
 	}
 	{
@@ -364,12 +398,18 @@ LRESULT App::FontEditorWindow::Window_OnMouseMove(uint16_t states, int16_t x, in
 
 	if (m_activeSplitter != VerticalSplitter::None) {
 		UpdateSplitterDragPosition(y);
-		SetCursor(LoadCursorW(nullptr, IDC_SIZENS));
 		return 0;
 	}
 
-	if (HitTestSplitter(x, y) != VerticalSplitter::None)
-		SetCursor(LoadCursorW(nullptr, IDC_SIZENS));
+	if (m_previewPan.Active) {
+		POINT pt;
+		GetCursorPos(&pt);
+		SetCursorPos(m_previewPan.DragRelativePosition.x, m_previewPan.DragRelativePosition.y);
+		m_nPreviewScrollX += m_previewPan.DragRelativePosition.x - pt.x;
+		m_nPreviewScrollY += m_previewPan.DragRelativePosition.y - pt.y;
+		Window_Redraw();
+		return 0;
+	}
 
 	return 0;
 }
@@ -386,8 +426,26 @@ LRESULT App::FontEditorWindow::Window_OnMouseLButtonDown(uint16_t states, int16_
 		return 0;
 	}
 
-	if (x >= m_nDrawLeft && y >= m_nDrawTop)
+	if (x >= m_nDrawLeft && y >= m_nDrawTop && m_nPreviewMayScroll) {
 		SetFocus(m_hWnd);
+		m_previewPan.Active = true;
+		GetCursorPos(&m_previewPan.StartPosition);
+		m_previewPan.DragRelativePosition = {
+			GetSystemMetrics(SM_CXSCREEN) / 2,
+			GetSystemMetrics(SM_CYSCREEN) / 2,
+		};
+		if (const auto hm = MonitorFromPoint(m_previewPan.StartPosition, MONITOR_DEFAULTTONEAREST)) {
+			if (MONITORINFO mi; GetMonitorInfoW(hm, &mi)) {
+				m_previewPan.DragRelativePosition = {
+					mi.rcMonitor.left + (mi.rcMonitor.right - mi.rcMonitor.left) / 2,
+					mi.rcMonitor.top + (mi.rcMonitor.bottom - mi.rcMonitor.top) / 2,
+				};
+			}
+		}
+		SetCapture(m_hWnd);
+		SetCursorPos(m_previewPan.DragRelativePosition.x, m_previewPan.DragRelativePosition.y);
+		ShowCursor(FALSE);
+	}
 
 	return 0;
 }
@@ -401,6 +459,13 @@ LRESULT App::FontEditorWindow::Window_OnMouseLButtonUp(uint16_t states, int16_t 
 		return 0;
 	}
 
+	if (m_previewPan.Active) {
+		ReleaseCapture();
+		SetCursorPos(m_previewPan.StartPosition.x, m_previewPan.StartPosition.y);
+		ShowCursor(TRUE);
+		m_previewPan.Active = false;
+	}
+
 	return 0;
 }
 
@@ -409,15 +474,51 @@ LRESULT App::FontEditorWindow::Window_OnMouseWheel(int16_t delta, int16_t x, int
 	ScreenToClient(m_hWnd, &pt);
 
 	if (pt.x >= m_nDrawLeft && pt.y >= m_nDrawTop) {
-		m_nPreviewScrollY -= delta;
-		if (m_nPreviewScrollY < 0)
-			m_nPreviewScrollY = 0;
-		
+		if (GetKeyState(VK_CONTROL) & 0x8000) {
+			m_nZoom = std::clamp(
+				m_nZoom + PreviewZoomScrollUnit * delta / WHEEL_DELTA,
+				PreviewZoomMin,
+				PreviewZoomMax);
+		} else if (GetKeyState(VK_SHIFT) & 0x8000) {
+			m_nPreviewScrollX = (std::max)(m_nPreviewScrollX - delta, 0);
+		} else {
+			m_nPreviewScrollY = (std::max)(m_nPreviewScrollY - delta, 0);
+		}
+
 		Window_Redraw();
 		return 0;
 	}
 
 	return DefWindowProcW(m_hWnd, WM_MOUSEWHEEL, MAKEWPARAM(0, delta), MAKELPARAM(x, y));
+}
+
+LRESULT App::FontEditorWindow::Window_OnSetCursor(HWND hContainer, int hittest, int wm) {
+	if (hContainer != m_hWnd || hittest != HTCLIENT)
+		return FALSE;
+
+	POINT pt;
+	GetCursorPos(&pt);
+	ScreenToClient(m_hWnd, &pt);
+	const auto x = static_cast<int16_t>(pt.x);
+	const auto y = static_cast<int16_t>(pt.y);
+
+	if (m_activeSplitter != VerticalSplitter::None ||
+		HitTestSplitter(x, y) != VerticalSplitter::None)
+		SetCursor(LoadCursorW(nullptr, IDC_SIZENS));
+	else if (x >= m_nDrawLeft && y >= m_nDrawTop && m_nPreviewMayScroll)
+		SetCursor(LoadCursorW(nullptr, IDC_SIZEALL));
+	else
+		SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+	return TRUE;
+}
+
+LRESULT App::FontEditorWindow::Window_OnCaptureChanged(HWND newCapture) {
+	if (newCapture != m_hWnd && m_previewPan.Active) {
+		ShowCursor(TRUE);
+		m_previewPan.Active = false;
+	}
+
+	return 0;
 }
 
 LRESULT App::FontEditorWindow::Window_OnDestroy() {
@@ -480,15 +581,15 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_VIEW_WORDWRAP: return Menu_View_WordWrap();
 				case ID_VIEW_KERNING: return Menu_View_Kerning();
 				case ID_VIEW_SHOWLINEMETRICS: return Menu_View_ShowLineMetrics();
-				case ID_VIEW_100: return Menu_View_Zoom(1);
-				case ID_VIEW_200: return Menu_View_Zoom(2);
-				case ID_VIEW_300: return Menu_View_Zoom(3);
-				case ID_VIEW_400: return Menu_View_Zoom(4);
-				case ID_VIEW_500: return Menu_View_Zoom(5);
-				case ID_VIEW_600: return Menu_View_Zoom(6);
-				case ID_VIEW_700: return Menu_View_Zoom(7);
-				case ID_VIEW_800: return Menu_View_Zoom(8);
-				case ID_VIEW_900: return Menu_View_Zoom(9);
+				case ID_VIEW_100: return Menu_View_Zoom(1 * PreviewZoomOne);
+				case ID_VIEW_200: return Menu_View_Zoom(2 * PreviewZoomOne);
+				case ID_VIEW_300: return Menu_View_Zoom(3 * PreviewZoomOne);
+				case ID_VIEW_400: return Menu_View_Zoom(4 * PreviewZoomOne);
+				case ID_VIEW_500: return Menu_View_Zoom(5 * PreviewZoomOne);
+				case ID_VIEW_600: return Menu_View_Zoom(6 * PreviewZoomOne);
+				case ID_VIEW_700: return Menu_View_Zoom(7 * PreviewZoomOne);
+				case ID_VIEW_800: return Menu_View_Zoom(8 * PreviewZoomOne);
+				case ID_VIEW_900: return Menu_View_Zoom(9 * PreviewZoomOne);
 				case ID_EXPORT_PREVIEW: return Menu_Export_Preview();
 				case ID_EXPORT_RAW: return Menu_Export_Raw();
 				case ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING: return Menu_Export_TTMP(CompressionMode::CompressWhilePacking);
@@ -520,6 +621,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_PAINT: return Window_OnPaint();
 		case WM_INITMENUPOPUP: return Window_OnInitMenuPopup(reinterpret_cast<HMENU>(wParam), LOWORD(lParam), !!HIWORD(lParam));
 		case WM_MOUSEWHEEL: return Window_OnMouseWheel(GET_WHEEL_DELTA_WPARAM(wParam), LOWORD(lParam), HIWORD(lParam));
+		case WM_SETCURSOR: return Window_OnSetCursor(reinterpret_cast<HWND>(wParam), LOWORD(lParam), HIWORD(lParam));
 		case WM_CLOSE: return Menu_File_Exit();
 		case WM_DESTROY: return Window_OnDestroy();
 		case WM_CAPTURECHANGED:
@@ -566,8 +668,8 @@ void App::FontEditorWindow::UpdateSplitterDragPosition(int16_t y) {
 	RECT rc;
 	GetClientRect(m_hWnd, &rc);
 	const auto zoom = GetZoom();
-	const auto minListPx = static_cast<int>(std::lround(MinListViewHeight * zoom));
-	const auto minEditPx = static_cast<int>(std::lround(MinEditHeight * zoom));
+	const auto minListPx = static_cast<int>(std::lround(MinFaceElementListViewHeight * zoom));
+	const auto minEditPx = static_cast<int>(std::lround(MinPreviewEditHeight * zoom));
 	const auto minPreviewPx = static_cast<int>(std::lround(MinPreviewHeight * zoom));
 	const auto availableHeight = static_cast<int>(rc.bottom - rc.top);
 
@@ -578,9 +680,10 @@ void App::FontEditorWindow::UpdateSplitterDragPosition(int16_t y) {
 			const auto maxYRaw = availableHeight - (m_splitterThicknessPx * 2 + minEditPx + minPreviewPx);
 			const auto maxY = (std::max<int>)(minY, maxYRaw);
 			const auto clampedY = std::clamp(static_cast<int>(y), minY, maxY);
-			const auto newDip = (std::max)(MinListViewHeight, static_cast<int>(std::lround(clampedY / zoom)));
-			if (newDip != m_listViewHeightDip) {
-				m_listViewHeightDip = newDip;
+			const auto newDip = (std::max)(MinFaceElementListViewHeight, static_cast<int>(std::lround(clampedY / zoom)));
+			if (newDip != g_config.FaceElementListViewHeight) {
+				g_config.FaceElementListViewHeight = newDip;
+				g_config.MarkDirty();
 				updated = true;
 			}
 			break;
@@ -592,9 +695,10 @@ void App::FontEditorWindow::UpdateSplitterDragPosition(int16_t y) {
 			const auto maxY = (std::max<int>)(effectiveMin, maxYRaw);
 			const auto clampedY = std::clamp(static_cast<int>(y), effectiveMin, maxY);
 			const auto newEditPx = (std::max<int>)(minEditPx, clampedY - m_splitterListEditBottom);
-			const auto newDip = (std::max)(MinEditHeight, static_cast<int>(std::lround(newEditPx / zoom)));
-			if (newDip != m_editHeightDip) {
-				m_editHeightDip = newDip;
+			const auto newDip = (std::max)(MinPreviewEditHeight, static_cast<int>(std::lround(newEditPx / zoom)));
+			if (newDip != g_config.PreviewEditHeight) {
+				g_config.PreviewEditHeight = newDip;
+				g_config.MarkDirty();
 				updated = true;
 			}
 			break;
@@ -615,4 +719,5 @@ void App::FontEditorWindow::EndSplitterDrag() {
 	m_activeSplitter = VerticalSplitter::None;
 	if (GetCapture() == m_hWnd)
 		ReleaseCapture();
+	g_config.SaveIfDirty();
 }

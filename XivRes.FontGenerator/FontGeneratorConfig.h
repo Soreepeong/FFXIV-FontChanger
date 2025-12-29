@@ -10,9 +10,17 @@ struct FontGeneratorConfig {
 
 	std::string Language;
 
+	int FaceElementListViewHeight;
+	int PreviewEditHeight;
+
+	bool Dirty;
+
 	static const FontGeneratorConfig Default;
 
 	static std::filesystem::path GetConfigPath();
+
+	void MarkDirty();
+	void SaveIfDirty();
 
 	void Save() const;
 };
