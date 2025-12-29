@@ -27,6 +27,7 @@ LRESULT App::FontEditorWindow::FaceListBox_OnCommand(uint16_t commandId) {
 				for (auto& pFontSet : m_multiFontSet.FontSets) {
 					if (iItem < pFontSet->Faces.size()) {
 						m_pActiveFace = pFontSet->Faces[iItem].get();
+						m_nPreviewScrollY = 0;
 						UpdateFaceElementList();
 						break;
 					}
