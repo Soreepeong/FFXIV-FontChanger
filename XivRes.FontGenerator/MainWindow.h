@@ -69,6 +69,9 @@ namespace App {
 		int m_nDrawTop{};
 		int m_nZoom = 1;
 
+		int m_nPreviewScrollY = 0;
+		int m_nPreviewContentHeight = 0;
+
 		bool m_bIsReorderingFaceElementList = false;
 		VerticalSplitter m_activeSplitter = VerticalSplitter::None;
 
@@ -93,6 +96,7 @@ namespace App {
 		LRESULT Window_OnMouseMove(uint16_t states, int16_t x, int16_t y);
 		LRESULT Window_OnMouseLButtonDown(uint16_t states, int16_t x, int16_t y);
 		LRESULT Window_OnMouseLButtonUp(uint16_t states, int16_t x, int16_t y);
+		LRESULT Window_OnMouseWheel(int16_t delta, int16_t x, int16_t y);
 		LRESULT Window_OnDestroy();
 		void Window_Redraw();
 

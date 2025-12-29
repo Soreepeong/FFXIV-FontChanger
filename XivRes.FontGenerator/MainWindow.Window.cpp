@@ -240,28 +240,47 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 
 			const auto& mergedFont = *face.GetMergedFont();
 
+			const auto measured = [&]() -> std::optional<decltype(xivres::fontgen::text_measurer(mergedFont).measure(face.PreviewText))> {
+				if (face.PreviewText.empty())
+					return std::nullopt;
+
+				return xivres::fontgen::text_measurer(mergedFont)
+					.max_width(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
+					.use_kerning(m_bKerning)
+					.measure(face.PreviewText);
+			}();
+
+			if (measured) {
+				m_nPreviewContentHeight = measured->Occupied.height();
+				const auto maxScroll = (std::max)(0, m_nPreviewContentHeight + pad * 2 - m_pMipmap->Height);
+				m_nPreviewScrollY = (std::min)(m_nPreviewScrollY, maxScroll);
+			} else {
+				m_nPreviewContentHeight = 0;
+				m_nPreviewScrollY = 0;
+			}
+
 			if (int lineHeight = mergedFont.line_height(), ascent = mergedFont.ascent(); lineHeight > 0 && m_bShowLineMetrics) {
 				if (ascent < lineHeight) {
-					for (int y = pad, y_ = m_pMipmap->Height - pad; y < y_; y += lineHeight) {
-						for (int y2 = y + ascent, y2_ = (std::min)(y_, y + lineHeight); y2 < y2_; y2++)
-							for (int x = pad; x < m_pMipmap->Width - pad; x++)
-								buf[y2 * m_pMipmap->Width + x] = { 0x33, 0x33, 0x33, 0xFF };
+					for (int y = pad - m_nPreviewScrollY, y_ = m_pMipmap->Height - pad; y < y_; y += lineHeight) {
+						if (y + ascent >= pad) {
+							for (int y2 = y + ascent, y2_ = (std::min)(y_, y + lineHeight); y2 < y2_; y2++)
+								for (int x = pad; x < m_pMipmap->Width - pad; x++)
+									buf[y2 * m_pMipmap->Width + x] = { 0x33, 0x33, 0x33, 0xFF };
+						}
 					}
 				} else if (ascent == lineHeight) {
-					for (int y = pad, y_ = m_pMipmap->Height - pad; y < y_; y += 2 * lineHeight) {
-						for (int y2 = y + lineHeight, y2_ = (std::min)(y_, y + 2 * lineHeight); y2 < y2_; y2++)
-							for (int x = pad, x_ = m_pMipmap->Width - pad; x < x_; x++)
-								buf[y2 * m_pMipmap->Width + x] = { 0x33, 0x33, 0x33, 0xFF };
+					for (int y = pad - m_nPreviewScrollY, y_ = m_pMipmap->Height - pad; y < y_; y += 2 * lineHeight) {
+						if (y + lineHeight >= pad) {
+							for (int y2 = y + lineHeight, y2_ = (std::min)(y_, y + 2 * lineHeight); y2 < y2_; y2++)
+								for (int x = pad, x_ = m_pMipmap->Width - pad; x < x_; x++)
+									buf[y2 * m_pMipmap->Width + x] = { 0x33, 0x33, 0x33, 0xFF };
+						}
 					}
 				}
 			}
 
-			if (!face.PreviewText.empty()) {
-				xivres::fontgen::text_measurer(mergedFont)
-					.max_width(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
-					.use_kerning(m_bKerning)
-					.measure(face.PreviewText)
-					.draw_to(*m_pMipmap, mergedFont, pad, pad, { 0xFF, 0xFF, 0xFF, 0xFF }, { 0, 0, 0, 0 });
+			if (measured) {
+				measured->draw_to(*m_pMipmap, mergedFont, pad, pad - m_nPreviewScrollY, { 0xFF, 0xFF, 0xFF, 0xFF }, { 0, 0, 0, 0 });
 			}
 		}
 	}
@@ -367,6 +386,9 @@ LRESULT App::FontEditorWindow::Window_OnMouseLButtonDown(uint16_t states, int16_
 		return 0;
 	}
 
+	if (x >= m_nDrawLeft && y >= m_nDrawTop)
+		SetFocus(m_hWnd);
+
 	return 0;
 }
 
@@ -380,6 +402,22 @@ LRESULT App::FontEditorWindow::Window_OnMouseLButtonUp(uint16_t states, int16_t 
 	}
 
 	return 0;
+}
+
+LRESULT App::FontEditorWindow::Window_OnMouseWheel(int16_t delta, int16_t x, int16_t y) {
+	POINT pt{ x, y };
+	ScreenToClient(m_hWnd, &pt);
+
+	if (pt.x >= m_nDrawLeft && pt.y >= m_nDrawTop) {
+		m_nPreviewScrollY -= delta;
+		if (m_nPreviewScrollY < 0)
+			m_nPreviewScrollY = 0;
+		
+		Window_Redraw();
+		return 0;
+	}
+
+	return DefWindowProcW(m_hWnd, WM_MOUSEWHEEL, MAKEWPARAM(0, delta), MAKELPARAM(x, y));
 }
 
 LRESULT App::FontEditorWindow::Window_OnDestroy() {
@@ -481,6 +519,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_SIZE: return Window_OnSize();
 		case WM_PAINT: return Window_OnPaint();
 		case WM_INITMENUPOPUP: return Window_OnInitMenuPopup(reinterpret_cast<HMENU>(wParam), LOWORD(lParam), !!HIWORD(lParam));
+		case WM_MOUSEWHEEL: return Window_OnMouseWheel(GET_WHEEL_DELTA_WPARAM(wParam), LOWORD(lParam), HIWORD(lParam));
 		case WM_CLOSE: return Menu_File_Exit();
 		case WM_DESTROY: return Window_OnDestroy();
 		case WM_CAPTURECHANGED:
