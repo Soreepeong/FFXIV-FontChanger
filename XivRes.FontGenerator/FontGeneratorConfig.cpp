@@ -4,17 +4,17 @@
 
 const FontGeneratorConfig FontGeneratorConfig::Default{
 	.Global = {
-		// R"(C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game)",
+		R"(C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game)",
 	},
 	.China = {
-		// u8R"(C:\Program Files (x86)\上海数龙科技有限公司\最终幻想XIV\game)",
-		// R"(C:\Program Files (x86)\SNDA\FFXIV\game)"
+		u8R"(C:\Program Files (x86)\上海数龙科技有限公司\最终幻想XIV\game)",
+		R"(C:\Program Files (x86)\SNDA\FFXIV\game)"
 	},
 	.Korea = {
-		// R"(C:\Program Files (x86)\FINAL FANTASY XIV - KOREA\game)",
+		R"(C:\Program Files (x86)\FINAL FANTASY XIV - KOREA\game)",
 	},
 	.TraditionalChinese = {
-		// R"(C:\Program Files (x86)\USERJOY GAMES\FINAL FANTASY XIV TC\game)",
+		R"(C:\Program Files\USERJOY GAMES\FINAL FANTASY XIV TC\game)",
 	},
 	.FaceElementListViewHeight = ::FaceElementListViewHeight,
 	.PreviewEditHeight = ::PreviewEditHeight,
