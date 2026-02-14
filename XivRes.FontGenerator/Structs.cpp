@@ -4,15 +4,15 @@
 #include "FontGeneratorConfig.h"
 #include "resource.h"
 
-std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::game_font_family family, float size) {
-	static std::map<xivres::font_type, xivres::fontgen::game_fontdata_set> s_fontSet;
-	static std::mutex s_mtx;
+static std::map<xivres::font_type, xivres::fontgen::game_fontdata_set> s_fontSetCache;
+static std::mutex s_fontSetCacheMtx;
+static bool s_showedGameNotFoundError = false;
 
-	const auto lock = std::lock_guard(s_mtx);
+static std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::game_font_family family, float size) {
+	const auto lock = std::lock_guard(s_fontSetCacheMtx);
 
 	std::shared_ptr<xivres::fontgen::game_fontdata_set> strong;
 
-	static bool showedGameNotFoundError = false;
 	try {
 		switch (family) {
 			case xivres::fontgen::game_font_family::AXIS:
@@ -21,9 +21,9 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			case xivres::fontgen::game_font_family::MiedingerMid:
 			case xivres::fontgen::game_font_family::Meidinger:
 			case xivres::fontgen::game_font_family::TrumpGothic: {
-				auto& font = s_fontSet[xivres::font_type::font];
+				auto& font = s_fontSetCache[xivres::font_type::font];
 				if (!font) {
-					for (const auto pathList : {g_config.Global, g_config.China, g_config.Korea, g_config.TraditionalChinese}) {
+					for (const auto pathList : { g_config.Global, g_config.China, g_config.Korea, g_config.TraditionalChinese }) {
 						for (const auto& path : pathList) {
 							try {
 								font = xivres::installation(path).get_fontdata_set(xivres::font_type::font);
@@ -41,9 +41,9 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			}
 
 			case xivres::fontgen::game_font_family::ChnAXIS: {
-				auto& font = s_fontSet[xivres::font_type::chn_axis];
+				auto& font = s_fontSetCache[xivres::font_type::chn_axis];
 				if (!font) {
-					for (const auto pathList : {g_config.China}) {
+					for (const auto pathList : { g_config.China }) {
 						for (const auto& path : pathList) {
 							try {
 								font = xivres::installation(path).get_fontdata_set(xivres::font_type::chn_axis);
@@ -57,9 +57,9 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			}
 
 			case xivres::fontgen::game_font_family::KrnAXIS: {
-				auto& font = s_fontSet[xivres::font_type::krn_axis];
+				auto& font = s_fontSetCache[xivres::font_type::krn_axis];
 				if (!font) {
-					for (const auto pathList : {g_config.Korea}) {
+					for (const auto pathList : { g_config.Korea }) {
 						for (const auto& path : pathList) {
 							try {
 								font = xivres::installation(path).get_fontdata_set(xivres::font_type::krn_axis);
@@ -71,11 +71,11 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 				}
 				return font.get_font(family, size);
 			}
-			
+
 			case xivres::fontgen::game_font_family::tcaxis: {
-				auto& font = s_fontSet[xivres::font_type::tc_axis];
+				auto& font = s_fontSetCache[xivres::font_type::tc_axis];
 				if (!font) {
-					for (const auto pathList : {g_config.TraditionalChinese}) {
+					for (const auto pathList : { g_config.TraditionalChinese }) {
 						for (const auto& path : pathList) {
 							try {
 								font = xivres::installation(path).get_fontdata_set(xivres::font_type::tc_axis);
@@ -89,18 +89,18 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 			}
 		}
 	} catch (const WException& e) {
-		if (!showedGameNotFoundError) {
-			showedGameNotFoundError = true;
+		if (!s_showedGameNotFoundError) {
+			s_showedGameNotFoundError = true;
 			ShowErrorMessageBox(nullptr, IDS_ERROR_GAMENOTFOUND_BODY, e);
 		}
 	} catch (const std::system_error& e) {
-		if (!showedGameNotFoundError) {
-			showedGameNotFoundError = true;
+		if (!s_showedGameNotFoundError) {
+			s_showedGameNotFoundError = true;
 			ShowErrorMessageBox(nullptr, IDS_ERROR_GAMENOTFOUND_BODY, e);
 		}
 	} catch (const std::exception& e) {
-		if (!showedGameNotFoundError) {
-			showedGameNotFoundError = true;
+		if (!s_showedGameNotFoundError) {
+			s_showedGameNotFoundError = true;
 			ShowErrorMessageBox(nullptr, IDS_ERROR_GAMENOTFOUND_BODY, e);
 		}
 	}
@@ -110,43 +110,43 @@ std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::g
 
 std::wstring App::Structs::LookupStruct::GetWeightString() const {
 	switch (Weight) {
-		case DWRITE_FONT_WEIGHT_THIN: return L"Thin";
-		case DWRITE_FONT_WEIGHT_EXTRA_LIGHT: return L"Extra Light";
-		case DWRITE_FONT_WEIGHT_LIGHT: return L"Light";
-		case DWRITE_FONT_WEIGHT_SEMI_LIGHT: return L"Semi Light";
-		case DWRITE_FONT_WEIGHT_NORMAL: return L"Normal";
-		case DWRITE_FONT_WEIGHT_MEDIUM: return L"Medium";
-		case DWRITE_FONT_WEIGHT_SEMI_BOLD: return L"Semi Bold";
-		case DWRITE_FONT_WEIGHT_BOLD: return L"Bold";
-		case DWRITE_FONT_WEIGHT_EXTRA_BOLD: return L"Extra Bold";
-		case DWRITE_FONT_WEIGHT_BLACK: return L"Black";
-		case DWRITE_FONT_WEIGHT_EXTRA_BLACK: return L"Extra Black";
+		case DWRITE_FONT_WEIGHT_THIN: return std::wstring(GetStringResource(IDS_FONTWEIGHT_100));
+		case DWRITE_FONT_WEIGHT_EXTRA_LIGHT: return std::wstring(GetStringResource(IDS_FONTWEIGHT_200));
+		case DWRITE_FONT_WEIGHT_LIGHT: return std::wstring(GetStringResource(IDS_FONTWEIGHT_300));
+		case DWRITE_FONT_WEIGHT_SEMI_LIGHT: return std::wstring(GetStringResource(IDS_FONTWEIGHT_350));
+		case DWRITE_FONT_WEIGHT_NORMAL: return std::wstring(GetStringResource(IDS_FONTWEIGHT_400));
+		case DWRITE_FONT_WEIGHT_MEDIUM: return std::wstring(GetStringResource(IDS_FONTWEIGHT_500));
+		case DWRITE_FONT_WEIGHT_SEMI_BOLD: return std::wstring(GetStringResource(IDS_FONTWEIGHT_600));
+		case DWRITE_FONT_WEIGHT_BOLD: return std::wstring(GetStringResource(IDS_FONTWEIGHT_700));
+		case DWRITE_FONT_WEIGHT_EXTRA_BOLD: return std::wstring(GetStringResource(IDS_FONTWEIGHT_800));
+		case DWRITE_FONT_WEIGHT_BLACK: return std::wstring(GetStringResource(IDS_FONTWEIGHT_900));
+		case DWRITE_FONT_WEIGHT_EXTRA_BLACK: return std::wstring(GetStringResource(IDS_FONTWEIGHT_950));
 		default: return std::format(L"{}", static_cast<int>(Weight));
 	}
 }
 
 std::wstring App::Structs::LookupStruct::GetStretchString() const {
 	switch (Stretch) {
-		case DWRITE_FONT_STRETCH_UNDEFINED: return L"Undefined";
-		case DWRITE_FONT_STRETCH_ULTRA_CONDENSED: return L"Ultra Condensed";
-		case DWRITE_FONT_STRETCH_EXTRA_CONDENSED: return L"Extra Condensed";
-		case DWRITE_FONT_STRETCH_CONDENSED: return L"Condensed";
-		case DWRITE_FONT_STRETCH_SEMI_CONDENSED: return L"Semi Condensed";
-		case DWRITE_FONT_STRETCH_NORMAL: return L"Normal";
-		case DWRITE_FONT_STRETCH_SEMI_EXPANDED: return L"Semi Expanded";
-		case DWRITE_FONT_STRETCH_EXPANDED: return L"Expanded";
-		case DWRITE_FONT_STRETCH_EXTRA_EXPANDED: return L"Extra Expanded";
-		case DWRITE_FONT_STRETCH_ULTRA_EXPANDED: return L"Ultra Expanded";
-		default: return L"Invalid";
+		case DWRITE_FONT_STRETCH_UNDEFINED: return L"-";
+		case DWRITE_FONT_STRETCH_ULTRA_CONDENSED: return std::wstring(GetStringResource(IDS_FONTSTRETCH_ULTRA_CONDENSED));
+		case DWRITE_FONT_STRETCH_EXTRA_CONDENSED: return std::wstring(GetStringResource(IDS_FONTSTRETCH_EXTRA_CONDENSED));
+		case DWRITE_FONT_STRETCH_CONDENSED: return std::wstring(GetStringResource(IDS_FONTSTRETCH_CONDENSED));
+		case DWRITE_FONT_STRETCH_SEMI_CONDENSED: return std::wstring(GetStringResource(IDS_FONTSTRETCH_SEMI_CONDENSED));
+		case DWRITE_FONT_STRETCH_NORMAL: return std::wstring(GetStringResource(IDS_FONTSTRETCH_NORMAL));
+		case DWRITE_FONT_STRETCH_SEMI_EXPANDED: return std::wstring(GetStringResource(IDS_FONTSTRETCH_SEMI_EXPANDED));
+		case DWRITE_FONT_STRETCH_EXPANDED: return std::wstring(GetStringResource(IDS_FONTSTRETCH_EXPANDED));
+		case DWRITE_FONT_STRETCH_EXTRA_EXPANDED: return std::wstring(GetStringResource(IDS_FONTSTRETCH_EXTRA_EXPANDED));
+		case DWRITE_FONT_STRETCH_ULTRA_EXPANDED: return std::wstring(GetStringResource(IDS_FONTSTRETCH_ULTRA_EXPANDED));
+		default: return L"(?)";
 	}
 }
 
 std::wstring App::Structs::LookupStruct::GetStyleString() const {
 	switch (Style) {
-		case DWRITE_FONT_STYLE_NORMAL: return L"Normal";
-		case DWRITE_FONT_STYLE_OBLIQUE: return L"Oblique";
-		case DWRITE_FONT_STYLE_ITALIC: return L"Italic";
-		default: return L"Invalid";
+		case DWRITE_FONT_STYLE_NORMAL: return std::wstring(GetStringResource(IDS_FONTSTYLE_NORMAL));
+		case DWRITE_FONT_STYLE_OBLIQUE: return std::wstring(GetStringResource(IDS_FONTSTYLE_OBLIQUE));
+		case DWRITE_FONT_STYLE_ITALIC: return std::wstring(GetStringResource(IDS_FONTSTYLE_ITALIC));
+		default: return L"(?)";
 	}
 }
 
@@ -207,7 +207,7 @@ std::pair<std::shared_ptr<xivres::stream>, int> App::Structs::LookupStruct::Reso
 	memcpy(buf.data(), pFragmentStart, buf.size());
 	stream->ReleaseFileFragment(pFragmentContext);
 
-	return {std::make_shared<xivres::memory_stream>(std::move(buf)), face->GetIndex()};
+	return { std::make_shared<xivres::memory_stream>(std::move(buf)), face->GetIndex() };
 }
 
 const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceElement::GetBaseFont() const {
@@ -275,6 +275,11 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 		m_wrappedFont = std::make_shared<xivres::fontgen::wrapping_fixed_size_font>(GetBaseFont(), WrapModifiers);
 
 	return m_wrappedFont;
+}
+
+void App::Structs::FaceElement::FlushCache() {
+	m_baseFont.reset();
+	m_wrappedFont.reset();
 }
 
 void App::Structs::FaceElement::OnFontWrappingParametersChange() {
@@ -424,7 +429,8 @@ App::Structs::FaceElement::FaceElement(const FaceElement& r)
 	, WrapModifiers(r.WrapModifiers)
 	, Renderer(r.Renderer)
 	, Lookup(r.Lookup)
-	, RendererSpecific(r.RendererSpecific) {}
+	, RendererSpecific(r.RendererSpecific) {
+}
 
 App::Structs::FaceElement App::Structs::FaceElement::operator=(FaceElement&& r) noexcept {
 	swap(*this, r);
@@ -467,6 +473,12 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::Face::Get
 	return MergedFont;
 }
 
+void App::Structs::Face::FlushCache() {
+	MergedFont.reset();
+	for (const auto& e : Elements)
+		e->FlushCache();
+}
+
 void App::Structs::Face::OnElementChange() {
 	MergedFont = nullptr;
 }
@@ -504,6 +516,11 @@ void App::Structs::swap(Face& l, Face& r) noexcept {
 	swap(l.Name, r.Name);
 	swap(l.PreviewText, r.PreviewText);
 	swap(l.Elements, r.Elements);
+}
+
+void App::Structs::FontSet::FlushCache() {
+	for (const auto& e : Faces)
+		e->FlushCache();
 }
 
 void App::Structs::FontSet::ConsolidateFonts() const {
@@ -545,13 +562,13 @@ App::Structs::FontSet App::Structs::FontSet::NewFromTemplateFont(xivres::font_ty
 		std::vector<std::pair<char32_t, char32_t>> codepoints;
 		if (filename == "Jupiter_45" || filename == "Jupiter_90") {
 			previewText = "123,456,789.000!!!";
-			codepoints = {{U'0', U'9'}, {U'!', U'!'}, {U'.', U'.'}, {U',', U','}};
+			codepoints = { {U'0', U'9'}, {U'!', U'!'}, {U'.', U'.'}, {U',', U','} };
 		} else if (filename.starts_with("Meidinger_")) {
 			previewText = "0123456789?!%+-./";
-			codepoints = {{0x0000, 0x10FFFF}};
+			codepoints = { {0x0000, 0x10FFFF} };
 		} else {
 			previewText = GetDefaultPreviewText();
-			codepoints = {{0x0000, 0x10FFFF}};
+			codepoints = { {0x0000, 0x10FFFF} };
 		}
 
 		auto& face = *res.Faces.emplace_back(std::make_unique<Face>());
@@ -570,6 +587,17 @@ App::Structs::FontSet App::Structs::FontSet::NewFromTemplateFont(xivres::font_ty
 	}
 
 	return res;
+}
+
+void App::Structs::MultiFontSet::FlushCache() {
+	for (const auto& e : FontSets)
+		e->FlushCache();
+}
+
+void App::Structs::FlushCachedFonts() {
+	const auto lock = std::lock_guard(s_fontSetCacheMtx);
+	s_fontSetCache.clear();
+	s_showedGameNotFoundError = false;
 }
 
 void App::Structs::from_json(const nlohmann::json& json, FontSet& value) {
@@ -676,7 +704,7 @@ void App::Structs::to_json(nlohmann::json& json, const FaceElement& value) {
 	json.emplace("gamma", value.Gamma);
 	json.emplace("mergeMode", value.MergeMode);
 	json.emplace("wrapModifiers", value.WrapModifiers);
-	json.emplace("transformationMatrix", nlohmann::json::array({value.TransformationMatrix.M11, value.TransformationMatrix.M12, value.TransformationMatrix.M21, value.TransformationMatrix.M22,}));
+	json.emplace("transformationMatrix", nlohmann::json::array({ value.TransformationMatrix.M11, value.TransformationMatrix.M12, value.TransformationMatrix.M21, value.TransformationMatrix.M22, }));
 	json.emplace("renderer", static_cast<int>(value.Renderer));
 	json.emplace("lookup", value.Lookup);
 	json.emplace("renderSpecific", value.RendererSpecific);
@@ -713,19 +741,19 @@ void App::Structs::to_json(nlohmann::json& json, const RendererSpecificStruct& v
 	json.emplace("empty", nlohmann::json::object({
 		{"ascent", value.Empty.Ascent},
 		{"lineHeight", value.Empty.LineHeight},
-	}));
+		}));
 	json.emplace("freetype", nlohmann::json::object({
 		{"noHinting", !!(value.FreeType.LoadFlags & FT_LOAD_NO_HINTING)},
 		{"noBitmap", !!(value.FreeType.LoadFlags & FT_LOAD_NO_BITMAP)},
 		{"forceAutohint", !!(value.FreeType.LoadFlags & FT_LOAD_FORCE_AUTOHINT)},
 		{"noAutohint", !!(value.FreeType.LoadFlags & FT_LOAD_NO_AUTOHINT)},
 		{"renderMode", static_cast<int>(value.FreeType.RenderMode)},
-	}));
+		}));
 	json.emplace("directwrite", nlohmann::json::object({
 		{"renderMode", static_cast<int>(value.DirectWrite.RenderMode)},
 		{"measureMode", static_cast<int>(value.DirectWrite.MeasureMode)},
 		{"gridFitMode", static_cast<int>(value.DirectWrite.GridFitMode)},
-	}));
+		}));
 }
 
 void xivres::fontgen::from_json(const nlohmann::json& json, wrap_modifiers& value) {
@@ -774,7 +802,7 @@ void xivres::fontgen::to_json(nlohmann::json& json, const wrap_modifiers& value)
 	json = nlohmann::json::object();
 	auto& codepoints = *json.emplace("codepoints", nlohmann::json::array()).first;
 	for (const auto& c : value.Codepoints)
-		codepoints.emplace_back(nlohmann::json::array({static_cast<uint32_t>(c.first), static_cast<uint32_t>(c.second)}));
+		codepoints.emplace_back(nlohmann::json::array({ static_cast<uint32_t>(c.first), static_cast<uint32_t>(c.second) }));
 	json.emplace("letterSpacing", value.LetterSpacing);
 	json.emplace("horizontalOffset", value.HorizontalOffset);
 	json.emplace("baselineShift", value.BaselineShift);
@@ -867,5 +895,5 @@ const char* App::Structs::GetDefaultPreviewText() {
 		u8"\r\n"
 		u8"\r\n"
 		// almost every script covered by Nirmala UI has too much triple character gpos entries to be usable in game, so don't bother
-	);
+		);
 }

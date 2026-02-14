@@ -494,7 +494,7 @@ LRESULT App::FontEditorWindow::Window_OnMouseWheel(int16_t delta, int16_t x, int
 
 LRESULT App::FontEditorWindow::Window_OnSetCursor(HWND hContainer, int hittest, int wm) {
 	if (hContainer != m_hWnd || hittest != HTCLIENT)
-		return FALSE;
+		return DefWindowProcW(m_hWnd, WM_SETCURSOR, reinterpret_cast<WPARAM>(hContainer), MAKELPARAM(hittest, wm));
 
 	POINT pt;
 	GetCursorPos(&pt);
@@ -554,6 +554,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_FILE_LANGUAGE_ENGLISH: return Menu_File_Language("en-us");
 				case ID_FILE_LANGUAGE_KOREAN: return Menu_File_Language("ko-kr");
 				case ID_FILE_LANGUAGE_CHINESE: return Menu_File_Language("zh-hans");
+				case ID_FILE_GAMEINSTALLATIONMANAGER: return Menu_File_GameInstallationManager();
 				case ID_FILE_EXIT: return Menu_File_Exit();
 				case ID_EDIT_ADD: return Menu_Edit_Add();
 				case ID_EDIT_CUT: return Menu_Edit_Cut();

@@ -132,6 +132,25 @@ void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const std::exce
 		MB_OK | MB_ICONERROR);
 }
 
+double GetZoomFromWindow(HWND hWnd) {
+	const auto hMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+	UINT newDpiX = 96;
+	UINT newDpiY = 96;
+
+	if (FAILED(GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, &newDpiX, &newDpiY))) {
+		MONITORINFOEXW mi{};
+		mi.cbSize = static_cast<DWORD>(sizeof MONITORINFOEXW);
+		GetMonitorInfoW(hMonitor, &mi);
+		if (const auto hdc = CreateDCW(L"DISPLAY", mi.szDevice, nullptr, nullptr)) {
+			newDpiX = GetDeviceCaps(hdc, LOGPIXELSX);
+			newDpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+			DeleteDC(hdc);
+		}
+	}
+
+	return std::min(newDpiY, newDpiX) / 96.;
+}
+
 std::wstring GetOpenTypeFeatureName(DWRITE_FONT_FEATURE_TAG tag) {
 	const auto c1 = reinterpret_cast<char*>(&tag)[0];
 	const auto c2 = reinterpret_cast<char*>(&tag)[1];

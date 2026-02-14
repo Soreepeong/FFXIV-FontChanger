@@ -50,6 +50,7 @@ BEGIN
             MENUITEM "韩语(한국어)(&K)",                 ID_FILE_LANGUAGE_KOREAN
             MENUITEM "简体中文(&C)",                    ID_FILE_LANGUAGE_CHINESE
         END
+        MENUITEM "Configure &Game Installations", ID_FILE_GAMEINSTALLATIONMANAGER
         MENUITEM SEPARATOR
         MENUITEM "退出(&X)\tCtrl+Q",              ID_FILE_EXIT
     END
@@ -681,6 +682,7 @@ BEGIN
             MENUITEM "한국어 (&K)",                    ID_FILE_LANGUAGE_KOREAN
             MENUITEM "중국어 (简体中文)(&C)",              ID_FILE_LANGUAGE_CHINESE
         END
+        MENUITEM "게임 설치 경로 설정(&G)",             ID_FILE_GAMEINSTALLATIONMANAGER
         MENUITEM SEPARATOR
         MENUITEM "끝내기(&X)\tCtrl+Q",             ID_FILE_EXIT
     END
@@ -845,6 +847,19 @@ BEGIN
     CONTROL         "",IDC_PROGRESS,"msctls_progress32",WS_BORDER,6,30,300,18
 END
 
+IDD_GAMEINSTALLATIONMANAGER DIALOGEX 0, 0, 310, 176
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "게임 설치 경로 관리"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "확인",IDOK,198,156,50,14
+    PUSHBUTTON      "취소",IDCANCEL,252,156,50,14
+    CONTROL         "",IDC_PATHLIST,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,6,6,297,144
+    PUSHBUTTON      "자동 감지(&D)",IDC_DETECT,6,156,50,14
+    PUSHBUTTON      "추가(&A)",IDC_ADD,60,156,50,14
+    PUSHBUTTON      "제거(&R)",IDC_REMOVE,114,156,50,14,WS_DISABLED
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -869,6 +884,14 @@ BEGIN
         TOPMARGIN, 7
         BOTTOMMARGIN, 73
     END
+
+    IDD_GAMEINSTALLATIONMANAGER, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 303
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 169
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -884,6 +907,11 @@ BEGIN
 END
 
 IDD_PROGRESS AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_GAMEINSTALLATIONMANAGER AFX_DIALOG_LAYOUT
 BEGIN
     0
 END
@@ -1121,6 +1149,29 @@ BEGIN
     IDS_COMPILESTATUS_LAYOUTANDDRAW "문자 배치 중..."
 END
 
+STRINGTABLE
+BEGIN
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_PATH "설치 경로"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR "퍼블리셔"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_EXISTS "파일 존재 여부"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_EXISTS_YES "예"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_EXISTS_NO "아니오"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_SQEX "스퀘어 에닉스(글로벌판)"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_SNDA "샨다 게임즈(간체중국어판)"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_ACTOZ "액토즈 소프트(한국어판)"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_USERJOY "유저조이 게임즈(번체중국어판)"
+    IDS_GAMEINSTALLATIONDETECT_FOUND_0 
+                            "이미 목록에 등록되지 않은 게임 설치를 자동으로 찾을 수 없었습니다. ""추가"" 버튼으로 직접 경로를 지정하십시오."
+END
+
+STRINGTABLE
+BEGIN
+    IDS_GAMEINSTALLATIONDETECT_FOUND_1 "1개의 게임 설치가 추가로 등록되었습니다."
+    IDS_GAMEINSTALLATIONDETECT_FOUND_N "{}개의 게임 설치가 추가로 등록되었습니다."
+    IDS_GAMEINSTALLATIONADD_NOTAGAME 
+                            "올바른 게임 설치 경로가 아닙니다. 상위 폴더에 게임 런처가 같이 있는 파일을 선택해 주세요."
+END
+
 #endif    // Korean (Korea) resources
 /////////////////////////////////////////////////////////////////////////////
 
@@ -1161,6 +1212,7 @@ BEGIN
             MENUITEM "&Korean (한국어)",               ID_FILE_LANGUAGE_KOREAN
             MENUITEM "&Chinese (简体中文)",             ID_FILE_LANGUAGE_CHINESE
         END
+        MENUITEM "Configure &Game Installations", ID_FILE_GAMEINSTALLATIONMANAGER
         MENUITEM SEPARATOR
         MENUITEM "E&xit\tCtrl+Q",               ID_FILE_EXIT
     END
@@ -1325,6 +1377,19 @@ BEGIN
     LTEXT           "For any number input, begin text with =(equal sign), and then press Enter to evaluate as a math expression.\nOtherwise, hold (Ctrl+)Up/Down key combos to increase or decrease values.",IDC_STATIC,96,366,432,18,0,WS_EX_TRANSPARENT
 END
 
+IDD_GAMEINSTALLATIONMANAGER DIALOGEX 0, 0, 310, 176
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Game Installation Manager"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,198,156,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,252,156,50,14
+    CONTROL         "",IDC_PATHLIST,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,6,6,297,144
+    PUSHBUTTON      "&Detect",IDC_DETECT,6,156,50,14
+    PUSHBUTTON      "&Add",IDC_ADD,60,156,50,14
+    PUSHBUTTON      "&Remove",IDC_REMOVE,114,156,50,14,WS_DISABLED
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -1349,6 +1414,14 @@ BEGIN
         TOPMARGIN, 7
         BOTTOMMARGIN, 401
     END
+
+    IDD_GAMEINSTALLATIONMANAGER, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 303
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 169
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -1364,6 +1437,11 @@ BEGIN
 END
 
 IDD_FACEELEMENTEDITOR AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_GAMEINSTALLATIONMANAGER AFX_DIALOG_LAYOUT
 BEGIN
     0
 END
@@ -1880,6 +1958,27 @@ BEGIN
     IDS_OPENTYPEFEATURE_VRT2 "Vertical Alternates and Rotation"
     IDS_OPENTYPEFEATURE_VRTR "Vertical Alternates for Rotation"
     IDS_OPENTYPEFEATURE_ZERO "Slashed Zero"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_PATH "Path"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR "Publisher"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_EXISTS "Exists"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_EXISTS_YES "Yes"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_EXISTS_NO "No"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_SQEX "Square Enix"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_SNDA "Shanda Games"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_ACTOZ "Actoz Soft"
+    IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_USERJOY "Userjoy Games"
+    IDS_GAMEINSTALLATIONDETECT_FOUND_0 
+                            "No additional game installation has been detected. Use ""Add"" button to manually specify the path."
+END
+
+STRINGTABLE
+BEGIN
+    IDS_GAMEINSTALLATIONDETECT_FOUND_1 
+                            "1 additional game installation has been detected."
+    IDS_GAMEINSTALLATIONDETECT_FOUND_N 
+                            "{} additional game installations have been detected."
+    IDS_GAMEINSTALLATIONADD_NOTAGAME 
+                            "Selected file is not a part of a valid game installation. Specify a path with game launcher/boot files residing in its parent directory."
 END
 
 #endif    // English (United States) resources

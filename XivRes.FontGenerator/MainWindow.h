@@ -114,6 +114,7 @@ namespace App {
 		LRESULT Menu_File_Save();
 		LRESULT Menu_File_SaveAs(bool changeCurrentFile);
 		LRESULT Menu_File_Language(const char* language);
+		LRESULT Menu_File_GameInstallationManager();
 		LRESULT Menu_File_Exit();
 
 		LRESULT Menu_Edit_Add();

@@ -5,6 +5,7 @@
 #include "xivres/textools.h"
 #include "resource.h"
 #include "FontGeneratorConfig.h"
+#include "GameInstallationManagerDialog.h"
 
 LRESULT App::FontEditorWindow::Menu_File_New(xivres::font_type fontType) {
 	if (Changes_ConfirmIfDirty())
@@ -64,7 +65,7 @@ LRESULT App::FontEditorWindow::Menu_File_Open() {
 		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_OPEN)).c_str()));
 		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
 		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
-		switch (SuccessOrThrow(pDialog->Show(m_hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
+		switch (SuccessOrThrow(pDialog->Show(m_hWnd), { HRESULT_FROM_WIN32(ERROR_CANCELLED) })) {
 			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
 				return 0;
 		}
@@ -161,7 +162,7 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 		SuccessOrThrow(pDialog->SetDefaultExtension(L"json"));
 		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
 		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
-		switch (SuccessOrThrow(pDialog->Show(m_hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
+		switch (SuccessOrThrow(pDialog->Show(m_hWnd), { HRESULT_FROM_WIN32(ERROR_CANCELLED) })) {
 			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
 				return 0;
 		}
@@ -212,6 +213,21 @@ LRESULT App::FontEditorWindow::Menu_File_Language(const char* language) {
 			std::wstring(GetStringResource(IDS_APP, langId)).c_str(),
 			MB_OK);
 	}
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::Menu_File_GameInstallationManager() {
+	if (auto newConf = GameInstallationManagerDialog::Show(m_hWnd, g_config); newConf.has_value()) {
+		g_config.Global = std::move(newConf->Global);
+		g_config.China = std::move(newConf->China);
+		g_config.Korea = std::move(newConf->Korea);
+		g_config.TraditionalChinese = std::move(newConf->TraditionalChinese);
+		g_config.Save();
+		Structs::FlushCachedFonts();
+		this->m_multiFontSet.FlushCache();
+		Window_Redraw();
+	}
+
 	return 0;
 }
 

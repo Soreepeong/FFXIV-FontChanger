@@ -9,3 +9,5 @@ void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const class std
 void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const class std::exception& e);
 
 std::wstring GetOpenTypeFeatureName(enum DWRITE_FONT_FEATURE_TAG tag);
+
+double GetZoomFromWindow(HWND hWnd);

@@ -21,6 +21,7 @@
 #include <ShellScalingApi.h>
 #include <ShObjIdl.h>
 #include <ShlGuid.h>
+#include <wincrypt.h>
 
 #include <exprtk.hpp>
 

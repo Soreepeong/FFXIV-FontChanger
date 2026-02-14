@@ -60,6 +60,8 @@ namespace App::Structs {
 		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetBaseFont() const;
 		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetWrappedFont() const;
 
+		void FlushCache();
+
 		void OnFontWrappingParametersChange();
 		void OnFontCreateParametersChange();
 
@@ -90,6 +92,8 @@ namespace App::Structs {
 
 		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetMergedFont() const;
 
+		void FlushCache();
+
 		void OnElementChange();
 	};
 
@@ -102,6 +106,8 @@ namespace App::Structs {
 		int ExpectedTexCount = 1;
 		std::vector<std::unique_ptr<Face>> Faces;
 
+		void FlushCache();
+
 		void ConsolidateFonts() const;
 
 		static FontSet NewFromTemplateFont(xivres::font_type fontType);
@@ -113,7 +119,11 @@ namespace App::Structs {
 		bool ExportMapChnAxisToFont = true;
 		bool ExportMapKrnAxisToFont = true;
 		bool ExportMapTcAxisToFont = true;
+
+		void FlushCache();
 	};
+
+	void FlushCachedFonts();
 
 	void to_json(nlohmann::json& json, const LookupStruct& value);
 

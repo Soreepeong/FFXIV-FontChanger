@@ -177,22 +177,7 @@ LRESULT WINAPI App::ExportPreviewWindow::WndProcInitial(HWND hwnd, UINT msg, WPA
 }
 
 double App::ExportPreviewWindow::GetZoom() const noexcept {
-	const auto hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
-	UINT newDpiX = 96;
-	UINT newDpiY = 96;
-
-	if (FAILED(GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, &newDpiX, &newDpiY))) {
-		MONITORINFOEXW mi{};
-		mi.cbSize = static_cast<DWORD>(sizeof MONITORINFOEXW);
-		GetMonitorInfoW(hMonitor, &mi);
-		if (const auto hdc = CreateDCW(L"DISPLAY", mi.szDevice, nullptr, nullptr)) {
-			newDpiX = GetDeviceCaps(hdc, LOGPIXELSX);
-			newDpiY = GetDeviceCaps(hdc, LOGPIXELSY);
-			DeleteDC(hdc);
-		}
-	}
-
-	return std::min(newDpiY, newDpiX) / 96.;
+	return GetZoomFromWindow(m_hWnd);
 }
 
 App::ExportPreviewWindow::ExportPreviewWindow(std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::fixed_size_font>>> fonts) : m_fonts(fonts) {
