@@ -90,6 +90,8 @@ namespace App {
 
 		INT_PTR CustomRangeAdd_OnCommand(uint16_t notiCode);
 
+		INT_PTR CustomRangeSubtract_OnCommand(uint16_t notiCode);
+
 		INT_PTR CodepointsList_OnCommand(uint16_t notiCode);
 
 		INT_PTR CodepointsClearButton_OnCommand(uint16_t notiCode);
@@ -108,6 +110,8 @@ namespace App {
 
 		INT_PTR UnicodeBlockSearchAdd_OnCommand(uint16_t notiCode);
 
+		INT_PTR UnicodeBlockSearchSubtract_OnCommand(uint16_t notiCode);
+
 		INT_PTR ExpressionHelpButton_OnCommand(uint16_t notiCode);
 
 		INT_PTR Dialog_OnInitDialog();
@@ -115,6 +119,7 @@ namespace App {
 		std::vector<std::pair<char32_t, char32_t>> ParseCustomRangeString();
 		bool AddNewCodepointRange(char32_t c1, char32_t c2, const std::vector<char32_t>& charVec);
 		void AddCodepointRangeToListBox(int index, char32_t c1, char32_t c2, const std::vector<char32_t>& charVec);
+		void RemoveCodepointRanges(const std::vector<std::pair<char32_t, char32_t>>& ranges);
 		void RefreshUnicodeBlockSearchResults();
 
 		void SetControlsEnabledOrDisabled();

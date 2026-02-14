@@ -197,7 +197,8 @@ INT_PTR App::GameInstallationManagerDialog::AddButton_OnCommand(uint16_t notiCod
 			return 1;
 		}
 
-		AddInstallation(std::move(path), vendor);
+		if (std::ranges::all_of(m_installations, [&](const auto& item) { return item.Path != path; }))
+			AddInstallation(std::move(path), vendor);
 	} catch (const WException& e) {
 		ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
 		return 1;
@@ -273,8 +274,9 @@ INT_PTR App::GameInstallationManagerDialog::PathListView_ColumnClick(const NMLIS
 }
 
 INT_PTR App::GameInstallationManagerDialog::PathListView_DoubleClick(const NMITEMACTIVATE& nm) {
-	if (nm.lParam >= 0 && nm.lParam < m_installations.size())
-		ShellExecuteW(m_hWnd, L"explore", m_installations[static_cast<size_t>(nm.lParam)].Path.c_str(), nullptr, nullptr, SW_SHOW);
+	const auto index = static_cast<size_t>(nm.lParam);
+	if (index < m_installations.size())
+		ShellExecuteW(m_hWnd, L"explore", m_installations[index].Path.c_str(), nullptr, nullptr, SW_SHOW);
 	
 	return 0;
 }

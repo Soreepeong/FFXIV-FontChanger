@@ -37,9 +37,11 @@ struct App::FaceElementEditorDialog::ControlStruct {
 	HWND UnicodeBlockSearchSelectedPreviewEdit = GetDlgItem(Window, IDC_EDIT_UNICODEBLOCKS_RANGEPREVIEW);
 	HWND UnicodeBlockSearchAddAll = GetDlgItem(Window, IDC_BUTTON_UNICODEBLOCKS_ADDALL);
 	HWND UnicodeBlockSearchAdd = GetDlgItem(Window, IDC_BUTTON_UNICODEBLOCKS_ADD);
+	HWND UnicodeBlockSearchSubtract = GetDlgItem(Window, IDC_BUTTON_UNICODEBLOCKS_SUBTRACT);
 	HWND CustomRangeEdit = GetDlgItem(Window, IDC_EDIT_ADDCUSTOMRANGE_INPUT);
 	HWND CustomRangePreview = GetDlgItem(Window, IDC_EDIT_ADDCUSTOMRANGE_PREVIEW);
 	HWND CustomRangeAdd = GetDlgItem(Window, IDC_BUTTON_ADDCUSTOMRANGE_ADD);
+	HWND CustomRangeSubtract = GetDlgItem(Window, IDC_BUTTON_ADDCUSTOMRANGE_SUBTRACT);
 	HWND TransformationMatrixM11Edit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_M11);
 	HWND TransformationMatrixM12Edit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_M12);
 	HWND TransformationMatrixM21Edit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_M21);
@@ -462,6 +464,11 @@ INT_PTR App::FaceElementEditorDialog::CustomRangeAdd_OnCommand(uint16_t notiCode
 	return 0;
 }
 
+INT_PTR App::FaceElementEditorDialog::CustomRangeSubtract_OnCommand(uint16_t notiCode) {
+	RemoveCodepointRanges(ParseCustomRangeString());
+	return 0;
+}
+
 INT_PTR App::FaceElementEditorDialog::CodepointsList_OnCommand(uint16_t notiCode) {
 	if (notiCode == LBN_DBLCLK)
 		return CodepointsDeleteButton_OnCommand(BN_CLICKED);
@@ -580,6 +587,25 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchAdd_OnCommand(uint16_t n
 
 	if (changed)
 		OnWrappedFontChanged();
+
+	return 0;
+}
+
+INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchSubtract_OnCommand(uint16_t notiCode) {
+	std::vector<int> selItems(ListBox_GetSelCount(m_controls->UnicodeBlockSearchResultList));
+	if (selItems.empty())
+		return 0;
+
+	ListBox_GetSelItems(m_controls->UnicodeBlockSearchResultList, static_cast<int>(selItems.size()), selItems.data());
+	
+	std::vector<std::pair<char32_t, char32_t>> ranges;
+	ranges.reserve(selItems.size());
+	for (const auto itemIndex : selItems) {
+		const auto& block = *reinterpret_cast<const xivres::util::unicode::blocks::block_definition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, itemIndex));
+		ranges.emplace_back(block.First, block.Last);
+	}
+
+	RemoveCodepointRanges(ranges);
 
 	return 0;
 }
@@ -922,6 +948,65 @@ void App::FaceElementEditorDialog::AddCodepointRangeToListBox(int index, char32_
 	}
 }
 
+void App::FaceElementEditorDialog::RemoveCodepointRanges(const std::vector<std::pair<char32_t, char32_t>>& ranges) {
+	std::vector<std::pair<char32_t, char32_t>> codepoints(m_element.WrapModifiers.Codepoints);
+	std::ranges::sort(codepoints);
+
+	auto changed = false;
+	for (const auto& [c1, c2] : ranges) {
+		for (size_t i = 0; i < codepoints.size(); i++) {
+			const auto [a, b] = codepoints[i];
+
+			// a...........b
+			// ..[c1...c2]..
+			// => [a, c1-1], [c2+1, b]
+			if (a < c1 && c2 < b) {
+				codepoints[i].second = c1 - 1;
+				codepoints.insert(codepoints.begin() + (i + 1), std::make_pair(c2 + 1, b));
+				changed = true;
+				continue;
+			}
+
+			// ...a..b...
+			// [c1....c2]
+			// => (delete)
+			if (c1 <= a && b <= c2) {
+				codepoints.erase(codepoints.begin() + i);
+				changed = true;
+				continue;
+			}
+
+			// .....a...b
+			// [c1...c2]
+			// => [c2+1, b]
+			if (c1 <= a && a < c2 && c2 < b) {
+				codepoints[i].first = c2 + 1;
+				changed = true;
+				continue;
+			}
+
+			// a...b
+			// ..[c1...c2]
+			// => [a, c1-1]
+			if (a < c1 && c1 < b && b <= c2) {
+				codepoints[i].second = c1 - 1;
+				changed = true;
+				continue;
+			}
+		}
+	}
+
+	if (changed) {
+		m_element.WrapModifiers.Codepoints = std::move(codepoints);
+		OnWrappedFontChanged();
+		ListBox_ResetContent(m_controls->CodepointsList);
+		std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
+		for (int i = 0, i_ = static_cast<int>(m_element.WrapModifiers.Codepoints.size()); i < i_; i++)
+			AddCodepointRangeToListBox(i, m_element.WrapModifiers.Codepoints[i].first, m_element.WrapModifiers.Codepoints[i].second, charVec);
+	}
+
+}
+
 void App::FaceElementEditorDialog::RefreshUnicodeBlockSearchResults() {
 	const auto input = xivres::util::unicode::convert<std::string>(GetWindowString(m_controls->UnicodeBlockSearchNameEdit));
 	const auto input32 = xivres::util::unicode::convert<std::u32string>(input);
@@ -999,6 +1084,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->TransformationMatrixReset, FALSE);
 			EnableWindow(m_controls->CustomRangeEdit, FALSE);
 			EnableWindow(m_controls->CustomRangeAdd, FALSE);
+			EnableWindow(m_controls->CustomRangeSubtract, FALSE);
 			EnableWindow(m_controls->CodepointsList, FALSE);
 			EnableWindow(m_controls->CodepointsDeleteButton, FALSE);
 			EnableWindow(m_controls->CodepointsMergeModeCombo, FALSE);
@@ -1006,6 +1092,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->UnicodeBlockSearchResultList, FALSE);
 			EnableWindow(m_controls->UnicodeBlockSearchAddAll, FALSE);
 			EnableWindow(m_controls->UnicodeBlockSearchAdd, FALSE);
+			EnableWindow(m_controls->UnicodeBlockSearchSubtract, FALSE);
 			break;
 
 		case Structs::RendererEnum::PrerenderedGameInstallation:
@@ -1037,6 +1124,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->TransformationMatrixReset, FALSE);
 			EnableWindow(m_controls->CustomRangeEdit, TRUE);
 			EnableWindow(m_controls->CustomRangeAdd, TRUE);
+			EnableWindow(m_controls->CustomRangeSubtract, TRUE);
 			EnableWindow(m_controls->CodepointsList, TRUE);
 			EnableWindow(m_controls->CodepointsDeleteButton, TRUE);
 			EnableWindow(m_controls->CodepointsMergeModeCombo, TRUE);
@@ -1044,6 +1132,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->UnicodeBlockSearchResultList, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchAddAll, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchAdd, TRUE);
+			EnableWindow(m_controls->UnicodeBlockSearchSubtract, TRUE);
 			break;
 
 		case Structs::RendererEnum::DirectWrite:
@@ -1075,6 +1164,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->TransformationMatrixReset, TRUE);
 			EnableWindow(m_controls->CustomRangeEdit, TRUE);
 			EnableWindow(m_controls->CustomRangeAdd, TRUE);
+			EnableWindow(m_controls->CustomRangeSubtract, TRUE);
 			EnableWindow(m_controls->CodepointsList, TRUE);
 			EnableWindow(m_controls->CodepointsDeleteButton, TRUE);
 			EnableWindow(m_controls->CodepointsMergeModeCombo, TRUE);
@@ -1082,6 +1172,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->UnicodeBlockSearchResultList, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchAddAll, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchAdd, TRUE);
+			EnableWindow(m_controls->UnicodeBlockSearchSubtract, TRUE);
 			break;
 
 		case Structs::RendererEnum::FreeType:
@@ -1113,6 +1204,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->TransformationMatrixReset, TRUE);
 			EnableWindow(m_controls->CustomRangeEdit, TRUE);
 			EnableWindow(m_controls->CustomRangeAdd, TRUE);
+			EnableWindow(m_controls->CustomRangeSubtract, TRUE);
 			EnableWindow(m_controls->CodepointsList, TRUE);
 			EnableWindow(m_controls->CodepointsDeleteButton, TRUE);
 			EnableWindow(m_controls->CodepointsMergeModeCombo, TRUE);
@@ -1120,6 +1212,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->UnicodeBlockSearchResultList, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchAddAll, TRUE);
 			EnableWindow(m_controls->UnicodeBlockSearchAdd, TRUE);
+			EnableWindow(m_controls->UnicodeBlockSearchSubtract, TRUE);
 			break;
 	}
 }
@@ -1521,6 +1614,7 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 				case IDC_BUTTON_TRANSFORMATIONMATRIX_RESET: return TransformationMatrixResetButton_OnCommand(HIWORD(wParam));
 				case IDC_EDIT_ADDCUSTOMRANGE_INPUT: return CustomRangeEdit_OnCommand(HIWORD(wParam));
 				case IDC_BUTTON_ADDCUSTOMRANGE_ADD: return CustomRangeAdd_OnCommand(HIWORD(wParam));
+				case IDC_BUTTON_ADDCUSTOMRANGE_SUBTRACT: return CustomRangeSubtract_OnCommand(HIWORD(wParam));
 				case IDC_LIST_CODEPOINTS: return CodepointsList_OnCommand(HIWORD(wParam));
 				case IDC_BUTTON_CODEPOINTS_CLEAR: return CodepointsClearButton_OnCommand(HIWORD(wParam));
 				case IDC_BUTTON_CODEPOINTS_DELETE: return CodepointsDeleteButton_OnCommand(HIWORD(wParam));
@@ -1530,6 +1624,7 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 				case IDC_LIST_UNICODEBLOCKS_SEARCHRESULTS: return UnicodeBlockSearchResultList_OnCommand(HIWORD(wParam));
 				case IDC_BUTTON_UNICODEBLOCKS_ADDALL: return UnicodeBlockSearchAddAll_OnCommand(HIWORD(wParam));
 				case IDC_BUTTON_UNICODEBLOCKS_ADD: return UnicodeBlockSearchAdd_OnCommand(HIWORD(wParam));
+				case IDC_BUTTON_UNICODEBLOCKS_SUBTRACT: return UnicodeBlockSearchSubtract_OnCommand(HIWORD(wParam));
 				case IDC_BUTTON_EXPRESSION_HELP: return ExpressionHelpButton_OnCommand(HIWORD(wParam));
 			}
 			return 0;
