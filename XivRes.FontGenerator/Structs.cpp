@@ -253,7 +253,11 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 
 				case RendererEnum::FreeType: {
 					auto [pStream, index] = Lookup.ResolveStream();
-					m_baseFont = std::make_shared<xivres::fontgen::freetype_fixed_size_font>(*pStream, index, Size, Gamma, TransformationMatrix, RendererSpecific.FreeType);
+					auto specifics = RendererSpecific.FreeType;
+					specifics.Features.clear();
+					for (const auto& f : Lookup.Features)
+						specifics.Features.push_back({.tag = _byteswap_ulong(f), .value = 1, .start = HB_FEATURE_GLOBAL_START, .end = HB_FEATURE_GLOBAL_END});
+					m_baseFont = std::make_shared<xivres::fontgen::freetype_fixed_size_font>(*pStream, index, Size, Gamma, TransformationMatrix, specifics);
 					break;
 				}
 
@@ -317,8 +321,8 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				res += std::format(":{}", std::string_view(reinterpret_cast<const char*>(&v), 4));
 			return res;
 		}
-		case RendererEnum::FreeType:
-			return std::format("freetype:{}:{:g}:{:g}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
+		case RendererEnum::FreeType: {
+			auto res = std::format("freetype:{}:{:g}:{:g}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
 				Lookup.Name,
 				Size,
 				Gamma,
@@ -331,6 +335,10 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M21),
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M22)
 			);
+			for (const auto& v : Lookup.Features)
+				res += std::format(":{}", std::string_view(reinterpret_cast<const char*>(&v), 4));
+			return res;
+		}
 		default:
 			throw std::runtime_error("Invalid renderer");
 	}

@@ -34,8 +34,7 @@ HRESULT SuccessOrThrow(HRESULT hr, std::initializer_list<HRESULT> acceptables) {
 	} else {
 		throw std::runtime_error(std::format(
 			"Error (HRESULT=0x{:08X})",
-			static_cast<uint32_t>(hr),
-			xivres::util::unicode::convert<std::string>(std::wstring(pszMsg))
+			static_cast<uint32_t>(hr)
 		));
 	}
 }

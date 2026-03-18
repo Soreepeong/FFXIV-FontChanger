@@ -31,6 +31,9 @@
 #include FT_OUTLINE_H
 #include FT_GLYPH_H
 
+#include <harfbuzz/hb.h>
+#include <harfbuzz/hb-ft.h>
+
 #include <zlib.h>
 
 #include <minizip/zip.h>

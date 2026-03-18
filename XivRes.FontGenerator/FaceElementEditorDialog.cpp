@@ -1181,7 +1181,7 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontWeightCombo, TRUE);
 			EnableWindow(m_controls->FontStyleCombo, TRUE);
 			EnableWindow(m_controls->FontStretchCombo, TRUE);
-			EnableWindow(m_controls->FontFeaturesList, FALSE);
+			EnableWindow(m_controls->FontFeaturesList, TRUE);
 			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
 			EnableWindow(m_controls->FreeTypeNoHintingCheck, TRUE);

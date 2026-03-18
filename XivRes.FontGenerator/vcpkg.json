@@ -1,10 +1,16 @@
 {
   "name": "xivres-fontgenerator",
   "version-string": "_",
-  "builtin-baseline": "a2d8a7cbb15cac91d6c59cd967ef9d85105832c3",
+  "builtin-baseline": "717f2c1db552beed995736e41accdf4f6f4ca986",
   "dependencies": [
     "exprtk",
     "freetype",
+    {
+      "name": "harfbuzz",
+      "features": [
+        "freetype"
+      ]
+    },
     "minizip",
     "nlohmann-json",
     "srell",
