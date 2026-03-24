@@ -10,6 +10,9 @@ namespace App {
 	public:
 		static void Show(HWND hParentWnd, std::vector<std::pair<char32_t, int>> entries);
 
+		template<typename T>
+		friend INT_PTR __stdcall ::DlgProcStaticImpl(HWND, UINT, WPARAM, LPARAM);
+
 	private:
 		NegativeBearingCodepointsDialog(std::vector<std::pair<char32_t, int>> entries);
 		~NegativeBearingCodepointsDialog();

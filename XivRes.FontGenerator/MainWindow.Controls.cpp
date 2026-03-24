@@ -69,7 +69,7 @@ bool App::FontEditorWindow::FaceElementsListView_OnDragProcessMouseMove(int16_t 
 }
 
 bool App::FontEditorWindow::FaceElementsListView_DragProcessDragging(int16_t x, int16_t y) {
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	// Determine the dropped item
 	LVHITTESTINFO lvhti{
@@ -172,7 +172,7 @@ LRESULT App::FontEditorWindow::FaceElementsListView_OnDblClick(NMITEMACTIVATE& n
 LRESULT App::FontEditorWindow::FaceElementsListView_OnRightClick(NMITEMACTIVATE& nmia) {
 	if (!m_pActiveFace || nmia.iItem < 0 || !m_hFaceElementContextMenu)
 		return 0;
-	POINT pt{ nmia.ptAction };
+	POINT pt{nmia.ptAction};
 	ClientToScreen(m_hFaceElementsListView, &pt);
 	TrackPopupMenuEx(GetSubMenu(m_hFaceElementContextMenu, 0), TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd, nullptr);
 	return 0;
@@ -180,4 +180,16 @@ LRESULT App::FontEditorWindow::FaceElementsListView_OnRightClick(NMITEMACTIVATE&
 
 double App::FontEditorWindow::GetZoom() const noexcept {
 	return GetZoomFromWindow(m_hWnd);
+}
+
+void App::FontEditorWindow::FaceElementsListView_InsertItem(int pos, Structs::FaceElement& element) {
+	LVITEMW lvi{
+		.mask = LVIF_PARAM | LVIF_STATE,
+		.iItem = pos,
+		.state = LVIS_SELECTED,
+		.stateMask = LVIS_SELECTED,
+		.lParam = reinterpret_cast<LPARAM>(&element),
+	};
+	ListView_InsertItem(m_hFaceElementsListView, &lvi);
+	UpdateFaceElementListViewItem(element);
 }

@@ -33,6 +33,11 @@ namespace App {
 
 		bool ConsumeDialogMessage(MSG& msg);
 
+		HWND m_hWnd{};
+
+		template<typename T>
+		friend INT_PTR __stdcall ::DlgProcStaticImpl(HWND, UINT, WPARAM, LPARAM);
+
 	private:
 		template<typename T>
 		bool TryEvaluate(const std::wstring& wstr, T& res, bool silent = false);

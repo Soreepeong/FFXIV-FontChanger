@@ -9,7 +9,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_Add() {
 	if (!m_pActiveFace)
 		return 0;
 
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	std::set<int> indices;
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
@@ -29,15 +29,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_Add() {
 			element.WrapModifiers.Codepoints.clear();
 		}
 
-		LVITEMW lvi{
-			.mask = LVIF_PARAM | LVIF_STATE,
-			.iItem = pos,
-			.state = LVIS_SELECTED,
-			.stateMask = LVIS_SELECTED,
-			.lParam = reinterpret_cast<LPARAM>(&element),
-		};
-		ListView_InsertItem(m_hFaceElementsListView, &lvi);
-		UpdateFaceElementListViewItem(element);
+		FaceElementsListView_InsertItem(pos, element);
 	}
 
 	Changes_MarkDirty();
@@ -93,7 +85,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_Paste() {
 	if (!clipboard)
 		return 0;
 
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	std::string data;
 	if (const auto pData = GetClipboardData(CF_UNICODETEXT))
@@ -129,15 +121,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_Paste() {
 	for (const auto pos : indices | std::views::reverse) {
 		for (const auto& templateElement : parsedTemplateElements | std::views::reverse) {
 			auto& element = **elements.emplace(elements.begin() + pos, std::make_unique<Structs::FaceElement>(templateElement));
-			LVITEMW lvi{
-				.mask = LVIF_PARAM | LVIF_STATE,
-				.iItem = pos,
-				.state = LVIS_SELECTED,
-				.stateMask = LVIS_SELECTED,
-				.lParam = reinterpret_cast<LPARAM>(&element),
-			};
-			ListView_InsertItem(m_hFaceElementsListView, &lvi);
-			UpdateFaceElementListViewItem(element);
+			FaceElementsListView_InsertItem(pos, element);
 		}
 	}
 
@@ -152,7 +136,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_Delete() {
 	if (!m_pActiveFace)
 		return 0;
 
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	std::set<int> indices;
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
@@ -184,7 +168,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_Details() {
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_ChangeParams(int baselineShift, int horizontalOffset, int letterSpacing, float fontSize) {
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	auto any = false;
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));) {
@@ -222,7 +206,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_ChangeParams(int baselineShift, int hor
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_ToggleMergeMode() {
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	auto any = false;
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));) {
@@ -243,7 +227,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_ToggleMergeMode() {
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_MoveUpOrDown(int direction) {
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	std::vector<size_t> ids;
 	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
@@ -311,7 +295,7 @@ LRESULT App::FontEditorWindow::FaceElementsListView_Clone() {
 		indices.push_back(i);
 	if (indices.empty()) return 0;
 
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	auto& elements = m_pActiveFace->Elements;
 	std::vector<Structs::FaceElement> clones;
@@ -325,11 +309,7 @@ LRESULT App::FontEditorWindow::FaceElementsListView_Clone() {
 	for (auto i = 0, i_ = static_cast<int>(clones.size()); i < i_; ++i) {
 		const auto pos = insertPos + i;
 		auto& element = **elements.emplace(elements.begin() + pos, std::make_unique<Structs::FaceElement>(clones[i]));
-		LVITEMW lvi{ .mask = LVIF_PARAM | LVIF_STATE, .iItem = pos,
-					 .state = LVIS_SELECTED, .stateMask = LVIS_SELECTED,
-					 .lParam = reinterpret_cast<LPARAM>(&element) };
-		ListView_InsertItem(m_hFaceElementsListView, &lvi);
-		UpdateFaceElementListViewItem(element);
+		FaceElementsListView_InsertItem(pos, element);
 	}
 
 	Changes_MarkDirty();
@@ -341,23 +321,31 @@ LRESULT App::FontEditorWindow::FaceElementsListView_Clone() {
 LRESULT App::FontEditorWindow::FaceElementsListView_ShowNegativeBearingCodepoints() {
 	if (!m_pActiveFace) return 0;
 	const auto index = ListView_GetNextItem(m_hFaceElementsListView, -1, LVNI_SELECTED);
-	if (index < 0) return 0;
+	if (index < 0)
+		return 0;
+
 	const auto& element = *m_pActiveFace->Elements[index];
-	if (element.Renderer == Structs::RendererEnum::Empty) return 0;
+	if (element.Renderer == Structs::RendererEnum::Empty)
+		return 0;
+
+	const auto hPrevCursor = SetCursor(LoadCursor(nullptr, IDC_WAIT));
 	auto entries = element.GetWrappedFont()->get_negative_lsb_codepoints();
 	if (entries.empty()) {
+		SetCursor(hPrevCursor);
 		MessageBoxW(m_hWnd,
 			std::wstring(GetStringResource(IDS_NEGATIVEBEARING_NONE_FOUND)).c_str(),
 			std::wstring(GetStringResource(IDS_APP)).c_str(),
 			MB_OK | MB_ICONINFORMATION);
 		return 0;
 	}
+	
+	SetCursor(hPrevCursor);
 	NegativeBearingCodepointsDialog::Show(m_hWnd, std::move(entries));
 	return 0;
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_CreateEmptyCopyFromSelection() {
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	if (!m_pActiveFace)
 		return 0;
@@ -379,15 +367,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_CreateEmptyCopyFromSelection() {
 		},
 	};
 
-	const LVITEMW lvi{
-		.mask = LVIF_PARAM | LVIF_STATE,
-		.iItem = 0,
-		.state = LVIS_SELECTED,
-		.stateMask = LVIS_SELECTED,
-		.lParam = reinterpret_cast<LPARAM>(&element),
-	};
-	ListView_InsertItem(m_hFaceElementsListView, &lvi);
-	UpdateFaceElementListViewItem(element);
+	FaceElementsListView_InsertItem(0, element);
 
 	Changes_MarkDirty();
 	m_pActiveFace->OnElementChange();

@@ -39,28 +39,17 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 
 	m_hAccelerator = LoadAcceleratorsW(g_hInstance, MAKEINTRESOURCEW(IDR_ACCELERATOR_FACEELEMENTEDITOR));
 
-	auto hRes = FindResourceExW(g_hInstance, RT_MENU, MAKEINTRESOURCEW(IDR_FONTEDITOR), g_langId);
-	if (!hRes)
-		hRes = FindResourceW(g_hInstance, MAKEINTRESOURCEW(IDR_FONTEDITOR), RT_MENU);
-	if (!hRes)
-		throw std::system_error(std::error_code(GetLastError(), std::system_category()));
-
-	const auto hGlob = LoadResource(g_hInstance, hRes);
+	const auto hGlob = LoadResourceWithLanguageFallback(RT_MENU, IDR_FONTEDITOR);
 	if (!hGlob)
 		throw std::system_error(std::error_code(GetLastError(), std::system_category()));
-	SetMenu(m_hWnd, LoadMenuIndirectW(LockResource(hGlob)));
-	FreeResource(hGlob);
+	SetMenu(m_hWnd, LoadMenuIndirectW(LockResource(hGlob.get())));
 
 	{
-		auto hCtxRes = FindResourceExW(g_hInstance, RT_MENU, MAKEINTRESOURCEW(IDR_CONTEXTMENU_FACEELEMENT), g_langId);
-		if (!hCtxRes)
-			hCtxRes = FindResourceW(g_hInstance, MAKEINTRESOURCEW(IDR_CONTEXTMENU_FACEELEMENT), RT_MENU);
-		const auto hCtxGlob = LoadResource(g_hInstance, hCtxRes);
-		m_hFaceElementContextMenu = LoadMenuIndirectW(LockResource(hCtxGlob));
-		FreeResource(hCtxGlob);
+		const auto hCtxGlob = LoadResourceWithLanguageFallback(RT_MENU, IDR_CONTEXTMENU_FACEELEMENT);
+		m_hFaceElementContextMenu = LoadMenuIndirectW(LockResource(hCtxGlob.get()));
 	}
 
-	NONCLIENTMETRICSW ncm = { sizeof(NONCLIENTMETRICSW) };
+	NONCLIENTMETRICSW ncm = {sizeof(NONCLIENTMETRICSW)};
 	SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof ncm, &ncm, 0);
 	m_hUiFont = CreateFontIndirectW(&ncm.lfMessageFont);
 
@@ -86,7 +75,7 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 		if (msg == WM_KEYDOWN && wParam == 'A' && (GetKeyState(VK_CONTROL) & 0x8000) && !(GetKeyState(VK_SHIFT) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000) && !(GetKeyState(VK_LWIN) & 0x8000) && !(GetKeyState(VK_RWIN) & 0x8000))
 			Edit_SetSel(hWnd, 0, Edit_GetTextLength(hWnd));
 		return DefSubclassProc(hWnd, msg, wParam, lParam);
-		}, 1, 0);
+	}, 1, 0);
 
 	const auto AddColumn = [this, zoom = GetZoom()](int columnIndex, int width, UINT resId) {
 		std::wstring name(GetStringResource(resId));
@@ -96,7 +85,7 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 			.pszText = const_cast<wchar_t*>(name.c_str()),
 		};
 		ListView_InsertColumn(m_hFaceElementsListView, columnIndex, &col);
-		};
+	};
 	AddColumn(ListViewColsFamilyName, 120, IDS_FONTLISTVIEW_COLUMN_FAMILY);
 	AddColumn(ListViewColsSubfamilyName, 80, IDS_FONTLISTVIEW_COLUMN_SUBFAMILY);
 	AddColumn(ListViewColsSize, 80, IDS_FONTLISTVIEW_COLUMN_SIZE);
@@ -112,20 +101,13 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 	AddColumn(ListViewColsLookup, 300, IDS_FONTLISTVIEW_COLUMN_LOOKUP);
 
 	if (m_args.size() >= 2 && std::filesystem::exists(m_args[1])) {
-		try {
+		if (const auto r = TryCatchShowError(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
 			IShellItemPtr shellItem;
 			SuccessOrThrow(SHCreateItemFromParsingName(m_args[1].c_str(), nullptr, IID_PPV_ARGS(&shellItem)));
 			SetCurrentMultiFontSet(std::move(shellItem));
-		} catch (const WException& e) {
-			ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-			return 1;
-		} catch (const std::system_error& e) {
-			ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-			return 1;
-		} catch (const std::exception& e) {
-			ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-			return 1;
-		}
+			return 0;
+		}))
+			return r;
 	}
 	if (!m_currentShellItem)
 		Menu_File_New(xivres::font_type::font);
@@ -237,16 +219,16 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 
 		const auto pad = 16 * m_nZoom / PreviewZoomOne;
 		const auto buf = m_pMipmap->as_span<xivres::util::b8g8r8a8>();
-		std::ranges::fill(buf, xivres::util::b8g8r8a8{ 0x88, 0x88, 0x88, 0xFF });
+		std::ranges::fill(buf, xivres::util::b8g8r8a8{0x88, 0x88, 0x88, 0xFF});
 
 		const auto measured = [&]() -> std::optional<xivres::fontgen::text_measure_result> {
 			if (!m_pActiveFace || m_pActiveFace->PreviewText.empty())
 				return std::nullopt;
 
 			return xivres::fontgen::text_measurer(*m_pActiveFace->GetMergedFont())
-				.max_width(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
-				.use_kerning(m_bKerning)
-				.measure(m_pActiveFace->PreviewText);
+			       .max_width(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
+			       .use_kerning(m_bKerning)
+			       .measure(m_pActiveFace->PreviewText);
 		}();
 
 		if (measured) {
@@ -276,7 +258,7 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 		};
 		for (int y = previewContentRect.top; y < previewContentRect.bottom; y++) {
 			for (int x = previewContentRect.left; x < previewContentRect.right; x++)
-				buf[y * m_pMipmap->Width + x] = { 0x00, 0x00, 0x00, 0xFF };
+				buf[y * m_pMipmap->Width + x] = {0x00, 0x00, 0x00, 0xFF};
 		}
 
 		if (m_pActiveFace) {
@@ -289,7 +271,7 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 						if (y + ascent >= pad) {
 							for (int y2 = y + ascent, y2_ = (std::min)(y_, y + lineHeight); y2 < y2_; y2++)
 								for (int x = previewContentRect.left; x < previewContentRect.right; x++)
-									buf[y2 * m_pMipmap->Width + x] = { 0x33, 0x33, 0x33, 0xFF };
+									buf[y2 * m_pMipmap->Width + x] = {0x33, 0x33, 0x33, 0xFF};
 						}
 					}
 				} else if (ascent == lineHeight) {
@@ -297,7 +279,7 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 						if (y + lineHeight >= pad) {
 							for (int y2 = y + lineHeight, y2_ = (std::min)(y_, y + 2 * lineHeight); y2 < y2_; y2++)
 								for (int x = previewContentRect.left; x < previewContentRect.right; x++)
-									buf[y2 * m_pMipmap->Width + x] = { 0x33, 0x33, 0x33, 0xFF };
+									buf[y2 * m_pMipmap->Width + x] = {0x33, 0x33, 0x33, 0xFF};
 						}
 					}
 				}
@@ -309,19 +291,19 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 					mergedFont,
 					pad - m_nPreviewScrollX,
 					pad - m_nPreviewScrollY,
-					{ 0xFF, 0xFF, 0xFF, 0xFF },
-					{ 0, 0, 0, 0 });
+					{0xFF, 0xFF, 0xFF, 0xFF},
+					{0, 0, 0, 0});
 			}
 		}
 	}
 
 	const auto splitterBrush = GetSysColorBrush(COLOR_3DFACE);
 	if (m_splitterListEditTop < m_splitterListEditBottom) {
-		RECT splitter{ m_nDrawLeft, m_splitterListEditTop, clientRect.right, m_splitterListEditBottom };
+		RECT splitter{m_nDrawLeft, m_splitterListEditTop, clientRect.right, m_splitterListEditBottom};
 		FillRect(hdc, &splitter, splitterBrush);
 	}
 	if (m_splitterEditPreviewTop < m_splitterEditPreviewBottom) {
-		RECT splitter{ m_nDrawLeft, m_splitterEditPreviewTop, clientRect.right, m_splitterEditPreviewBottom };
+		RECT splitter{m_nDrawLeft, m_splitterEditPreviewTop, clientRect.right, m_splitterEditPreviewBottom};
 		FillRect(hdc, &splitter, splitterBrush);
 	}
 
@@ -355,47 +337,47 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 
 LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bool isWindowMenu) {
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language.empty() ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language.empty() ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_AUTO, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "en-us" ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "en-us" ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_ENGLISH, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "ko-kr" ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "ko-kr" ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_KOREAN, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "zh-hans" ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "zh-hans" ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_CHINESE, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bWordWrap ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bWordWrap ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_VIEW_WORDWRAP, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bKerning ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bKerning ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_VIEW_KERNING, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bShowLineMetrics ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bShowLineMetrics ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_VIEW_SHOWLINEMETRICS, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapFontLobbyToFont ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapFontLobbyToFont ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTLOBBY, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapChnAxisToFont ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapChnAxisToFont ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTCHNAXIS, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapKrnAxisToFont ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapKrnAxisToFont ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTKRNAXIS, FALSE, &mii);
 	}
 	{
-		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapTcAxisToFont ? MFS_CHECKED : 0) };
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapTcAxisToFont ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTTCAXIS, FALSE, &mii);
 	}
 	{
@@ -403,16 +385,18 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		const bool hasElement = m_pActiveFace && i >= 0;
 		const bool notEmpty = hasElement && m_pActiveFace->Elements[i]->Renderer != Structs::RendererEnum::Empty;
 		const auto setState = [&](UINT id, bool enabled) {
-			const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE,
-									 .fState = static_cast<UINT>(enabled ? MFS_ENABLED : MFS_GRAYED) };
+			const MENUITEMINFOW mii{
+				.cbSize = sizeof mii, .fMask = MIIM_STATE,
+				.fState = static_cast<UINT>(enabled ? MFS_ENABLED : MFS_GRAYED)
+			};
 			SetMenuItemInfoW(hMenu, id, FALSE, &mii);
 		};
-		setState(ID_EDIT_DETAILS,                    hasElement);
+		setState(ID_EDIT_DETAILS, hasElement);
 		setState(ID_CONTEXTMENU_SHOWNEGATIVEBEARING, notEmpty);
-		setState(ID_EDIT_CUT,                        hasElement);
-		setState(ID_EDIT_COPY,                       hasElement);
-		setState(ID_CONTEXTMENU_CLONE,               hasElement);
-		setState(ID_EDIT_DELETE,                     hasElement);
+		setState(ID_EDIT_CUT, hasElement);
+		setState(ID_EDIT_COPY, hasElement);
+		setState(ID_CONTEXTMENU_CLONE, hasElement);
+		setState(ID_EDIT_DELETE, hasElement);
 	}
 	return 0;
 }
@@ -495,7 +479,7 @@ LRESULT App::FontEditorWindow::Window_OnMouseLButtonUp(uint16_t states, int16_t 
 }
 
 LRESULT App::FontEditorWindow::Window_OnMouseWheel(int16_t delta, int16_t x, int16_t y) {
-	POINT pt{ x, y };
+	POINT pt{x, y};
 	ScreenToClient(m_hWnd, &pt);
 
 	if (pt.x >= m_nDrawLeft && pt.y >= m_nDrawTop) {
@@ -569,7 +553,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_FILE_NEW_MAINGAMEFONT: return Menu_File_New(xivres::font_type::font);
 				case ID_FILE_NEW_LOBBYFONT: return Menu_File_New(xivres::font_type::font_lobby);
 				case ID_FILE_NEW_CHNAXIS: return Menu_File_New(xivres::font_type::chn_axis);
-		        case ID_FILE_NEW_TCAXIS: return Menu_File_New(xivres::font_type::tc_axis);
+				case ID_FILE_NEW_TCAXIS: return Menu_File_New(xivres::font_type::tc_axis);
 				case ID_FILE_NEW_KRNAXIS: return Menu_File_New(xivres::font_type::krn_axis);
 				case ID_FILE_OPEN: return Menu_File_Open();
 				case ID_FILE_SAVE: return Menu_File_Save();
@@ -602,8 +586,8 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EDIT_MOVEUP: return Menu_Edit_MoveUpOrDown(-1);
 				case ID_EDIT_MOVEDOWN: return Menu_Edit_MoveUpOrDown(+1);
 				case ID_EDIT_CREATEEMPTYCOPYFROMSELECTION: return Menu_Edit_CreateEmptyCopyFromSelection();
-			case ID_CONTEXTMENU_CLONE: return FaceElementsListView_Clone();
-			case ID_CONTEXTMENU_SHOWNEGATIVEBEARING: return FaceElementsListView_ShowNegativeBearingCodepoints();
+				case ID_CONTEXTMENU_CLONE: return FaceElementsListView_Clone();
+				case ID_CONTEXTMENU_SHOWNEGATIVEBEARING: return FaceElementsListView_ShowNegativeBearingCodepoints();
 				case ID_VIEW_PREVIOUSFONT: return Menu_View_NextOrPrevFont(-1);
 				case ID_VIEW_NEXTFONT: return Menu_View_NextOrPrevFont(1);
 				case ID_VIEW_WORDWRAP: return Menu_View_WordWrap();
@@ -626,7 +610,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EXPORT_MAPFONTLOBBY: return Menu_Export_MapFontLobby();
 				case ID_EXPORT_MAPFONTCHNAXIS: return Menu_Export_MapFontChnAxis();
 				case ID_EXPORT_MAPFONTKRNAXIS: return Menu_Export_MapFontKrnAxis();
-			    case ID_EXPORT_MAPFONTTCAXIS: return Menu_Export_MapFontTCAxis();
+				case ID_EXPORT_MAPFONTTCAXIS: return Menu_Export_MapFontTCAxis();
 			}
 			break;
 

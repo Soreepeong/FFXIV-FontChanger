@@ -156,6 +156,7 @@ namespace App {
 		LRESULT FaceElementsListView_OnRightClick(NMITEMACTIVATE& nmia);
 		LRESULT FaceElementsListView_Clone();
 		LRESULT FaceElementsListView_ShowNegativeBearingCodepoints();
+		void FaceElementsListView_InsertItem(int pos, Structs::FaceElement& element);
 
 		[[nodiscard]] double GetZoom() const noexcept;
 

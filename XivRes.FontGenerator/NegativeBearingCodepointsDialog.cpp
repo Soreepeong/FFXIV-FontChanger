@@ -14,10 +14,7 @@ enum : uint8_t {
 };
 
 void App::NegativeBearingCodepointsDialog::Show(HWND hParentWnd, std::vector<std::pair<char32_t, int>> entries) {
-	auto res = FindResourceExW(g_hInstance, RT_DIALOG, MAKEINTRESOURCEW(IDD_NEGATIVEBEARINGCODEPOINTS), g_langId);
-	if (!res)
-		res = FindResourceW(g_hInstance, MAKEINTRESOURCEW(IDD_NEGATIVEBEARINGCODEPOINTS), RT_DIALOG);
-	std::unique_ptr<std::remove_pointer_t<HGLOBAL>, decltype(&FreeResource)> hglob(LoadResource(g_hInstance, res), &FreeResource);
+	const auto hglob = LoadResourceWithLanguageFallback(RT_DIALOG, IDD_NEGATIVEBEARINGCODEPOINTS);
 
 	const auto dlg = new NegativeBearingCodepointsDialog(std::move(entries));
 	CreateDialogIndirectParamW(
@@ -30,33 +27,32 @@ void App::NegativeBearingCodepointsDialog::Show(HWND hParentWnd, std::vector<std
 }
 
 App::NegativeBearingCodepointsDialog::NegativeBearingCodepointsDialog(std::vector<std::pair<char32_t, int>> entries)
-	: m_entries(std::move(entries)) {
-}
+	: m_entries(std::move(entries)) {}
 
 App::NegativeBearingCodepointsDialog::~NegativeBearingCodepointsDialog() {
 	delete m_controls;
 }
 
 INT_PTR App::NegativeBearingCodepointsDialog::Dialog_OnInitDialog() {
-	m_controls = new ControlStruct{ m_hWnd };
+	m_controls = new ControlStruct{m_hWnd};
 
 	ListView_SetExtendedListViewStyle(m_controls->List, LVS_EX_FULLROWSELECT);
 
 	const auto zoom = GetZoomFromWindow(m_hWnd);
 	const auto AddColumn = [&](int col, int cx, UINT resId) {
 		std::wstring name(GetStringResource(resId));
-		LVCOLUMNW lvc{ .mask = LVCF_TEXT | LVCF_WIDTH, .cx = static_cast<int>(cx * zoom), .pszText = name.data() };
+		LVCOLUMNW lvc{.mask = LVCF_TEXT | LVCF_WIDTH, .cx = static_cast<int>(cx * zoom), .pszText = name.data()};
 		ListView_InsertColumn(m_controls->List, col, &lvc);
 	};
-	AddColumn(ColCodepoint, 80,  IDS_NEGATIVEBEARING_COLUMN_CODEPOINT);
+	AddColumn(ColCodepoint, 80, IDS_NEGATIVEBEARING_COLUMN_CODEPOINT);
 	AddColumn(ColCharacter, 100, IDS_NEGATIVEBEARING_COLUMN_CHARACTER);
-	AddColumn(ColX1,        60,  IDS_NEGATIVEBEARING_COLUMN_X1);
+	AddColumn(ColX1, 60, IDS_NEGATIVEBEARING_COLUMN_X1);
 
 	for (int i = 0; i < static_cast<int>(m_entries.size()); ++i) {
 		const auto [cp, x1] = m_entries[i];
 
 		auto cpText = std::format(L"U+{:04X}", static_cast<unsigned>(cp));
-		LVITEMW lvi{ .mask = LVIF_TEXT, .iItem = i, .iSubItem = 0, .pszText = cpText.data() };
+		LVITEMW lvi{.mask = LVIF_TEXT, .iItem = i, .iSubItem = 0, .pszText = cpText.data()};
 		ListView_InsertItem(m_controls->List, &lvi);
 
 		std::wstring charText;
@@ -98,15 +94,5 @@ INT_PTR App::NegativeBearingCodepointsDialog::DlgProc(UINT message, WPARAM wPara
 }
 
 INT_PTR __stdcall App::NegativeBearingCodepointsDialog::DlgProcStatic(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-	NegativeBearingCodepointsDialog* pThis;
-	if (message == WM_INITDIALOG) {
-		pThis = reinterpret_cast<NegativeBearingCodepointsDialog*>(lParam);
-		pThis->m_hWnd = hwnd;
-		SetWindowLongPtrW(hwnd, DWLP_USER, reinterpret_cast<LONG_PTR>(pThis));
-	} else {
-		pThis = reinterpret_cast<NegativeBearingCodepointsDialog*>(GetWindowLongPtrW(hwnd, DWLP_USER));
-	}
-	if (!pThis)
-		return FALSE;
-	return pThis->DlgProc(message, wParam, lParam);
+	return DlgProcStaticImpl<NegativeBearingCodepointsDialog>(hwnd, message, wParam, lParam);
 }

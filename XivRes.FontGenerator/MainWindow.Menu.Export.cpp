@@ -10,10 +10,10 @@
 LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 	using namespace xivres::fontgen;
 
-	try {
+	return TryCatchShowError<ProgressDialog::ProgressDialogCancelledError>(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
 		ProgressDialog progressDialog(m_hWnd, std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTRAW)));
 		ShowWindow(m_hWnd, SW_HIDE);
-		const auto hideWhilePacking = xivres::util::on_dtor([this]() { ShowWindow(m_hWnd, SW_SHOW); });
+		const auto hideWhilePacking = xivres::util::on_dtor([this] { ShowWindow(m_hWnd, SW_SHOW); });
 
 		std::vector<std::pair<std::string, std::shared_ptr<fixed_size_font>>> resultFonts;
 		for (const auto& fontSet : m_multiFontSet.FontSets) {
@@ -30,26 +30,14 @@ LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 		}
 
 		ExportPreviewWindow::ShowNew(std::move(resultFonts));
-
 		return 0;
-	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
-		return 1;
-	} catch (const WException& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
-		return 1;
-	} catch (const std::system_error& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
-		return 1;
-	} catch (const std::exception& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
-		return 1;
-	}
+	});
 }
 
 LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 	using namespace xivres::fontgen;
 
-	try {
+	return TryCatchShowError<ProgressDialog::ProgressDialogCancelledError>(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
 		IFileOpenDialogPtr pDialog;
 		DWORD dwFlags;
 		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
@@ -174,20 +162,8 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 				}
 			}
 		}
-	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
-		return 1;
-	} catch (const WException& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
-		return 1;
-	} catch (const std::system_error& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
-		return 1;
-	} catch (const std::exception& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
-		return 1;
-	}
-
-	return 0;
+		return 0;
+	});
 }
 
 LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode) {
@@ -200,7 +176,7 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 	const auto fileTypesSpan = std::span(fileTypes);
 
 	std::wstring finalPath;
-	try {
+	return TryCatchShowError<ProgressDialog::ProgressDialogCancelledError>(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
 		IFileSaveDialogPtr pDialog;
 		DWORD dwFlags;
 		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER));
@@ -350,20 +326,8 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 			}
 		}
 		writer.close();
-	} catch (const ProgressDialog::ProgressDialogCancelledError&) {
-		return 1;
-	} catch (const WException& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
-		return 1;
-	} catch (const std::system_error& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
-		return 1;
-	} catch (const std::exception& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, e);
-		return 1;
-	}
-
-	return 0;
+		return 0;
+	});
 }
 
 LRESULT App::FontEditorWindow::Menu_Export_MapFontLobby() {

@@ -31,10 +31,7 @@ App::GameInstallationManagerDialog::Installation::Installation(std::filesystem::
 }
 
 std::optional<FontGeneratorConfig> App::GameInstallationManagerDialog::Show(HWND hParentWnd, const FontGeneratorConfig& config) {
-	auto res = FindResourceExW(g_hInstance, RT_DIALOG, MAKEINTRESOURCEW(IDD_GAMEINSTALLATIONMANAGER), g_langId);
-	if (!res)
-		res = FindResourceW(g_hInstance, MAKEINTRESOURCEW(IDD_GAMEINSTALLATIONMANAGER), RT_DIALOG);
-	std::unique_ptr<std::remove_pointer_t<HGLOBAL>, decltype(&FreeResource)> hglob(LoadResource(g_hInstance, res), &FreeResource);
+	const auto hglob = LoadResourceWithLanguageFallback(RT_DIALOG, IDD_GAMEINSTALLATIONMANAGER);
 
 	GameInstallationManagerDialog dlg(hParentWnd, config);
 	const auto r = reinterpret_cast<FontGeneratorConfig*>(DialogBoxIndirectParamW(
@@ -61,6 +58,7 @@ App::GameInstallationManagerDialog::~GameInstallationManagerDialog() {
 }
 
 INT_PTR App::GameInstallationManagerDialog::Dialog_OnInitDialog() {
+	m_controls = new ControlStruct{ m_hWnd };
 	ListView_SetExtendedListViewStyle(m_controls->PathList, LVS_EX_FULLROWSELECT);
 
 	const auto AddColumn = [this, zoom = GetZoomFromWindow(m_hWnd)](int columnIndex, int width, UINT resId) {
@@ -165,7 +163,7 @@ INT_PTR App::GameInstallationManagerDialog::AddButton_OnCommand(uint16_t notiCod
 	};
 	const auto fileTypesSpan = std::span(fileTypes);
 
-	try {
+	return TryCatchShowError(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, INT_PTR{1}, [&]() -> INT_PTR {
 		IFileOpenDialogPtr pDialog;
 		DWORD dwFlags;
 		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
@@ -199,18 +197,8 @@ INT_PTR App::GameInstallationManagerDialog::AddButton_OnCommand(uint16_t notiCod
 
 		if (std::ranges::all_of(m_installations, [&](const auto& item) { return item.Path != path; }))
 			AddInstallation(std::move(path), vendor);
-	} catch (const WException& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-		return 1;
-	} catch (const std::system_error& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-		return 1;
-	} catch (const std::exception& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-		return 1;
-	}
-
-	return 0;
+		return 0;
+	});
 }
 
 INT_PTR App::GameInstallationManagerDialog::RemoveButton_OnCommand(uint16_t notiCode) {
@@ -353,14 +341,5 @@ INT_PTR App::GameInstallationManagerDialog::DlgProc(UINT message, WPARAM wParam,
 }
 
 INT_PTR __stdcall App::GameInstallationManagerDialog::DlgProcStatic(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-	if (message == WM_INITDIALOG) {
-		auto& params = *reinterpret_cast<GameInstallationManagerDialog*>(lParam);
-		params.m_hWnd = hwnd;
-		params.m_controls = new ControlStruct{ hwnd };
-		SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&params));
-		return params.DlgProc(message, wParam, lParam);
-	} else {
-		return reinterpret_cast<GameInstallationManagerDialog*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))->DlgProc(message, wParam, lParam);
-	}
-	return 0;
+	return DlgProcStaticImpl<GameInstallationManagerDialog>(hwnd, message, wParam, lParam);
 }

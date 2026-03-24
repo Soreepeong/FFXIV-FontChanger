@@ -55,10 +55,7 @@ App::FaceElementEditorDialog::FaceElementEditorDialog(HWND hParentWnd, Structs::
 	, m_elementOriginal(element)
 	, m_hParentWnd(hParentWnd)
 	, m_onFontChanged(std::move(onFontChanged)) {
-	auto res = FindResourceExW(g_hInstance, RT_DIALOG, MAKEINTRESOURCEW(IDD_FACEELEMENTEDITOR), g_langId);
-	if (!res)
-		res = FindResourceW(g_hInstance, MAKEINTRESOURCEW(IDD_FACEELEMENTEDITOR), RT_DIALOG);
-	std::unique_ptr<std::remove_pointer_t<HGLOBAL>, decltype(&FreeResource)> hglob(LoadResource(g_hInstance, res), &FreeResource);
+	const auto hglob = LoadResourceWithLanguageFallback(RT_DIALOG, IDD_FACEELEMENTEDITOR);
 	CreateDialogIndirectParamW(
 		g_hInstance,
 		static_cast<DLGTEMPLATE*>(LockResource(hglob.get())),
@@ -622,6 +619,7 @@ INT_PTR App::FaceElementEditorDialog::ExpressionHelpButton_OnCommand(uint16_t no
 }
 
 INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
+	m_controls = new ControlStruct{ m_hWnd };
 	m_bOpened = true;
 	SetControlsEnabledOrDisabled();
 	RepopulateFontCombobox();
@@ -1643,13 +1641,5 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 }
 
 INT_PTR __stdcall App::FaceElementEditorDialog::DlgProcStatic(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-	if (message == WM_INITDIALOG) {
-		auto& params = *reinterpret_cast<FaceElementEditorDialog*>(lParam);
-		params.m_controls = new ControlStruct{hwnd};
-		SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&params));
-		return params.DlgProc(message, wParam, lParam);
-	} else {
-		return reinterpret_cast<FaceElementEditorDialog*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))->DlgProc(message, wParam, lParam);
-	}
-	return 0;
+	return DlgProcStaticImpl<FaceElementEditorDialog>(hwnd, message, wParam, lParam);
 }

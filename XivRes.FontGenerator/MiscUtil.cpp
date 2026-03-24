@@ -3,6 +3,19 @@
 
 #include "resource.h"
 
+std::unique_ptr<std::remove_pointer_t<HWND>, void(*)(HWND)> SuppressRedraw(HWND hWnd) {
+	SendMessage(hWnd, WM_SETREDRAW, FALSE, 0);
+	return {hWnd, [](HWND h) { SendMessage(h, WM_SETREDRAW, TRUE, 0); }};
+}
+
+std::unique_ptr<std::remove_pointer_t<HGLOBAL>, decltype(&FreeResource)>
+LoadResourceWithLanguageFallback(LPCWSTR type, UINT id) {
+	auto res = FindResourceExW(g_hInstance, type, MAKEINTRESOURCEW(id), g_langId);
+	if (!res)
+		res = FindResourceW(g_hInstance, MAKEINTRESOURCEW(id), type);
+	return {LoadResource(g_hInstance, res), &FreeResource};
+}
+
 HRESULT SuccessOrThrow(HRESULT hr, std::initializer_list<HRESULT> acceptables) {
 	if (SUCCEEDED(hr))
 		return hr;
@@ -56,7 +69,7 @@ std::wstring_view GetStringResource(UINT uId, UINT langId) {
 			FreeResource(hglob);
 		}
 	}
-	return pwsz ? std::wstring_view{ pwsz + 1, static_cast<size_t>(*pwsz) } : std::wstring_view{};
+	return pwsz ? std::wstring_view{pwsz + 1, static_cast<size_t>(*pwsz)} : std::wstring_view{};
 }
 
 std::wstring_view GetStringResource(UINT id) {
@@ -82,8 +95,8 @@ void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const WExceptio
 			GetStringResource(preambleStringResID),
 			e.what()).c_str(),
 		hParent
-		? GetWindowString(hParent).c_str()
-		: std::wstring(GetStringResource(IDS_APP)).c_str(),
+			? GetWindowString(hParent).c_str()
+			: std::wstring(GetStringResource(IDS_APP)).c_str(),
 		MB_OK | MB_ICONERROR);
 }
 
@@ -100,7 +113,7 @@ void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const std::syst
 			g_langId,
 			reinterpret_cast<LPWSTR>(&pErrorText), // output 
 			0, // minimum size for output buffer
-			nullptr);  // arguments - see note 
+			nullptr); // arguments - see note 
 		if (nullptr != pErrorText) {
 			errorText = pErrorText;
 			LocalFree(pErrorText);
@@ -113,8 +126,8 @@ void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const std::syst
 			GetStringResource(preambleStringResID),
 			errorText.empty() ? OemCpToWString(e.what()) : errorText).c_str(),
 		hParent
-		? GetWindowString(hParent).c_str()
-		: std::wstring(GetStringResource(IDS_APP)).c_str(),
+			? GetWindowString(hParent).c_str()
+			: std::wstring(GetStringResource(IDS_APP)).c_str(),
 		MB_OK | MB_ICONERROR);
 }
 
@@ -126,8 +139,8 @@ void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const std::exce
 			GetStringResource(preambleStringResID),
 			OemCpToWString(e.what())).c_str(),
 		hParent
-		? GetWindowString(hParent).c_str()
-		: std::wstring(GetStringResource(IDS_APP)).c_str(),
+			? GetWindowString(hParent).c_str()
+			: std::wstring(GetStringResource(IDS_APP)).c_str(),
 		MB_OK | MB_ICONERROR);
 }
 

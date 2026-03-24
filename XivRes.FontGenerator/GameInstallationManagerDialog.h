@@ -27,6 +27,9 @@ namespace App {
 	public:
 		static std::optional<FontGeneratorConfig> Show(HWND hParentWnd, const FontGeneratorConfig& config);
 
+		template<typename T>
+		friend INT_PTR __stdcall ::DlgProcStaticImpl(HWND, UINT, WPARAM, LPARAM);
+
 	private:
 		GameInstallationManagerDialog(HWND hParentWnd, const FontGeneratorConfig& config);
 

@@ -40,7 +40,7 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
 
 	g_langId = LANGIDFROMLCID(LocaleNameToLCID(g_localeName.c_str(), LOCALE_ALLOW_NEUTRAL_NAMES));
 
-	try {
+	if (const auto r = TryCatchShowError(nullptr, IDS_ERROR_OPENFILEFAILURE_BODY, 1, [&] {
 		if (!exists(FontGeneratorConfig::GetConfigPath())) {
 			nlohmann::json json;
 			to_json(json, g_config = FontGeneratorConfig::Default);
@@ -56,16 +56,9 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
 				g_langId = LANGIDFROMLCID(LocaleNameToLCID(g_localeName.c_str(), LOCALE_ALLOW_NEUTRAL_NAMES));
 			}
 		}
-	} catch (const WException& e) {
-		ShowErrorMessageBox(nullptr, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-		return 1;
-	} catch (const std::system_error& e) {
-		ShowErrorMessageBox(nullptr, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-		return 1;
-	} catch (const std::exception& e) {
-		ShowErrorMessageBox(nullptr, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-		return 1;
-	}
+		return 0;
+	}))
+		return r;
 
 	App::FontEditorWindow window(std::move(args));
 	for (MSG msg{}; GetMessageW(&msg, nullptr, 0, 0);) {

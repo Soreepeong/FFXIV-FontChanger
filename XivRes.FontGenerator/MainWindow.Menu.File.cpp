@@ -55,7 +55,7 @@ LRESULT App::FontEditorWindow::Menu_File_Open() {
 	if (Changes_ConfirmIfDirty())
 		return 1;
 
-	try {
+	return TryCatchShowError(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
 		IFileOpenDialogPtr pDialog;
 		DWORD dwFlags;
 		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
@@ -65,7 +65,7 @@ LRESULT App::FontEditorWindow::Menu_File_Open() {
 		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_OPEN)).c_str()));
 		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
 		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
-		switch (SuccessOrThrow(pDialog->Show(m_hWnd), { HRESULT_FROM_WIN32(ERROR_CANCELLED) })) {
+		switch (SuccessOrThrow(pDialog->Show(m_hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
 			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
 				return 0;
 		}
@@ -73,25 +73,15 @@ LRESULT App::FontEditorWindow::Menu_File_Open() {
 		IShellItemPtr pResult;
 		SuccessOrThrow(pDialog->GetResult(&pResult));
 		SetCurrentMultiFontSet(std::move(pResult));
-	} catch (const WException& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-		return 1;
-	} catch (const std::system_error& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-		return 1;
-	} catch (const std::exception& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, e);
-		return 1;
-	}
-
-	return 0;
+		return 0;
+	});
 }
 
 LRESULT App::FontEditorWindow::Menu_File_Save() {
 	if (!m_currentShellItem)
 		return Menu_File_SaveAs(true);
 
-	try {
+	return TryCatchShowError(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
 		const auto dump = nlohmann::json(m_multiFontSet).dump(1, '\t');
 
 		IBindCtxPtr bindCtx;
@@ -115,18 +105,8 @@ LRESULT App::FontEditorWindow::Menu_File_Save() {
 		strm.Release();
 
 		Changes_MarkFresh();
-	} catch (const WException& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
-		return 1;
-	} catch (const std::system_error& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
-		return 1;
-	} catch (const std::exception& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
-		return 1;
-	}
-
-	return 0;
+		return 0;
+	});
 }
 
 LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
@@ -139,7 +119,7 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 	};
 	const auto fileTypesSpan = std::span(fileTypes);
 
-	try {
+	return TryCatchShowError(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
 		const auto dump = nlohmann::json(m_multiFontSet).dump(1, '\t');
 
 		IBindCtxPtr bindCtx;
@@ -162,7 +142,7 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 		SuccessOrThrow(pDialog->SetDefaultExtension(L"json"));
 		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
 		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
-		switch (SuccessOrThrow(pDialog->Show(m_hWnd), { HRESULT_FROM_WIN32(ERROR_CANCELLED) })) {
+		switch (SuccessOrThrow(pDialog->Show(m_hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
 			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
 				return 0;
 		}
@@ -187,18 +167,8 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 			m_currentShellItem = std::move(pResult);
 			Changes_MarkFresh();
 		}
-	} catch (const WException& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
-		return 1;
-	} catch (const std::system_error& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
-		return 1;
-	} catch (const std::exception& e) {
-		ShowErrorMessageBox(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, e);
-		return 1;
-	}
-
-	return 0;
+		return 0;
+	});
 }
 
 LRESULT App::FontEditorWindow::Menu_File_Language(const char* language) {
