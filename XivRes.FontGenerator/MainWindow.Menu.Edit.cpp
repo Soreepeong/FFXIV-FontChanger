@@ -1,6 +1,8 @@
 ﻿#include "pch.h"
 #include "Structs.h"
 #include "MainWindow.h"
+#include "NegativeBearingCodepointsDialog.h"
+#include "resource.h"
 #include "xivres/textools.h"
 
 LRESULT App::FontEditorWindow::Menu_Edit_Add() {
@@ -298,6 +300,59 @@ LRESULT App::FontEditorWindow::Menu_Edit_MoveUpOrDown(int direction) {
 	m_pActiveFace->OnElementChange();
 	Window_Redraw();
 
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::FaceElementsListView_Clone() {
+	if (!m_pActiveFace) return 0;
+
+	std::vector<int> indices;
+	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
+		indices.push_back(i);
+	if (indices.empty()) return 0;
+
+	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+
+	auto& elements = m_pActiveFace->Elements;
+	std::vector<Structs::FaceElement> clones;
+	clones.reserve(indices.size());
+	for (const auto i : indices)
+		clones.emplace_back(*elements[i]);
+
+	const auto insertPos = indices.back() + 1;
+	ListView_SetItemState(m_hFaceElementsListView, -1, 0, LVIS_SELECTED);
+
+	for (auto i = 0, i_ = static_cast<int>(clones.size()); i < i_; ++i) {
+		const auto pos = insertPos + i;
+		auto& element = **elements.emplace(elements.begin() + pos, std::make_unique<Structs::FaceElement>(clones[i]));
+		LVITEMW lvi{ .mask = LVIF_PARAM | LVIF_STATE, .iItem = pos,
+					 .state = LVIS_SELECTED, .stateMask = LVIS_SELECTED,
+					 .lParam = reinterpret_cast<LPARAM>(&element) };
+		ListView_InsertItem(m_hFaceElementsListView, &lvi);
+		UpdateFaceElementListViewItem(element);
+	}
+
+	Changes_MarkDirty();
+	m_pActiveFace->OnElementChange();
+	Window_Redraw();
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::FaceElementsListView_ShowNegativeBearingCodepoints() {
+	if (!m_pActiveFace) return 0;
+	const auto index = ListView_GetNextItem(m_hFaceElementsListView, -1, LVNI_SELECTED);
+	if (index < 0) return 0;
+	const auto& element = *m_pActiveFace->Elements[index];
+	if (element.Renderer == Structs::RendererEnum::Empty) return 0;
+	auto entries = element.GetWrappedFont()->get_negative_lsb_codepoints();
+	if (entries.empty()) {
+		MessageBoxW(m_hWnd,
+			std::wstring(GetStringResource(IDS_NEGATIVEBEARING_NONE_FOUND)).c_str(),
+			std::wstring(GetStringResource(IDS_APP)).c_str(),
+			MB_OK | MB_ICONINFORMATION);
+		return 0;
+	}
+	NegativeBearingCodepointsDialog::Show(m_hWnd, std::move(entries));
 	return 0;
 }
 

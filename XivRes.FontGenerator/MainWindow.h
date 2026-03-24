@@ -62,6 +62,7 @@ namespace App {
 		HWND m_hFacesListBox{};
 		HWND m_hFaceElementsListView{};
 		HWND m_hEdit{};
+		HMENU m_hFaceElementContextMenu{};
 
 		int m_nDrawLeft{};
 		int m_nDrawTop{};
@@ -152,6 +153,9 @@ namespace App {
 		bool FaceElementsListView_OnDragProcessMouseMove(int16_t x, int16_t y);
 		bool FaceElementsListView_DragProcessDragging(int16_t x, int16_t y);
 		LRESULT FaceElementsListView_OnDblClick(NMITEMACTIVATE& nmia);
+		LRESULT FaceElementsListView_OnRightClick(NMITEMACTIVATE& nmia);
+		LRESULT FaceElementsListView_Clone();
+		LRESULT FaceElementsListView_ShowNegativeBearingCodepoints();
 
 		[[nodiscard]] double GetZoom() const noexcept;
 

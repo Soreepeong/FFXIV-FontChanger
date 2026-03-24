@@ -274,7 +274,7 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 }
 
 
-const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceElement::GetWrappedFont() const {
+const std::shared_ptr<xivres::fontgen::wrapping_fixed_size_font>& App::Structs::FaceElement::GetWrappedFont() const {
 	if (!m_wrappedFont)
 		m_wrappedFont = std::make_shared<xivres::fontgen::wrapping_fixed_size_font>(GetBaseFont(), WrapModifiers);
 

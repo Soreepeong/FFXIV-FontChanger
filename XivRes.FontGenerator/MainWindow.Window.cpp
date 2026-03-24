@@ -51,6 +51,15 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 	SetMenu(m_hWnd, LoadMenuIndirectW(LockResource(hGlob)));
 	FreeResource(hGlob);
 
+	{
+		auto hCtxRes = FindResourceExW(g_hInstance, RT_MENU, MAKEINTRESOURCEW(IDR_CONTEXTMENU_FACEELEMENT), g_langId);
+		if (!hCtxRes)
+			hCtxRes = FindResourceW(g_hInstance, MAKEINTRESOURCEW(IDR_CONTEXTMENU_FACEELEMENT), RT_MENU);
+		const auto hCtxGlob = LoadResource(g_hInstance, hCtxRes);
+		m_hFaceElementContextMenu = LoadMenuIndirectW(LockResource(hCtxGlob));
+		FreeResource(hCtxGlob);
+	}
+
 	NONCLIENTMETRICSW ncm = { sizeof(NONCLIENTMETRICSW) };
 	SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof ncm, &ncm, 0);
 	m_hUiFont = CreateFontIndirectW(&ncm.lfMessageFont);
@@ -389,6 +398,22 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapTcAxisToFont ? MFS_CHECKED : 0) };
 		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTTCAXIS, FALSE, &mii);
 	}
+	{
+		const auto i = ListView_GetNextItem(m_hFaceElementsListView, -1, LVNI_SELECTED);
+		const bool hasElement = m_pActiveFace && i >= 0;
+		const bool notEmpty = hasElement && m_pActiveFace->Elements[i]->Renderer != Structs::RendererEnum::Empty;
+		const auto setState = [&](UINT id, bool enabled) {
+			const MENUITEMINFOW mii{ .cbSize = sizeof mii, .fMask = MIIM_STATE,
+									 .fState = static_cast<UINT>(enabled ? MFS_ENABLED : MFS_GRAYED) };
+			SetMenuItemInfoW(hMenu, id, FALSE, &mii);
+		};
+		setState(ID_EDIT_DETAILS,                    hasElement);
+		setState(ID_CONTEXTMENU_SHOWNEGATIVEBEARING, notEmpty);
+		setState(ID_EDIT_CUT,                        hasElement);
+		setState(ID_EDIT_COPY,                       hasElement);
+		setState(ID_CONTEXTMENU_CLONE,               hasElement);
+		setState(ID_EDIT_DELETE,                     hasElement);
+	}
 	return 0;
 }
 
@@ -577,6 +602,8 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EDIT_MOVEUP: return Menu_Edit_MoveUpOrDown(-1);
 				case ID_EDIT_MOVEDOWN: return Menu_Edit_MoveUpOrDown(+1);
 				case ID_EDIT_CREATEEMPTYCOPYFROMSELECTION: return Menu_Edit_CreateEmptyCopyFromSelection();
+			case ID_CONTEXTMENU_CLONE: return FaceElementsListView_Clone();
+			case ID_CONTEXTMENU_SHOWNEGATIVEBEARING: return FaceElementsListView_ShowNegativeBearingCodepoints();
 				case ID_VIEW_PREVIOUSFONT: return Menu_View_NextOrPrevFont(-1);
 				case ID_VIEW_NEXTFONT: return Menu_View_NextOrPrevFont(1);
 				case ID_VIEW_WORDWRAP: return Menu_View_WordWrap();
@@ -607,8 +634,9 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			switch (auto& hdr = *reinterpret_cast<NMHDR*>(lParam); hdr.idFrom) {
 				case Id_FaceElementListView:
 					switch (hdr.code) {
-						case LVN_BEGINDRAG: return FaceElementsListView_OnBeginDrag(*(reinterpret_cast<NM_LISTVIEW*>(lParam)));
-						case NM_DBLCLK: return FaceElementsListView_OnDblClick(*(reinterpret_cast<NMITEMACTIVATE*>(lParam)));
+						case LVN_BEGINDRAG: return FaceElementsListView_OnBeginDrag(*reinterpret_cast<NM_LISTVIEW*>(lParam));
+						case NM_DBLCLK: return FaceElementsListView_OnDblClick(*reinterpret_cast<NMITEMACTIVATE*>(lParam));
+						case NM_RCLICK: return FaceElementsListView_OnRightClick(*reinterpret_cast<NMITEMACTIVATE*>(lParam));
 					}
 					break;
 			}

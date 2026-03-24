@@ -52,7 +52,12 @@
     <ClCompile Include="MiscUtil.cpp">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="GameInstallationRepository.cpp" />
+    <ClCompile Include="NegativeBearingCodepointsDialog.cpp">
+      <Filter>Source\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="GameInstallationRepository.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Project Items">
@@ -105,7 +110,12 @@
     <ClInclude Include="MiscUtil.h">
       <Filter>Source</Filter>
     </ClInclude>
-    <ClInclude Include="GameInstallationRepository.h" />
+    <ClInclude Include="NegativeBearingCodepointsDialog.h">
+      <Filter>Source\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="GameInstallationRepository.h">
+      <Filter>Source</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json">

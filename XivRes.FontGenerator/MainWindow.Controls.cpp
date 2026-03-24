@@ -169,6 +169,15 @@ LRESULT App::FontEditorWindow::FaceElementsListView_OnDblClick(NMITEMACTIVATE& n
 	return 0;
 }
 
+LRESULT App::FontEditorWindow::FaceElementsListView_OnRightClick(NMITEMACTIVATE& nmia) {
+	if (!m_pActiveFace || nmia.iItem < 0 || !m_hFaceElementContextMenu)
+		return 0;
+	POINT pt{ nmia.ptAction };
+	ClientToScreen(m_hFaceElementsListView, &pt);
+	TrackPopupMenuEx(GetSubMenu(m_hFaceElementContextMenu, 0), TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd, nullptr);
+	return 0;
+}
+
 double App::FontEditorWindow::GetZoom() const noexcept {
 	return GetZoomFromWindow(m_hWnd);
 }

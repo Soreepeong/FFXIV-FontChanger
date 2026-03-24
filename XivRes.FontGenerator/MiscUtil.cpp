@@ -299,3 +299,13 @@ std::wstring GetOpenTypeFeatureName(DWRITE_FONT_FEATURE_TAG tag) {
 
 	return L"(Unknown)";
 }
+
+std::wstring FormatPixelValue(int value, bool plusSign) {
+	const auto temp = plusSign ? std::format(L"{:+}", value) : std::format(L"{:}", value);
+	return std::vformat(GetStringResource(IDS_FORMAT_UNIT_PX), std::make_wformat_args(temp));
+}
+
+std::wstring FormatPixelValue(float value, bool plusSign) {
+	const auto temp = plusSign ? std::format(L"{:+g}", value) : std::format(L"{:g}", value);
+	return std::vformat(GetStringResource(IDS_FORMAT_UNIT_PX), std::make_wformat_args(temp));
+}

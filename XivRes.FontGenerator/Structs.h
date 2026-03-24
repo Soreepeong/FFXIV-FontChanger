@@ -36,7 +36,7 @@ namespace App::Structs {
 
 	class FaceElement {
 		mutable std::shared_ptr<xivres::fontgen::fixed_size_font> m_baseFont;
-		mutable std::shared_ptr<xivres::fontgen::fixed_size_font> m_wrappedFont;
+		mutable std::shared_ptr<xivres::fontgen::wrapping_fixed_size_font> m_wrappedFont;
 		friend struct FontSet;
 
 	public:
@@ -58,7 +58,7 @@ namespace App::Structs {
 		friend void swap(FaceElement& l, FaceElement& r) noexcept;
 
 		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetBaseFont() const;
-		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetWrappedFont() const;
+		const std::shared_ptr<xivres::fontgen::wrapping_fixed_size_font>& GetWrappedFont() const;
 
 		void FlushCache();
 

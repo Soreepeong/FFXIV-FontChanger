@@ -115,6 +115,21 @@ BEGIN
     END
 END
 
+IDR_CONTEXTMENU_FACEELEMENT MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "打开(&O)",                      ID_EDIT_DETAILS
+        MENUITEM "显示负字距码点(&N)...",              ID_CONTEXTMENU_SHOWNEGATIVEBEARING
+        MENUITEM SEPARATOR
+        MENUITEM "剪切(&T)",                      ID_EDIT_CUT
+        MENUITEM "复制(&C)",                      ID_EDIT_COPY
+        MENUITEM "克隆(&L)",                      ID_CONTEXTMENU_CLONE
+        MENUITEM SEPARATOR
+        MENUITEM "删除(&D)",                      ID_EDIT_DELETE
+    END
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -215,6 +230,28 @@ BEGIN
     EDITTEXT        IDC_EDIT_ADDCUSTOMRANGE_PREVIEW,348,312,174,45,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
     PUSHBUTTON      "表达式帮助",IDC_BUTTON_EXPRESSION_HELP,6,366,84,14
     LTEXT           "数字输入提示：以 = 开头可作为数学表达式计算，按 Enter 确认。\n使用 Ctrl+上/下键可快速调整数值。",IDC_STATIC,96,366,432,18,0,WS_EX_TRANSPARENT
+END
+
+IDD_GAMEINSTALLATIONMANAGER DIALOGEX 0, 0, 310, 176
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "游戏安装管理"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "确定",IDOK,198,156,50,14
+    PUSHBUTTON      "取消",IDCANCEL,252,156,50,14
+    CONTROL         "",IDC_PATHLIST,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,6,6,297,144
+    PUSHBUTTON      "自动检测(&D)",IDC_DETECT,6,156,50,14
+    PUSHBUTTON      "添加(&A)",IDC_ADD,60,156,50,14
+    PUSHBUTTON      "删除(&R)",IDC_REMOVE,114,156,50,14,WS_DISABLED
+END
+
+IDD_NEGATIVEBEARINGCODEPOINTS DIALOGEX 0, 0, 280, 200
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "负字距码点"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "",IDC_LIST_NEGATIVEBEARING,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,6,6,268,169
+    DEFPUSHBUTTON   "关闭",IDOK,224,179,50,14
 END
 
 
@@ -644,6 +681,15 @@ BEGIN
     IDS_OPENTYPEFEATURE_ZERO "斜线零"
 END
 
+STRINGTABLE
+BEGIN
+    IDS_NEGATIVEBEARING_COLUMN_CODEPOINT "统一码"
+    IDS_NEGATIVEBEARING_COLUMN_CHARACTER "预览"
+    IDS_NEGATIVEBEARING_COLUMN_X1 "X1"
+    IDS_FORMAT_UNIT_PX      "{}px"
+    IDS_NEGATIVEBEARING_NONE_FOUND "未找到具有负左边距的码点。"
+END
+
 #endif    // Chinese (Simplified) resources
 /////////////////////////////////////////////////////////////////////////////
 
@@ -746,6 +792,21 @@ BEGIN
         MENUITEM "일반 용도 폰트를 ChnAXIS{}에도 사용하기(&C)", ID_EXPORT_MAPFONTCHNAXIS
         MENUITEM "일반 용도 폰트를 KrnAXIS{}에도 사용하기(&K)", ID_EXPORT_MAPFONTKRNAXIS
         MENUITEM "일반 용도 폰트를 tcaxis{}에도 사용하기(&T)", ID_EXPORT_MAPFONTTCAXIS
+    END
+END
+
+IDR_CONTEXTMENU_FACEELEMENT MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "열기(&O)",                      ID_EDIT_DETAILS
+        MENUITEM "음수 LSB 코드포인트 표시(&N)...",      ID_CONTEXTMENU_SHOWNEGATIVEBEARING
+        MENUITEM SEPARATOR
+        MENUITEM "잘라내기(&T)",                    ID_EDIT_CUT
+        MENUITEM "복사(&C)",                      ID_EDIT_COPY
+        MENUITEM "복제(&L)",                      ID_CONTEXTMENU_CLONE
+        MENUITEM SEPARATOR
+        MENUITEM "삭제(&D)",                      ID_EDIT_DELETE
     END
 END
 
@@ -862,6 +923,15 @@ BEGIN
     PUSHBUTTON      "자동 감지(&D)",IDC_DETECT,6,156,50,14
     PUSHBUTTON      "추가(&A)",IDC_ADD,60,156,50,14
     PUSHBUTTON      "제거(&R)",IDC_REMOVE,114,156,50,14,WS_DISABLED
+END
+
+IDD_NEGATIVEBEARINGCODEPOINTS DIALOGEX 0, 0, 280, 200
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "음수 LSB 코드포인트"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "",IDC_LIST_NEGATIVEBEARING,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,6,6,268,169
+    DEFPUSHBUTTON   "닫기",IDOK,224,179,50,14
 END
 
 
@@ -1117,7 +1187,7 @@ BEGIN
     IDS_FONTLISTVIEW_COLUMN_LOOKUP "폰트"
     IDS_ERROR_OPENFILEFAILURE_BODY "다음 오류로 인해 파일을 열지 못했습니다."
     IDS_FILTERSPEC_PRESETJSONFILES "폰트 구성 JSON 파일 (*.json)"
-    IDS_FILTERSPEC_ALLFILES "All files (*.*)"
+    IDS_FILTERSPEC_ALLFILES "모든 파일 (*.*)"
     IDS_WINDOWTITLE_OPEN    "열기"
 END
 
@@ -1165,15 +1235,20 @@ BEGIN
     IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_ACTOZ "액토즈 소프트(한국어판)"
     IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_USERJOY "유저조이 게임즈(번체중국어판)"
     IDS_GAMEINSTALLATIONDETECT_FOUND_0 
-                            "이미 목록에 등록되지 않은 게임 설치를 자동으로 찾을 수 없었습니다. ""추가"" 버튼으로 직접 경로를 지정하십시오."
+                            "새 게임 설치본을 찾지 못했습니다. ""추가"" 버튼으로 직접 경로를 지정하세요."
 END
 
 STRINGTABLE
 BEGIN
-    IDS_GAMEINSTALLATIONDETECT_FOUND_1 "1개의 게임 설치가 추가로 등록되었습니다."
-    IDS_GAMEINSTALLATIONDETECT_FOUND_N "{}개의 게임 설치가 추가로 등록되었습니다."
+    IDS_GAMEINSTALLATIONDETECT_FOUND_1 "1개의 게임 설치본이 추가로 등록되었습니다."
+    IDS_GAMEINSTALLATIONDETECT_FOUND_N "{}개의 게임 설치본이 추가로 등록되었습니다."
     IDS_GAMEINSTALLATIONADD_NOTAGAME 
                             "올바른 게임 설치 경로가 아닙니다. 상위 폴더에 게임 런처가 같이 있는 파일을 선택해 주세요."
+    IDS_NEGATIVEBEARING_COLUMN_CODEPOINT "유니코드"
+    IDS_NEGATIVEBEARING_COLUMN_CHARACTER "미리 보기"
+    IDS_NEGATIVEBEARING_COLUMN_X1 "좌측 여백 (LSB)"
+    IDS_FORMAT_UNIT_PX      "{}px"
+    IDS_NEGATIVEBEARING_NONE_FOUND "원점보다 좌측에 표시되는 문자(LSB<0)가 없습니다."
 END
 
 #endif    // Korean (Korea) resources
@@ -1278,6 +1353,21 @@ BEGIN
         MENUITEM "Additionally map &ChnAXIS{} to font{}(AXIS)", ID_EXPORT_MAPFONTCHNAXIS
         MENUITEM "Additionally map &KrnAXIS{} to font{}(AXIS)", ID_EXPORT_MAPFONTKRNAXIS
         MENUITEM "Additionally map &tcaxis{} to font{}(AXIS)", ID_EXPORT_MAPFONTTCAXIS
+    END
+END
+
+IDR_CONTEXTMENU_FACEELEMENT MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "&Open",                       ID_EDIT_DETAILS
+        MENUITEM "Show &Negative-Bearing Codepoints...", ID_CONTEXTMENU_SHOWNEGATIVEBEARING
+        MENUITEM SEPARATOR
+        MENUITEM "Cu&t",                        ID_EDIT_CUT
+        MENUITEM "&Copy",                       ID_EDIT_COPY
+        MENUITEM "C&lone",                      ID_CONTEXTMENU_CLONE
+        MENUITEM SEPARATOR
+        MENUITEM "&Delete",                     ID_EDIT_DELETE
     END
 END
 
@@ -1396,6 +1486,15 @@ BEGIN
     PUSHBUTTON      "&Remove",IDC_REMOVE,114,156,50,14,WS_DISABLED
 END
 
+IDD_NEGATIVEBEARINGCODEPOINTS DIALOGEX 0, 0, 280, 200
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Negative-Bearing Codepoints"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "",IDC_LIST_NEGATIVEBEARING,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,6,6,268,169
+    DEFPUSHBUTTON   "Close",IDOK,224,179,50,14
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -1427,6 +1526,10 @@ BEGIN
         RIGHTMARGIN, 303
         TOPMARGIN, 7
         BOTTOMMARGIN, 169
+    END
+
+    IDD_NEGATIVEBEARINGCODEPOINTS, DIALOG
+    BEGIN
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -1985,6 +2088,12 @@ BEGIN
                             "{} additional game installations have been detected."
     IDS_GAMEINSTALLATIONADD_NOTAGAME 
                             "Selected file is not a part of a valid game installation. Specify a path with game launcher/boot files residing in its parent directory."
+    IDS_NEGATIVEBEARING_COLUMN_CODEPOINT "Codepoint"
+    IDS_NEGATIVEBEARING_COLUMN_CHARACTER "Character"
+    IDS_NEGATIVEBEARING_COLUMN_X1 "Left Side Bearing (LSB)"
+    IDS_FORMAT_UNIT_PX      "{}px"
+    IDS_NEGATIVEBEARING_NONE_FOUND 
+                            "No codepoints with negative left side bearing were found."
 END
 
 #endif    // English (United States) resources
