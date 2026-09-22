@@ -320,19 +320,19 @@ std::pair<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<st
 		progressDialog.ThrowIfCancelled();
 
 		switch (packer.progress_description()) {
-			case xivres::fontgen::fontdata_packer::progress_status_t::prepare_source_fonts:
+			case xivres::fontgen::fontdata_packer::progress_status::prepare_source_fonts:
 				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_PREPARESOURCEFONTS));
 				break;
-			case xivres::fontgen::fontdata_packer::progress_status_t::prepare_target_fonts:
+			case xivres::fontgen::fontdata_packer::progress_status::prepare_target_fonts:
 				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_PREPARETARGETFONTS));
 				break;
-			case xivres::fontgen::fontdata_packer::progress_status_t::discover_glyphs:
+			case xivres::fontgen::fontdata_packer::progress_status::discover_glyphs:
 				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_DISCOVERGLYPHS));
 				break;
-			case xivres::fontgen::fontdata_packer::progress_status_t::measure_glyphs:
+			case xivres::fontgen::fontdata_packer::progress_status::measure_glyphs:
 				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_MEASUREGLYPHS));
 				break;
-			case xivres::fontgen::fontdata_packer::progress_status_t::layout_and_draw:
+			case xivres::fontgen::fontdata_packer::progress_status::layout_and_draw:
 				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_LAYOUTANDDRAW));
 				break;
 		}

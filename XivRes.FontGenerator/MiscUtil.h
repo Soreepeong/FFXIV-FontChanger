@@ -20,20 +20,20 @@ std::wstring FormatPixelValue(float value, bool plusSign = false);
 [[nodiscard]] std::unique_ptr<std::remove_pointer_t<HGLOBAL>, decltype(&FreeResource)> LoadResourceWithLanguageFallback(LPCWSTR type, UINT id);
 
 template<typename TRet, typename... TIgnore>
-struct _TryCatchShowErrorImpl;
+struct TryCatchShowErrorImpl;
 
 template<typename TRet>
-struct _TryCatchShowErrorImpl<TRet> {
+struct TryCatchShowErrorImpl<TRet> {
 	template<typename TFn>
 	TRet operator()(TFn&& fn, TRet) const { return fn(); }
 };
 
 template<typename TRet, typename T, typename... Ts>
-struct _TryCatchShowErrorImpl<TRet, T, Ts...> {
+struct TryCatchShowErrorImpl<TRet, T, Ts...> {
 	template<typename TFn>
 	TRet operator()(TFn&& fn, TRet errorReturn) const {
 		try {
-			return _TryCatchShowErrorImpl<TRet, Ts...>{}(std::forward<TFn>(fn), errorReturn);
+			return TryCatchShowErrorImpl<TRet, Ts...>{}(std::forward<TFn>(fn), errorReturn);
 		} catch (const T&) {
 			return errorReturn;
 		}
@@ -43,7 +43,7 @@ struct _TryCatchShowErrorImpl<TRet, T, Ts...> {
 template<typename... TIgnore, typename TRet, typename TFn>
 TRet TryCatchShowError(HWND hParent, UINT msgId, TRet errorReturn, TFn&& fn) {
 	try {
-		return _TryCatchShowErrorImpl<TRet, TIgnore...>{}(std::forward<TFn>(fn), errorReturn);
+		return TryCatchShowErrorImpl<TRet, TIgnore...>{}(std::forward<TFn>(fn), errorReturn);
 	} catch (const WException& e) {
 		ShowErrorMessageBox(hParent, msgId, e);
 	} catch (const std::system_error& e) {
