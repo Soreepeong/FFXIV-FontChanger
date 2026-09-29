@@ -174,7 +174,19 @@ std::pair<IDWriteFactoryPtr, IDWriteFontPtr> App::Structs::LookupStruct::Resolve
 	return std::make_pair(std::move(factory), std::move(font));
 }
 
-std::pair<std::shared_ptr<xivres::stream>, int> App::Structs::LookupStruct::ResolveStream() const {
+std::map<uint32_t, float> App::Structs::LookupStruct::GetVariationAxisValues() const {
+	std::map<uint32_t, float> res;
+	for (const auto& [tag, value] : Variations) {
+		if (tag.size() != 4)
+			continue;
+		uint32_t axisTag;
+		memcpy(&axisTag, tag.data(), sizeof axisTag);
+		res.emplace(axisTag, value);
+	}
+	return res;
+}
+
+std::tuple<std::shared_ptr<xivres::stream>, int, std::map<uint32_t, float>> App::Structs::LookupStruct::ResolveStream() const {
 	using namespace xivres::fontgen;
 
 	auto [factory, font] = ResolveFont();
@@ -207,7 +219,19 @@ std::pair<std::shared_ptr<xivres::stream>, int> App::Structs::LookupStruct::Reso
 	memcpy(buf.data(), pFragmentStart, buf.size());
 	stream->ReleaseFileFragment(pFragmentContext);
 
-	return { std::make_shared<xivres::memory_stream>(std::move(buf)), face->GetIndex() };
+	// DirectWrite lists the named instances of variable fonts as separate fonts; the face index does not tell them apart.
+	// The optical size is left out, so that it can follow the font size.
+	std::map<uint32_t, float> instanceAxisValues;
+	if (IDWriteFontFace5Ptr face5; SUCCEEDED(face.QueryInterface(decltype(face5)::GetIID(), &face5)) && face5->HasVariations()) {
+		std::vector<DWRITE_FONT_AXIS_VALUE> axisValues(face5->GetFontAxisValueCount());
+		SuccessOrThrow(face5->GetFontAxisValues(axisValues.data(), static_cast<UINT32>(axisValues.size())));
+		for (const auto& axisValue : axisValues) {
+			if (axisValue.axisTag != DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE)
+				instanceAxisValues.emplace(static_cast<uint32_t>(axisValue.axisTag), axisValue.value);
+		}
+	}
+
+	return { std::make_shared<xivres::memory_stream>(std::move(buf)), face->GetIndex(), std::move(instanceAxisValues) };
 }
 
 const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceElement::GetBaseFont() const {
@@ -245,18 +269,24 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 					auto [factory, font] = Lookup.ResolveFont();
 					auto specifics = RendererSpecific.DirectWrite;
 					specifics.Features.clear();
-					for (const auto& f : Lookup.Features)
-						specifics.Features.push_back({ .nameTag = f, .parameter = 1 });
+					for (const auto& [tag, value] : Lookup.Features)
+						specifics.Features.push_back({ .nameTag = tag, .parameter = value });
+					specifics.Language = Lookup.Language;
+					specifics.Variations = Lookup.GetVariationAxisValues();
 					m_baseFont = std::make_shared<xivres::fontgen::directwrite_fixed_size_font>(std::move(factory), std::move(font), Size, Gamma, TransformationMatrix, specifics);
 					break;
 				}
 
 				case RendererEnum::FreeType: {
-					auto [pStream, index] = Lookup.ResolveStream();
+					auto [pStream, index, instanceAxisValues] = Lookup.ResolveStream();
 					auto specifics = RendererSpecific.FreeType;
 					specifics.Features.clear();
-					for (const auto& f : Lookup.Features)
-						specifics.Features.push_back({.tag = _byteswap_ulong(f), .value = 1, .start = HB_FEATURE_GLOBAL_START, .end = HB_FEATURE_GLOBAL_END});
+					for (const auto& [tag, value] : Lookup.Features)
+						specifics.Features.push_back({.tag = _byteswap_ulong(tag), .value = value, .start = HB_FEATURE_GLOBAL_START, .end = HB_FEATURE_GLOBAL_END});
+					specifics.Language = Lookup.Language;
+					specifics.Variations = std::move(instanceAxisValues);
+					for (const auto& [tag, value] : Lookup.GetVariationAxisValues())
+						specifics.Variations[tag] = value;
 					m_baseFont = std::make_shared<xivres::fontgen::freetype_fixed_size_font>(*pStream, index, Size, Gamma, TransformationMatrix, specifics);
 					break;
 				}
@@ -317,8 +347,11 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M21),
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M22)
 			);
-			for (const auto& v : Lookup.Features)
-				res += std::format(":{}", std::string_view(reinterpret_cast<const char*>(&v), 4));
+			for (const auto& [tag, value] : Lookup.Features)
+				res += std::format(":{}={}", std::string_view(reinterpret_cast<const char*>(&tag), 4), value);
+			res += std::format(":lang={}", Lookup.Language);
+			for (const auto& [tag, value] : Lookup.Variations)
+				res += std::format(":{}={:g}", tag, value);
 			return res;
 		}
 		case RendererEnum::FreeType: {
@@ -335,8 +368,11 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M21),
 				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M22)
 			);
-			for (const auto& v : Lookup.Features)
-				res += std::format(":{}", std::string_view(reinterpret_cast<const char*>(&v), 4));
+			for (const auto& [tag, value] : Lookup.Features)
+				res += std::format(":{}={}", std::string_view(reinterpret_cast<const char*>(&tag), 4), value);
+			res += std::format(":lang={}", Lookup.Language);
+			for (const auto& [tag, value] : Lookup.Variations)
+				res += std::format(":{}={:g}", tag, value);
 			return res;
 		}
 		default:
@@ -475,7 +511,7 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::Face::Get
 		for (auto& pElement : Elements)
 			mergeFontList.emplace_back(pElement->GetWrappedFont(), pElement->MergeMode);
 
-		MergedFont = std::make_shared<xivres::fontgen::merged_fixed_size_font>(std::move(mergeFontList));
+		MergedFont = std::make_shared<xivres::fontgen::merged_fixed_size_font>(std::move(mergeFontList), VerticalAlignment);
 	}
 
 	return MergedFont;
@@ -499,7 +535,9 @@ App::Structs::Face::Face(Face&& r) noexcept : Face() {
 
 App::Structs::Face::Face(const Face& r)
 	: MergedFont(r.MergedFont)
-	, PreviewText(r.PreviewText) {
+	, Name(r.Name)
+	, PreviewText(r.PreviewText)
+	, VerticalAlignment(r.VerticalAlignment) {
 	Elements.reserve(r.Elements.size());
 	for (const auto& e : r.Elements)
 		Elements.emplace_back(std::make_unique<FaceElement>(*e));
@@ -524,6 +562,7 @@ void App::Structs::swap(Face& l, Face& r) noexcept {
 	swap(l.Name, r.Name);
 	swap(l.PreviewText, r.PreviewText);
 	swap(l.Elements, r.Elements);
+	swap(l.VerticalAlignment, r.VerticalAlignment);
 }
 
 void App::Structs::FontSet::FlushCache() {
@@ -636,6 +675,15 @@ void App::Structs::to_json(nlohmann::json& json, const FontSet& value) {
 	json.emplace("texFilenameFormat", value.TexFilenameFormat);
 }
 
+static constexpr std::pair<xivres::fontgen::vertical_alignment, std::string_view> VerticalAlignmentNames[]{
+	{ xivres::fontgen::vertical_alignment::Top, "top" },
+	{ xivres::fontgen::vertical_alignment::Middle, "middle" },
+	{ xivres::fontgen::vertical_alignment::Baseline, "baseline" },
+	{ xivres::fontgen::vertical_alignment::Bottom, "bottom" },
+	{ xivres::fontgen::vertical_alignment::RomanBaseline, "romanBaseline" },
+	{ xivres::fontgen::vertical_alignment::IdeographicCenter, "ideographicCenter" },
+};
+
 void App::Structs::from_json(const nlohmann::json& json, Face& value) {
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
@@ -647,6 +695,12 @@ void App::Structs::from_json(const nlohmann::json& json, Face& value) {
 			value.Elements.emplace_back(std::make_unique<FaceElement>(v.get<FaceElement>()));
 	}
 	value.PreviewText = json.value<std::string>("previewText", "");
+	value.VerticalAlignment = xivres::fontgen::vertical_alignment::Baseline;
+	const auto verticalAlignment = json.value<std::string>("verticalAlignment", "");
+	for (const auto& [alignment, name] : VerticalAlignmentNames) {
+		if (name == verticalAlignment)
+			value.VerticalAlignment = alignment;
+	}
 }
 
 void App::Structs::to_json(nlohmann::json& json, const Face& value) {
@@ -656,6 +710,10 @@ void App::Structs::to_json(nlohmann::json& json, const Face& value) {
 	for (const auto& e : value.Elements)
 		elements.emplace_back(*e);
 	json.emplace("previewText", value.PreviewText);
+	for (const auto& [alignment, name] : VerticalAlignmentNames) {
+		if (alignment == value.VerticalAlignment && value.VerticalAlignment != xivres::fontgen::vertical_alignment::Baseline)
+			json.emplace("verticalAlignment", name);
+	}
 }
 
 void App::Structs::from_json(const nlohmann::json& json, FaceElement& value) {
@@ -830,8 +888,30 @@ void App::Structs::from_json(const nlohmann::json& json, LookupStruct& value) {
 	value.Features.clear();
 	if (const auto it = json.find("features"); it != json.end() && it->is_array()) {
 		for (const auto& [_, v] : it->items()) {
-			const auto vs = v.get<std::string>();
-			value.Features.insert(static_cast<DWRITE_FONT_FEATURE_TAG>(*reinterpret_cast<const uint32_t*>(vs.c_str())));
+			auto vs = v.get<std::string>();
+			vs.resize(4, ' ');
+			value.Features.emplace(static_cast<DWRITE_FONT_FEATURE_TAG>(*reinterpret_cast<const uint32_t*>(vs.c_str())), 1);
+		}
+	}
+
+	// Values other than 1 are stored separately, so that older versions still read the list of features.
+	if (const auto it = json.find("featureValues"); it != json.end() && it->is_object()) {
+		for (const auto& [name, v] : it->items()) {
+			if (!v.is_number_unsigned())
+				continue;
+			std::string tag = name;
+			tag.resize(4, ' ');
+			const auto key = static_cast<DWRITE_FONT_FEATURE_TAG>(*reinterpret_cast<const uint32_t*>(tag.c_str()));
+			if (const auto it2 = value.Features.find(key); it2 != value.Features.end())
+				it2->second = v.get<uint32_t>();
+		}
+	}
+	value.Language = json.value<std::string>("language", "");
+	value.Variations.clear();
+	if (const auto it = json.find("variations"); it != json.end() && it->is_object()) {
+		for (const auto& [tag, v] : it->items()) {
+			if (v.is_number())
+				value.Variations[tag] = v.get<float>();
 		}
 	}
 }
@@ -844,12 +924,25 @@ void App::Structs::to_json(nlohmann::json& json, const LookupStruct& value) {
 	json.emplace("style", static_cast<int>(value.Style));
 
 	auto features = nlohmann::json::array();
-	for (const auto& v : value.Features) {
+	auto featureValues = nlohmann::json::object();
+	for (const auto& [tag, v] : value.Features) {
 		char buf[5]{};
-		*reinterpret_cast<uint32_t*>(buf) = static_cast<uint32_t>(v);
+		*reinterpret_cast<uint32_t*>(buf) = static_cast<uint32_t>(tag);
 		features.emplace_back(buf);
+		if (v != 1)
+			featureValues[buf] = v;
 	}
 	json.emplace("features", features);
+	if (!featureValues.empty())
+		json.emplace("featureValues", std::move(featureValues));
+	if (!value.Language.empty())
+		json.emplace("language", value.Language);
+	if (!value.Variations.empty()) {
+		auto variations = nlohmann::json::object();
+		for (const auto& [tag, v] : value.Variations)
+			variations[tag] = v;
+		json.emplace("variations", std::move(variations));
+	}
 }
 
 void App::Structs::from_json(const nlohmann::json& json, MultiFontSet& value) {

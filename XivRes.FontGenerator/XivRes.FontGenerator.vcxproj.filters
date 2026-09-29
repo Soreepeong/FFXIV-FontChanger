@@ -40,6 +40,12 @@
     <ClCompile Include="MainWindow.Menu.File.cpp">
       <Filter>Source\Windows</Filter>
     </ClCompile>
+    <ClCompile Include="MainWindow.Menu.HotReload.cpp">
+      <Filter>Source\Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="GameFontReloader.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
     <ClCompile Include="MainWindow.Menu.View.cpp">
       <Filter>Source\Windows</Filter>
     </ClCompile>
@@ -95,6 +101,9 @@
     <ClInclude Include="FaceElementEditorDialog.h">
       <Filter>Source\Dialogs</Filter>
     </ClInclude>
+    <ClInclude Include="GameFontReloader.h">
+      <Filter>Source</Filter>
+    </ClInclude>
     <ClInclude Include="ProgressDialog.h">
       <Filter>Source\Dialogs</Filter>
     </ClInclude>
@@ -121,6 +130,9 @@
     <None Include="vcpkg.json">
       <Filter>Project Items</Filter>
     </None>
+    <MASM Include="CallAtkModuleVf43.asm">
+      <Filter>Source</Filter>
+    </MASM>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="XivRes.FontGenerator.rc">

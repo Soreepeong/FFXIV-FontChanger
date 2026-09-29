@@ -46,6 +46,7 @@ namespace App {
 		bool m_bWordWrap = false;
 		bool m_bKerning = false;
 		bool m_bShowLineMetrics = true;
+		xivres::font_type m_hotReloadFontType = xivres::font_type::undefined;
 
 		int m_scaledListViewHeight = 0;
 		int m_scaledEditHeight = 0;
@@ -127,6 +128,7 @@ namespace App {
 		LRESULT Menu_Edit_Details();
 		LRESULT Menu_Edit_ChangeParams(int baselineShift, int horizontalOffset, int letterSpacing, float fontSize);
 		LRESULT Menu_Edit_ToggleMergeMode();
+		LRESULT Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment alignment);
 		LRESULT Menu_Edit_MoveUpOrDown(int direction);
 		LRESULT Menu_Edit_CreateEmptyCopyFromSelection();
 
@@ -143,6 +145,9 @@ namespace App {
 		LRESULT Menu_Export_MapFontChnAxis();
 		LRESULT Menu_Export_MapFontKrnAxis();
 		LRESULT Menu_Export_MapFontTCAxis();
+
+		LRESULT Menu_HotReload_Reload(bool restore);
+		LRESULT Menu_HotReload_Font(xivres::font_type mode);
 
 		LRESULT Edit_OnCommand(uint16_t commandId);
 

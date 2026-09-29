@@ -226,6 +226,17 @@ LRESULT App::FontEditorWindow::Menu_Edit_ToggleMergeMode() {
 	return 0;
 }
 
+LRESULT App::FontEditorWindow::Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment alignment) {
+	if (!m_pActiveFace || m_pActiveFace->VerticalAlignment == alignment)
+		return 0;
+
+	m_pActiveFace->VerticalAlignment = alignment;
+	m_pActiveFace->OnElementChange();
+	Changes_MarkDirty();
+	Window_Redraw();
+	return 0;
+}
+
 LRESULT App::FontEditorWindow::Menu_Edit_MoveUpOrDown(int direction) {
 	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 

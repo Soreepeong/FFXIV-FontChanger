@@ -18,14 +18,25 @@ namespace App::Structs {
 		DWRITE_FONT_WEIGHT Weight = DWRITE_FONT_WEIGHT_REGULAR;
 		DWRITE_FONT_STRETCH Stretch = DWRITE_FONT_STRETCH_NORMAL;
 		DWRITE_FONT_STYLE Style = DWRITE_FONT_STYLE_NORMAL;
-		std::set<DWRITE_FONT_FEATURE_TAG> Features;
+
+		// Enabled OpenType features and their values; values above 1 pick an alternate for features such as 'salt' and 'cv01'.
+		std::map<DWRITE_FONT_FEATURE_TAG, uint32_t> Features;
+		std::string Language;
+
+		// Axis values of variable fonts, such as {"wght", 450}, that override the instance of the font.
+		std::map<std::string, float> Variations;
 
 		std::wstring GetWeightString() const;
 		std::wstring GetStretchString() const;
 		std::wstring GetStyleString() const;
 
+		// Returns Variations keyed by axis tags in DWRITE_FONT_AXIS_TAG byte order.
+		std::map<uint32_t, float> GetVariationAxisValues() const;
+
 		std::pair<IDWriteFactoryPtr, IDWriteFontPtr> ResolveFont() const;
-		std::pair<std::shared_ptr<xivres::stream>, int> ResolveStream() const;
+
+		// Returns the font file, the index of the face in it, and the axis values of the instance if it is a variable font.
+		std::tuple<std::shared_ptr<xivres::stream>, int, std::map<uint32_t, float>> ResolveStream() const;
 	};
 
 	struct RendererSpecificStruct {
@@ -81,6 +92,7 @@ namespace App::Structs {
 		std::string Name;
 		std::string PreviewText;
 		std::vector<std::unique_ptr<FaceElement>> Elements;
+		xivres::fontgen::vertical_alignment VerticalAlignment = xivres::fontgen::vertical_alignment::Baseline;
 
 		Face() noexcept;
 		Face(Face&& r) noexcept;

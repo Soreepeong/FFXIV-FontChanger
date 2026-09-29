@@ -214,6 +214,7 @@
     <ClCompile Include="BaseWindow.cpp" />
     <ClCompile Include="ExportPreviewWindow.cpp" />
     <ClCompile Include="FaceElementEditorDialog.cpp" />
+    <ClCompile Include="GameFontReloader.cpp" />
     <ClCompile Include="FontGeneratorConfig.cpp" />
     <ClCompile Include="GameInstallationManagerDialog.cpp" />
     <ClCompile Include="GameInstallationRepository.cpp" />
@@ -223,6 +224,7 @@
     <ClCompile Include="MainWindow.Menu.Edit.cpp" />
     <ClCompile Include="MainWindow.Menu.Export.cpp" />
     <ClCompile Include="MainWindow.Menu.File.cpp" />
+    <ClCompile Include="MainWindow.Menu.HotReload.cpp" />
     <ClCompile Include="MainWindow.Menu.View.cpp" />
     <ClCompile Include="MainWindow.Window.cpp" />
     <ClCompile Include="MiscUtil.cpp" />
@@ -237,12 +239,16 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <MASM Include="CallAtkModuleVf43.asm">
+      <FileType>Document</FileType>
+    </MASM>
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BaseWindow.h" />
     <ClInclude Include="ExportPreviewWindow.h" />
     <ClInclude Include="FaceElementEditorDialog.h" />
+    <ClInclude Include="GameFontReloader.h" />
     <ClInclude Include="FontGeneratorConfig.h" />
     <ClInclude Include="GameInstallationManagerDialog.h" />
     <ClInclude Include="GameInstallationRepository.h" />

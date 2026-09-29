@@ -381,6 +381,19 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTTCAXIS, FALSE, &mii);
 	}
 	{
+		constexpr std::pair<UINT, xivres::font_type> hotReloadFontItems[]{
+			{ ID_HOTRELOAD_FONT_AUTO, xivres::font_type::undefined },
+			{ ID_HOTRELOAD_FONT_FONT, xivres::font_type::font },
+			{ ID_HOTRELOAD_FONT_LOBBY, xivres::font_type::font_lobby },
+			{ ID_HOTRELOAD_FONT_CHNAXIS, xivres::font_type::chn_axis },
+			{ ID_HOTRELOAD_FONT_KRNAXIS, xivres::font_type::krn_axis },
+		};
+		for (const auto& [id, fontType] : hotReloadFontItems) {
+			const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_hotReloadFontType == fontType ? MFS_CHECKED : 0)};
+			SetMenuItemInfoW(hMenu, id, FALSE, &mii);
+		}
+	}
+	{
 		const auto i = ListView_GetNextItem(m_hFaceElementsListView, -1, LVNI_SELECTED);
 		const bool hasElement = m_pActiveFace && i >= 0;
 		const bool notEmpty = hasElement && m_pActiveFace->Elements[i]->Renderer != Structs::RendererEnum::Empty;
@@ -397,6 +410,25 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		setState(ID_EDIT_COPY, hasElement);
 		setState(ID_CONTEXTMENU_CLONE, hasElement);
 		setState(ID_EDIT_DELETE, hasElement);
+	}
+	{
+		constexpr std::pair<UINT, xivres::fontgen::vertical_alignment> alignmentItems[]{
+			{ ID_EDIT_VERTICALALIGNMENT_TOP, xivres::fontgen::vertical_alignment::Top },
+			{ ID_EDIT_VERTICALALIGNMENT_MIDDLE, xivres::fontgen::vertical_alignment::Middle },
+			{ ID_EDIT_VERTICALALIGNMENT_BASELINE, xivres::fontgen::vertical_alignment::Baseline },
+			{ ID_EDIT_VERTICALALIGNMENT_BOTTOM, xivres::fontgen::vertical_alignment::Bottom },
+			{ ID_EDIT_VERTICALALIGNMENT_ROMANBASELINE, xivres::fontgen::vertical_alignment::RomanBaseline },
+			{ ID_EDIT_VERTICALALIGNMENT_IDEOGRAPHICCENTER, xivres::fontgen::vertical_alignment::IdeographicCenter },
+		};
+		for (const auto& [id, alignment] : alignmentItems) {
+			const MENUITEMINFOW mii{
+				.cbSize = sizeof mii,
+				.fMask = MIIM_STATE | MIIM_FTYPE,
+				.fType = MFT_RADIOCHECK,
+				.fState = static_cast<UINT>((m_pActiveFace ? MFS_ENABLED : MFS_GRAYED) | (m_pActiveFace && m_pActiveFace->VerticalAlignment == alignment ? MFS_CHECKED : 0)),
+			};
+			SetMenuItemInfoW(hMenu, id, FALSE, &mii);
+		}
 	}
 	return 0;
 }
@@ -583,6 +615,12 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EDIT_DECREASEFONTSIZEBY0_2: return Menu_Edit_ChangeParams(0, 0, 0, -0.2f);
 				case ID_EDIT_INCREASEFONTSIZEBY0_2: return Menu_Edit_ChangeParams(0, 0, 0, +0.2f);
 				case ID_EDIT_TOGGLEMERGEMODE: return Menu_Edit_ToggleMergeMode();
+				case ID_EDIT_VERTICALALIGNMENT_TOP: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::Top);
+				case ID_EDIT_VERTICALALIGNMENT_MIDDLE: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::Middle);
+				case ID_EDIT_VERTICALALIGNMENT_BASELINE: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::Baseline);
+				case ID_EDIT_VERTICALALIGNMENT_BOTTOM: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::Bottom);
+				case ID_EDIT_VERTICALALIGNMENT_ROMANBASELINE: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::RomanBaseline);
+				case ID_EDIT_VERTICALALIGNMENT_IDEOGRAPHICCENTER: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::IdeographicCenter);
 				case ID_EDIT_MOVEUP: return Menu_Edit_MoveUpOrDown(-1);
 				case ID_EDIT_MOVEDOWN: return Menu_Edit_MoveUpOrDown(+1);
 				case ID_EDIT_CREATEEMPTYCOPYFROMSELECTION: return Menu_Edit_CreateEmptyCopyFromSelection();
@@ -607,6 +645,13 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING: return Menu_Export_TTMP(CompressionMode::CompressWhilePacking);
 				case ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING: return Menu_Export_TTMP(CompressionMode::CompressAfterPacking);
 				case ID_EXPORT_TOTTMP_DONOTCOMPRESS: return Menu_Export_TTMP(CompressionMode::DoNotCompress);
+				case ID_HOTRELOAD_RELOAD: return Menu_HotReload_Reload(false);
+				case ID_HOTRELOAD_RESTORE: return Menu_HotReload_Reload(true);
+				case ID_HOTRELOAD_FONT_AUTO: return Menu_HotReload_Font(xivres::font_type::undefined);
+				case ID_HOTRELOAD_FONT_FONT: return Menu_HotReload_Font(xivres::font_type::font);
+				case ID_HOTRELOAD_FONT_LOBBY: return Menu_HotReload_Font(xivres::font_type::font_lobby);
+				case ID_HOTRELOAD_FONT_CHNAXIS: return Menu_HotReload_Font(xivres::font_type::chn_axis);
+				case ID_HOTRELOAD_FONT_KRNAXIS: return Menu_HotReload_Font(xivres::font_type::krn_axis);
 				case ID_EXPORT_MAPFONTLOBBY: return Menu_Export_MapFontLobby();
 				case ID_EXPORT_MAPFONTCHNAXIS: return Menu_Export_MapFontChnAxis();
 				case ID_EXPORT_MAPFONTKRNAXIS: return Menu_Export_MapFontKrnAxis();

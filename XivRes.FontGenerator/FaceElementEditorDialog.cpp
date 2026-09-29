@@ -2,52 +2,129 @@
 #include "FaceElementEditorDialog.h"
 #include "resource.h"
 
+#include <harfbuzz/hb-ot.h>
+#include <Uxtheme.h>
+
+#pragma comment(lib, "uxtheme.lib")
+
+namespace {
+	constexpr std::array PageDialogIds{
+		IDD_FACEELEMENTEDITOR_FONT,
+		IDD_FACEELEMENTEDITOR_CHARACTERS,
+		IDD_FACEELEMENTEDITOR_TYPOGRAPHY,
+	};
+
+	constexpr std::array PageNameIds{
+		IDS_FACEELEMENTEDITOR_TAB_FONT,
+		IDS_FACEELEMENTEDITOR_TAB_CHARACTERS,
+		IDS_FACEELEMENTEDITOR_TAB_TYPOGRAPHY,
+	};
+
+	// The page shown when the dialog opens: the one last shown.
+	int s_lastPageIndex = 0;
+
+	// Returns, for each GSUB feature of the font, the largest number of alternates that it offers for a glyph.
+	std::map<DWRITE_FONT_FEATURE_TAG, uint32_t> GetFeatureAlternateCounts(const App::Structs::LookupStruct& lookup) {
+		const auto [stream, faceIndex, _] = lookup.ResolveStream();
+		const auto data = stream->read_vector<char>();
+
+		const auto blob = std::unique_ptr<hb_blob_t, decltype(&hb_blob_destroy)>(
+			hb_blob_create(data.data(), static_cast<unsigned>(data.size()), HB_MEMORY_MODE_READONLY, nullptr, nullptr),
+			&hb_blob_destroy);
+		const auto face = std::unique_ptr<hb_face_t, decltype(&hb_face_destroy)>(
+			hb_face_create(blob.get(), static_cast<unsigned>(faceIndex) & 0xFFFF),
+			&hb_face_destroy);
+
+		std::vector<hb_tag_t> featureTags(hb_ot_layout_table_get_feature_tags(face.get(), HB_OT_TAG_GSUB, 0, nullptr, nullptr));
+		auto featureCount = static_cast<unsigned>(featureTags.size());
+		hb_ot_layout_table_get_feature_tags(face.get(), HB_OT_TAG_GSUB, 0, &featureCount, featureTags.data());
+
+		const auto glyphs = std::unique_ptr<hb_set_t, decltype(&hb_set_destroy)>(hb_set_create(), &hb_set_destroy);
+		std::map<unsigned, uint32_t> lookupAlternateCounts;
+		std::map<DWRITE_FONT_FEATURE_TAG, uint32_t> result;
+		for (unsigned featureIndex = 0; featureIndex < featureCount; featureIndex++) {
+			std::vector<unsigned> lookupIndices(hb_ot_layout_feature_get_lookups(face.get(), HB_OT_TAG_GSUB, featureIndex, 0, nullptr, nullptr));
+			auto lookupCount = static_cast<unsigned>(lookupIndices.size());
+			hb_ot_layout_feature_get_lookups(face.get(), HB_OT_TAG_GSUB, featureIndex, 0, &lookupCount, lookupIndices.data());
+
+			auto& count = result[static_cast<DWRITE_FONT_FEATURE_TAG>(_byteswap_ulong(featureTags[featureIndex]))];
+			for (const auto lookupIndex : lookupIndices) {
+				auto [it, inserted] = lookupAlternateCounts.emplace(lookupIndex, 0);
+				if (inserted) {
+					hb_set_clear(glyphs.get());
+					hb_ot_layout_lookup_collect_glyphs(face.get(), HB_OT_TAG_GSUB, lookupIndex, nullptr, glyphs.get(), nullptr, nullptr);
+					for (hb_codepoint_t glyph = HB_SET_VALUE_INVALID; hb_set_next(glyphs.get(), &glyph);)
+						it->second = (std::max)(it->second, hb_ot_layout_lookup_get_glyph_alternates(face.get(), lookupIndex, glyph, 0, nullptr, nullptr));
+				}
+				count = (std::max)(count, it->second);
+			}
+		}
+		return result;
+	}
+}
+
 struct App::FaceElementEditorDialog::ControlStruct {
 	HWND Window;
-	HWND OkButton = GetDlgItem(Window, IDOK);
-	HWND CancelButton = GetDlgItem(Window, IDCANCEL);
-	HWND FontRendererCombo = GetDlgItem(Window, IDC_COMBO_FONT_RENDERER);
-	HWND FontCombo = GetDlgItem(Window, IDC_COMBO_FONT);
-	HWND FontSizeEdit = GetDlgItem(Window, IDC_EDIT_FONT_SIZE);
-	HWND FontWeightCombo = GetDlgItem(Window, IDC_COMBO_FONT_WEIGHT);
-	HWND FontStyleCombo = GetDlgItem(Window, IDC_COMBO_FONT_STYLE);
-	HWND FontStretchCombo = GetDlgItem(Window, IDC_COMBO_FONT_STRETCH);
-	HWND FontFeaturesList = GetDlgItem(Window, IDC_LIST_FONT_FEATURES);
-	HWND EmptyAscentEdit = GetDlgItem(Window, IDC_EDIT_EMPTY_ASCENT);
-	HWND EmptyLineHeightEdit = GetDlgItem(Window, IDC_EDIT_EMPTY_LINEHEIGHT);
-	HWND FreeTypeNoHintingCheck = GetDlgItem(Window, IDC_CHECK_FREETYPE_NOHINTING);
-	HWND FreeTypeNoBitmapCheck = GetDlgItem(Window, IDC_CHECK_FREETYPE_NOBITMAP);
-	HWND FreeTypeForceAutohintCheck = GetDlgItem(Window, IDC_CHECK_FREETYPE_FORCEAUTOHINT);
-	HWND FreeTypeNoAutohintCheck = GetDlgItem(Window, IDC_CHECK_FREETYPE_NOAUTOHINT);
-	HWND FreeTypeRenderModeCombo = GetDlgItem(Window, IDC_COMBO_FREETYPE_RENDERMODE);
-	HWND DirectWriteRenderModeCombo = GetDlgItem(Window, IDC_COMBO_DIRECTWRITE_RENDERMODE);
-	HWND DirectWriteMeasureModeCombo = GetDlgItem(Window, IDC_COMBO_DIRECTWRITE_MEASUREMODE);
-	HWND DirectWriteGridFitModeCombo = GetDlgItem(Window, IDC_COMBO_DIRECTWRITE_GRIDFITMODE);
-	HWND AdjustmentBaselineShiftEdit = GetDlgItem(Window, IDC_EDIT_ADJUSTMENT_BASELINESHIFT);
-	HWND AdjustmentLetterSpacingEdit = GetDlgItem(Window, IDC_EDIT_ADJUSTMENT_LETTERSPACING);
-	HWND AdjustmentHorizontalOffsetEdit = GetDlgItem(Window, IDC_EDIT_ADJUSTMENT_HORIZONTALOFFSET);
-	HWND AdjustmentGammaEdit = GetDlgItem(Window, IDC_EDIT_ADJUSTMENT_GAMMA);
-	HWND CodepointsList = GetDlgItem(Window, IDC_LIST_CODEPOINTS);
-	HWND CodepointsClearButton = GetDlgItem(Window, IDC_BUTTON_CODEPOINTS_CLEAR);
-	HWND CodepointsDeleteButton = GetDlgItem(Window, IDC_BUTTON_CODEPOINTS_DELETE);
-	HWND CodepointsMergeModeCombo = GetDlgItem(Window, IDC_COMBO_CODEPOINTS_MERGEMODE);
-	HWND UnicodeBlockSearchNameEdit = GetDlgItem(Window, IDC_EDIT_UNICODEBLOCKS_SEARCH);
-	HWND UnicodeBlockSearchShowBlocksWithAnyOfCharactersInput = GetDlgItem(Window, IDC_CHECK_UNICODEBLOCKS_SHOWBLOCKSWITHANYOFCHARACTERSINPUT);
-	HWND UnicodeBlockSearchResultList = GetDlgItem(Window, IDC_LIST_UNICODEBLOCKS_SEARCHRESULTS);
-	HWND UnicodeBlockSearchSelectedPreviewEdit = GetDlgItem(Window, IDC_EDIT_UNICODEBLOCKS_RANGEPREVIEW);
-	HWND UnicodeBlockSearchAddAll = GetDlgItem(Window, IDC_BUTTON_UNICODEBLOCKS_ADDALL);
-	HWND UnicodeBlockSearchAdd = GetDlgItem(Window, IDC_BUTTON_UNICODEBLOCKS_ADD);
-	HWND UnicodeBlockSearchSubtract = GetDlgItem(Window, IDC_BUTTON_UNICODEBLOCKS_SUBTRACT);
-	HWND CustomRangeEdit = GetDlgItem(Window, IDC_EDIT_ADDCUSTOMRANGE_INPUT);
-	HWND CustomRangePreview = GetDlgItem(Window, IDC_EDIT_ADDCUSTOMRANGE_PREVIEW);
-	HWND CustomRangeAdd = GetDlgItem(Window, IDC_BUTTON_ADDCUSTOMRANGE_ADD);
-	HWND CustomRangeSubtract = GetDlgItem(Window, IDC_BUTTON_ADDCUSTOMRANGE_SUBTRACT);
-	HWND TransformationMatrixM11Edit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_M11);
-	HWND TransformationMatrixM12Edit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_M12);
-	HWND TransformationMatrixM21Edit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_M21);
-	HWND TransformationMatrixM22Edit = GetDlgItem(Window, IDC_EDIT_TRANSFORMATIONMATRIX_M22);
-	HWND TransformationMatrixHelp = GetDlgItem(Window, IDC_BUTTON_TRANSFORMATIONMATRIX_HELP);
-	HWND TransformationMatrixReset = GetDlgItem(Window, IDC_BUTTON_TRANSFORMATIONMATRIX_RESET);
+	std::array<HWND, PageDialogIds.size()> Pages;
+
+	// Finds a control either in the dialog or in one of the pages.
+	[[nodiscard]] HWND Item(int id) const {
+		for (const auto page : Pages) {
+			if (const auto hwnd = GetDlgItem(page, id))
+				return hwnd;
+		}
+		return GetDlgItem(Window, id);
+	}
+
+	HWND Tab = GetDlgItem(Window, IDC_TAB_FACEELEMENTEDITOR);
+	HWND OkButton = Item(IDOK);
+	HWND CancelButton = Item(IDCANCEL);
+	HWND FontRendererCombo = Item(IDC_COMBO_FONT_RENDERER);
+	HWND FontCombo = Item(IDC_COMBO_FONT);
+	HWND FontSizeEdit = Item(IDC_EDIT_FONT_SIZE);
+	HWND FontWeightCombo = Item(IDC_COMBO_FONT_WEIGHT);
+	HWND FontStyleCombo = Item(IDC_COMBO_FONT_STYLE);
+	HWND FontStretchCombo = Item(IDC_COMBO_FONT_STRETCH);
+	HWND FontFeaturesList = Item(IDC_LIST_FONT_FEATURES);
+	HWND FontFeatureValueEdit = Item(IDC_EDIT_FONT_FEATURE_VALUE);
+	HWND FontLanguageCombo = Item(IDC_COMBO_FONT_LANGUAGE);
+	HWND FontVariationsList = Item(IDC_LIST_FONT_VARIATIONS);
+	HWND FontVariationValueEdit = Item(IDC_EDIT_FONT_VARIATION_VALUE);
+	HWND EmptyAscentEdit = Item(IDC_EDIT_EMPTY_ASCENT);
+	HWND EmptyLineHeightEdit = Item(IDC_EDIT_EMPTY_LINEHEIGHT);
+	HWND FreeTypeNoHintingCheck = Item(IDC_CHECK_FREETYPE_NOHINTING);
+	HWND FreeTypeNoBitmapCheck = Item(IDC_CHECK_FREETYPE_NOBITMAP);
+	HWND FreeTypeForceAutohintCheck = Item(IDC_CHECK_FREETYPE_FORCEAUTOHINT);
+	HWND FreeTypeNoAutohintCheck = Item(IDC_CHECK_FREETYPE_NOAUTOHINT);
+	HWND FreeTypeRenderModeCombo = Item(IDC_COMBO_FREETYPE_RENDERMODE);
+	HWND DirectWriteRenderModeCombo = Item(IDC_COMBO_DIRECTWRITE_RENDERMODE);
+	HWND DirectWriteMeasureModeCombo = Item(IDC_COMBO_DIRECTWRITE_MEASUREMODE);
+	HWND DirectWriteGridFitModeCombo = Item(IDC_COMBO_DIRECTWRITE_GRIDFITMODE);
+	HWND AdjustmentBaselineShiftEdit = Item(IDC_EDIT_ADJUSTMENT_BASELINESHIFT);
+	HWND AdjustmentLetterSpacingEdit = Item(IDC_EDIT_ADJUSTMENT_LETTERSPACING);
+	HWND AdjustmentHorizontalOffsetEdit = Item(IDC_EDIT_ADJUSTMENT_HORIZONTALOFFSET);
+	HWND AdjustmentGammaEdit = Item(IDC_EDIT_ADJUSTMENT_GAMMA);
+	HWND CodepointsList = Item(IDC_LIST_CODEPOINTS);
+	HWND CodepointsClearButton = Item(IDC_BUTTON_CODEPOINTS_CLEAR);
+	HWND CodepointsDeleteButton = Item(IDC_BUTTON_CODEPOINTS_DELETE);
+	HWND CodepointsMergeModeCombo = Item(IDC_COMBO_CODEPOINTS_MERGEMODE);
+	HWND UnicodeBlockSearchNameEdit = Item(IDC_EDIT_UNICODEBLOCKS_SEARCH);
+	HWND UnicodeBlockSearchShowBlocksWithAnyOfCharactersInput = Item(IDC_CHECK_UNICODEBLOCKS_SHOWBLOCKSWITHANYOFCHARACTERSINPUT);
+	HWND UnicodeBlockSearchResultList = Item(IDC_LIST_UNICODEBLOCKS_SEARCHRESULTS);
+	HWND UnicodeBlockSearchSelectedPreviewEdit = Item(IDC_EDIT_UNICODEBLOCKS_RANGEPREVIEW);
+	HWND UnicodeBlockSearchAddAll = Item(IDC_BUTTON_UNICODEBLOCKS_ADDALL);
+	HWND UnicodeBlockSearchAdd = Item(IDC_BUTTON_UNICODEBLOCKS_ADD);
+	HWND UnicodeBlockSearchSubtract = Item(IDC_BUTTON_UNICODEBLOCKS_SUBTRACT);
+	HWND CustomRangeEdit = Item(IDC_EDIT_ADDCUSTOMRANGE_INPUT);
+	HWND CustomRangePreview = Item(IDC_EDIT_ADDCUSTOMRANGE_PREVIEW);
+	HWND CustomRangeAdd = Item(IDC_BUTTON_ADDCUSTOMRANGE_ADD);
+	HWND CustomRangeSubtract = Item(IDC_BUTTON_ADDCUSTOMRANGE_SUBTRACT);
+	HWND TransformationMatrixM11Edit = Item(IDC_EDIT_TRANSFORMATIONMATRIX_M11);
+	HWND TransformationMatrixM12Edit = Item(IDC_EDIT_TRANSFORMATIONMATRIX_M12);
+	HWND TransformationMatrixM21Edit = Item(IDC_EDIT_TRANSFORMATIONMATRIX_M21);
+	HWND TransformationMatrixM22Edit = Item(IDC_EDIT_TRANSFORMATIONMATRIX_M22);
+	HWND TransformationMatrixHelp = Item(IDC_BUTTON_TRANSFORMATIONMATRIX_HELP);
+	HWND TransformationMatrixReset = Item(IDC_BUTTON_TRANSFORMATIONMATRIX_RESET);
 };
 
 App::FaceElementEditorDialog::FaceElementEditorDialog(HWND hParentWnd, Structs::FaceElement& element, std::function<void()> onFontChanged)
@@ -77,7 +154,24 @@ void App::FaceElementEditorDialog::Activate() const {
 }
 
 bool App::FaceElementEditorDialog::ConsumeDialogMessage(MSG& msg) {
-	return m_controls && IsDialogMessage(m_controls->Window, &msg);
+	if (!m_controls)
+		return false;
+
+	// Ctrl+(Shift+)Tab and Ctrl+PgUp/PgDn switch pages, as in property sheets.
+	if (msg.message == WM_KEYDOWN
+		&& (msg.wParam == VK_TAB || msg.wParam == VK_PRIOR || msg.wParam == VK_NEXT)
+		&& GetKeyState(VK_CONTROL) < 0
+		&& (msg.hwnd == m_controls->Window || IsChild(m_controls->Window, msg.hwnd))) {
+		const auto count = TabCtrl_GetItemCount(m_controls->Tab);
+		const auto backward = msg.wParam == VK_PRIOR || (msg.wParam == VK_TAB && GetKeyState(VK_SHIFT) < 0);
+		const auto index = (TabCtrl_GetCurSel(m_controls->Tab) + (backward ? count - 1 : 1)) % count;
+		TabCtrl_SetCurSel(m_controls->Tab, index);
+		ShowPage(index);
+		SetFocus(m_controls->Tab);
+		return true;
+	}
+
+	return IsDialogMessage(m_controls->Window, &msg);
 }
 
 template<typename T>
@@ -218,6 +312,7 @@ INT_PTR App::FaceElementEditorDialog::FontWeightCombo_OnCommand(uint16_t notiCod
 	if (const auto v = GetComboboxSelData<DWRITE_FONT_WEIGHT>(m_controls->FontWeightCombo);
 		v != m_element.Lookup.Weight) {
 		m_element.Lookup.Weight = v;
+		RepopulateFontVariationsList();
 		OnBaseFontChanged();
 	}
 	return 0;
@@ -230,6 +325,7 @@ INT_PTR App::FaceElementEditorDialog::FontStyleCombo_OnCommand(uint16_t notiCode
 	if (const auto v = GetComboboxSelData<DWRITE_FONT_STYLE>(m_controls->FontStyleCombo); 
 		v != m_element.Lookup.Style) {
 		m_element.Lookup.Style = v;
+		RepopulateFontVariationsList();
 		OnBaseFontChanged();
 	}
 	return 0;
@@ -242,25 +338,120 @@ INT_PTR App::FaceElementEditorDialog::FontStretchCombo_OnCommand(uint16_t notiCo
 	if (const auto v = GetComboboxSelData<DWRITE_FONT_STRETCH>(m_controls->FontStretchCombo); 
 		v != m_element.Lookup.Stretch) {
 		m_element.Lookup.Stretch = v;
+		RepopulateFontVariationsList();
 		OnBaseFontChanged();
 	}
 	return 0;
 }
 
-INT_PTR App::FaceElementEditorDialog::FontFeaturesList_OnCommand(uint16_t notiCode) {
-	if (notiCode != LBN_SELCHANGE)
+INT_PTR App::FaceElementEditorDialog::FontFeaturesList_OnItemChanged(const NMLISTVIEW& nmlv) {
+	if (m_bPopulatingFeatures || !(nmlv.uChanged & LVIF_STATE) || nmlv.iItem < 0 || nmlv.iItem >= static_cast<int>(m_features.size()))
 		return 0;
 
-	std::vector<int> selections;
-	selections.resize(ListBox_GetSelCount(m_controls->FontFeaturesList));
-	ListBox_GetSelItems(m_controls->FontFeaturesList, selections.size(), selections.data());
-
-	m_element.Lookup.Features.clear();
-	for (const auto& sel : selections) {
-		const auto tag = static_cast<DWRITE_FONT_FEATURE_TAG>(ListBox_GetItemData(m_controls->FontFeaturesList, sel));
-		m_element.Lookup.Features.insert(tag);
+	const auto changed = nmlv.uNewState ^ nmlv.uOldState;
+	if (changed & LVIS_STATEIMAGEMASK) {
+		const auto tag = m_features[nmlv.iItem].Tag;
+		const auto modified = ListView_GetCheckState(m_controls->FontFeaturesList, nmlv.iItem)
+			? m_element.Lookup.Features.emplace(tag, 1).second
+			: m_element.Lookup.Features.erase(tag) != 0;
+		if (modified) {
+			UpdateFontFeaturesListItem(nmlv.iItem);
+			RefreshFontFeatureValueEdit();
+			OnBaseFontChanged();
+		}
 	}
+
+	if (changed & LVIS_SELECTED)
+		RefreshFontFeatureValueEdit();
+	return 0;
+}
+
+INT_PTR App::FaceElementEditorDialog::FontFeatureValueEdit_OnCommand(uint16_t notiCode) {
+	if (notiCode != EN_CHANGE || m_bSettingFeatureValueEdit)
+		return 0;
+
+	const auto index = GetSelectedFontFeature();
+	if (index < 0 || m_features[index].Alternates <= 1)
+		return 0;
+
+	// An empty value picks the first alternate.
+	uint32_t value = 1;
+	if (const auto str = GetWindowString(m_controls->FontFeatureValueEdit, true); !str.empty()) {
+		// Keep the last valid value while the text is being typed.
+		wchar_t* end;
+		const auto parsed = std::wcstoul(str.c_str(), &end, 10);
+		if (end == str.c_str() || *end || parsed < 1 || parsed > m_features[index].Alternates)
+			return 0;
+		value = static_cast<uint32_t>(parsed);
+	}
+
+	const auto tag = m_features[index].Tag;
+	if (const auto it = m_element.Lookup.Features.find(tag); it != m_element.Lookup.Features.end() && it->second == value)
+		return 0;
+
+	// Entering a value enables the feature.
+	m_element.Lookup.Features[tag] = value;
+	m_bPopulatingFeatures = true;
+	ListView_SetCheckState(m_controls->FontFeaturesList, index, TRUE);
+	m_bPopulatingFeatures = false;
+	UpdateFontFeaturesListItem(index);
 	OnBaseFontChanged();
+	return 0;
+}
+
+INT_PTR App::FaceElementEditorDialog::FontLanguageCombo_OnCommand(uint16_t notiCode) {
+	if (notiCode != CBN_SELCHANGE)
+		return 0;
+
+	const auto index = ComboBox_GetCurSel(m_controls->FontLanguageCombo);
+	if (index < 0 || index >= static_cast<int>(m_languageTags.size()))
+		return 0;
+
+	if (m_languageTags[index] != m_element.Lookup.Language) {
+		m_element.Lookup.Language = m_languageTags[index];
+		OnBaseFontChanged();
+	}
+	return 0;
+}
+
+INT_PTR App::FaceElementEditorDialog::FontVariationsList_OnItemChanged(const NMLISTVIEW& nmlv) {
+	if ((nmlv.uChanged & LVIF_STATE) && ((nmlv.uNewState ^ nmlv.uOldState) & LVIS_SELECTED))
+		RefreshFontVariationValueEdit();
+	return 0;
+}
+
+INT_PTR App::FaceElementEditorDialog::FontVariationValueEdit_OnCommand(uint16_t notiCode) {
+	if (notiCode != EN_CHANGE || m_bSettingVariationValueEdit)
+		return 0;
+
+	const auto axisIndex = GetSelectedFontVariationAxis();
+	if (axisIndex < 0)
+		return 0;
+
+	std::string tag(4, ' ');
+	memcpy(tag.data(), &m_variationAxes[axisIndex].Tag, 4);
+
+	auto changed = false;
+	if (const auto str = GetWindowString(m_controls->FontVariationValueEdit, true); str.empty()) {
+		// An empty value leaves the axis at the value of the selected instance.
+		changed = m_element.Lookup.Variations.erase(tag) != 0;
+	} else {
+		// Keep the last valid value while the text is being typed.
+		wchar_t* end;
+		const auto value = std::wcstof(str.c_str(), &end);
+		if (end == str.c_str() || *end)
+			return 0;
+
+		if (const auto it = m_element.Lookup.Variations.find(tag); it == m_element.Lookup.Variations.end() || it->second != value) {  // NOLINT(clang-diagnostic-float-equal)
+			m_element.Lookup.Variations[tag] = value;
+			changed = true;
+		}
+	}
+
+	if (changed) {
+		UpdateFontVariationsListItem(axisIndex);
+		OnBaseFontChanged();
+	}
 	return 0;
 }
 
@@ -619,8 +810,61 @@ INT_PTR App::FaceElementEditorDialog::ExpressionHelpButton_OnCommand(uint16_t no
 }
 
 INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
-	m_controls = new ControlStruct{ m_hWnd };
+	std::array<HWND, PageDialogIds.size()> pages{};
+	{
+		const auto tab = GetDlgItem(m_hWnd, IDC_TAB_FACEELEMENTEDITOR);
+		for (size_t i = 0; i < pages.size(); i++) {
+			std::wstring name(GetStringResource(PageNameIds[i]));
+			TCITEMW tci{ .mask = TCIF_TEXT, .pszText = name.data() };
+			TabCtrl_InsertItem(tab, static_cast<int>(i), &tci);
+		}
+
+		// The area below the row of tabs, which exists only after the tabs are inserted.
+		RECT rc;
+		GetWindowRect(tab, &rc);
+		MapWindowPoints(nullptr, m_hWnd, reinterpret_cast<POINT*>(&rc), 2);
+		TabCtrl_AdjustRect(tab, FALSE, &rc);
+
+		for (size_t i = 0; i < pages.size(); i++) {
+			const auto hglob = LoadResourceWithLanguageFallback(RT_DIALOG, PageDialogIds[i]);
+			pages[i] = CreateDialogIndirectParamW(g_hInstance, static_cast<DLGTEMPLATE*>(LockResource(hglob.get())), m_hWnd, PageDlgProc, 0);
+			EnableThemeDialogTexture(pages[i], ETDT_ENABLETAB);
+
+			// Right after the tab control in the Z order, so that the controls of the page come next in the tab order.
+			SetWindowPos(pages[i], tab, rc.left, rc.top, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+		}
+	}
+
+	m_controls = new ControlStruct{ m_hWnd, pages };
 	m_bOpened = true;
+	TabCtrl_SetCurSel(m_controls->Tab, s_lastPageIndex);
+	ShowPage(s_lastPageIndex);
+
+	const auto AddColumn = [zoom = GetZoomFromWindow(m_hWnd)](HWND hList, int columnIndex, int width, UINT resId) {
+		std::wstring name(GetStringResource(resId));
+		LVCOLUMNW col{
+			.mask = LVCF_TEXT | LVCF_WIDTH,
+			.cx = static_cast<int>(width * zoom),
+			.pszText = const_cast<wchar_t*>(name.c_str()),
+		};
+		ListView_InsertColumn(hList, columnIndex, &col);
+	};
+	ListView_SetExtendedListViewStyle(m_controls->FontFeaturesList, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+	{
+		// The name takes the width that the value column and the scroll bar leave.
+		RECT rc;
+		GetClientRect(m_controls->FontFeaturesList, &rc);
+		const auto zoom = GetZoomFromWindow(m_hWnd);
+		const auto valueWidth = static_cast<int>(56 * zoom);
+		AddColumn(m_controls->FontFeaturesList, 0, static_cast<int>((rc.right - valueWidth - GetSystemMetrics(SM_CXVSCROLL)) / zoom), IDS_FONTFEATURES_COLUMN_FEATURE);
+		AddColumn(m_controls->FontFeaturesList, 1, 56, IDS_FONTVARIATIONS_COLUMN_VALUE);
+	}
+	ListView_SetExtendedListViewStyle(m_controls->FontVariationsList, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+	AddColumn(m_controls->FontVariationsList, 0, 100, IDS_FONTVARIATIONS_COLUMN_AXIS);
+	AddColumn(m_controls->FontVariationsList, 1, 56, IDS_FONTVARIATIONS_COLUMN_RANGE);
+	AddColumn(m_controls->FontVariationsList, 2, 48, IDS_FONTVARIATIONS_COLUMN_VALUE);
+
+	RepopulateFontLanguageCombobox();
 	SetControlsEnabledOrDisabled();
 	RepopulateFontCombobox();
 	RefreshUnicodeBlockSearchResults();
@@ -1060,6 +1304,10 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontStyleCombo, FALSE);
 			EnableWindow(m_controls->FontStretchCombo, FALSE);
 			EnableWindow(m_controls->FontFeaturesList, FALSE);
+			EnableWindow(m_controls->FontFeatureValueEdit, FALSE);
+			EnableWindow(m_controls->FontLanguageCombo, FALSE);
+			EnableWindow(m_controls->FontVariationsList, FALSE);
+			EnableWindow(m_controls->FontVariationValueEdit, FALSE);
 			EnableWindow(m_controls->EmptyAscentEdit, TRUE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, TRUE);
 			EnableWindow(m_controls->FreeTypeNoHintingCheck, FALSE);
@@ -1100,6 +1348,10 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontStyleCombo, FALSE);
 			EnableWindow(m_controls->FontStretchCombo, FALSE);
 			EnableWindow(m_controls->FontFeaturesList, FALSE);
+			EnableWindow(m_controls->FontFeatureValueEdit, FALSE);
+			EnableWindow(m_controls->FontLanguageCombo, FALSE);
+			EnableWindow(m_controls->FontVariationsList, FALSE);
+			EnableWindow(m_controls->FontVariationValueEdit, FALSE);
 			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
 			EnableWindow(m_controls->FreeTypeNoHintingCheck, FALSE);
@@ -1140,6 +1392,10 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontStyleCombo, TRUE);
 			EnableWindow(m_controls->FontStretchCombo, TRUE);
 			EnableWindow(m_controls->FontFeaturesList, TRUE);
+			EnableWindow(m_controls->FontFeatureValueEdit, GetSelectedFontFeature() >= 0 && m_features[GetSelectedFontFeature()].Alternates > 1);
+			EnableWindow(m_controls->FontLanguageCombo, TRUE);
+			EnableWindow(m_controls->FontVariationsList, !m_variationAxes.empty());
+			EnableWindow(m_controls->FontVariationValueEdit, GetSelectedFontVariationAxis() >= 0);
 			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
 			EnableWindow(m_controls->FreeTypeNoHintingCheck, FALSE);
@@ -1180,6 +1436,10 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontStyleCombo, TRUE);
 			EnableWindow(m_controls->FontStretchCombo, TRUE);
 			EnableWindow(m_controls->FontFeaturesList, TRUE);
+			EnableWindow(m_controls->FontFeatureValueEdit, GetSelectedFontFeature() >= 0 && m_features[GetSelectedFontFeature()].Alternates > 1);
+			EnableWindow(m_controls->FontLanguageCombo, TRUE);
+			EnableWindow(m_controls->FontVariationsList, !m_variationAxes.empty());
+			EnableWindow(m_controls->FontVariationValueEdit, GetSelectedFontVariationAxis() >= 0);
 			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
 			EnableWindow(m_controls->FreeTypeNoHintingCheck, TRUE);
@@ -1333,7 +1593,8 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 	ComboBox_ResetContent(m_controls->FontWeightCombo);
 	ComboBox_ResetContent(m_controls->FontStyleCombo);
 	ComboBox_ResetContent(m_controls->FontStretchCombo);
-	ListBox_ResetContent(m_controls->FontFeaturesList);
+	ListView_DeleteAllItems(m_controls->FontFeaturesList);
+	m_features.clear();
 
 	switch (m_element.Renderer) {
 		case Structs::RendererEnum::PrerenderedGameInstallation: {
@@ -1540,17 +1801,37 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 				}
 			}
 
-			for (const auto v : featureTags) {
-				const auto index = ListBox_AddString(
-					m_controls->FontFeaturesList,
-					std::format(
-						L"{}: {}",
-						xivres::util::unicode::convert<std::wstring>(std::string_view(reinterpret_cast<const char*>(&v), 4)),
-						GetOpenTypeFeatureName(v)).c_str());
-				ListBox_SetItemData(m_controls->FontFeaturesList, index, static_cast<uint32_t>(v));
-				if (m_element.Lookup.Features.contains(v))
-					ListBox_SetSel(m_controls->FontFeaturesList, TRUE, index);
+			std::map<DWRITE_FONT_FEATURE_TAG, uint32_t> alternateCounts;
+			try {
+				alternateCounts = GetFeatureAlternateCounts(m_element.Lookup);
+			} catch (...) {
+				// Leave the values of features uneditable if the font cannot be read.
 			}
+
+			// Sort alphabetically by tag.
+			std::vector sortedTags(featureTags.begin(), featureTags.end());
+			std::ranges::sort(sortedTags, {}, [](DWRITE_FONT_FEATURE_TAG tag) { return _byteswap_ulong(static_cast<uint32_t>(tag)); });
+
+			m_bPopulatingFeatures = true;
+			for (const auto tag : sortedTags) {
+				const auto alternates = alternateCounts.contains(tag) ? alternateCounts.at(tag) : 0u;
+				m_features.emplace_back(FeatureRow{ .Tag = tag, .Alternates = alternates });
+
+				auto name = std::format(
+					L"{}: {}",
+					xivres::util::unicode::convert<std::wstring>(std::string_view(reinterpret_cast<const char*>(&tag), 4)),
+					GetOpenTypeFeatureName(tag));
+				const auto index = static_cast<int>(m_features.size() - 1);
+				LVITEMW lvi{
+					.mask = LVIF_TEXT,
+					.iItem = index,
+					.pszText = name.data(),
+				};
+				ListView_InsertItem(m_controls->FontFeaturesList, &lvi);
+				ListView_SetCheckState(m_controls->FontFeaturesList, index, m_element.Lookup.Features.contains(tag));
+				UpdateFontFeaturesListItem(index);
+			}
+			m_bPopulatingFeatures = false;
 			break;
 		}
 
@@ -1559,6 +1840,214 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox() {
 	}
 
 	SetWindowNumber(m_controls->FontSizeEdit, m_element.Size);
+	RefreshFontFeatureValueEdit();
+	RepopulateFontVariationsList();
+}
+
+void App::FaceElementEditorDialog::UpdateFontFeaturesListItem(int index) {
+	const auto& feature = m_features[index];
+
+	std::wstring text;
+	if (const auto it = m_element.Lookup.Features.find(feature.Tag); it != m_element.Lookup.Features.end()) {
+		if (feature.Alternates > 1)
+			text = std::format(L"{} (1\u2013{})", it->second, feature.Alternates);
+	} else if (feature.Alternates > 1) {
+		text = std::format(L"(1\u2013{})", feature.Alternates);
+	}
+	ListView_SetItemText(m_controls->FontFeaturesList, index, 1, text.data());
+}
+
+int App::FaceElementEditorDialog::GetSelectedFontFeature() const {
+	const auto index = ListView_GetNextItem(m_controls->FontFeaturesList, -1, LVNI_SELECTED);
+	return index >= 0 && index < static_cast<int>(m_features.size()) ? index : -1;
+}
+
+void App::FaceElementEditorDialog::RefreshFontFeatureValueEdit() {
+	const auto index = GetSelectedFontFeature();
+	const auto editable = index >= 0 && m_features[index].Alternates > 1;
+
+	std::wstring text, cue;
+	if (editable) {
+		if (const auto it = m_element.Lookup.Features.find(m_features[index].Tag); it != m_element.Lookup.Features.end() && it->second != 1)
+			text = std::format(L"{}", it->second);
+		cue = std::format(L"1 (1\u2013{})", m_features[index].Alternates);
+	}
+
+	m_bSettingFeatureValueEdit = true;
+	SetWindowTextW(m_controls->FontFeatureValueEdit, text.c_str());
+	m_bSettingFeatureValueEdit = false;
+	Edit_SetCueBannerTextFocused(m_controls->FontFeatureValueEdit, cue.c_str(), TRUE);
+
+	EnableWindow(m_controls->FontFeatureValueEdit, editable && (m_element.Renderer == Structs::RendererEnum::DirectWrite || m_element.Renderer == Structs::RendererEnum::FreeType));
+}
+
+void App::FaceElementEditorDialog::RepopulateFontLanguageCombobox() {
+	// Languages whose text is commonly shaped differently by fonts, such as with the 'locl' feature.
+	static constexpr const char* Languages[]{
+		"ja", "ko", "zh-Hans", "zh-Hant", "zh-HK",
+		"az", "bg", "ca", "cs", "de", "el", "en", "es", "fr", "hr", "hu", "it", "mk", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sr", "tr", "uk", "vi",
+	};
+
+	m_languageTags.clear();
+	m_languageTags.emplace_back();
+	m_languageTags.insert(m_languageTags.end(), std::begin(Languages), std::end(Languages));
+	if (!m_element.Lookup.Language.empty() && std::ranges::find(m_languageTags, m_element.Lookup.Language) == m_languageTags.end())
+		m_languageTags.emplace_back(m_element.Lookup.Language);
+
+	ComboBox_ResetContent(m_controls->FontLanguageCombo);
+	for (const auto& tag : m_languageTags) {
+		std::wstring text;
+		if (tag.empty()) {
+			text = GetStringResource(IDS_FONTLANGUAGE_UNSPECIFIED);
+		} else {
+			const auto tagW = xivres::util::unicode::convert<std::wstring>(tag);
+			wchar_t displayName[LOCALE_NAME_MAX_LENGTH * 4]{};
+			if (GetLocaleInfoEx(tagW.c_str(), LOCALE_SLOCALIZEDDISPLAYNAME, displayName, static_cast<int>(std::size(displayName))))
+				text = std::format(L"{}: {}", tagW, displayName);
+			else
+				text = tagW;
+		}
+		ComboBox_AddString(m_controls->FontLanguageCombo, text.c_str());
+		if (tag == m_element.Lookup.Language)
+			ComboBox_SetCurSel(m_controls->FontLanguageCombo, ComboBox_GetCount(m_controls->FontLanguageCombo) - 1);
+	}
+}
+
+void App::FaceElementEditorDialog::RepopulateFontVariationsList() {
+	ListView_DeleteAllItems(m_controls->FontVariationsList);
+	m_variationAxes.clear();
+
+	if (m_element.Renderer == Structs::RendererEnum::DirectWrite || m_element.Renderer == Structs::RendererEnum::FreeType) {
+		try {
+			const auto [factory, font] = m_element.Lookup.ResolveFont();
+
+			IDWriteFontFacePtr face;
+			SuccessOrThrow(font->CreateFontFace(&face));
+
+			if (IDWriteFontFace5Ptr face5; SUCCEEDED(face.QueryInterface(decltype(face5)::GetIID(), &face5)) && face5->HasVariations()) {
+				IDWriteFontResourcePtr resource;
+				SuccessOrThrow(face5->GetFontResource(&resource));
+
+				std::vector<DWRITE_FONT_AXIS_RANGE> ranges(resource->GetFontAxisCount());
+				SuccessOrThrow(resource->GetFontAxisRanges(ranges.data(), static_cast<UINT32>(ranges.size())));
+
+				std::vector<DWRITE_FONT_AXIS_VALUE> instanceValues(face5->GetFontAxisValueCount());
+				SuccessOrThrow(face5->GetFontAxisValues(instanceValues.data(), static_cast<UINT32>(instanceValues.size())));
+
+				for (UINT32 i = 0; i < ranges.size(); i++) {
+					// Axes such as 'ital' of Bahnschrift are listed with a single value, and cannot be changed.
+					if (!(resource->GetFontAxisAttributes(i) & DWRITE_FONT_AXIS_ATTRIBUTES_VARIABLE) || ranges[i].minValue >= ranges[i].maxValue)
+						continue;
+
+					auto& axis = m_variationAxes.emplace_back(VariationAxis{
+						.Tag = static_cast<uint32_t>(ranges[i].axisTag),
+						.Minimum = ranges[i].minValue,
+						.Maximum = ranges[i].maxValue,
+						.InstanceValue = ranges[i].minValue,
+					});
+
+					for (const auto& v : instanceValues) {
+						if (v.axisTag == ranges[i].axisTag)
+							axis.InstanceValue = v.value;
+					}
+
+					if (IDWriteLocalizedStringsPtr names; SUCCEEDED(resource->GetAxisNames(i, &names)) && names->GetCount()) {
+						UINT32 index;
+						if (BOOL exists; FAILED(names->FindLocaleName(g_localeName.c_str(), &index, &exists)) || !exists) {
+							if (FAILED(names->FindLocaleName(L"en-us", &index, &exists)) || !exists)
+								index = 0;
+						}
+
+						if (UINT32 length; SUCCEEDED(names->GetStringLength(index, &length))) {
+							axis.Name.resize(length + 1);
+							if (SUCCEEDED(names->GetString(index, axis.Name.data(), length + 1)))
+								axis.Name.resize(length);
+							else
+								axis.Name.clear();
+						}
+					}
+				}
+			}
+
+			// Values of axes that the font does not have, or cannot vary, would be ignored, and cannot be seen or edited from here.
+			std::erase_if(m_element.Lookup.Variations, [this](const auto& kv) {
+				return kv.first.size() != 4 || std::ranges::none_of(m_variationAxes, [&kv](const VariationAxis& axis) {
+					return memcmp(&axis.Tag, kv.first.data(), 4) == 0;
+				});
+			});
+		} catch (...) {
+			// Leave the list empty if the font cannot be resolved.
+		}
+	}
+
+	for (int i = 0; i < static_cast<int>(m_variationAxes.size()); i++) {
+		const auto& axis = m_variationAxes[i];
+		const auto tag = xivres::util::unicode::convert<std::wstring>(std::string_view(reinterpret_cast<const char*>(&axis.Tag), 4));
+		auto name = axis.Name.empty() ? tag : std::format(L"{} ({})", axis.Name, tag);
+		auto range = std::format(L"{:g}\u2013{:g}", axis.Minimum, axis.Maximum);
+
+		LVITEMW lvi{
+			.mask = LVIF_TEXT,
+			.iItem = i,
+			.pszText = name.data(),
+		};
+		ListView_InsertItem(m_controls->FontVariationsList, &lvi);
+		ListView_SetItemText(m_controls->FontVariationsList, i, 1, range.data());
+		UpdateFontVariationsListItem(i);
+	}
+
+	if (m_element.Renderer == Structs::RendererEnum::DirectWrite || m_element.Renderer == Structs::RendererEnum::FreeType)
+		EnableWindow(m_controls->FontVariationsList, !m_variationAxes.empty());
+	RefreshFontVariationValueEdit();
+}
+
+void App::FaceElementEditorDialog::UpdateFontVariationsListItem(int index) {
+	const auto& axis = m_variationAxes[index];
+
+	std::string tag(4, ' ');
+	memcpy(tag.data(), &axis.Tag, 4);
+
+	std::wstring text;
+	if (const auto it = m_element.Lookup.Variations.find(tag); it != m_element.Lookup.Variations.end())
+		text = std::format(L"{:g}", it->second);
+	else if (axis.Tag == DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE)
+		text = GetStringResource(IDS_FONTVARIATIONS_AUTO);
+	else
+		text = std::format(L"({:g})", axis.InstanceValue);
+	ListView_SetItemText(m_controls->FontVariationsList, index, 2, text.data());
+}
+
+int App::FaceElementEditorDialog::GetSelectedFontVariationAxis() const {
+	const auto index = ListView_GetNextItem(m_controls->FontVariationsList, -1, LVNI_SELECTED);
+	return index >= 0 && index < static_cast<int>(m_variationAxes.size()) ? index : -1;
+}
+
+void App::FaceElementEditorDialog::RefreshFontVariationValueEdit() {
+	const auto axisIndex = GetSelectedFontVariationAxis();
+
+	std::wstring text, cue;
+	if (axisIndex >= 0) {
+		const auto& axis = m_variationAxes[axisIndex];
+
+		std::string tag(4, ' ');
+		memcpy(tag.data(), &axis.Tag, 4);
+		if (const auto it = m_element.Lookup.Variations.find(tag); it != m_element.Lookup.Variations.end())
+			text = std::format(L"{:g}", it->second);
+
+		// Shown while the edit is empty: the value used when none is entered.
+		if (axis.Tag == DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE)
+			cue = GetStringResource(IDS_FONTVARIATIONS_AUTO);
+		else
+			cue = std::format(L"{:g}", axis.InstanceValue);
+	}
+
+	m_bSettingVariationValueEdit = true;
+	SetWindowTextW(m_controls->FontVariationValueEdit, text.c_str());
+	m_bSettingVariationValueEdit = false;
+	Edit_SetCueBannerTextFocused(m_controls->FontVariationValueEdit, cue.c_str(), TRUE);
+
+	const auto enabled = axisIndex >= 0 && (m_element.Renderer == Structs::RendererEnum::DirectWrite || m_element.Renderer == Structs::RendererEnum::FreeType);
+	EnableWindow(m_controls->FontVariationValueEdit, enabled);
 }
 
 void App::FaceElementEditorDialog::OnBaseFontChanged() {
@@ -1580,6 +2069,9 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 		case WM_INITDIALOG:
 			return Dialog_OnInitDialog();
 		case WM_COMMAND: {
+			if (!m_controls)
+				return 0;
+
 			switch (LOWORD(wParam)) {
 				case IDOK: return OkButton_OnCommand(HIWORD(wParam));
 				case IDCANCEL: return CancelButton_OnCommand(HIWORD(wParam));
@@ -1589,7 +2081,9 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 				case IDC_COMBO_FONT_WEIGHT: return FontWeightCombo_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_FONT_STYLE: return FontStyleCombo_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_FONT_STRETCH: return FontStretchCombo_OnCommand(HIWORD(wParam));
-				case IDC_LIST_FONT_FEATURES: return FontFeaturesList_OnCommand(HIWORD(wParam));
+				case IDC_EDIT_FONT_FEATURE_VALUE: return FontFeatureValueEdit_OnCommand(HIWORD(wParam));
+				case IDC_COMBO_FONT_LANGUAGE: return FontLanguageCombo_OnCommand(HIWORD(wParam));
+				case IDC_EDIT_FONT_VARIATION_VALUE: return FontVariationValueEdit_OnCommand(HIWORD(wParam));
 				case IDC_EDIT_EMPTY_ASCENT: return EmptyAscentEdit_OnCommand(HIWORD(wParam));
 				case IDC_EDIT_EMPTY_LINEHEIGHT: return EmptyLineHeightEdit_OnCommand(HIWORD(wParam));
 				case IDC_CHECK_FREETYPE_NOHINTING:
@@ -1627,6 +2121,21 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 			}
 			return 0;
 		}
+		case WM_NOTIFY: {
+			if (!m_controls)
+				return 0;
+
+			const auto& nmhdr = *reinterpret_cast<LPNMHDR>(lParam);
+			if (nmhdr.idFrom == IDC_TAB_FACEELEMENTEDITOR && nmhdr.code == TCN_SELCHANGE) {
+				ShowPage(TabCtrl_GetCurSel(m_controls->Tab));
+				return 0;
+			}
+			if (nmhdr.idFrom == IDC_LIST_FONT_FEATURES && nmhdr.code == LVN_ITEMCHANGED)
+				return FontFeaturesList_OnItemChanged(*reinterpret_cast<LPNMLISTVIEW>(lParam));
+			if (nmhdr.idFrom == IDC_LIST_FONT_VARIATIONS && nmhdr.code == LVN_ITEMCHANGED)
+				return FontVariationsList_OnItemChanged(*reinterpret_cast<LPNMLISTVIEW>(lParam));
+			return 0;
+		}
 		case WM_CLOSE: {
 			EndDialog(m_controls->Window, 0);
 			m_bOpened = false;
@@ -1642,4 +2151,26 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 
 INT_PTR __stdcall App::FaceElementEditorDialog::DlgProcStatic(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	return DlgProcStaticImpl<FaceElementEditorDialog>(hwnd, message, wParam, lParam);
+}
+
+INT_PTR __stdcall App::FaceElementEditorDialog::PageDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+	switch (message) {
+		case WM_INITDIALOG:
+			return FALSE;
+
+		case WM_COMMAND:
+		case WM_NOTIFY:
+			SetWindowLongPtrW(hwnd, DWLP_MSGRESULT, SendMessageW(GetParent(hwnd), message, wParam, lParam));
+			return TRUE;
+	}
+	return FALSE;
+}
+
+void App::FaceElementEditorDialog::ShowPage(int index) {
+	if (index < 0 || index >= static_cast<int>(m_controls->Pages.size()))
+		index = 0;
+
+	s_lastPageIndex = index;
+	for (int i = 0; i < static_cast<int>(m_controls->Pages.size()); i++)
+		ShowWindow(m_controls->Pages[i], i == index ? SW_SHOW : SW_HIDE);
 }
