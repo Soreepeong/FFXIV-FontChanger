@@ -92,10 +92,8 @@ struct App::FaceElementEditorDialog::ControlStruct {
 	HWND FontVariationValueEdit = Item(IDC_EDIT_FONT_VARIATION_VALUE);
 	HWND EmptyAscentEdit = Item(IDC_EDIT_EMPTY_ASCENT);
 	HWND EmptyLineHeightEdit = Item(IDC_EDIT_EMPTY_LINEHEIGHT);
-	HWND FreeTypeNoHintingCheck = Item(IDC_CHECK_FREETYPE_NOHINTING);
-	HWND FreeTypeNoBitmapCheck = Item(IDC_CHECK_FREETYPE_NOBITMAP);
-	HWND FreeTypeForceAutohintCheck = Item(IDC_CHECK_FREETYPE_FORCEAUTOHINT);
-	HWND FreeTypeNoAutohintCheck = Item(IDC_CHECK_FREETYPE_NOAUTOHINT);
+	HWND FreeTypeHintingCombo = Item(IDC_COMBO_FREETYPE_HINTING);
+	HWND FreeTypeEmbeddedBitmapsCheck = Item(IDC_CHECK_FREETYPE_EMBEDDEDBITMAPS);
 	HWND FreeTypeRenderModeCombo = Item(IDC_COMBO_FREETYPE_RENDERMODE);
 	HWND DirectWriteRenderModeCombo = Item(IDC_COMBO_DIRECTWRITE_RENDERMODE);
 	HWND DirectWriteMeasureModeCombo = Item(IDC_COMBO_DIRECTWRITE_MEASUREMODE);
@@ -473,15 +471,12 @@ INT_PTR App::FaceElementEditorDialog::EmptyLineHeightEdit_OnCommand(uint16_t not
 	return 0;
 }
 
-INT_PTR App::FaceElementEditorDialog::FreeTypeCheck_OnCommand(uint16_t notiCode, uint16_t id, HWND hWnd) {
-	if (notiCode != BN_CLICKED)
+INT_PTR App::FaceElementEditorDialog::FreeTypeHinting_OnCommand(uint16_t notiCode) {
+	if (notiCode != CBN_SELCHANGE && notiCode != BN_CLICKED)
 		return 0;
 
-	const auto newFlags = 0
-		| (Button_GetCheck(m_controls->FreeTypeNoHintingCheck) ? FT_LOAD_NO_HINTING : 0)
-		| (Button_GetCheck(m_controls->FreeTypeNoBitmapCheck) ? FT_LOAD_NO_BITMAP : 0)
-		| (Button_GetCheck(m_controls->FreeTypeForceAutohintCheck) ? FT_LOAD_FORCE_AUTOHINT : 0)
-		| (Button_GetCheck(m_controls->FreeTypeNoAutohintCheck) ? FT_LOAD_NO_AUTOHINT : 0);
+	const auto newFlags = GetComboboxSelData<int>(m_controls->FreeTypeHintingCombo)
+		| (Button_GetCheck(m_controls->FreeTypeEmbeddedBitmapsCheck) ? 0 : FT_LOAD_NO_BITMAP);
 
 	if (newFlags != m_element.RendererSpecific.FreeType.LoadFlags) {
 		m_element.RendererSpecific.FreeType.LoadFlags = newFlags;
@@ -880,10 +875,26 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	ComboBox_SetText(m_controls->FontCombo, xivres::util::unicode::convert<std::wstring>(m_element.Lookup.Name).c_str());
 	SetWindowNumber(m_controls->EmptyAscentEdit, m_element.RendererSpecific.Empty.Ascent);
 	SetWindowNumber(m_controls->EmptyLineHeightEdit, m_element.RendererSpecific.Empty.LineHeight);
-	Button_SetCheck(m_controls->FreeTypeNoHintingCheck, (m_element.RendererSpecific.FreeType.LoadFlags & FT_LOAD_NO_HINTING) ? TRUE : FALSE);
-	Button_SetCheck(m_controls->FreeTypeNoBitmapCheck, (m_element.RendererSpecific.FreeType.LoadFlags & FT_LOAD_NO_BITMAP) ? TRUE : FALSE);
-	Button_SetCheck(m_controls->FreeTypeForceAutohintCheck, (m_element.RendererSpecific.FreeType.LoadFlags & FT_LOAD_FORCE_AUTOHINT) ? TRUE : FALSE);
-	Button_SetCheck(m_controls->FreeTypeNoAutohintCheck, (m_element.RendererSpecific.FreeType.LoadFlags & FT_LOAD_NO_AUTOHINT) ? TRUE : FALSE);
+	{
+		const auto loadFlags = m_element.RendererSpecific.FreeType.LoadFlags;
+		const auto hinting = (loadFlags & FT_LOAD_NO_HINTING)
+			? FT_LOAD_NO_HINTING
+			: (loadFlags & FT_LOAD_NO_AUTOHINT)
+			? FT_LOAD_NO_AUTOHINT
+			: (loadFlags & FT_LOAD_FORCE_AUTOHINT)
+			? FT_LOAD_FORCE_AUTOHINT
+			: FT_LOAD_DEFAULT;
+		SetComboboxContent<int>(
+			m_controls->FreeTypeHintingCombo,
+			hinting,
+			{
+				std::make_pair(FT_LOAD_DEFAULT, IDS_FREETYPE_HINTING_DEFAULT),
+				std::make_pair(FT_LOAD_NO_AUTOHINT, IDS_FREETYPE_HINTING_NATIVE),
+				std::make_pair(FT_LOAD_FORCE_AUTOHINT, IDS_FREETYPE_HINTING_AUTOHINTER),
+				std::make_pair(FT_LOAD_NO_HINTING, IDS_FREETYPE_HINTING_NONE),
+			});
+		Button_SetCheck(m_controls->FreeTypeEmbeddedBitmapsCheck, (loadFlags & FT_LOAD_NO_BITMAP) ? FALSE : TRUE);
+	}
 	
 	SetComboboxContent<FT_Render_Mode>(
 		m_controls->FreeTypeRenderModeCombo,
@@ -1310,10 +1321,8 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontVariationValueEdit, FALSE);
 			EnableWindow(m_controls->EmptyAscentEdit, TRUE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, TRUE);
-			EnableWindow(m_controls->FreeTypeNoHintingCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeNoBitmapCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeForceAutohintCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeNoAutohintCheck, FALSE);
+			EnableWindow(m_controls->FreeTypeHintingCombo, FALSE);
+			EnableWindow(m_controls->FreeTypeEmbeddedBitmapsCheck, FALSE);
 			EnableWindow(m_controls->FreeTypeRenderModeCombo, FALSE);
 			EnableWindow(m_controls->DirectWriteRenderModeCombo, FALSE);
 			EnableWindow(m_controls->DirectWriteMeasureModeCombo, FALSE);
@@ -1354,10 +1363,8 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontVariationValueEdit, FALSE);
 			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
-			EnableWindow(m_controls->FreeTypeNoHintingCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeNoBitmapCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeForceAutohintCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeNoAutohintCheck, FALSE);
+			EnableWindow(m_controls->FreeTypeHintingCombo, FALSE);
+			EnableWindow(m_controls->FreeTypeEmbeddedBitmapsCheck, FALSE);
 			EnableWindow(m_controls->FreeTypeRenderModeCombo, FALSE);
 			EnableWindow(m_controls->DirectWriteRenderModeCombo, FALSE);
 			EnableWindow(m_controls->DirectWriteMeasureModeCombo, FALSE);
@@ -1398,10 +1405,8 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontVariationValueEdit, GetSelectedFontVariationAxis() >= 0);
 			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
-			EnableWindow(m_controls->FreeTypeNoHintingCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeNoBitmapCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeForceAutohintCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeNoAutohintCheck, FALSE);
+			EnableWindow(m_controls->FreeTypeHintingCombo, FALSE);
+			EnableWindow(m_controls->FreeTypeEmbeddedBitmapsCheck, FALSE);
 			EnableWindow(m_controls->FreeTypeRenderModeCombo, FALSE);
 			EnableWindow(m_controls->DirectWriteRenderModeCombo, TRUE);
 			EnableWindow(m_controls->DirectWriteMeasureModeCombo, TRUE);
@@ -1442,10 +1447,8 @@ void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
 			EnableWindow(m_controls->FontVariationValueEdit, GetSelectedFontVariationAxis() >= 0);
 			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
 			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
-			EnableWindow(m_controls->FreeTypeNoHintingCheck, TRUE);
-			EnableWindow(m_controls->FreeTypeNoBitmapCheck, TRUE);
-			EnableWindow(m_controls->FreeTypeForceAutohintCheck, TRUE);
-			EnableWindow(m_controls->FreeTypeNoAutohintCheck, TRUE);
+			EnableWindow(m_controls->FreeTypeHintingCombo, TRUE);
+			EnableWindow(m_controls->FreeTypeEmbeddedBitmapsCheck, TRUE);
 			EnableWindow(m_controls->FreeTypeRenderModeCombo, TRUE);
 			EnableWindow(m_controls->DirectWriteRenderModeCombo, FALSE);
 			EnableWindow(m_controls->DirectWriteMeasureModeCombo, FALSE);
@@ -2086,10 +2089,8 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 				case IDC_EDIT_FONT_VARIATION_VALUE: return FontVariationValueEdit_OnCommand(HIWORD(wParam));
 				case IDC_EDIT_EMPTY_ASCENT: return EmptyAscentEdit_OnCommand(HIWORD(wParam));
 				case IDC_EDIT_EMPTY_LINEHEIGHT: return EmptyLineHeightEdit_OnCommand(HIWORD(wParam));
-				case IDC_CHECK_FREETYPE_NOHINTING:
-				case IDC_CHECK_FREETYPE_NOBITMAP:
-				case IDC_CHECK_FREETYPE_FORCEAUTOHINT:
-				case IDC_CHECK_FREETYPE_NOAUTOHINT: return FreeTypeCheck_OnCommand(HIWORD(wParam), LOWORD(wParam), reinterpret_cast<HWND>(lParam));
+				case IDC_COMBO_FREETYPE_HINTING:
+				case IDC_CHECK_FREETYPE_EMBEDDEDBITMAPS: return FreeTypeHinting_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_FREETYPE_RENDERMODE: return FreeTypeRenderModeCombo_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_DIRECTWRITE_RENDERMODE: return DirectWriteRenderModeCombo_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_DIRECTWRITE_MEASUREMODE: return DirectWriteMeasureModeCombo_OnCommand(HIWORD(wParam));

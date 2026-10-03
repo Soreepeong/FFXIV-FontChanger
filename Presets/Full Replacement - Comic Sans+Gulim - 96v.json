@@ -3902,7 +3902,7 @@
 							"renderer": 2,
 							"size": 96.0,
 							"transformationMatrix": [
-								0.5,
+								0.6666666865348816,
 								0.0,
 								0.0,
 								1.0
@@ -4114,7 +4114,7 @@
 							"renderer": 2,
 							"size": 96.0,
 							"transformationMatrix": [
-								0.5,
+								0.6666666865348816,
 								0.0,
 								0.0,
 								1.0
@@ -4326,7 +4326,7 @@
 							"renderer": 2,
 							"size": 96.0,
 							"transformationMatrix": [
-								0.5,
+								0.6666666865348816,
 								0.0,
 								0.0,
 								1.0
@@ -4538,7 +4538,7 @@
 							"renderer": 2,
 							"size": 96.0,
 							"transformationMatrix": [
-								0.5,
+								0.6666669845581055,
 								0.0,
 								0.0,
 								1.0

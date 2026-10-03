@@ -102,7 +102,7 @@ namespace App {
 
 		INT_PTR EmptyLineHeightEdit_OnCommand(uint16_t notiCode);
 
-		INT_PTR FreeTypeCheck_OnCommand(uint16_t notiCode, uint16_t id, HWND hWnd);
+		INT_PTR FreeTypeHinting_OnCommand(uint16_t notiCode);
 
 		INT_PTR FreeTypeRenderModeCombo_OnCommand(uint16_t notiCode);
 
