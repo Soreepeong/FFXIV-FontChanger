@@ -33,7 +33,7 @@ static nlohmann::json PixelValueToJson(float value) {
 }
 
 static std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::game_font_family family, float size) {
-	const auto lock = std::lock_guard(s_fontSetCacheMtx);
+	const auto lock = std::scoped_lock(s_fontSetCacheMtx);
 
 	std::shared_ptr<xivres::fontgen::game_fontdata_set> strong;
 
@@ -203,7 +203,10 @@ std::pair<IDWriteFactoryPtr, IDWriteFontPtr> App::Structs::LookupStruct::Resolve
 	using namespace xivres::fontgen;
 
 	IDWriteFactoryPtr factory;
-	SuccessOrThrow(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(&factory)));
+	// Fonts of the shared factory share their faces, and with them what DirectWrite keeps of the glyphs that it drew, so
+	// that the bounds and pixels of a glyph could differ by a pixel depending on what other fonts of the same face drew
+	// before, on any thread; exports then differed from run to run. Each font gets a factory of its own instead.
+	SuccessOrThrow(DWriteCreateFactory(DWRITE_FACTORY_TYPE_ISOLATED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(&factory)));
 
 	IDWriteFontCollectionPtr coll;
 	SuccessOrThrow(factory->GetSystemFontCollection(&coll));
@@ -747,6 +750,19 @@ void App::Structs::FaceElement::Scale(float factor) {
 	OnFontCreateParametersChange();
 }
 
+// Returns what of the lookup decides the font that it makes, other than the name, weight, stretch, and style.
+static std::string GetLookupKeySuffix(const App::Structs::LookupStruct& lookup) {
+	std::string res;
+	for (const auto& [tag, value] : lookup.Features)
+		res += std::format(":{}={}", std::string_view(reinterpret_cast<const char*>(&tag), 4), value);
+	res += std::format(":lang={}", lookup.Language);
+	if (lookup.Synthesis)
+		res += std::format(":synth={}", lookup.Synthesis->Allow ? 1 : 0);
+	for (const auto& [tag, value] : lookup.Variations)
+		res += std::format(":{}={:g}", tag, value);
+	return res;
+}
+
 std::string App::Structs::FaceElement::GetBaseFontKey() const {
 	switch (Renderer) {
 		case RendererEnum::Empty:
@@ -770,20 +786,14 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				std::bit_cast<uint32_t>(matrix.M21),
 				std::bit_cast<uint32_t>(matrix.M22)
 			);
-			for (const auto& [tag, value] : Lookup.Features)
-				res += std::format(":{}={}", std::string_view(reinterpret_cast<const char*>(&tag), 4), value);
-			res += std::format(":lang={}", Lookup.Language);
-			if (Lookup.Synthesis)
-				res += std::format(":synth={}", Lookup.Synthesis->Allow ? 1 : 0);
-			for (const auto& [tag, value] : Lookup.Variations)
-				res += std::format(":{}={:g}", tag, value);
+			res += GetLookupKeySuffix(Lookup);
 			if (GlyphMerging.IsEnabled())
 				res += ":merge=" + nlohmann::json(GlyphMerging).dump();
 			return res;
 		}
 		case RendererEnum::FreeType: {
 			const auto matrix = Transform.GetRendererMatrix(Renderer);
-			auto res = std::format("freetype:{}:{:g}:{:g}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
+			auto res = std::format("freetype:{}:{:g}:{:g}:{}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
 				Lookup.Name,
 				Size,
 				Gamma,
@@ -791,18 +801,13 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				static_cast<uint32_t>(Lookup.Stretch),
 				static_cast<uint32_t>(Lookup.Style),
 				static_cast<uint32_t>(RendererSpecific.FreeType.LoadFlags),
+				static_cast<uint32_t>(RendererSpecific.FreeType.RenderMode),
 				std::bit_cast<uint32_t>(matrix.M11),
 				std::bit_cast<uint32_t>(matrix.M12),
 				std::bit_cast<uint32_t>(matrix.M21),
 				std::bit_cast<uint32_t>(matrix.M22)
 			);
-			for (const auto& [tag, value] : Lookup.Features)
-				res += std::format(":{}={}", std::string_view(reinterpret_cast<const char*>(&tag), 4), value);
-			res += std::format(":lang={}", Lookup.Language);
-			if (Lookup.Synthesis)
-				res += std::format(":synth={}", Lookup.Synthesis->Allow ? 1 : 0);
-			for (const auto& [tag, value] : Lookup.Variations)
-				res += std::format(":{}={:g}", tag, value);
+			res += GetLookupKeySuffix(Lookup);
 			if (GlyphMerging.IsEnabled())
 				res += ":merge=" + nlohmann::json(GlyphMerging).dump();
 			return res;
@@ -820,8 +825,21 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				std::bit_cast<uint32_t>(matrix.M21),
 				std::bit_cast<uint32_t>(matrix.M22),
 				std::hash<std::string>{}(settings.dump()));
-			if (GlyphMerging.IsEnabled())
-				res += ":merge=" + nlohmann::json(GlyphMerging).dump() + ":" + Lookup.Name;
+			if (GlyphMerging.IsEnabled()) {
+				// The texts are drawn by DirectWrite with the font of the lookup, if it names one.
+				res += ":merge=" + nlohmann::json(GlyphMerging).dump();
+				if (!Lookup.Name.empty()) {
+					res += std::format(":{}:{}:{}:{}:{}:{}:{}",
+						Lookup.Name,
+						static_cast<uint32_t>(Lookup.Weight),
+						static_cast<uint32_t>(Lookup.Stretch),
+						static_cast<uint32_t>(Lookup.Style),
+						static_cast<uint32_t>(RendererSpecific.DirectWrite.RenderMode),
+						static_cast<uint32_t>(RendererSpecific.DirectWrite.MeasureMode),
+						static_cast<uint32_t>(RendererSpecific.DirectWrite.GridFitMode));
+					res += GetLookupKeySuffix(Lookup);
+				}
+			}
 			return res;
 		}
 		default:
@@ -1143,7 +1161,7 @@ void App::Structs::SetGameNotFoundDialogsEnabled(bool enabled) {
 }
 
 void App::Structs::FlushCachedFonts() {
-	const auto lock = std::lock_guard(s_fontSetCacheMtx);
+	const auto lock = std::scoped_lock(s_fontSetCacheMtx);
 	s_fontSetCache.clear();
 	s_showedGameNotFoundError = false;
 }
@@ -1152,12 +1170,12 @@ static std::filesystem::path s_projectDirectory;
 static std::mutex s_projectDirectoryMtx;
 
 void App::Structs::SetProjectDirectory(std::filesystem::path path) {
-	const auto lock = std::lock_guard(s_projectDirectoryMtx);
+	const auto lock = std::scoped_lock(s_projectDirectoryMtx);
 	s_projectDirectory = std::move(path);
 }
 
 std::filesystem::path App::Structs::GetProjectDirectory() {
-	const auto lock = std::lock_guard(s_projectDirectoryMtx);
+	const auto lock = std::scoped_lock(s_projectDirectoryMtx);
 	return s_projectDirectory;
 }
 

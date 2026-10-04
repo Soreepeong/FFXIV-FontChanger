@@ -302,7 +302,7 @@ namespace {
 			std::map<std::filesystem::path, ULONGLONG> pending;
 			while (true) {
 				{
-					const auto lock = std::lock_guard(m_mtx);
+					const auto lock = std::scoped_lock(m_mtx);
 					if (!m_hWnd)
 						break;
 					for (const auto& folder : m_folders) {
@@ -347,7 +347,7 @@ namespace {
 					for (const auto& folder : quiet)
 						App::GlyphFiles::InvalidateFolder(folder);
 
-					const auto lock = std::lock_guard(m_mtx);
+					const auto lock = std::scoped_lock(m_mtx);
 					m_changed.insert(m_changed.end(), quiet.begin(), quiet.end());
 					if (m_hWnd)
 						PostMessageW(m_hWnd, m_message, 0, 0);
@@ -363,7 +363,7 @@ namespace {
 	public:
 		~FolderWatcher() {
 			{
-				const auto lock = std::lock_guard(m_mtx);
+				const auto lock = std::scoped_lock(m_mtx);
 				m_hWnd = nullptr;
 			}
 			SetEvent(m_wakeEvent);
@@ -379,7 +379,7 @@ namespace {
 
 		void SetWindow(HWND hWnd, UINT message) {
 			{
-				const auto lock = std::lock_guard(m_mtx);
+				const auto lock = std::scoped_lock(m_mtx);
 				m_hWnd = hWnd;
 				m_message = message;
 			}
@@ -392,7 +392,7 @@ namespace {
 
 		void Watch(const std::filesystem::path& folder) {
 			{
-				const auto lock = std::lock_guard(m_mtx);
+				const auto lock = std::scoped_lock(m_mtx);
 				if (!m_hWnd || !m_folders.insert(folder).second)
 					return;
 			}
@@ -400,7 +400,7 @@ namespace {
 		}
 
 		std::vector<std::filesystem::path> TakeChanged() {
-			const auto lock = std::lock_guard(m_mtx);
+			const auto lock = std::scoped_lock(m_mtx);
 			return std::exchange(m_changed, {});
 		}
 	};
@@ -483,18 +483,18 @@ std::shared_ptr<const App::GlyphFiles::GlyphSet> App::GlyphFiles::LoadGlyphSet(c
 	const auto folder = ResolvePath(settings.Path);
 	FolderWatcher::Instance().Watch(folder);
 	{
-		const auto lock = std::lock_guard(s_folderCacheMtx);
+		const auto lock = std::scoped_lock(s_folderCacheMtx);
 		if (const auto it = s_folderCache.find(folder); it != s_folderCache.end())
 			return it->second;
 	}
 
 	auto res = ReadFolder(folder);
-	const auto lock = std::lock_guard(s_folderCacheMtx);
+	const auto lock = std::scoped_lock(s_folderCacheMtx);
 	return s_folderCache.insert_or_assign(folder, std::move(res)).first->second;
 }
 
 void App::GlyphFiles::InvalidateFolder(const std::filesystem::path& folder) {
-	const auto lock = std::lock_guard(s_folderCacheMtx);
+	const auto lock = std::scoped_lock(s_folderCacheMtx);
 	s_folderCache.erase(folder.lexically_normal());
 }
 
