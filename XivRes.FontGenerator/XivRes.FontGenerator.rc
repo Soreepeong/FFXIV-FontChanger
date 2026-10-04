@@ -755,6 +755,8 @@ BEGIN
     IDS_FREETYPE_HINTING_NATIVE "仅字体自带"
     IDS_FREETYPE_HINTING_AUTOHINTER "自动微调"
     IDS_FREETYPE_HINTING_NONE "不微调"
+    IDS_RECENTFILES_CLEAR   "清除最近的文件(&R)"
+    IDS_RECENTFILES_NOTFOUND "找不到该文件。是否将其从最近的文件中移除？"
 END
 
 #endif    // Chinese (Simplified) resources
@@ -1388,6 +1390,8 @@ BEGIN
     IDS_FREETYPE_HINTING_NATIVE "폰트 내장만"
     IDS_FREETYPE_HINTING_AUTOHINTER "자동 픽셀 정렬"
     IDS_FREETYPE_HINTING_NONE "사용 안 함"
+    IDS_RECENTFILES_CLEAR   "최근 파일 비우기(&R)"
+    IDS_RECENTFILES_NOTFOUND "파일을 찾을 수 없습니다. 최근 파일 목록에서 제거할까요?"
 END
 
 #endif    // Korean (Korea) resources
@@ -2296,6 +2300,8 @@ BEGIN
     IDS_FREETYPE_HINTING_NATIVE "Font's own only"
     IDS_FREETYPE_HINTING_AUTOHINTER "Auto-hinter"
     IDS_FREETYPE_HINTING_NONE "None"
+    IDS_RECENTFILES_CLEAR   "Clear &Recent Files"
+    IDS_RECENTFILES_NOTFOUND "The file could not be found. Remove it from the recent files?"
 END
 
 #endif    // English (United States) resources

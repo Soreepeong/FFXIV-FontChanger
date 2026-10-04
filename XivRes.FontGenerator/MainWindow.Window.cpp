@@ -336,6 +336,13 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 }
 
 LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bool isWindowMenu) {
+	for (int i = 0, i_ = GetMenuItemCount(hMenu); i < i_; i++) {
+		if (GetMenuItemID(hMenu, i) == ID_FILE_EXIT) {
+			PopulateRecentFilesMenu(hMenu);
+			break;
+		}
+	}
+
 	{
 		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language.empty() ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_AUTO, FALSE, &mii);
@@ -595,6 +602,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_FILE_LANGUAGE_ENGLISH: return Menu_File_Language("en-us");
 				case ID_FILE_LANGUAGE_KOREAN: return Menu_File_Language("ko-kr");
 				case ID_FILE_LANGUAGE_CHINESE: return Menu_File_Language("zh-hans");
+				case ID_FILE_RECENT_CLEAR: return Menu_File_ClearRecent();
 				case ID_FILE_GAMEINSTALLATIONMANAGER: return Menu_File_GameInstallationManager();
 				case ID_FILE_EXIT: return Menu_File_Exit();
 				case ID_EDIT_ADD: return Menu_Edit_Add();
@@ -657,6 +665,8 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EXPORT_MAPFONTKRNAXIS: return Menu_Export_MapFontKrnAxis();
 				case ID_EXPORT_MAPFONTTCAXIS: return Menu_Export_MapFontTCAxis();
 			}
+			if (LOWORD(wParam) >= ID_FILE_RECENT_FIRST && LOWORD(wParam) <= ID_FILE_RECENT_LAST)
+				return Menu_File_OpenRecent(LOWORD(wParam) - ID_FILE_RECENT_FIRST);
 			break;
 
 		case WM_NOTIFY:

@@ -1,11 +1,16 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "Structs.h"
 #include "MainWindow.h"
 #include "MainWindow.Internal.h"
 #include "xivres/textools.h"
 #include "resource.h"
+#include "FileHistory.h"
 #include "FontGeneratorConfig.h"
 #include "GameInstallationManagerDialog.h"
+
+#include <Shlwapi.h>
+
+#pragma comment(lib, "shlwapi.lib")
 
 LRESULT App::FontEditorWindow::Menu_File_New(xivres::font_type fontType) {
 	if (Changes_ConfirmIfDirty())
@@ -105,6 +110,7 @@ LRESULT App::FontEditorWindow::Menu_File_Save() {
 		strm.Release();
 
 		Changes_MarkFresh();
+		FileHistory::Add(m_currentShellItem.GetInterfacePtr());
 		return 0;
 	});
 }
@@ -163,12 +169,93 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 
 		strm.Release();
 
+		FileHistory::Add(pResult.GetInterfacePtr());
 		if (changeCurrentFile) {
 			m_currentShellItem = std::move(pResult);
 			Changes_MarkFresh();
 		}
 		return 0;
 	});
+}
+
+void App::FontEditorWindow::PopulateRecentFilesMenu(HMENU hMenu) {
+	// Remove recent items from the last time
+	for (auto i = GetMenuItemCount(hMenu); i-- > 0;) {
+		MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_ID};
+		if (GetMenuItemInfoW(hMenu, i, TRUE, &mii) && mii.wID >= ID_FILE_RECENT_CLEAR && mii.wID <= ID_FILE_RECENT_LAST)
+			DeleteMenu(hMenu, i, MF_BYPOSITION);
+	}
+
+	const auto history = FileHistory::Load();
+	if (history.Files.empty())
+		return;
+
+	// The files go above the separator before Exit, as a group of their own.
+	auto position = 0;
+	for (auto i = 0, i_ = GetMenuItemCount(hMenu); i < i_; i++) {
+		if (GetMenuItemID(hMenu, i) == ID_FILE_EXIT)
+			position = (std::max)(0, i - 1);
+	}
+	const auto insert = [&](UINT type, UINT id, const wchar_t* text) {
+		const MENUITEMINFOW mii{
+			.cbSize = sizeof mii,
+			.fMask = MIIM_FTYPE | MIIM_ID | (text ? MIIM_STRING : 0u),
+			.fType = type,
+			.wID = id,
+			.dwTypeData = const_cast<wchar_t*>(text),
+		};
+		InsertMenuItemW(hMenu, position++, TRUE, &mii);
+	};
+
+	insert(MFT_SEPARATOR, ID_FILE_RECENT_SEPARATOR, nullptr);
+	for (size_t i = 0; i < history.Files.size() && i <= ID_FILE_RECENT_LAST - ID_FILE_RECENT_FIRST; i++) {
+		// Long paths are shortened in the middle; ampersands in paths are not mnemonics.
+		wchar_t compact[MAX_PATH]{};
+		if (!PathCompactPathExW(compact, history.Files[i].c_str(), 64, 0))
+			wcsncpy_s(compact, history.Files[i].c_str(), _TRUNCATE);
+		std::wstring escaped;
+		for (const auto c : std::wstring_view(compact)) {
+			if (c == L'&')
+				escaped += L'&';
+			escaped += c;
+		}
+
+		const auto label = i < 9 ? std::format(L"&{} {}", i + 1, escaped) : std::format(L"1&0 {}", escaped);
+		insert(MFT_STRING, ID_FILE_RECENT_FIRST + static_cast<UINT>(i), label.c_str());
+	}
+	insert(MFT_STRING, ID_FILE_RECENT_CLEAR, std::wstring(GetStringResource(IDS_RECENTFILES_CLEAR)).c_str());
+}
+
+LRESULT App::FontEditorWindow::Menu_File_OpenRecent(size_t index) {
+	const auto history = FileHistory::Load();
+	if (index >= history.Files.size())
+		return 0;
+
+	const auto path = history.Files[index];
+	if (!std::filesystem::exists(path)) {
+		if (MessageBoxW(
+			m_hWnd,
+			std::format(L"{}\n\n{}", path.wstring(), std::wstring(GetStringResource(IDS_RECENTFILES_NOTFOUND))).c_str(),
+			std::wstring(GetStringResource(IDS_APP)).c_str(),
+			MB_YESNO | MB_ICONWARNING) == IDYES)
+			FileHistory::Remove(path);
+		return 0;
+	}
+
+	if (Changes_ConfirmIfDirty())
+		return 1;
+
+	return TryCatchShowError(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
+		IShellItemPtr shellItem;
+		SuccessOrThrow(SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&shellItem)));
+		SetCurrentMultiFontSet(std::move(shellItem));
+		return 0;
+	});
+}
+
+LRESULT App::FontEditorWindow::Menu_File_ClearRecent() {
+	FileHistory::Clear();
+	return 0;
 }
 
 LRESULT App::FontEditorWindow::Menu_File_Language(const char* language) {

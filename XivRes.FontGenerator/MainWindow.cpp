@@ -2,6 +2,7 @@
 #include "resource.h"
 #include "Structs.h"
 #include "FaceElementEditorDialog.h"
+#include "FileHistory.h"
 #include "MainWindow.h"
 #include "MainWindow.Internal.h"
 #include "ProgressDialog.h"
@@ -55,7 +56,11 @@ void App::FontEditorWindow::SetCurrentMultiFontSet(IShellItemPtr path) {
 		remaining = remaining.subspan(read);
 	}
 	const auto j = nlohmann::json::parse(buf.begin(), buf.end());
-	SetCurrentMultiFontSet(j.get<Structs::MultiFontSet>(), std::move(path), false);
+	auto multiFontSet = j.get<Structs::MultiFontSet>();
+
+	FileHistory::Add(path.GetInterfacePtr());
+
+	SetCurrentMultiFontSet(std::move(multiFontSet), std::move(path), false);
 }
 
 void App::FontEditorWindow::SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, IShellItemPtr path, bool fakePath) {

@@ -256,6 +256,8 @@
 #define IDS_FREETYPE_HINTING_NATIVE          355
 #define IDS_FREETYPE_HINTING_AUTOHINTER      356
 #define IDS_FREETYPE_HINTING_NONE            357
+#define IDS_RECENTFILES_CLEAR           385
+#define IDS_RECENTFILES_NOTFOUND        386
 #define IDC_COMBO_FONT_RENDERER         1001
 #define IDC_COMBO_FONT                  1002
 #define IDC_COMBO_DIRECTWRITE_RENDERMODE 1004
@@ -328,6 +330,10 @@
 #define ID_FILE_NEW_KRNAXIS             40015
 #define ID_FILE_NEW_TCAXIS              40016
 #define ID_FILE_EXIT                    40036
+#define ID_FILE_RECENT_CLEAR            40199
+#define ID_FILE_RECENT_SEPARATOR        40200
+#define ID_FILE_RECENT_FIRST            40201
+#define ID_FILE_RECENT_LAST             40210
 #define ID_EXPORT_RAW                   40059
 #define ID_EXPORT_PREVIEW               40062
 #define ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING 40066
@@ -394,7 +400,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        194
-#define _APS_NEXT_COMMAND_VALUE         40199
+#define _APS_NEXT_COMMAND_VALUE         40211
 #define _APS_NEXT_CONTROL_VALUE         1065
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

@@ -218,6 +218,7 @@
     <ClCompile Include="FontGeneratorConfig.cpp" />
     <ClCompile Include="GameInstallationManagerDialog.cpp" />
     <ClCompile Include="GameInstallationRepository.cpp" />
+    <ClCompile Include="FileHistory.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="MainWindow.Controls.cpp" />
     <ClCompile Include="MainWindow.cpp" />
@@ -249,6 +250,7 @@
     <ClInclude Include="ExportPreviewWindow.h" />
     <ClInclude Include="FaceElementEditorDialog.h" />
     <ClInclude Include="GameFontReloader.h" />
+    <ClInclude Include="FileHistory.h" />
     <ClInclude Include="FontGeneratorConfig.h" />
     <ClInclude Include="GameInstallationManagerDialog.h" />
     <ClInclude Include="GameInstallationRepository.h" />
