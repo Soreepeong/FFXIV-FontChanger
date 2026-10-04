@@ -4,6 +4,9 @@
     <ClCompile Include="Main.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="CommandLineRender.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
     <ClCompile Include="FileHistory.cpp">
       <Filter>Source</Filter>
     </ClCompile>
@@ -117,6 +120,9 @@
       <Filter>Source\Dialogs</Filter>
     </ClInclude>
     <ClInclude Include="FontGeneratorConfig.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="CommandLineRender.h">
       <Filter>Source</Filter>
     </ClInclude>
     <ClInclude Include="FileHistory.h">

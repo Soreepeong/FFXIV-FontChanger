@@ -1,6 +1,7 @@
 ﻿#include "pch.h"
 #include "resource.h"
 
+#include "CommandLineRender.h"
 #include "ExportPreviewWindow.h"
 #include "FaceElementEditorDialog.h"
 #include "Structs.h"
@@ -59,6 +60,9 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
 		return 0;
 	}))
 		return r;
+
+	if (const auto exitCode = App::RunCommandLineRender(args))
+		return *exitCode;
 
 	App::FontEditorWindow window(std::move(args));
 	for (MSG msg{}; GetMessageW(&msg, nullptr, 0, 0);) {
