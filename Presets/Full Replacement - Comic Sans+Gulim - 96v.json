@@ -169,9 +169,213 @@
 						},
 						{
 							"gamma": 1.399999976158142,
+							"glyphMerging": {
+								"mappings": [
+									{
+										"codepoints": "",
+										"shape": "amPm",
+										"textMode": "subtract",
+										"texts": [
+											"A\nM",
+											"P\nM"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"m",
+											"Lv",
+											"ST",
+											"Nv"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "box",
+										"textMode": "subtract",
+										"texts": [
+											"?",
+											"A",
+											"B",
+											"C",
+											"D",
+											"E",
+											"F",
+											"G",
+											"H",
+											"I",
+											"J",
+											"K",
+											"L",
+											"M",
+											"N",
+											"O",
+											"P",
+											"Q",
+											"R",
+											"S",
+											"T",
+											"U",
+											"V",
+											"W",
+											"X",
+											"Y",
+											"Z",
+											"+",
+											"E"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "bozja",
+										"textMode": "subtract",
+										"texts": [
+											"I",
+											"II",
+											"III",
+											"IV",
+											"V",
+											"VI"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "time",
+										"textMode": "subtract",
+										"texts": [
+											"LT",
+											"ST",
+											"ET",
+											"OZ",
+											"SZ",
+											"EZ",
+											"HL",
+											"HS",
+											"HE"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "numberBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9",
+											"10",
+											"11",
+											"12",
+											"13",
+											"14",
+											"15",
+											"16",
+											"17",
+											"18",
+											"19",
+											"20",
+											"21",
+											"22",
+											"23",
+											"24",
+											"25",
+											"26",
+											"27",
+											"28",
+											"29",
+											"30",
+											"31"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hexagon",
+										"textMode": "subtract",
+										"texts": [
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hollowBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "ime",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									},
+									{
+										"codepoints": "",
+										"customAdvance": 1000.0,
+										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
+										"customTextArea": [
+											443.0,
+											111.0,
+											900.0,
+											880.0
+										],
+										"shape": "custom",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									}
+								]
+							},
 							"lookup": {
-								"features": [],
-								"name": "XIV PUA from Comic",
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -208,8 +412,40 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										57344,
-										63743
+										57378,
+										57378
+									],
+									[
+										57380,
+										57380
+									],
+									[
+										57384,
+										57384
+									],
+									[
+										57440,
+										57454
+									],
+									[
+										57456,
+										57482
+									],
+									[
+										57487,
+										57529
+									],
+									[
+										57537,
+										57542
+									],
+									[
+										57552,
+										57560
+									],
+									[
+										57568,
+										57577
 									]
 								],
 								"horizontalOffset": 1,
@@ -381,9 +617,213 @@
 						},
 						{
 							"gamma": 1.399999976158142,
+							"glyphMerging": {
+								"mappings": [
+									{
+										"codepoints": "",
+										"shape": "amPm",
+										"textMode": "subtract",
+										"texts": [
+											"A\nM",
+											"P\nM"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"m",
+											"Lv",
+											"ST",
+											"Nv"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "box",
+										"textMode": "subtract",
+										"texts": [
+											"?",
+											"A",
+											"B",
+											"C",
+											"D",
+											"E",
+											"F",
+											"G",
+											"H",
+											"I",
+											"J",
+											"K",
+											"L",
+											"M",
+											"N",
+											"O",
+											"P",
+											"Q",
+											"R",
+											"S",
+											"T",
+											"U",
+											"V",
+											"W",
+											"X",
+											"Y",
+											"Z",
+											"+",
+											"E"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "bozja",
+										"textMode": "subtract",
+										"texts": [
+											"I",
+											"II",
+											"III",
+											"IV",
+											"V",
+											"VI"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "time",
+										"textMode": "subtract",
+										"texts": [
+											"LT",
+											"ST",
+											"ET",
+											"OZ",
+											"SZ",
+											"EZ",
+											"HL",
+											"HS",
+											"HE"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "numberBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9",
+											"10",
+											"11",
+											"12",
+											"13",
+											"14",
+											"15",
+											"16",
+											"17",
+											"18",
+											"19",
+											"20",
+											"21",
+											"22",
+											"23",
+											"24",
+											"25",
+											"26",
+											"27",
+											"28",
+											"29",
+											"30",
+											"31"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hexagon",
+										"textMode": "subtract",
+										"texts": [
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hollowBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "ime",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									},
+									{
+										"codepoints": "",
+										"customAdvance": 1000.0,
+										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
+										"customTextArea": [
+											443.0,
+											111.0,
+											900.0,
+											880.0
+										],
+										"shape": "custom",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									}
+								]
+							},
 							"lookup": {
-								"features": [],
-								"name": "XIV PUA from Comic",
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -420,8 +860,40 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										57344,
-										63743
+										57378,
+										57378
+									],
+									[
+										57380,
+										57380
+									],
+									[
+										57384,
+										57384
+									],
+									[
+										57440,
+										57454
+									],
+									[
+										57456,
+										57482
+									],
+									[
+										57487,
+										57529
+									],
+									[
+										57537,
+										57542
+									],
+									[
+										57552,
+										57560
+									],
+									[
+										57568,
+										57577
 									]
 								],
 								"horizontalOffset": 1,
@@ -593,9 +1065,213 @@
 						},
 						{
 							"gamma": 1.399999976158142,
+							"glyphMerging": {
+								"mappings": [
+									{
+										"codepoints": "",
+										"shape": "amPm",
+										"textMode": "subtract",
+										"texts": [
+											"A\nM",
+											"P\nM"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"m",
+											"Lv",
+											"ST",
+											"Nv"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "box",
+										"textMode": "subtract",
+										"texts": [
+											"?",
+											"A",
+											"B",
+											"C",
+											"D",
+											"E",
+											"F",
+											"G",
+											"H",
+											"I",
+											"J",
+											"K",
+											"L",
+											"M",
+											"N",
+											"O",
+											"P",
+											"Q",
+											"R",
+											"S",
+											"T",
+											"U",
+											"V",
+											"W",
+											"X",
+											"Y",
+											"Z",
+											"+",
+											"E"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "bozja",
+										"textMode": "subtract",
+										"texts": [
+											"I",
+											"II",
+											"III",
+											"IV",
+											"V",
+											"VI"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "time",
+										"textMode": "subtract",
+										"texts": [
+											"LT",
+											"ST",
+											"ET",
+											"OZ",
+											"SZ",
+											"EZ",
+											"HL",
+											"HS",
+											"HE"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "numberBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9",
+											"10",
+											"11",
+											"12",
+											"13",
+											"14",
+											"15",
+											"16",
+											"17",
+											"18",
+											"19",
+											"20",
+											"21",
+											"22",
+											"23",
+											"24",
+											"25",
+											"26",
+											"27",
+											"28",
+											"29",
+											"30",
+											"31"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hexagon",
+										"textMode": "subtract",
+										"texts": [
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hollowBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "ime",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									},
+									{
+										"codepoints": "",
+										"customAdvance": 1000.0,
+										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
+										"customTextArea": [
+											443.0,
+											111.0,
+											900.0,
+											880.0
+										],
+										"shape": "custom",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									}
+								]
+							},
 							"lookup": {
-								"features": [],
-								"name": "XIV PUA from Comic",
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -632,8 +1308,40 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										57344,
-										63743
+										57378,
+										57378
+									],
+									[
+										57380,
+										57380
+									],
+									[
+										57384,
+										57384
+									],
+									[
+										57440,
+										57454
+									],
+									[
+										57456,
+										57482
+									],
+									[
+										57487,
+										57529
+									],
+									[
+										57537,
+										57542
+									],
+									[
+										57552,
+										57560
+									],
+									[
+										57568,
+										57577
 									]
 								],
 								"horizontalOffset": 1,
@@ -805,9 +1513,213 @@
 						},
 						{
 							"gamma": 1.399999976158142,
+							"glyphMerging": {
+								"mappings": [
+									{
+										"codepoints": "",
+										"shape": "amPm",
+										"textMode": "subtract",
+										"texts": [
+											"A\nM",
+											"P\nM"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"m",
+											"Lv",
+											"ST",
+											"Nv"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "box",
+										"textMode": "subtract",
+										"texts": [
+											"?",
+											"A",
+											"B",
+											"C",
+											"D",
+											"E",
+											"F",
+											"G",
+											"H",
+											"I",
+											"J",
+											"K",
+											"L",
+											"M",
+											"N",
+											"O",
+											"P",
+											"Q",
+											"R",
+											"S",
+											"T",
+											"U",
+											"V",
+											"W",
+											"X",
+											"Y",
+											"Z",
+											"+",
+											"E"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "bozja",
+										"textMode": "subtract",
+										"texts": [
+											"I",
+											"II",
+											"III",
+											"IV",
+											"V",
+											"VI"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "time",
+										"textMode": "subtract",
+										"texts": [
+											"LT",
+											"ST",
+											"ET",
+											"OZ",
+											"SZ",
+											"EZ",
+											"HL",
+											"HS",
+											"HE"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "numberBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9",
+											"10",
+											"11",
+											"12",
+											"13",
+											"14",
+											"15",
+											"16",
+											"17",
+											"18",
+											"19",
+											"20",
+											"21",
+											"22",
+											"23",
+											"24",
+											"25",
+											"26",
+											"27",
+											"28",
+											"29",
+											"30",
+											"31"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hexagon",
+										"textMode": "subtract",
+										"texts": [
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hollowBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "ime",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									},
+									{
+										"codepoints": "",
+										"customAdvance": 1000.0,
+										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
+										"customTextArea": [
+											443.0,
+											111.0,
+											900.0,
+											880.0
+										],
+										"shape": "custom",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									}
+								]
+							},
 							"lookup": {
-								"features": [],
-								"name": "XIV PUA from Comic",
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -844,8 +1756,40 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										57344,
-										63743
+										57378,
+										57378
+									],
+									[
+										57380,
+										57380
+									],
+									[
+										57384,
+										57384
+									],
+									[
+										57440,
+										57454
+									],
+									[
+										57456,
+										57482
+									],
+									[
+										57487,
+										57529
+									],
+									[
+										57537,
+										57542
+									],
+									[
+										57552,
+										57560
+									],
+									[
+										57568,
+										57577
 									]
 								],
 								"horizontalOffset": 1,
@@ -1164,9 +2108,213 @@
 						},
 						{
 							"gamma": 1.399999976158142,
+							"glyphMerging": {
+								"mappings": [
+									{
+										"codepoints": "",
+										"shape": "amPm",
+										"textMode": "subtract",
+										"texts": [
+											"A\nM",
+											"P\nM"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"m",
+											"Lv",
+											"ST",
+											"Nv"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "box",
+										"textMode": "subtract",
+										"texts": [
+											"?",
+											"A",
+											"B",
+											"C",
+											"D",
+											"E",
+											"F",
+											"G",
+											"H",
+											"I",
+											"J",
+											"K",
+											"L",
+											"M",
+											"N",
+											"O",
+											"P",
+											"Q",
+											"R",
+											"S",
+											"T",
+											"U",
+											"V",
+											"W",
+											"X",
+											"Y",
+											"Z",
+											"+",
+											"E"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "bozja",
+										"textMode": "subtract",
+										"texts": [
+											"I",
+											"II",
+											"III",
+											"IV",
+											"V",
+											"VI"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "time",
+										"textMode": "subtract",
+										"texts": [
+											"LT",
+											"ST",
+											"ET",
+											"OZ",
+											"SZ",
+											"EZ",
+											"HL",
+											"HS",
+											"HE"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "numberBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9",
+											"10",
+											"11",
+											"12",
+											"13",
+											"14",
+											"15",
+											"16",
+											"17",
+											"18",
+											"19",
+											"20",
+											"21",
+											"22",
+											"23",
+											"24",
+											"25",
+											"26",
+											"27",
+											"28",
+											"29",
+											"30",
+											"31"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hexagon",
+										"textMode": "subtract",
+										"texts": [
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hollowBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "ime",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									},
+									{
+										"codepoints": "",
+										"customAdvance": 1000.0,
+										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
+										"customTextArea": [
+											443.0,
+											111.0,
+											900.0,
+											880.0
+										],
+										"shape": "custom",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									}
+								]
+							},
 							"lookup": {
-								"features": [],
-								"name": "XIV PUA from Comic",
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -1203,8 +2351,40 @@
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										57344,
-										63743
+										57378,
+										57378
+									],
+									[
+										57380,
+										57380
+									],
+									[
+										57384,
+										57384
+									],
+									[
+										57440,
+										57454
+									],
+									[
+										57456,
+										57482
+									],
+									[
+										57487,
+										57529
+									],
+									[
+										57537,
+										57542
+									],
+									[
+										57552,
+										57560
+									],
+									[
+										57568,
+										57577
 									]
 								],
 								"horizontalOffset": 9,

@@ -373,8 +373,8 @@ LRESULT App::FontEditorWindow::Menu_Edit_CreateEmptyCopyFromSelection() {
 	element.Size = ref.Size;
 	element.RendererSpecific = {
 		.Empty = {
-			.Ascent = ref.GetWrappedFont()->ascent() + ref.WrapModifiers.BaselineShift,
-			.LineHeight = ref.GetWrappedFont()->line_height(),
+			.Ascent = static_cast<float>(ref.GetWrappedFont()->ascent()) + ref.WrapModifiers.BaselineShift,
+			.LineHeight = static_cast<float>(ref.GetWrappedFont()->line_height()),
 		},
 	};
 

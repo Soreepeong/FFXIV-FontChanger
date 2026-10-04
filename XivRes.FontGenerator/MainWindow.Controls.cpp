@@ -1,7 +1,88 @@
 ﻿#include "pch.h"
+#include "FaceElementEditorDialog.h"
+#include "resource.h"
 #include "Structs.h"
 #include "MainWindow.h"
 #include "xivres/textools.h"
+
+namespace {
+	// Returns the family and the size of a face of the game fonts by its name, as in the definitions of the game fonts;
+	// Jupiter_45 and Jupiter_90, which only have digits and a few symbols, are of the family JupiterN.
+	std::optional<std::pair<std::string_view, float>> GetGameFontFamilyAndSize(std::string_view faceName) {
+		for (const auto fontType : {xivres::font_type::font, xivres::font_type::font_lobby, xivres::font_type::chn_axis, xivres::font_type::krn_axis, xivres::font_type::tc_axis}) {
+			for (const auto& def : xivres::fontgen::get_fontdata_definition(fontType)) {
+				std::string_view filename(def.Path);
+				filename = filename.substr(filename.rfind('/') + 1);
+				filename = filename.substr(0, filename.find('.'));
+				if (filename == faceName)
+					return std::make_pair(std::string_view(def.Name), def.Size);
+			}
+		}
+		return std::nullopt;
+	}
+
+	// Returns the size that the face is drawn at: that of its first element, which the merged font takes its size from,
+	// or if it has no elements, the size of the game font by its name.
+	std::optional<float> GetFaceSize(const App::Structs::Face& face) {
+		if (!face.Elements.empty())
+			return face.Elements.front()->Size;
+		if (const auto familyAndSize = GetGameFontFamilyAndSize(face.Name))
+			return familyAndSize->second;
+		return std::nullopt;
+	}
+
+	// Asks for a size in pixels, starting with size; returns whether a positive size was entered.
+	bool AskForSize(HWND hParent, float& size) {
+		const auto hglob = LoadResourceWithLanguageFallback(RT_DIALOG, IDD_SCALEFACE);
+		return IDOK == DialogBoxIndirectParamW(
+			g_hInstance,
+			static_cast<DLGTEMPLATE*>(LockResource(hglob.get())),
+			hParent,
+			[](HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) -> INT_PTR {
+				switch (message) {
+					case WM_INITDIALOG: {
+						SetWindowLongPtrW(hwnd, DWLP_USER, lParam);
+						const auto edit = GetDlgItem(hwnd, IDC_EDIT_SCALEFACE_SIZE);
+						SetWindowTextW(edit, std::format(L"{:g}", *reinterpret_cast<float*>(lParam)).c_str());
+						SendMessageW(hwnd, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(edit), TRUE);
+						return FALSE;
+					}
+					case WM_COMMAND:
+						switch (LOWORD(wParam)) {
+							case IDOK: {
+								const auto text = GetWindowString(GetDlgItem(hwnd, IDC_EDIT_SCALEFACE_SIZE));
+								wchar_t* end = nullptr;
+								const auto value = std::wcstof(text.c_str(), &end);
+								if (end == text.c_str() || *end || !std::isfinite(value) || value <= 0.f) {
+									MessageBeep(MB_ICONWARNING);
+									SendMessageW(hwnd, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(GetDlgItem(hwnd, IDC_EDIT_SCALEFACE_SIZE)), TRUE);
+									return TRUE;
+								}
+								*reinterpret_cast<float*>(GetWindowLongPtrW(hwnd, DWLP_USER)) = value;
+								EndDialog(hwnd, IDOK);
+								return TRUE;
+							}
+							case IDCANCEL:
+								EndDialog(hwnd, IDCANCEL);
+								return TRUE;
+						}
+						break;
+				}
+				return FALSE;
+			},
+			reinterpret_cast<LPARAM>(&size));
+	}
+}
+
+void App::FontEditorWindow::CloseEditors(const Structs::Face& face) {
+	for (const auto& pElement : face.Elements) {
+		if (const auto it = m_editors.find(pElement.get()); it != m_editors.end()) {
+			if (it->second)
+				DestroyWindow(it->second->m_hWnd);
+			m_editors.erase(it);
+		}
+	}
+}
 
 LRESULT App::FontEditorWindow::Edit_OnCommand(uint16_t commandId) {
 	switch (commandId) {
@@ -38,6 +119,144 @@ LRESULT App::FontEditorWindow::FaceListBox_OnCommand(uint16_t commandId) {
 		}
 	}
 	return 0;
+}
+
+LRESULT App::FontEditorWindow::FaceListBox_OnContextMenu(POINT screenPos) {
+	int index;
+	if (screenPos.x == -1 && screenPos.y == -1) {
+		index = ListBox_GetCurSel(m_hFacesListBox);
+		if (index == LB_ERR)
+			return 0;
+
+		RECT rc;
+		ListBox_GetItemRect(m_hFacesListBox, index, &rc);
+		screenPos = {rc.left, rc.bottom};
+		ClientToScreen(m_hFacesListBox, &screenPos);
+	} else {
+		POINT pt = screenPos;
+		ScreenToClient(m_hFacesListBox, &pt);
+		const auto hit = static_cast<DWORD>(SendMessageW(m_hFacesListBox, LB_ITEMFROMPOINT, 0, MAKELPARAM(pt.x, pt.y)));
+		if (HIWORD(hit))
+			return 0;
+
+		// The menu is about the clicked font, so show it as the current one.
+		index = LOWORD(hit);
+		if (index != ListBox_GetCurSel(m_hFacesListBox)) {
+			ListBox_SetCurSel(m_hFacesListBox, index);
+			FaceListBox_OnCommand(LBN_SELCHANGE);
+		}
+	}
+
+	Structs::FontSet* pFontSet = nullptr;
+	Structs::Face* pFace = nullptr;
+	for (auto i = static_cast<size_t>(index); const auto& p : m_multiFontSet.FontSets) {
+		if (i < p->Faces.size()) {
+			pFontSet = p.get();
+			pFace = p->Faces[i].get();
+			break;
+		}
+		i -= p->Faces.size();
+	}
+	if (!pFace)
+		return 0;
+
+	const auto familyAndSize = GetGameFontFamilyAndSize(pFace->Name);
+	auto hasOtherSizes = false;
+	if (familyAndSize) {
+		for (const auto& pOther : pFontSet->Faces) {
+			if (const auto other = GetGameFontFamilyAndSize(pOther->Name); pOther.get() != pFace && other && other->first == familyAndSize->first)
+				hasOtherSizes = true;
+		}
+	}
+
+	const auto faceName = xivres::util::unicode::convert<std::wstring>(pFace->Name);
+	const auto familyName = familyAndSize ? xivres::util::unicode::convert<std::wstring>(familyAndSize->first) : faceName;
+	const auto replaceText = std::vformat(GetStringResource(IDS_FACELIST_REPLACEOTHERSIZES), std::make_wformat_args(familyName, faceName));
+
+	enum : UINT {
+		IdScaleToSize = 1,
+		IdReplaceOtherSizes,
+	};
+	const auto hMenu = CreatePopupMenu();
+	AppendMenuW(hMenu, MF_STRING | (pFace->Elements.empty() ? MF_GRAYED : 0), IdScaleToSize, std::wstring(GetStringResource(IDS_FACELIST_SCALETOSIZE)).c_str());
+	AppendMenuW(hMenu, MF_STRING | (hasOtherSizes ? 0 : MF_GRAYED), IdReplaceOtherSizes, replaceText.c_str());
+	const auto command = TrackPopupMenuEx(hMenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, screenPos.x, screenPos.y, m_hWnd, nullptr);
+	DestroyMenu(hMenu);
+
+	switch (command) {
+		case IdScaleToSize:
+			FaceListBox_ScaleToSize(*pFace);
+			break;
+		case IdReplaceOtherSizes:
+			FaceListBox_ReplaceOtherSizes(*pFontSet, *pFace);
+			break;
+	}
+	return 0;
+}
+
+void App::FontEditorWindow::FaceListBox_ScaleToSize(Structs::Face& face) {
+	const auto currentSize = GetFaceSize(face);
+	if (face.Elements.empty() || !currentSize || *currentSize <= 0.f)
+		return;
+
+	auto size = *currentSize;
+	if (!AskForSize(m_hWnd, size) || size == *currentSize)
+		return;
+
+	// Editors would show, and revert to, the values from before the scaling.
+	CloseEditors(face);
+
+	for (const auto& pElement : face.Elements) {
+		pElement->Scale(size / *currentSize);
+		UpdateFaceElementListViewItem(*pElement);
+	}
+	face.OnElementChange();
+	Changes_MarkDirty();
+	Window_Redraw();
+}
+
+void App::FontEditorWindow::FaceListBox_ReplaceOtherSizes(Structs::FontSet& fontSet, const Structs::Face& face) {
+	const auto familyAndSize = GetGameFontFamilyAndSize(face.Name);
+	const auto faceSize = GetFaceSize(face);
+	if (!familyAndSize || !faceSize || *faceSize <= 0.f)
+		return;
+
+	std::vector<std::pair<Structs::Face*, float>> targets;
+	std::wstring targetNames;
+	for (const auto& pOther : fontSet.Faces) {
+		const auto other = GetGameFontFamilyAndSize(pOther->Name);
+		if (pOther.get() == &face || !other || other->first != familyAndSize->first)
+			continue;
+
+		const auto size = GetFaceSize(*pOther).value_or(other->second);
+		targets.emplace_back(pOther.get(), size);
+		if (!targetNames.empty())
+			targetNames += L'\n';
+		targetNames += std::format(L"{} ({})", xivres::util::unicode::convert<std::wstring>(pOther->Name), FormatPixelValue(size));
+	}
+	if (targets.empty())
+		return;
+
+	const auto faceName = xivres::util::unicode::convert<std::wstring>(face.Name);
+	if (MessageBoxW(
+		m_hWnd,
+		std::vformat(GetStringResource(IDS_FACELIST_CONFIRMREPLACEOTHERSIZES), std::make_wformat_args(faceName, targetNames)).c_str(),
+		GetWindowString(m_hWnd).c_str(),
+		MB_YESNO | MB_ICONQUESTION) != IDYES)
+		return;
+
+	for (const auto& [pTarget, size] : targets) {
+		// Editors of the replaced elements would be left with elements that no longer exist.
+		CloseEditors(*pTarget);
+
+		pTarget->Elements.clear();
+		for (const auto& pElement : face.Elements)
+			pTarget->Elements.emplace_back(std::make_unique<Structs::FaceElement>(*pElement))->Scale(size / *faceSize);
+		pTarget->VerticalAlignment = face.VerticalAlignment;
+		pTarget->OnElementChange();
+	}
+
+	Changes_MarkDirty();
 }
 
 LRESULT App::FontEditorWindow::FaceElementsListView_OnBeginDrag(NM_LISTVIEW& nmlv) {

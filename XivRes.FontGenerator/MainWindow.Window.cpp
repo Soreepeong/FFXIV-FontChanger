@@ -36,8 +36,9 @@ bool App::FontEditorWindow::ConsumeAccelerator(MSG& msg) {
 
 LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 	m_hWnd = hwnd;
+	StartWatchingGlyphFolders();
 
-	m_hAccelerator = LoadAcceleratorsW(g_hInstance, MAKEINTRESOURCEW(IDR_ACCELERATOR_FACEELEMENTEDITOR));
+	m_hAccelerator =LoadAcceleratorsW(g_hInstance, MAKEINTRESOURCEW(IDR_ACCELERATOR_FACEELEMENTEDITOR));
 
 	const auto hGlob = LoadResourceWithLanguageFallback(RT_MENU, IDR_FONTEDITOR);
 	if (!hGlob)
@@ -225,7 +226,7 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 			if (!m_pActiveFace || m_pActiveFace->PreviewText.empty())
 				return std::nullopt;
 
-			return xivres::fontgen::text_measurer(*m_pActiveFace->GetMergedFont())
+			return xivres::fontgen::text_measurer(*m_pActiveFace->GetPreviewMergedFont())
 			       .max_width(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
 			       .use_kerning(m_bKerning)
 			       .measure(m_pActiveFace->PreviewText);
@@ -262,7 +263,7 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 		}
 
 		if (m_pActiveFace) {
-			const auto& mergedFont = *m_pActiveFace->GetMergedFont();
+			const auto& mergedFont = *m_pActiveFace->GetPreviewMergedFont();
 
 			if (int lineHeight = mergedFont.line_height(), ascent = mergedFont.ascent();
 				lineHeight > 0 && m_bShowLineMetrics) {
@@ -417,6 +418,9 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		setState(ID_EDIT_COPY, hasElement);
 		setState(ID_CONTEXTMENU_CLONE, hasElement);
 		setState(ID_EDIT_DELETE, hasElement);
+		setState(ID_EXPORT_GLYPHS, notEmpty);
+		setState(ID_EXPORT_GLYPHSWITHADJUSTMENTS, notEmpty);
+		setState(ID_EXPORT_FACEGLYPHS, m_pActiveFace != nullptr);
 	}
 	{
 		constexpr std::pair<UINT, xivres::fontgen::vertical_alignment> alignmentItems[]{
@@ -570,6 +574,7 @@ LRESULT App::FontEditorWindow::Window_OnCaptureChanged(HWND newCapture) {
 }
 
 LRESULT App::FontEditorWindow::Window_OnDestroy() {
+	StopWatchingGlyphFolders();
 	DeleteFont(m_hUiFont);
 	PostQuitMessage(0);
 	return 0;
@@ -584,6 +589,9 @@ void App::FontEditorWindow::Window_Redraw() {
 }
 
 LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	if (msg == GetGlyphFoldersChangedMessage())
+		return OnGlyphFoldersChanged();
+
 	switch (msg) {
 		case WM_COMMAND:
 			switch (LOWORD(wParam)) {
@@ -650,6 +658,9 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_VIEW_900: return Menu_View_Zoom(9 * PreviewZoomOne);
 				case ID_EXPORT_PREVIEW: return Menu_Export_Preview();
 				case ID_EXPORT_RAW: return Menu_Export_Raw();
+				case ID_EXPORT_GLYPHS: return Menu_Export_Glyphs(false);
+				case ID_EXPORT_GLYPHSWITHADJUSTMENTS: return Menu_Export_Glyphs(true);
+				case ID_EXPORT_FACEGLYPHS: return Menu_Export_FaceGlyphs();
 				case ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING: return Menu_Export_TTMP(CompressionMode::CompressWhilePacking);
 				case ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING: return Menu_Export_TTMP(CompressionMode::CompressAfterPacking);
 				case ID_EXPORT_TOTTMP_DONOTCOMPRESS: return Menu_Export_TTMP(CompressionMode::DoNotCompress);
@@ -680,6 +691,11 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 					break;
 			}
 			return 0;
+
+		case WM_CONTEXTMENU:
+			if (reinterpret_cast<HWND>(wParam) == m_hFacesListBox)
+				return FaceListBox_OnContextMenu({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)});
+			break;
 
 		case WM_CREATE: return Window_OnCreate(hwnd);
 		case WM_MOUSEMOVE: return Window_OnMouseMove(static_cast<uint16_t>(wParam), LOWORD(lParam), HIWORD(lParam));

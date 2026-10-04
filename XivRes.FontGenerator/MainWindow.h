@@ -148,6 +148,8 @@ namespace App {
 		LRESULT Menu_Export_MapFontChnAxis();
 		LRESULT Menu_Export_MapFontKrnAxis();
 		LRESULT Menu_Export_MapFontTCAxis();
+		LRESULT Menu_Export_Glyphs(bool withAdjustments);
+		LRESULT Menu_Export_FaceGlyphs();
 
 		LRESULT Menu_HotReload_Reload(bool restore);
 		LRESULT Menu_HotReload_Font(xivres::font_type mode);
@@ -155,6 +157,20 @@ namespace App {
 		LRESULT Edit_OnCommand(uint16_t commandId);
 
 		LRESULT FaceListBox_OnCommand(uint16_t commandId);
+
+		// screenPos is (-1, -1) if the menu is opened from the keyboard.
+		LRESULT FaceListBox_OnContextMenu(POINT screenPos);
+
+		// Scales the elements of the face to a size that the user enters.
+		void FaceListBox_ScaleToSize(Structs::Face& face);
+
+		// Replaces the elements of the faces of the same game font family in the font set with copies of the elements of
+		// the face, scaled from its size to theirs. Sizes of faces are those of their first elements, or for faces without
+		// elements, those of the game fonts by their names.
+		void FaceListBox_ReplaceOtherSizes(Structs::FontSet& fontSet, const Structs::Face& face);
+
+		// Closes the editors of the elements of the face.
+		void CloseEditors(const Structs::Face& face);
 
 		LRESULT FaceElementsListView_OnBeginDrag(NM_LISTVIEW& nmlv);
 		bool FaceElementsListView_OnDragProcessMouseUp(int16_t x, int16_t y);
@@ -175,6 +191,15 @@ namespace App {
 		void SetCurrentMultiFontSet(IShellItemPtr path);
 		void SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, IShellItemPtr path, bool fakePath);
 		std::wstring GetCurrentFileName();
+
+		// Takes the folder of the current file as the one that relative paths in the configuration are resolved against.
+		void UpdateProjectDirectory();
+
+		// Watches the folders of glyph files, and draws again with the changed files.
+		void StartWatchingGlyphFolders();
+		void StopWatchingGlyphFolders();
+		[[nodiscard]] static UINT GetGlyphFoldersChangedMessage();
+		LRESULT OnGlyphFoldersChanged();
 
 		void Changes_MarkFresh();
 		void Changes_MarkDirty();

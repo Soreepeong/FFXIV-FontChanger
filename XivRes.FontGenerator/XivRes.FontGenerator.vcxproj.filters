@@ -13,6 +13,18 @@
     <ClCompile Include="pch.cpp">
       <Filter>Project Items</Filter>
     </ClCompile>
+    <ClCompile Include="FaceElementEditorDialog.GlyphImages.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="GlyphFiles.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="MainWindow.GlyphFiles.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="WicImage.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
     <ClCompile Include="Structs.cpp">
       <Filter>Source</Filter>
     </ClCompile>
@@ -25,7 +37,22 @@
     <ClCompile Include="MainWindow.cpp">
       <Filter>Source\Windows</Filter>
     </ClCompile>
+    <ClCompile Include="FaceElementEditorDialog.Characters.cpp">
+      <Filter>Source\Dialogs</Filter>
+    </ClCompile>
     <ClCompile Include="FaceElementEditorDialog.cpp">
+      <Filter>Source\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="FaceElementEditorDialog.Font.cpp">
+      <Filter>Source\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="FaceElementEditorDialog.Typography.cpp">
+      <Filter>Source\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="FaceElementEditorDialog.GlyphMerging.cpp">
+      <Filter>Source\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="FaceElementEditorDialog.Monospacing.cpp">
       <Filter>Source\Dialogs</Filter>
     </ClCompile>
     <ClCompile Include="ProgressDialog.cpp">
@@ -92,6 +119,12 @@
     <ClInclude Include="resource.h">
       <Filter>Project Items</Filter>
     </ClInclude>
+    <ClInclude Include="GlyphFiles.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="WicImage.h">
+      <Filter>Source</Filter>
+    </ClInclude>
     <ClInclude Include="Structs.h">
       <Filter>Source</Filter>
     </ClInclude>
@@ -105,6 +138,9 @@
       <Filter>Source\Windows</Filter>
     </ClInclude>
     <ClInclude Include="FaceElementEditorDialog.h">
+      <Filter>Source\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="FaceElementEditorDialog.Internal.h">
       <Filter>Source\Dialogs</Filter>
     </ClInclude>
     <ClInclude Include="GameFontReloader.h">

@@ -172,6 +172,7 @@ LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
 		FileHistory::Add(pResult.GetInterfacePtr());
 		if (changeCurrentFile) {
 			m_currentShellItem = std::move(pResult);
+			UpdateProjectDirectory();
 			Changes_MarkFresh();
 		}
 		return 0;

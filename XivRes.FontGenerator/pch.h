@@ -39,6 +39,8 @@
 #include "xivres.fontgen/freetype_fixed_size_font.h"
 #include "xivres.fontgen/merged_fixed_size_font.h"
 #include "xivres.fontgen/text_measurer.h"
+#include "xivres.fontgen/glyph_merging_fixed_size_font.h"
+#include "xivres.fontgen/image_fixed_size_font.h"
 #include "xivres.fontgen/wrapping_fixed_size_font.h"
 #include "xivres/fontdata.h"
 #include "xivres/installation.h"

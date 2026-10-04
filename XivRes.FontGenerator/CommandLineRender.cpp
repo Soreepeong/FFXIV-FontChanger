@@ -1,16 +1,9 @@
 #include "pch.h"
 #include "CommandLineRender.h"
 
-#include <wincodec.h>
-
+#include "GlyphFiles.h"
 #include "Structs.h"
-
-#pragma comment(lib, "windowscodecs.lib")
-
-_COM_SMARTPTR_TYPEDEF(IWICImagingFactory, __uuidof(IWICImagingFactory));
-_COM_SMARTPTR_TYPEDEF(IWICStream, __uuidof(IWICStream));
-_COM_SMARTPTR_TYPEDEF(IWICBitmapEncoder, __uuidof(IWICBitmapEncoder));
-_COM_SMARTPTR_TYPEDEF(IWICBitmapFrameEncode, __uuidof(IWICBitmapFrameEncode));
+#include "WicImage.h"
 
 namespace {
 	// The app has no console of its own; messages go to the console that started it, if any.
@@ -43,42 +36,11 @@ namespace {
 		return res;
 	}
 
-	void SavePng(const xivres::texture::memory_mipmap_stream& mipmap, const std::filesystem::path& path) {
-		IWICImagingFactoryPtr factory;
-		SuccessOrThrow(factory.CreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER));
-
-		IWICStreamPtr stream;
-		SuccessOrThrow(factory->CreateStream(&stream));
-		SuccessOrThrow(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE));
-
-		IWICBitmapEncoderPtr encoder;
-		SuccessOrThrow(factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder));
-		SuccessOrThrow(encoder->Initialize(stream, WICBitmapEncoderNoCache));
-
-		IWICBitmapFrameEncodePtr frame;
-		SuccessOrThrow(encoder->CreateNewFrame(&frame, nullptr));
-		SuccessOrThrow(frame->Initialize(nullptr));
-		SuccessOrThrow(frame->SetSize(static_cast<UINT>(mipmap.Width), static_cast<UINT>(mipmap.Height)));
-
-		auto format = GUID_WICPixelFormat32bppBGRA;
-		SuccessOrThrow(frame->SetPixelFormat(&format));
-		if (format != GUID_WICPixelFormat32bppBGRA)
-			throw std::runtime_error("The PNG encoder does not take 32-bit BGRA pixels.");
-
-		const auto pixels = mipmap.as_span<xivres::util::b8g8r8a8>();
-		const auto stride = static_cast<UINT>(mipmap.Width * sizeof(xivres::util::b8g8r8a8));
-		SuccessOrThrow(frame->WritePixels(
-			static_cast<UINT>(mipmap.Height),
-			stride,
-			static_cast<UINT>(pixels.size_bytes()),
-			const_cast<BYTE*>(reinterpret_cast<const BYTE*>(pixels.data()))));
-		SuccessOrThrow(frame->Commit());
-		SuccessOrThrow(encoder->Commit());
-	}
-
 	int Render(const std::vector<std::wstring>& args) {
-		std::optional<std::wstring> text, output, fontName;
+		std::optional<std::wstring> text, output, fontName, exportFolder;
 		std::optional<int> maxWidth;
+		std::optional<size_t> elementIndex;
+		auto withAdjustments = false, exportSvg = true, exportPng = true;
 		for (size_t i = 2; i < args.size(); i++) {
 			const auto takeValue = [&]() -> const std::wstring& {
 				if (i + 1 >= args.size())
@@ -93,17 +55,29 @@ namespace {
 				fontName = takeValue();
 			else if (args[i] == L"--max-width")
 				maxWidth = std::stoi(takeValue());
+			else if (args[i] == L"--export-glyphs")
+				exportFolder = takeValue();
+			else if (args[i] == L"--element")
+				elementIndex = std::stoul(takeValue());
+			else if (args[i] == L"--with-adjustments")
+				withAdjustments = true;
+			else if (args[i] == L"--no-svg")
+				exportSvg = false;
+			else if (args[i] == L"--no-png")
+				exportPng = false;
 			else
 				throw std::invalid_argument(std::format("Unknown argument: {}", xivres::util::unicode::convert<std::string>(args[i])));
 		}
 		if (args.size() < 2 || args[1].starts_with(L"--"))
 			throw std::invalid_argument("The first argument must be the path of a configuration file.");
-		if (!output)
+		if (!output && !exportFolder)
 			throw std::invalid_argument("--output is required.");
 
-		std::ifstream in(std::filesystem::path(args[1]), std::ios::binary);
+		const auto configPath = std::filesystem::absolute(std::filesystem::path(args[1]));
+		std::ifstream in(configPath, std::ios::binary);
 		if (!in)
 			throw std::runtime_error(std::format("Failed to open {}.", xivres::util::unicode::convert<std::string>(args[1])));
+		App::Structs::SetProjectDirectory(configPath.parent_path());
 		const auto multiFontSet = nlohmann::json::parse(in).get<App::Structs::MultiFontSet>();
 
 		const App::Structs::Face* face = nullptr;
@@ -119,6 +93,26 @@ namespace {
 				: std::string("The configuration has no font."));
 		}
 
+		if (exportFolder) {
+			const App::Structs::FaceElement* element = nullptr;
+			if (elementIndex) {
+				if (*elementIndex >= face->Elements.size())
+					throw std::invalid_argument(std::format("The font has {} elements.", face->Elements.size()));
+				element = face->Elements[*elementIndex].get();
+			}
+			const auto font = element ? App::GlyphFiles::GetElementFontForExport(*element, withAdjustments) : face->GetMergedFont();
+			App::GlyphFiles::ExportGlyphs(*font, *exportFolder, {
+				.Svg = exportSvg,
+				.Png = exportPng,
+				.WithAdjustments = withAdjustments || !element,
+				.Source = element ? App::GlyphFiles::DescribeSource(*element) : App::GlyphFiles::DescribeSource(*face),
+			});
+			if (!output)
+				return 0;
+		}
+		if (!text)
+			throw std::invalid_argument("--render-text is required.");
+
 		const auto& font = *face->GetMergedFont();
 		const auto measured = xivres::fontgen::text_measurer(font)
 			.max_width(maxWidth.value_or((std::numeric_limits<int>::max)()))
@@ -127,14 +121,17 @@ namespace {
 
 		// White text on black, as in the preview.
 		const auto mipmap = measured.create_mipmap(font, {0xFF, 0xFF, 0xFF, 0xFF}, {0x00, 0x00, 0x00, 0xFF}, 16);
-		SavePng(*mipmap, *output);
+		App::WicImage::SavePng(*mipmap, *output);
 		return 0;
 	}
 }
 
 std::optional<int> App::RunCommandLineRender(const std::vector<std::wstring>& args) {
-	if (std::ranges::find(args, L"--render-text") == args.end())
+	if (std::ranges::find(args, L"--render-text") == args.end() && std::ranges::find(args, L"--export-glyphs") == args.end())
 		return std::nullopt;
+
+	// Nobody may be there to dismiss a dialog; elements whose game installation is missing are drawn empty.
+	App::Structs::SetGameNotFoundDialogsEnabled(false);
 
 	try {
 		return Render(args);

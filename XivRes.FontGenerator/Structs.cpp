@@ -1,12 +1,36 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "Structs.h"
 
+#include <numbers>
+
 #include "FontGeneratorConfig.h"
+#include "GlyphFiles.h"
 #include "resource.h"
 
 static std::map<xivres::font_type, xivres::fontgen::game_fontdata_set> s_fontSetCache;
 static std::mutex s_fontSetCacheMtx;
 static bool s_showedGameNotFoundError = false;
+
+// Runs without a window, such as from the command line, must not wait on dialogs.
+static bool s_gameNotFoundDialogsEnabled = true;
+
+// Writes the float with the fewest digits that read back as the same float, such as 7.0000005 instead of
+// 7.000000476837158 as the double that it widens to.
+static nlohmann::json FloatToJson(float value) {
+	char buf[32];
+	const auto [end, ec] = std::to_chars(buf, buf + sizeof buf, value);
+	if (ec != std::errc{})
+		return value;
+	return std::strtod(std::string(buf, end).c_str(), nullptr);
+}
+
+// Values in pixels that earlier versions stored as integers are written as integers when they are whole numbers, so
+// that saving files of earlier versions does not change these values in them.
+static nlohmann::json PixelValueToJson(float value) {
+	if (const auto rounded = std::round(value); rounded == value && std::fabs(rounded) < 1e9f)
+		return static_cast<int>(rounded);
+	return FloatToJson(value);
+}
 
 static std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fontgen::game_font_family family, float size) {
 	const auto lock = std::lock_guard(s_fontSetCacheMtx);
@@ -89,17 +113,17 @@ static std::shared_ptr<xivres::fontgen::fixed_size_font> GetGameFont(xivres::fon
 			}
 		}
 	} catch (const WException& e) {
-		if (!s_showedGameNotFoundError) {
+		if (s_gameNotFoundDialogsEnabled && !s_showedGameNotFoundError) {
 			s_showedGameNotFoundError = true;
 			ShowErrorMessageBox(nullptr, IDS_ERROR_GAMENOTFOUND_BODY, e);
 		}
 	} catch (const std::system_error& e) {
-		if (!s_showedGameNotFoundError) {
+		if (s_gameNotFoundDialogsEnabled && !s_showedGameNotFoundError) {
 			s_showedGameNotFoundError = true;
 			ShowErrorMessageBox(nullptr, IDS_ERROR_GAMENOTFOUND_BODY, e);
 		}
 	} catch (const std::exception& e) {
-		if (!s_showedGameNotFoundError) {
+		if (s_gameNotFoundDialogsEnabled && !s_showedGameNotFoundError) {
 			s_showedGameNotFoundError = true;
 			ShowErrorMessageBox(nullptr, IDS_ERROR_GAMENOTFOUND_BODY, e);
 		}
@@ -150,6 +174,31 @@ std::wstring App::Structs::LookupStruct::GetStyleString() const {
 	}
 }
 
+// Returns the font without simulations that a simulated font is made from.
+static IDWriteFontPtr GetRealFont(IDWriteFactory* factory, IDWriteFont* font) {
+	if (font->GetSimulations() == DWRITE_FONT_SIMULATIONS_NONE)
+		return font;
+
+	IDWriteFontFacePtr face;
+	SuccessOrThrow(font->CreateFontFace(&face));
+
+	IDWriteFontFile* pFontFileTmp;
+	uint32_t nFiles = 1;
+	SuccessOrThrow(face->GetFiles(&nFiles, &pFontFileTmp));
+	IDWriteFontFilePtr file(pFontFileTmp, false);
+
+	IDWriteFontFacePtr realFace;
+	SuccessOrThrow(factory->CreateFontFace(face->GetType(), 1, &pFontFileTmp, face->GetIndex(), DWRITE_FONT_SIMULATIONS_NONE, &realFace));
+
+	IDWriteFontFamilyPtr family;
+	SuccessOrThrow(font->GetFontFamily(&family));
+	IDWriteFontCollectionPtr collection;
+	SuccessOrThrow(family->GetFontCollection(&collection));
+	IDWriteFontPtr realFont;
+	SuccessOrThrow(collection->GetFontFromFontFace(realFace, &realFont));
+	return realFont;
+}
+
 std::pair<IDWriteFactoryPtr, IDWriteFontPtr> App::Structs::LookupStruct::ResolveFont() const {
 	using namespace xivres::fontgen;
 
@@ -171,6 +220,10 @@ std::pair<IDWriteFactoryPtr, IDWriteFontPtr> App::Structs::LookupStruct::Resolve
 	IDWriteFontPtr font;
 	SuccessOrThrow(family->GetFirstMatchingFont(Weight, Stretch, Style, &font));
 
+	// DirectWrite may match a simulated font, which is left to synthesis; take the real face that it is made from.
+	if (Synthesis)
+		font = GetRealFont(factory, font);
+
 	return std::make_pair(std::move(factory), std::move(font));
 }
 
@@ -186,10 +239,8 @@ std::map<uint32_t, float> App::Structs::LookupStruct::GetVariationAxisValues() c
 	return res;
 }
 
-std::tuple<std::shared_ptr<xivres::stream>, int, std::map<uint32_t, float>> App::Structs::LookupStruct::ResolveStream() const {
+static std::tuple<std::shared_ptr<xivres::stream>, int, std::map<uint32_t, float>> ReadFontStream(IDWriteFont* font) {
 	using namespace xivres::fontgen;
-
-	auto [factory, font] = ResolveFont();
 
 	IDWriteFontFacePtr face;
 	SuccessOrThrow(font->CreateFontFace(&face));
@@ -234,6 +285,322 @@ std::tuple<std::shared_ptr<xivres::stream>, int, std::map<uint32_t, float>> App:
 	return { std::make_shared<xivres::memory_stream>(std::move(buf)), face->GetIndex(), std::move(instanceAxisValues) };
 }
 
+std::tuple<std::shared_ptr<xivres::stream>, int, std::map<uint32_t, float>> App::Structs::LookupStruct::ResolveStream() const {
+	return ReadFontStream(ResolveFont().second);
+}
+
+float App::Structs::GetStretchPercent(DWRITE_FONT_STRETCH stretch) {
+	switch (stretch) {
+		case DWRITE_FONT_STRETCH_ULTRA_CONDENSED: return 50.f;
+		case DWRITE_FONT_STRETCH_EXTRA_CONDENSED: return 62.5f;
+		case DWRITE_FONT_STRETCH_CONDENSED: return 75.f;
+		case DWRITE_FONT_STRETCH_SEMI_CONDENSED: return 87.5f;
+		case DWRITE_FONT_STRETCH_NORMAL: return 100.f;
+		case DWRITE_FONT_STRETCH_SEMI_EXPANDED: return 112.5f;
+		case DWRITE_FONT_STRETCH_EXPANDED: return 125.f;
+		case DWRITE_FONT_STRETCH_EXTRA_EXPANDED: return 150.f;
+		case DWRITE_FONT_STRETCH_ULTRA_EXPANDED: return 200.f;
+		default: return 0.f;
+	}
+}
+
+xivres::fontgen::font_render_transformation_matrix App::Structs::SynthesizedFace::GetScreenMatrix() const {
+	// x' = ScaleX (x - slope y), where y grows downwards: points above the baseline move to the right.
+	const auto slope = Oblique ? ObliqueSlope : 0.f;
+	return {ScaleX, -slope * ScaleX, 0.f, 1.f};
+}
+
+float App::Structs::SynthesizedFace::GetEmbolden() const {
+	// The bold simulation of DirectWrite makes Arial, Segoe UI, and Times New Roman 1/50 em wider and taller, and
+	// advance 1/50 em further, as measured from GetGlyphRunOutline and GetDesignGlyphMetrics (41/2048 em wider and
+	// 40/2048 em taller); going from 400 to 700 is taken to be that, and other weights in proportion.
+	return static_cast<float>(WeightDelta) / 300.f / 50.f;
+}
+
+App::Structs::SynthesizedFace App::Structs::LookupStruct::ResolveSynthesis(RendererEnum renderer, IDWriteFont* font) const {
+	SynthesizedFace res;
+	if (!Synthesis || !font)
+		return res;
+
+	auto simulations = DWRITE_FONT_SIMULATIONS_NONE;
+	auto realWeight = static_cast<int>(font->GetWeight());
+	auto realStyle = font->GetStyle();
+	auto realStretchPercent = GetStretchPercent(font->GetStretch());
+
+	// Variable fonts get the requested properties from their axes where they can; the rest is synthesized. Axes that
+	// Variations set are left as the user set them, and so are the properties that they give.
+	if (IDWriteFontFacePtr face; SUCCEEDED(font->CreateFontFace(&face))) {
+		if (IDWriteFontFace5Ptr face5; SUCCEEDED(face.QueryInterface(decltype(face5)::GetIID(), &face5)) && face5->HasVariations()) {
+			IDWriteFontResourcePtr resource;
+			SuccessOrThrow(face5->GetFontResource(&resource));
+			std::vector<DWRITE_FONT_AXIS_RANGE> ranges(resource->GetFontAxisCount());
+			SuccessOrThrow(resource->GetFontAxisRanges(ranges.data(), static_cast<UINT32>(ranges.size())));
+
+			const auto userAxes = GetVariationAxisValues();
+			for (const auto& range : ranges) {
+				const auto tag = static_cast<uint32_t>(range.axisTag);
+				const auto userSet = userAxes.contains(tag);
+				switch (range.axisTag) {
+					case DWRITE_FONT_AXIS_TAG_WEIGHT:
+						if (userSet) {
+							realWeight = static_cast<int>(Weight);
+						} else {
+							const auto value = std::clamp(static_cast<float>(Weight), range.minValue, range.maxValue);
+							res.AxisValues[tag] = value;
+							realWeight = static_cast<int>(std::lround(value));
+						}
+						break;
+
+					case DWRITE_FONT_AXIS_TAG_WIDTH:
+						if (userSet) {
+							realStretchPercent = GetStretchPercent(Stretch);
+						} else if (const auto requested = GetStretchPercent(Stretch); requested > 0) {
+							const auto value = std::clamp(requested, range.minValue, range.maxValue);
+							res.AxisValues[tag] = value;
+							realStretchPercent = value;
+						}
+						break;
+
+					case DWRITE_FONT_AXIS_TAG_ITALIC:
+						if (userSet) {
+							realStyle = Style;
+						} else if (Style != DWRITE_FONT_STYLE_NORMAL && range.maxValue >= 1.f) {
+							res.AxisValues[tag] = 1.f;
+							realStyle = DWRITE_FONT_STYLE_ITALIC;
+						}
+						break;
+
+					case DWRITE_FONT_AXIS_TAG_SLANT:
+						// Negative values lean to the right; as far as the slant of the oblique simulation, if the font goes that far.
+						if (userSet) {
+							realStyle = Style;
+						} else if (Style != DWRITE_FONT_STYLE_NORMAL && range.minValue < 0.f && realStyle == DWRITE_FONT_STYLE_NORMAL) {
+							constexpr auto RadiansToDegrees = 180.f / std::numbers::pi_v<float>;
+							res.AxisValues[tag] = (std::max)(range.minValue, -std::atan(SynthesizedFace::ObliqueSlope) * RadiansToDegrees);
+							realStyle = DWRITE_FONT_STYLE_OBLIQUE;
+						}
+						break;
+				}
+			}
+		}
+	}
+
+	if (Synthesis->Allow) {
+		// DirectWrite can only make a bold face, and only from faces that are not bold already.
+		if (renderer == RendererEnum::FreeType)
+			res.WeightDelta = static_cast<int>(Weight) - realWeight;
+		else if (Weight >= DWRITE_FONT_WEIGHT_SEMI_BOLD && realWeight <= DWRITE_FONT_WEIGHT_MEDIUM)
+			simulations = static_cast<DWRITE_FONT_SIMULATIONS>(simulations | DWRITE_FONT_SIMULATIONS_BOLD);
+
+		if (Style != DWRITE_FONT_STYLE_NORMAL && realStyle == DWRITE_FONT_STYLE_NORMAL) {
+			if (renderer == RendererEnum::FreeType)
+				res.Oblique = true;
+			else
+				simulations = static_cast<DWRITE_FONT_SIMULATIONS>(simulations | DWRITE_FONT_SIMULATIONS_OBLIQUE);
+		}
+
+		if (const auto requested = GetStretchPercent(Stretch); requested > 0 && realStretchPercent > 0 && requested != realStretchPercent)  // NOLINT(clang-diagnostic-float-equal)
+			res.ScaleX = requested / realStretchPercent;
+	}
+
+	res.Simulations = simulations;
+	return res;
+}
+
+void App::Structs::LookupStruct::ConvertToExplicitSynthesis(RendererEnum renderer) {
+	if (Synthesis || (renderer != RendererEnum::DirectWrite && renderer != RendererEnum::FreeType))
+		return;
+
+	try {
+		const auto [factory, font] = ResolveFont();
+		const auto simulations = font->GetSimulations();
+		const auto realFont = GetRealFont(factory, font);
+
+		// Ask for the real face, and for DirectWrite, for what makes the same simulations; FreeType did not simulate.
+		Weight = realFont->GetWeight();
+		Style = realFont->GetStyle();
+		Stretch = realFont->GetStretch();
+		if (renderer == RendererEnum::DirectWrite) {
+			if (simulations & DWRITE_FONT_SIMULATIONS_BOLD)
+				Weight = DWRITE_FONT_WEIGHT_BOLD;
+			if ((simulations & DWRITE_FONT_SIMULATIONS_OBLIQUE) && Style == DWRITE_FONT_STYLE_NORMAL)
+				Style = DWRITE_FONT_STYLE_ITALIC;
+		}
+	} catch (...) {
+		// The font is not installed; keep the requested properties.
+	}
+
+	Synthesis = SynthesisStruct{};
+}
+
+namespace {
+	using xivres::fontgen::font_render_transformation_matrix;
+
+	// Returns a * b, with matrices laid out as [[M11, M12], [M21, M22]].
+	font_render_transformation_matrix MultiplyMatrix(const font_render_transformation_matrix& a, const font_render_transformation_matrix& b) {
+		return {
+			a.M11 * b.M11 + a.M12 * b.M21,
+			a.M11 * b.M12 + a.M12 * b.M22,
+			a.M21 * b.M11 + a.M22 * b.M21,
+			a.M21 * b.M12 + a.M22 * b.M22,
+		};
+	}
+
+	std::shared_ptr<xivres::fontgen::fixed_size_font> CreateRendererFont(
+		App::Structs::RendererEnum renderer,
+		const App::Structs::LookupStruct& lookup,
+		const App::Structs::RendererSpecificStruct& rendererSpecific,
+		float size,
+		float gamma,
+		const font_render_transformation_matrix& matrix) {
+		auto [factory, font] = lookup.ResolveFont();
+
+		// The synthesis is part of the face: the glyphs are slanted and scaled by it before the given transformation.
+		const auto synthesis = lookup.ResolveSynthesis(renderer, font);
+		auto rendererMatrix = matrix;
+		if (const auto synthesisMatrix = synthesis.GetScreenMatrix();
+			synthesisMatrix.M11 != 1.f || synthesisMatrix.M12 != 0.f || synthesisMatrix.M21 != 0.f || synthesisMatrix.M22 != 1.f) {  // NOLINT(clang-diagnostic-float-equal)
+			const auto screen = App::Structs::TransformStruct::RendererToScreen(renderer, matrix);
+			rendererMatrix = App::Structs::TransformStruct::ScreenToRenderer(renderer, MultiplyMatrix(screen, synthesisMatrix));
+		}
+
+		switch (renderer) {
+			case App::Structs::RendererEnum::DirectWrite: {
+				auto specifics = rendererSpecific.DirectWrite;
+				specifics.Features.clear();
+				for (const auto& [tag, value] : lookup.Features)
+					specifics.Features.push_back({ .nameTag = tag, .parameter = value });
+				specifics.Language = lookup.Language;
+				specifics.Variations = synthesis.AxisValues;
+				for (const auto& [tag, value] : lookup.GetVariationAxisValues())
+					specifics.Variations[tag] = value;
+				specifics.Simulations = synthesis.Simulations;
+				return std::make_shared<xivres::fontgen::directwrite_fixed_size_font>(std::move(factory), std::move(font), size, gamma, rendererMatrix, specifics);
+			}
+
+			case App::Structs::RendererEnum::FreeType: {
+				auto [pStream, index, instanceAxisValues] = ReadFontStream(font);
+				auto specifics = rendererSpecific.FreeType;
+				specifics.Features.clear();
+				for (const auto& [tag, value] : lookup.Features)
+					specifics.Features.push_back({.tag = _byteswap_ulong(tag), .value = value, .start = HB_FEATURE_GLOBAL_START, .end = HB_FEATURE_GLOBAL_END});
+				specifics.Language = lookup.Language;
+				specifics.Variations = std::move(instanceAxisValues);
+				for (const auto& [tag, value] : synthesis.AxisValues)
+					specifics.Variations[tag] = value;
+				for (const auto& [tag, value] : lookup.GetVariationAxisValues())
+					specifics.Variations[tag] = value;
+				specifics.Embolden = synthesis.GetEmbolden();
+				return std::make_shared<xivres::fontgen::freetype_fixed_size_font>(*pStream, index, size, gamma, rendererMatrix, specifics);
+			}
+
+			default:
+				throw std::invalid_argument("Renderer does not draw from font files");
+		}
+	}
+
+	// Returns the matrix for the renderer that transforms the texts of glyph merging: by the element's transformation,
+	// then the text's, and then by the condensing.
+	font_render_transformation_matrix ComposeTextMatrix(
+		App::Structs::RendererEnum renderer,
+		const App::Structs::TransformStruct& element,
+		const App::Structs::TransformStruct& text,
+		float condense) {
+		const font_render_transformation_matrix condensing{condense, 0.f, 0.f, 1.f};
+		const auto screen = MultiplyMatrix(condensing, MultiplyMatrix(text.GetScreenMatrix(renderer), element.GetScreenMatrix(renderer)));
+		return App::Structs::TransformStruct::ScreenToRenderer(renderer, screen);
+	}
+}
+
+App::Structs::TransformStruct::matrix App::Structs::TransformStruct::GetScreenMatrix(RendererEnum renderer) const {
+	if (LegacyMatrix)
+		return RendererToScreen(renderer, *LegacyMatrix);
+
+	constexpr auto DegreesToRadians = std::numbers::pi_v<float> / 180.f;
+	const auto c = std::cos(RotationDegrees * DegreesToRadians);
+	const auto s = std::sin(RotationDegrees * DegreesToRadians);
+	const auto t = std::tan(SkewDegrees * DegreesToRadians);
+
+	// Counterclockwise on screen, where y grows downwards.
+	const matrix rotation{c, s, -s, c};
+
+	// x' = x - t y: points above the baseline move to the right.
+	const matrix skew{1.f, -t, 0.f, 1.f};
+	const matrix scale{ScaleX, 0.f, 0.f, ScaleY};
+	return MultiplyMatrix(rotation, MultiplyMatrix(skew, scale));
+}
+
+App::Structs::TransformStruct::matrix App::Structs::TransformStruct::GetRendererMatrix(RendererEnum renderer) const {
+	if (LegacyMatrix)
+		return *LegacyMatrix;
+	return ScreenToRenderer(renderer, GetScreenMatrix(renderer));
+}
+
+App::Structs::TransformStruct::matrix App::Structs::TransformStruct::ScreenToRenderer(RendererEnum renderer, const matrix& screen) {
+	// DirectWrite transforms row vectors on screen: x' = x m11 + y m21.
+	if (renderer == RendererEnum::DirectWrite)
+		return {screen.M11, screen.M21, screen.M12, screen.M22};
+
+	// Glyph images take the transformation on screen.
+	if (renderer == RendererEnum::GlyphImages)
+		return screen;
+
+	// FreeType transforms column vectors in a space where y grows upwards.
+	return {screen.M11, -screen.M12, -screen.M21, screen.M22};
+}
+
+App::Structs::TransformStruct::matrix App::Structs::TransformStruct::RendererToScreen(RendererEnum renderer, const matrix& m) {
+	if (renderer == RendererEnum::DirectWrite)
+		return {m.M11, m.M21, m.M12, m.M22};
+	if (renderer == RendererEnum::GlyphImages)
+		return m;
+	return {m.M11, -m.M12, -m.M21, m.M22};
+}
+
+App::Structs::TransformStruct App::Structs::TransformStruct::FromScreenMatrix(const matrix& screen) {
+	constexpr auto RadiansToDegrees = 180.f / std::numbers::pi_v<float>;
+	TransformStruct res;
+	res.ScaleX = std::hypot(screen.M11, screen.M21);
+	float c = 1.f, s = 0.f;
+	if (res.ScaleX > 1e-6f) {
+		c = screen.M11 / res.ScaleX;
+		s = -screen.M21 / res.ScaleX;
+		res.RotationDegrees = std::atan2(s, c) * RadiansToDegrees;
+	}
+
+	// The remaining upper triangular part is skew * scale: [[ScaleX, -tan(skew) ScaleY], [0, ScaleY]].
+	const auto u12 = c * screen.M12 - s * screen.M22;
+	res.ScaleY = s * screen.M12 + c * screen.M22;
+	if (std::abs(res.ScaleY) > 1e-6f)
+		res.SkewDegrees = std::atan(-u12 / res.ScaleY) * RadiansToDegrees;
+	return res;
+}
+
+bool App::Structs::TransformStruct::IsIdentity() const {
+	if (LegacyMatrix)
+		return LegacyMatrix->M11 == 1.f && LegacyMatrix->M12 == 0.f && LegacyMatrix->M21 == 0.f && LegacyMatrix->M22 == 1.f;  // NOLINT(clang-diagnostic-float-equal)
+	return ScaleX == 1.f && ScaleY == 1.f && SkewDegrees == 0.f && RotationDegrees == 0.f;  // NOLINT(clang-diagnostic-float-equal)
+}
+
+void App::Structs::to_json(nlohmann::json& json, const TransformStruct& value) {
+	json = nlohmann::json::object({
+		{"scaleX", value.ScaleX},
+		{"scaleY", value.ScaleY},
+		{"skew", value.SkewDegrees},
+		{"rotation", value.RotationDegrees},
+	});
+}
+
+void App::Structs::from_json(const nlohmann::json& json, TransformStruct& value) {
+	value = {};
+	if (!json.is_object())
+		return;
+	value.ScaleX = json.value<float>("scaleX", 1.f);
+	value.ScaleY = json.value<float>("scaleY", 1.f);
+	value.SkewDegrees = json.value<float>("skew", 0.f);
+	value.RotationDegrees = json.value<float>("rotation", 0.f);
+}
+
 const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceElement::GetBaseFont() const {
 	if (!m_baseFont) {
 		try {
@@ -265,29 +632,44 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 						throw std::runtime_error("Invalid name");
 					break;
 
-				case RendererEnum::DirectWrite: {
-					auto [factory, font] = Lookup.ResolveFont();
-					auto specifics = RendererSpecific.DirectWrite;
-					specifics.Features.clear();
-					for (const auto& [tag, value] : Lookup.Features)
-						specifics.Features.push_back({ .nameTag = tag, .parameter = value });
-					specifics.Language = Lookup.Language;
-					specifics.Variations = Lookup.GetVariationAxisValues();
-					m_baseFont = std::make_shared<xivres::fontgen::directwrite_fixed_size_font>(std::move(factory), std::move(font), Size, Gamma, TransformationMatrix, specifics);
+				case RendererEnum::DirectWrite:
+				case RendererEnum::FreeType: {
+					auto font = CreateRendererFont(Renderer, Lookup, RendererSpecific, Size, Gamma, Transform.GetRendererMatrix(Renderer));
+					if (!GlyphMerging.IsEnabled()) {
+						m_baseFont = std::move(font);
+						break;
+					}
+
+					m_baseFont = std::make_shared<xivres::fontgen::glyph_merging_fixed_size_font>(
+						std::move(font),
+						GlyphMerging.Params,
+						[renderer = Renderer, lookup = Lookup, rendererSpecific = RendererSpecific, gamma = Gamma, elementTransform = Transform, textTransform = GlyphMerging.TextTransform](float size, float condense) {
+							return CreateRendererFont(renderer, lookup, rendererSpecific, size, gamma, ComposeTextMatrix(renderer, elementTransform, textTransform, condense));
+						});
 					break;
 				}
 
-				case RendererEnum::FreeType: {
-					auto [pStream, index, instanceAxisValues] = Lookup.ResolveStream();
-					auto specifics = RendererSpecific.FreeType;
-					specifics.Features.clear();
-					for (const auto& [tag, value] : Lookup.Features)
-						specifics.Features.push_back({.tag = _byteswap_ulong(tag), .value = value, .start = HB_FEATURE_GLOBAL_START, .end = HB_FEATURE_GLOBAL_END});
-					specifics.Language = Lookup.Language;
-					specifics.Variations = std::move(instanceAxisValues);
-					for (const auto& [tag, value] : Lookup.GetVariationAxisValues())
-						specifics.Variations[tag] = value;
-					m_baseFont = std::make_shared<xivres::fontgen::freetype_fixed_size_font>(*pStream, index, Size, Gamma, TransformationMatrix, specifics);
+				case RendererEnum::GlyphImages: {
+					auto font = GlyphFiles::CreateFont(RendererSpecific.GlyphImages, Size, Gamma, Transform.GetRendererMatrix(Renderer));
+					if (!GlyphMerging.IsEnabled()) {
+						m_baseFont = std::move(font);
+						break;
+					}
+
+					// Texts are drawn with the font that the lookup names, or with the glyph files themselves if it names none.
+					m_baseFont = std::make_shared<xivres::fontgen::glyph_merging_fixed_size_font>(
+						std::move(font),
+						GlyphMerging.Params,
+						[lookup = Lookup, rendererSpecific = RendererSpecific, gamma = Gamma, elementTransform = Transform, textTransform = GlyphMerging.TextTransform](float size, float condense) -> std::shared_ptr<xivres::fontgen::fixed_size_font> {
+							if (!lookup.Name.empty()) {
+								try {
+									return CreateRendererFont(RendererEnum::DirectWrite, lookup, rendererSpecific, size, gamma, ComposeTextMatrix(RendererEnum::DirectWrite, elementTransform, textTransform, condense));
+								} catch (...) {
+									// fall back to the glyph files
+								}
+							}
+							return GlyphFiles::CreateFont(rendererSpecific.GlyphImages, size, gamma, ComposeTextMatrix(RendererEnum::GlyphImages, elementTransform, textTransform, condense));
+						});
 					break;
 				}
 
@@ -305,8 +687,19 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::FaceEleme
 
 
 const std::shared_ptr<xivres::fontgen::wrapping_fixed_size_font>& App::Structs::FaceElement::GetWrappedFont() const {
-	if (!m_wrappedFont)
-		m_wrappedFont = std::make_shared<xivres::fontgen::wrapping_fixed_size_font>(GetBaseFont(), WrapModifiers);
+	if (!m_wrappedFont) {
+		// Glyphs squeezed by monospacing are rendered narrower by the renderer, which keeps their hinting and stroke weight.
+		// Fonts of glyph merging have glyphs that the renderer alone cannot make, so their glyphs are resampled instead.
+		xivres::fontgen::wrapping_fixed_size_font::scaled_font_factory scaledFontFactory;
+		if ((Renderer == RendererEnum::DirectWrite || Renderer == RendererEnum::FreeType) && !GlyphMerging.IsEnabled() && WrapModifiers.Monospacing.is_enabled()) {
+			scaledFontFactory = [renderer = Renderer, lookup = Lookup, rendererSpecific = RendererSpecific, size = Size, gamma = Gamma, transform = Transform](float scaleX) {
+				const font_render_transformation_matrix scaling{scaleX, 0.f, 0.f, 1.f};
+				const auto screen = MultiplyMatrix(scaling, transform.GetScreenMatrix(renderer));
+				return CreateRendererFont(renderer, lookup, rendererSpecific, size, gamma, TransformStruct::ScreenToRenderer(renderer, screen));
+			};
+		}
+		m_wrappedFont = std::make_shared<xivres::fontgen::wrapping_fixed_size_font>(GetBaseFont(), WrapModifiers, std::move(scaledFontFactory));
+	}
 
 	return m_wrappedFont;
 }
@@ -325,13 +718,43 @@ void App::Structs::FaceElement::OnFontCreateParametersChange() {
 	m_baseFont = nullptr;
 }
 
+void App::Structs::FaceElement::Scale(float factor) {
+	// Nothing is rounded here; the fonts round the values in pixels when they use them, so that scaling back and forth
+	// keeps the values.
+	Size *= factor;
+
+	RendererSpecific.Empty.Ascent *= factor;
+	RendererSpecific.Empty.LineHeight *= factor;
+
+	WrapModifiers.LetterSpacing *= factor;
+	WrapModifiers.HorizontalOffset *= factor;
+	WrapModifiers.BaselineShift *= factor;
+	if (auto& monospacing = WrapModifiers.Monospacing; monospacing.Unit == xivres::fontgen::monospacing_unit::Pixels) {
+		if (monospacing.MinAdvance)
+			*monospacing.MinAdvance *= factor;
+		if (monospacing.MaxAdvance)
+			*monospacing.MaxAdvance *= factor;
+	}
+
+	auto& glyphMerge = GlyphMerging.Params;
+	if (glyphMerge.TextSize)
+		*glyphMerge.TextSize *= factor;
+	glyphMerge.TextOffsetX *= factor;
+	glyphMerge.TextOffsetY *= factor;
+	glyphMerge.LetterSpacing *= factor;
+	glyphMerge.LineSpacing *= factor;
+
+	OnFontCreateParametersChange();
+}
+
 std::string App::Structs::FaceElement::GetBaseFontKey() const {
 	switch (Renderer) {
 		case RendererEnum::Empty:
-			return std::format("empty:{:g}:{}:{}", Size, RendererSpecific.Empty.Ascent, RendererSpecific.Empty.LineHeight);
+			return std::format("empty:{:g}:{:g}:{:g}", Size, RendererSpecific.Empty.Ascent, RendererSpecific.Empty.LineHeight);
 		case RendererEnum::PrerenderedGameInstallation:
 			return std::format("game:{}:{:g}", Lookup.Name, Size);
 		case RendererEnum::DirectWrite: {
+			const auto matrix = Transform.GetRendererMatrix(Renderer);
 			auto res = std::format("directwrite:{}:{:g}:{:g}:{}:{}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
 				Lookup.Name,
 				Size,
@@ -342,19 +765,24 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				static_cast<uint32_t>(RendererSpecific.DirectWrite.RenderMode),
 				static_cast<uint32_t>(RendererSpecific.DirectWrite.MeasureMode),
 				static_cast<uint32_t>(RendererSpecific.DirectWrite.GridFitMode),
-				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M11),
-				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M12),
-				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M21),
-				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M22)
+				std::bit_cast<uint32_t>(matrix.M11),
+				std::bit_cast<uint32_t>(matrix.M12),
+				std::bit_cast<uint32_t>(matrix.M21),
+				std::bit_cast<uint32_t>(matrix.M22)
 			);
 			for (const auto& [tag, value] : Lookup.Features)
 				res += std::format(":{}={}", std::string_view(reinterpret_cast<const char*>(&tag), 4), value);
 			res += std::format(":lang={}", Lookup.Language);
+			if (Lookup.Synthesis)
+				res += std::format(":synth={}", Lookup.Synthesis->Allow ? 1 : 0);
 			for (const auto& [tag, value] : Lookup.Variations)
 				res += std::format(":{}={:g}", tag, value);
+			if (GlyphMerging.IsEnabled())
+				res += ":merge=" + nlohmann::json(GlyphMerging).dump();
 			return res;
 		}
 		case RendererEnum::FreeType: {
+			const auto matrix = Transform.GetRendererMatrix(Renderer);
 			auto res = std::format("freetype:{}:{:g}:{:g}:{}:{}:{}:{}:{:08X}{:08X}{:08X}{:08X}",
 				Lookup.Name,
 				Size,
@@ -363,21 +791,49 @@ std::string App::Structs::FaceElement::GetBaseFontKey() const {
 				static_cast<uint32_t>(Lookup.Stretch),
 				static_cast<uint32_t>(Lookup.Style),
 				static_cast<uint32_t>(RendererSpecific.FreeType.LoadFlags),
-				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M11),
-				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M12),
-				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M21),
-				*reinterpret_cast<const uint32_t*>(&TransformationMatrix.M22)
+				std::bit_cast<uint32_t>(matrix.M11),
+				std::bit_cast<uint32_t>(matrix.M12),
+				std::bit_cast<uint32_t>(matrix.M21),
+				std::bit_cast<uint32_t>(matrix.M22)
 			);
 			for (const auto& [tag, value] : Lookup.Features)
 				res += std::format(":{}={}", std::string_view(reinterpret_cast<const char*>(&tag), 4), value);
 			res += std::format(":lang={}", Lookup.Language);
+			if (Lookup.Synthesis)
+				res += std::format(":synth={}", Lookup.Synthesis->Allow ? 1 : 0);
 			for (const auto& [tag, value] : Lookup.Variations)
 				res += std::format(":{}={:g}", tag, value);
+			if (GlyphMerging.IsEnabled())
+				res += ":merge=" + nlohmann::json(GlyphMerging).dump();
+			return res;
+		}
+		case RendererEnum::GlyphImages: {
+			const auto& glyphImages = RendererSpecific.GlyphImages;
+			const auto matrix = Transform.GetRendererMatrix(Renderer);
+			auto settings = nlohmann::json(RendererSpecific)["glyphImages"];
+			auto res = std::format("glyphimages:{}:{:g}:{:g}:{:08X}{:08X}{:08X}{:08X}:{:016X}",
+				xivres::util::unicode::convert<std::string>(GlyphFiles::ResolvePath(glyphImages.Path).wstring()),
+				Size,
+				Gamma,
+				std::bit_cast<uint32_t>(matrix.M11),
+				std::bit_cast<uint32_t>(matrix.M12),
+				std::bit_cast<uint32_t>(matrix.M21),
+				std::bit_cast<uint32_t>(matrix.M22),
+				std::hash<std::string>{}(settings.dump()));
+			if (GlyphMerging.IsEnabled())
+				res += ":merge=" + nlohmann::json(GlyphMerging).dump() + ":" + Lookup.Name;
 			return res;
 		}
 		default:
 			throw std::runtime_error("Invalid renderer");
 	}
+}
+
+bool App::Structs::FaceElement::UsesProjectDirectory() const {
+	const auto& glyphImages = RendererSpecific.GlyphImages;
+	return Renderer == RendererEnum::GlyphImages
+		&& !glyphImages.IsEmbedded()
+		&& std::filesystem::path(xivres::util::unicode::convert<std::wstring>(glyphImages.Path)).is_relative();
 }
 
 std::wstring App::Structs::FaceElement::GetRangeRepresentation() const {
@@ -436,6 +892,9 @@ std::wstring App::Structs::FaceElement::GetRendererRepresentation() const {
 		case RendererEnum::FreeType:
 			return std::format(L"FreeType ({}, {})", RendererSpecific.FreeType.get_render_mode_string(), RendererSpecific.FreeType.get_load_flags_string());
 
+		case RendererEnum::GlyphImages:
+			return L"SVG/PNG";
+
 		default:
 			return L"INVALID";
 	}
@@ -451,6 +910,11 @@ std::wstring App::Structs::FaceElement::GetLookupRepresentation() const {
 				Lookup.GetStyleString(),
 				Lookup.GetStretchString()
 			);
+
+		case RendererEnum::GlyphImages:
+			return RendererSpecific.GlyphImages.IsEmbedded()
+				? std::format(L"(Embedded: {})", RendererSpecific.GlyphImages.Embedded.size())
+				: xivres::util::unicode::convert<std::wstring>(RendererSpecific.GlyphImages.Path);
 
 		default:
 			return L"-";
@@ -469,11 +933,12 @@ App::Structs::FaceElement::FaceElement(const FaceElement& r)
 	, Size(r.Size)
 	, Gamma(r.Gamma)
 	, MergeMode(r.MergeMode)
-	, TransformationMatrix(r.TransformationMatrix)
+	, Transform(r.Transform)
 	, WrapModifiers(r.WrapModifiers)
 	, Renderer(r.Renderer)
 	, Lookup(r.Lookup)
-	, RendererSpecific(r.RendererSpecific) {
+	, RendererSpecific(r.RendererSpecific)
+	, GlyphMerging(r.GlyphMerging) {
 }
 
 App::Structs::FaceElement App::Structs::FaceElement::operator=(FaceElement&& r) noexcept {
@@ -497,11 +962,12 @@ void App::Structs::swap(FaceElement& l, FaceElement& r) noexcept {
 	swap(l.Size, r.Size);
 	swap(l.Gamma, r.Gamma);
 	swap(l.MergeMode, r.MergeMode);
-	swap(l.TransformationMatrix, r.TransformationMatrix);
+	swap(l.Transform, r.Transform);
 	swap(l.WrapModifiers, r.WrapModifiers);
 	swap(l.Renderer, r.Renderer);
 	swap(l.Lookup, r.Lookup);
 	swap(l.RendererSpecific, r.RendererSpecific);
+	swap(l.GlyphMerging, r.GlyphMerging);
 }
 
 const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::Face::GetMergedFont() const {
@@ -517,14 +983,43 @@ const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::Face::Get
 	return MergedFont;
 }
 
+const std::shared_ptr<xivres::fontgen::fixed_size_font>& App::Structs::Face::GetPreviewMergedFont() const {
+	// Elements that are gone may leave their addresses to new ones.
+	std::erase_if(DeactivatedElements, [this](const FaceElement* p) {
+		return std::ranges::none_of(Elements, [p](const auto& e) { return e.get() == p; });
+	});
+	if (DeactivatedElements.empty())
+		return GetMergedFont();
+
+	if (!PreviewMergedFont) {
+		std::vector<std::pair<std::shared_ptr<xivres::fontgen::fixed_size_font>, xivres::fontgen::codepoint_merge_mode>> mergeFontList;
+
+		for (auto& pElement : Elements) {
+			if (!DeactivatedElements.contains(pElement.get()))
+				mergeFontList.emplace_back(pElement->GetWrappedFont(), pElement->MergeMode);
+		}
+
+		PreviewMergedFont = std::make_shared<xivres::fontgen::merged_fixed_size_font>(std::move(mergeFontList), VerticalAlignment);
+	}
+
+	return PreviewMergedFont;
+}
+
+void App::Structs::Face::SetElementDeactivated(const FaceElement& element, bool deactivated) {
+	if (deactivated ? DeactivatedElements.insert(&element).second : DeactivatedElements.erase(&element) > 0)
+		PreviewMergedFont = nullptr;
+}
+
 void App::Structs::Face::FlushCache() {
 	MergedFont.reset();
+	PreviewMergedFont.reset();
 	for (const auto& e : Elements)
 		e->FlushCache();
 }
 
 void App::Structs::Face::OnElementChange() {
 	MergedFont = nullptr;
+	PreviewMergedFont = nullptr;
 }
 
 App::Structs::Face::Face() noexcept = default;
@@ -563,6 +1058,8 @@ void App::Structs::swap(Face& l, Face& r) noexcept {
 	swap(l.PreviewText, r.PreviewText);
 	swap(l.Elements, r.Elements);
 	swap(l.VerticalAlignment, r.VerticalAlignment);
+	swap(l.DeactivatedElements, r.DeactivatedElements);
+	swap(l.PreviewMergedFont, r.PreviewMergedFont);
 }
 
 void App::Structs::FontSet::FlushCache() {
@@ -641,10 +1138,43 @@ void App::Structs::MultiFontSet::FlushCache() {
 		e->FlushCache();
 }
 
+void App::Structs::SetGameNotFoundDialogsEnabled(bool enabled) {
+	s_gameNotFoundDialogsEnabled = enabled;
+}
+
 void App::Structs::FlushCachedFonts() {
 	const auto lock = std::lock_guard(s_fontSetCacheMtx);
 	s_fontSetCache.clear();
 	s_showedGameNotFoundError = false;
+}
+
+static std::filesystem::path s_projectDirectory;
+static std::mutex s_projectDirectoryMtx;
+
+void App::Structs::SetProjectDirectory(std::filesystem::path path) {
+	const auto lock = std::lock_guard(s_projectDirectoryMtx);
+	s_projectDirectory = std::move(path);
+}
+
+std::filesystem::path App::Structs::GetProjectDirectory() {
+	const auto lock = std::lock_guard(s_projectDirectoryMtx);
+	return s_projectDirectory;
+}
+
+void App::Structs::OnProjectDirectoryChange(const MultiFontSet& multiFontSet) {
+	for (const auto& fontSet : multiFontSet.FontSets) {
+		for (const auto& face : fontSet->Faces) {
+			auto changed = false;
+			for (const auto& element : face->Elements) {
+				if (element->UsesProjectDirectory()) {
+					element->OnFontCreateParametersChange();
+					changed = true;
+				}
+			}
+			if (changed)
+				face->OnElementChange();
+		}
+	}
 }
 
 void App::Structs::from_json(const nlohmann::json& json, FontSet& value) {
@@ -754,26 +1284,191 @@ void App::Structs::from_json(const nlohmann::json& json, FaceElement& value) {
 	else
 		value.RendererSpecific = {};
 
-	if (const auto it = json.find("transformationMatrix"); it != json.end() && it->is_array() && it->size() == 4) {
-		value.TransformationMatrix.M11 = it->at(0).get<float>();
-		value.TransformationMatrix.M12 = it->at(1).get<float>();
-		value.TransformationMatrix.M21 = it->at(2).get<float>();
-		value.TransformationMatrix.M22 = it->at(3).get<float>();
-	} else {
-		value.TransformationMatrix.SetIdentity();
+	value.Transform = {};
+	if (const auto it = json.find("transform"); it != json.end()) {
+		from_json(*it, value.Transform);
+	} else if (const auto it2 = json.find("transformationMatrix"); it2 != json.end() && it2->is_array() && it2->size() == 4
+		&& std::ranges::all_of(*it2, [](const nlohmann::json& v) { return v.is_number(); })) {
+		// Stored by earlier versions; kept as is, unless it does nothing or is unusable, which is taken as identity.
+		const TransformStruct::matrix m{it2->at(0).get<float>(), it2->at(1).get<float>(), it2->at(2).get<float>(), it2->at(3).get<float>()};
+		const auto finite = std::isfinite(m.M11) && std::isfinite(m.M12) && std::isfinite(m.M21) && std::isfinite(m.M22);
+		const auto invertible = finite && std::abs(m.M11 * m.M22 - m.M12 * m.M21) > 1e-6f;
+		const auto identity = m.M11 == 1.f && m.M12 == 0.f && m.M21 == 0.f && m.M22 == 1.f;  // NOLINT(clang-diagnostic-float-equal)
+		if (invertible && !identity)
+			value.Transform.LegacyMatrix = m;
 	}
+
+	if (const auto it = json.find("glyphMerging"); it != json.end())
+		from_json(*it, value.GlyphMerging);
+	else
+		value.GlyphMerging = {};
 }
 
 void App::Structs::to_json(nlohmann::json& json, const FaceElement& value) {
 	json = nlohmann::json::object();
-	json.emplace("size", value.Size);
+	json.emplace("size", FloatToJson(value.Size));
 	json.emplace("gamma", value.Gamma);
 	json.emplace("mergeMode", value.MergeMode);
 	json.emplace("wrapModifiers", value.WrapModifiers);
-	json.emplace("transformationMatrix", nlohmann::json::array({ value.TransformationMatrix.M11, value.TransformationMatrix.M12, value.TransformationMatrix.M21, value.TransformationMatrix.M22, }));
+	if (const auto& m = value.Transform.LegacyMatrix)
+		json.emplace("transformationMatrix", nlohmann::json::array({m->M11, m->M12, m->M21, m->M22}));
+	else
+		json.emplace("transform", value.Transform);
 	json.emplace("renderer", static_cast<int>(value.Renderer));
 	json.emplace("lookup", value.Lookup);
 	json.emplace("renderSpecific", value.RendererSpecific);
+	if (value.GlyphMerging.IsEnabled())
+		json.emplace("glyphMerging", value.GlyphMerging);
+}
+
+namespace {
+	using xivres::fontgen::glyph_merge_fit_mode;
+	using xivres::fontgen::glyph_merge_line_alignment;
+	using xivres::fontgen::glyph_merge_shape;
+	using xivres::fontgen::glyph_merge_text_mode;
+
+	constexpr std::pair<glyph_merge_shape, const char*> GlyphMergeShapeNames[]{
+		{glyph_merge_shape::None, "none"},
+		{glyph_merge_shape::AmPm, "amPm"},
+		{glyph_merge_shape::Ime, "ime"},
+		{glyph_merge_shape::Box, "box"},
+		{glyph_merge_shape::NumberBox, "numberBox"},
+		{glyph_merge_shape::HollowBox, "hollowBox"},
+		{glyph_merge_shape::Hexagon, "hexagon"},
+		{glyph_merge_shape::Rhombus, "rhombus"},
+		{glyph_merge_shape::Bozja, "bozja"},
+		{glyph_merge_shape::Time, "time"},
+		{glyph_merge_shape::Custom, "custom"},
+		{glyph_merge_shape::Glyph, "glyph"},
+	};
+
+	constexpr std::pair<glyph_merge_text_mode, const char*> GlyphMergeTextModeNames[]{
+		{glyph_merge_text_mode::Subtract, "subtract"},
+		{glyph_merge_text_mode::Difference, "difference"},
+	};
+
+	constexpr std::pair<glyph_merge_fit_mode, const char*> GlyphMergeFitModeNames[]{
+		{glyph_merge_fit_mode::CondenseThenShrink, "condenseThenShrink"},
+		{glyph_merge_fit_mode::Shrink, "shrink"},
+		{glyph_merge_fit_mode::Overflow, "overflow"},
+	};
+
+	constexpr std::pair<xivres::fontgen::image_coverage_mode, const char*> ImageCoverageModeNames[]{
+		{xivres::fontgen::image_coverage_mode::Auto, "auto"},
+		{xivres::fontgen::image_coverage_mode::Alpha, "alpha"},
+		{xivres::fontgen::image_coverage_mode::Darkness, "darkness"},
+		{xivres::fontgen::image_coverage_mode::Brightness, "brightness"},
+	};
+
+	constexpr std::pair<glyph_merge_line_alignment, const char*> GlyphMergeLineAlignmentNames[]{
+		{glyph_merge_line_alignment::Left, "left"},
+		{glyph_merge_line_alignment::Center, "center"},
+		{glyph_merge_line_alignment::Right, "right"},
+	};
+
+	template<typename T, size_t N>
+	const char* NameOf(const std::pair<T, const char*>(&names)[N], T value) {
+		for (const auto& [v, name] : names) {
+			if (v == value)
+				return name;
+		}
+		return names[0].second;
+	}
+
+	template<typename T, size_t N>
+	T ValueOf(const std::pair<T, const char*>(&names)[N], const nlohmann::json& json, const char* key, T defaultValue) {
+		if (const auto it = json.find(key); it != json.end() && it->is_string()) {
+			const auto& s = it->get_ref<const std::string&>();
+			for (const auto& [v, name] : names) {
+				if (s == name)
+					return v;
+			}
+		}
+		return defaultValue;
+	}
+}
+
+void App::Structs::to_json(nlohmann::json& json, const GlyphMergingStruct& value) {
+	const auto& params = value.Params;
+	json = nlohmann::json::object();
+	json.emplace("textSize", params.TextSize ? nlohmann::json(*params.TextSize) : nlohmann::json(nullptr));
+	json.emplace("fitMode", NameOf(GlyphMergeFitModeNames, params.FitMode));
+	json.emplace("textOffset", nlohmann::json::array({params.TextOffsetX, params.TextOffsetY}));
+	json.emplace("textTransform", value.TextTransform);
+	json.emplace("letterSpacing", params.LetterSpacing);
+	json.emplace("lineSpacing", params.LineSpacing);
+	json.emplace("lineAlignment", NameOf(GlyphMergeLineAlignmentNames, params.LineAlignment));
+
+	auto mappings = nlohmann::json::array();
+	for (const auto& mapping : params.Mappings) {
+		auto texts = nlohmann::json::array();
+		for (const auto& text : mapping.Texts)
+			texts.emplace_back(xivres::util::unicode::convert<std::string>(text));
+
+		auto m = nlohmann::json::object();
+		m.emplace("codepoints", xivres::util::unicode::convert<std::string>(mapping.Codepoints));
+		m.emplace("texts", std::move(texts));
+		m.emplace("shape", NameOf(GlyphMergeShapeNames, mapping.Shape));
+		m.emplace("textMode", NameOf(GlyphMergeTextModeNames, mapping.TextMode));
+		if (mapping.Shape == glyph_merge_shape::Custom) {
+			m.emplace("customPath", mapping.CustomPath);
+			if (!mapping.CustomSvg.empty())
+				m.emplace("customSvg", mapping.CustomSvg);
+			m.emplace("customAdvance", mapping.CustomAdvance);
+			if (mapping.CustomTextArea)
+				m.emplace("customTextArea", *mapping.CustomTextArea);
+		} else if (mapping.Shape == glyph_merge_shape::Glyph && mapping.CustomTextArea) {
+			m.emplace("customTextArea", *mapping.CustomTextArea);
+		}
+		mappings.emplace_back(std::move(m));
+	}
+	json.emplace("mappings", std::move(mappings));
+}
+
+void App::Structs::from_json(const nlohmann::json& json, GlyphMergingStruct& value) {
+	value = {};
+	if (!json.is_object())
+		return;
+
+	auto& params = value.Params;
+	if (const auto it = json.find("textSize"); it != json.end() && it->is_number())
+		params.TextSize = it->get<float>();
+	params.FitMode = ValueOf(GlyphMergeFitModeNames, json, "fitMode", glyph_merge_fit_mode::CondenseThenShrink);
+	if (const auto it = json.find("textOffset"); it != json.end() && it->is_array() && it->size() == 2) {
+		params.TextOffsetX = it->at(0).get<float>();
+		params.TextOffsetY = it->at(1).get<float>();
+	}
+	if (const auto it = json.find("textTransform"); it != json.end())
+		from_json(*it, value.TextTransform);
+	params.LetterSpacing = json.value<float>("letterSpacing", 0.f);
+	params.LineSpacing = json.value<float>("lineSpacing", 0.f);
+	params.LineAlignment = ValueOf(GlyphMergeLineAlignmentNames, json, "lineAlignment", glyph_merge_line_alignment::Center);
+
+	if (const auto it = json.find("mappings"); it != json.end() && it->is_array()) {
+		for (const auto& m : *it) {
+			if (!m.is_object())
+				continue;
+			auto& mapping = params.Mappings.emplace_back();
+			mapping.Codepoints = xivres::util::unicode::convert<std::u32string>(m.value<std::string>("codepoints", ""));
+			if (const auto texts = m.find("texts"); texts != m.end() && texts->is_array()) {
+				for (const auto& text : *texts)
+					mapping.Texts.emplace_back(text.is_string() ? xivres::util::unicode::convert<std::u32string>(text.get<std::string>()) : std::u32string());
+			}
+			mapping.Shape = ValueOf(GlyphMergeShapeNames, m, "shape", glyph_merge_shape::Box);
+			mapping.TextMode = ValueOf(GlyphMergeTextModeNames, m, "textMode", glyph_merge_text_mode::Subtract);
+			mapping.CustomPath = m.value<std::string>("customPath", "");
+			mapping.CustomSvg = m.value<std::string>("customSvg", "");
+			mapping.CustomAdvance = m.value<float>("customAdvance", 1000.f);
+
+			// An area is taken only if it has four finite numbers that span a nonempty rectangle.
+			if (const auto it = m.find("customTextArea"); it != m.end() && it->is_array() && it->size() == 4
+				&& std::ranges::all_of(*it, [](const nlohmann::json& v) { return v.is_number() && std::isfinite(v.get<float>()); })) {
+				const auto area = it->get<std::array<float, 4>>();
+				if (area[0] < area[2] && area[1] < area[3])
+					mapping.CustomTextArea = area;
+			}
+		}
+	}
 }
 
 void App::Structs::from_json(const nlohmann::json& json, RendererSpecificStruct& value) {
@@ -781,8 +1476,8 @@ void App::Structs::from_json(const nlohmann::json& json, RendererSpecificStruct&
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
 	if (const auto obj = json.find("empty"); obj != json.end() && obj->is_object()) {
-		value.Empty.Ascent = obj->value<int>("ascent", 0);
-		value.Empty.LineHeight = obj->value<int>("lineHeight", 0);
+		value.Empty.Ascent = obj->value<float>("ascent", 0.f);
+		value.Empty.LineHeight = obj->value<float>("lineHeight", 0.f);
 	} else
 		value.Empty = {};
 	if (const auto obj = json.find("freetype"); obj != json.end() && obj->is_object()) {
@@ -800,13 +1495,44 @@ void App::Structs::from_json(const nlohmann::json& json, RendererSpecificStruct&
 		value.DirectWrite.GridFitMode = static_cast<DWRITE_GRID_FIT_MODE>(obj->value<int>("gridFitMode", DWRITE_GRID_FIT_MODE_DEFAULT));
 	} else
 		value.DirectWrite = {};
+
+	value.GlyphImages = {};
+	if (const auto obj = json.find("glyphImages"); obj != json.end() && obj->is_object()) {
+		auto& glyphImages = value.GlyphImages;
+		glyphImages.Path = obj->value<std::string>("path", "");
+		for (const auto& [key, v] : {
+			     std::pair{"unitsPerEm", &glyphImages.UnitsPerEm},
+			     std::pair{"baselineY", &glyphImages.BaselineY},
+			     std::pair{"ascent", &glyphImages.Ascent},
+			     std::pair{"lineHeight", &glyphImages.LineHeight},
+		     }) {
+			if (const auto it = obj->find(key); it != obj->end() && it->is_number())
+				*v = it->get<float>();
+		}
+		glyphImages.BitmapCoverage = ValueOf(ImageCoverageModeNames, *obj, "bitmapCoverage", xivres::fontgen::image_coverage_mode::Auto);
+		if (const auto embedded = obj->find("embedded"); embedded != obj->end() && embedded->is_object()) {
+			if (const auto metadata = embedded->find("metadata"); metadata != embedded->end() && !metadata->is_null())
+				glyphImages.EmbeddedMetadata = *metadata;
+			if (const auto glyphs = embedded->find("glyphs"); glyphs != embedded->end() && glyphs->is_object()) {
+				for (const auto& [key, entry] : glyphs->items()) {
+					if (!key.starts_with("U+") || !entry.is_object())
+						continue;
+					const auto codepoint = static_cast<char32_t>(std::strtoul(key.c_str() + 2, nullptr, 16));
+					if (const auto svg = entry.find("svg"); svg != entry.end() && svg->is_string())
+						glyphImages.Embedded[codepoint].Svg = std::make_shared<const std::string>(svg->get<std::string>());
+					else if (const auto png = entry.find("png"); png != entry.end() && png->is_string())
+						glyphImages.Embedded[codepoint].PngBase64 = std::make_shared<const std::string>(png->get<std::string>());
+				}
+			}
+		}
+	}
 }
 
 void App::Structs::to_json(nlohmann::json& json, const RendererSpecificStruct& value) {
 	json = nlohmann::json::object();
 	json.emplace("empty", nlohmann::json::object({
-		{"ascent", value.Empty.Ascent},
-		{"lineHeight", value.Empty.LineHeight},
+		{"ascent", PixelValueToJson(value.Empty.Ascent)},
+		{"lineHeight", PixelValueToJson(value.Empty.LineHeight)},
 		}));
 	json.emplace("freetype", nlohmann::json::object({
 		{"noHinting", !!(value.FreeType.LoadFlags & FT_LOAD_NO_HINTING)},
@@ -820,6 +1546,37 @@ void App::Structs::to_json(nlohmann::json& json, const RendererSpecificStruct& v
 		{"measureMode", static_cast<int>(value.DirectWrite.MeasureMode)},
 		{"gridFitMode", static_cast<int>(value.DirectWrite.GridFitMode)},
 		}));
+
+	const auto& glyphImages = value.GlyphImages;
+	if (!glyphImages.Path.empty() || glyphImages.IsEmbedded()) {
+		auto obj = nlohmann::json::object();
+		obj.emplace("path", glyphImages.Path);
+		for (const auto& [key, v] : {
+			     std::pair{"unitsPerEm", glyphImages.UnitsPerEm},
+			     std::pair{"baselineY", glyphImages.BaselineY},
+			     std::pair{"ascent", glyphImages.Ascent},
+			     std::pair{"lineHeight", glyphImages.LineHeight},
+		     }) {
+			if (v)
+				obj.emplace(key, *v);
+		}
+		obj.emplace("bitmapCoverage", NameOf(ImageCoverageModeNames, glyphImages.BitmapCoverage));
+		if (glyphImages.IsEmbedded()) {
+			auto glyphs = nlohmann::json::object();
+			for (const auto& [codepoint, glyph] : glyphImages.Embedded) {
+				auto& entry = glyphs[std::format("U+{:04X}", static_cast<uint32_t>(codepoint))];
+				if (glyph.Svg)
+					entry["svg"] = *glyph.Svg;
+				else if (glyph.PngBase64)
+					entry["png"] = *glyph.PngBase64;
+			}
+			obj.emplace("embedded", nlohmann::json::object({
+				{"metadata", glyphImages.EmbeddedMetadata.value_or(nlohmann::json())},
+				{"glyphs", std::move(glyphs)},
+			}));
+		}
+		json.emplace("glyphImages", std::move(obj));
+	}
 }
 
 void xivres::fontgen::from_json(const nlohmann::json& json, wrap_modifiers& value) {
@@ -844,9 +1601,43 @@ void xivres::fontgen::from_json(const nlohmann::json& json, wrap_modifiers& valu
 		}
 	}
 
-	value.LetterSpacing = json.value<int>("letterSpacing", 0);
-	value.HorizontalOffset = json.value<int>("horizontalOffset", 0);
-	value.BaselineShift = json.value<int>("baselineShift", 0);
+	value.LetterSpacing = json.value<float>("letterSpacing", 0.f);
+	value.HorizontalOffset = json.value<float>("horizontalOffset", 0.f);
+	value.BaselineShift = json.value<float>("baselineShift", 0.f);
+
+	value.Monospacing = {};
+	if (const auto it = json.find("monospacing"); it != json.end() && it->is_object()) {
+		auto& m = value.Monospacing;
+		if (const auto v = it->find("min"); v != it->end() && v->is_number())
+			m.MinAdvance = v->get<float>();
+		if (const auto v = it->find("max"); v != it->end() && v->is_number())
+			m.MaxAdvance = v->get<float>();
+
+		const auto unit = it->value<std::string>("unit", "em");
+		m.Unit = unit == "px"
+			? monospacing_unit::Pixels
+			: unit == "glyph"
+			? monospacing_unit::ReferenceGlyph
+			: monospacing_unit::Em;
+
+		if (const auto s = it->value<std::string>("referenceChar", ""); !s.empty()) {
+			char32_t c = util::unicode::UReplacement;
+			util::unicode::decode(c, s.c_str(), s.size());
+			if (c != util::unicode::UReplacement)
+				m.ReferenceCharacter = c;
+		}
+
+		const auto alignment = it->value<std::string>("alignment", "centerAdvance");
+		m.Alignment = alignment == "left"
+			? monospacing_alignment::Left
+			: alignment == "centerInk"
+			? monospacing_alignment::CenterInk
+			: alignment == "right"
+			? monospacing_alignment::Right
+			: monospacing_alignment::CenterAdvance;
+
+		m.DropKerning = it->value<bool>("dropKerning", true);
+	}
 
 	value.CodepointReplacements.clear();
 	if (const auto it = json.find("codepointReplacements"); it != json.end() && it->is_object()) {
@@ -869,9 +1660,29 @@ void xivres::fontgen::to_json(nlohmann::json& json, const wrap_modifiers& value)
 	auto& codepoints = *json.emplace("codepoints", nlohmann::json::array()).first;
 	for (const auto& c : value.Codepoints)
 		codepoints.emplace_back(nlohmann::json::array({ static_cast<uint32_t>(c.first), static_cast<uint32_t>(c.second) }));
-	json.emplace("letterSpacing", value.LetterSpacing);
-	json.emplace("horizontalOffset", value.HorizontalOffset);
-	json.emplace("baselineShift", value.BaselineShift);
+	json.emplace("letterSpacing", PixelValueToJson(value.LetterSpacing));
+	json.emplace("horizontalOffset", PixelValueToJson(value.HorizontalOffset));
+	json.emplace("baselineShift", PixelValueToJson(value.BaselineShift));
+	if (const auto& m = value.Monospacing; m.is_enabled()) {
+		auto& obj = *json.emplace("monospacing", nlohmann::json::object()).first;
+		if (m.MinAdvance)
+			obj.emplace("min", *m.MinAdvance);
+		if (m.MaxAdvance)
+			obj.emplace("max", *m.MaxAdvance);
+		switch (m.Unit) {
+			case monospacing_unit::Pixels: obj.emplace("unit", "px"); break;
+			case monospacing_unit::Em: obj.emplace("unit", "em"); break;
+			case monospacing_unit::ReferenceGlyph: obj.emplace("unit", "glyph"); break;
+		}
+		obj.emplace("referenceChar", xivres::util::unicode::convert_from_codepoint<std::string>(m.ReferenceCharacter));
+		switch (m.Alignment) {
+			case monospacing_alignment::Left: obj.emplace("alignment", "left"); break;
+			case monospacing_alignment::CenterAdvance: obj.emplace("alignment", "centerAdvance"); break;
+			case monospacing_alignment::CenterInk: obj.emplace("alignment", "centerInk"); break;
+			case monospacing_alignment::Right: obj.emplace("alignment", "right"); break;
+		}
+		obj.emplace("dropKerning", m.DropKerning);
+	}
 	auto& codepointReplacements = *json.emplace("codepointReplacements", nlohmann::json::object()).first;
 	for (const auto& [from, to] : value.CodepointReplacements)
 		codepointReplacements[xivres::util::unicode::convert_from_codepoint<std::string>(from)] = xivres::util::unicode::convert_from_codepoint<std::string>(to);
@@ -895,6 +1706,8 @@ void App::Structs::from_json(const nlohmann::json& json, LookupStruct& value) {
 	}
 
 	// Values other than 1 are stored separately, so that older versions still read the list of features.
+	// A feature turned off appears only here, with 0, so that older versions leave it at the font default
+	// instead of turning it on.
 	if (const auto it = json.find("featureValues"); it != json.end() && it->is_object()) {
 		for (const auto& [name, v] : it->items()) {
 			if (!v.is_number_unsigned())
@@ -902,8 +1715,7 @@ void App::Structs::from_json(const nlohmann::json& json, LookupStruct& value) {
 			std::string tag = name;
 			tag.resize(4, ' ');
 			const auto key = static_cast<DWRITE_FONT_FEATURE_TAG>(*reinterpret_cast<const uint32_t*>(tag.c_str()));
-			if (const auto it2 = value.Features.find(key); it2 != value.Features.end())
-				it2->second = v.get<uint32_t>();
+			value.Features[key] = v.get<uint32_t>();
 		}
 	}
 	value.Language = json.value<std::string>("language", "");
@@ -914,6 +1726,9 @@ void App::Structs::from_json(const nlohmann::json& json, LookupStruct& value) {
 				value.Variations[tag] = v.get<float>();
 		}
 	}
+	value.Synthesis.reset();
+	if (const auto it = json.find("synthesis"); it != json.end() && it->is_object())
+		value.Synthesis = SynthesisStruct{.Allow = it->value<bool>("allow", true)};
 }
 
 void App::Structs::to_json(nlohmann::json& json, const LookupStruct& value) {
@@ -928,7 +1743,8 @@ void App::Structs::to_json(nlohmann::json& json, const LookupStruct& value) {
 	for (const auto& [tag, v] : value.Features) {
 		char buf[5]{};
 		*reinterpret_cast<uint32_t*>(buf) = static_cast<uint32_t>(tag);
-		features.emplace_back(buf);
+		if (v != 0)
+			features.emplace_back(buf);
 		if (v != 1)
 			featureValues[buf] = v;
 	}
@@ -943,6 +1759,8 @@ void App::Structs::to_json(nlohmann::json& json, const LookupStruct& value) {
 			variations[tag] = v;
 		json.emplace("variations", std::move(variations));
 	}
+	if (value.Synthesis)
+		json.emplace("synthesis", nlohmann::json::object({{"allow", value.Synthesis->Allow}}));
 }
 
 void App::Structs::from_json(const nlohmann::json& json, MultiFontSet& value) {

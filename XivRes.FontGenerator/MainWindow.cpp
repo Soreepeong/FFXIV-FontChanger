@@ -66,6 +66,7 @@ void App::FontEditorWindow::SetCurrentMultiFontSet(IShellItemPtr path) {
 void App::FontEditorWindow::SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, IShellItemPtr path, bool fakePath) {
 	m_multiFontSet = std::move(multiFontSet);
 	m_currentShellItem = std::move(path);
+	UpdateProjectDirectory();
 
 	m_pFontSet = nullptr;
 	m_pActiveFace = nullptr;
@@ -141,6 +142,9 @@ void App::FontEditorWindow::ShowEditor(Structs::FaceElement& element) {
 			UpdateFaceElementListViewItem(element);
 			Changes_MarkDirty();
 			m_pActiveFace->OnElementChange();
+			Window_Redraw();
+		}, [this, &element, &face = *m_pActiveFace](bool deactivated) {
+			face.SetElementDeactivated(element, deactivated);
 			Window_Redraw();
 		});
 	}
@@ -249,7 +253,7 @@ void App::FontEditorWindow::UpdateFaceElementListViewItem(const Structs::FaceEle
 		setItemText(ListViewColsSize, FormatPixelValue(element.GetWrappedFont()->font_size()));
 	}
 	setItemText(ListViewColsLineHeight, FormatPixelValue(element.GetWrappedFont()->line_height()));
-	if (element.WrapModifiers.BaselineShift && element.Renderer != Structs::RendererEnum::Empty) {
+	if (element.WrapModifiers.BaselineShift != 0.f && element.Renderer != Structs::RendererEnum::Empty) {
 		setItemText(ListViewColsAscent, std::format(
 			L"{}({})",
 			FormatPixelValue(element.GetBaseFont()->ascent()),
@@ -257,8 +261,8 @@ void App::FontEditorWindow::UpdateFaceElementListViewItem(const Structs::FaceEle
 	} else {
 		setItemText(ListViewColsAscent, FormatPixelValue(element.GetBaseFont()->ascent()));
 	}
-	setItemText(ListViewColsHorizontalOffset, FormatPixelValue(element.Renderer == Structs::RendererEnum::Empty ? 0 : element.WrapModifiers.HorizontalOffset));
-	setItemText(ListViewColsLetterSpacing, FormatPixelValue(element.Renderer == Structs::RendererEnum::Empty ? 0 : element.WrapModifiers.LetterSpacing));
+	setItemText(ListViewColsHorizontalOffset, FormatPixelValue(element.Renderer == Structs::RendererEnum::Empty ? 0.f : element.WrapModifiers.HorizontalOffset));
+	setItemText(ListViewColsLetterSpacing, FormatPixelValue(element.Renderer == Structs::RendererEnum::Empty ? 0.f : element.WrapModifiers.LetterSpacing));
 	setItemText(ListViewColsCodepoints, element.GetRangeRepresentation());
 	setItemText(ListViewColsGlyphCount, std::format(L"{}", element.GetWrappedFont()->all_codepoints().size()));
 	switch (element.MergeMode) {
