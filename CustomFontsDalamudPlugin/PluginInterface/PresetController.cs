@@ -96,28 +96,39 @@ internal sealed class PresetController : IDisposable
     {
         this.pendingReload?.Cancel();
         this.pendingReload = new();
-        Task.Delay(ReloadDelay, this.pendingReload.Token).ContinueWith(_ => this.Load(), TaskContinuationOptions.OnlyOnRanToCompletion);
+        Task.Delay(ReloadDelay, this.pendingReload.Token).ContinueWith(_ => this.Load(true), TaskContinuationOptions.OnlyOnRanToCompletion);
     }
 
-    /// <summary>Reads the preset (on the calling thread), and applies it on the framework thread.</summary>
-    private void Load()
+    /// <summary>
+    /// Reads the preset (on the calling thread), and applies it on the framework thread. A file that can't be read is
+    /// the built-in face, unless <paramref name="changed"/> (it was edited): then what was applied stays until it reads.
+    /// </summary>
+    private void Load(bool changed = false)
     {
         var path = this.configuration.PresetPath;
         Preset? preset = null;
-        this.Status = "Built-in face";
+        var status = "Built-in face";
         if (path.Length != 0)
         {
             try
             {
                 preset = Preset.Load(path);
-                this.Status = $"{preset.Faces.Count} faces from {Path.GetFileName(path)}";
+                status = $"{preset.Faces.Count} faces from {Path.GetFileName(path)}";
             }
             catch (Exception ex)
             {
                 Plugin.Log.Error(ex, "Loading the preset {path} failed", path);
-                this.Status = $"Loading failed ({ex.Message}); built-in face";
+                if (changed)
+                {
+                    this.Status = $"Changes not applied ({ex.Message}); keeping the last loaded";
+                    return;
+                }
+
+                status = $"Loading failed ({ex.Message}); built-in face";
             }
         }
+
+        this.Status = status;
 
         this.WatchFolders(preset?.GlyphImageFolders ?? []);
         var systemFallback = this.configuration.SystemFallback;

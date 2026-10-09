@@ -60,10 +60,11 @@ internal sealed unsafe class FontReplacer : IDisposable
     private const int FontCacheFlagsOffset = 0x171;
     private const byte UseFontCacheFlag = 0x40;
 
-    // Sizes in half pixels: below 4 px nothing is legible, and above 100 px glyphs outgrow the game's byte-sized
-    // glyph fields (a larger request uses the 100 px copy, scaled up by the renderer).
+    // Sizes in half pixels: below 4 px nothing is legible. Up to 255 px, glyphs are drawn at the size asked for, those
+    // larger than the game's byte-sized glyph fields cut off (PlaceCell); a larger request uses the 255 px copy, scaled
+    // up by the renderer.
     private const int MinHalfPx = 8;
-    private const int MaxHalfPx = 200;
+    private const int MaxHalfPx = 2 * byte.MaxValue;
 
     private const int GlyphBlockSize = 1024;
 
@@ -735,17 +736,15 @@ internal sealed unsafe class FontReplacer : IDisposable
     }
 
     /// <summary>
-    /// Puts a rasterized glyph or cluster into the atlas as a game glyph advancing by <see cref="RasterGlyph.Advance"/>;
-    /// null if it is too wide for the game's glyph fields. Its pixels go to the atlas when it is first drawn.
+    /// Puts a rasterized glyph or cluster into the atlas as a game glyph advancing by <see cref="RasterGlyph.Advance"/>.
+    /// Its pixels go to the atlas when it is first drawn.
     /// </summary>
     internal GameGlyph* PlaceCell(SizedFont sized, RasterGlyph r, uint utf8Value)
     {
         // The game has no left bearing: the glyph's box starts at the pen. Ink left of the pen (an overhang) moves right
-        // into the box instead.
+        // into the box instead. A box wider than the game's byte-sized field cuts the ink off on the right.
         var boxLeft = Math.Min(r.Left, 0);
-        var width = r.Width == 0 ? 0 : r.Left + r.Width - boxLeft;
-        if (width > byte.MaxValue)
-            return null;
+        var width = r.Width == 0 ? 0 : Math.Min(r.Left + r.Width - boxLeft, byte.MaxValue);
 
         // A box is a full line high, as the game's are: italics shear each quad by moving its top edge by an amount based
         // on the line height, which only slants the glyphs of a line alike if all their quads span the same rows. Ink

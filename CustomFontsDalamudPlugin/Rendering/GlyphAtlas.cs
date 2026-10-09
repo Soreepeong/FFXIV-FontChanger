@@ -126,10 +126,14 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         return true;
     }
 
-    /// <summary>Writes 8-bit coverage into a plane of a page at (x, y), and marks it for upload.</summary>
+    /// <summary>
+    /// Writes 8-bit coverage into a plane of a page, at <paramref name="alphaX"/> in the <paramref name="width"/> by
+    /// <paramref name="height"/> box at (x, y); coverage past the box's right edge is cut off. Marks the box for upload.
+    /// </summary>
     public void Write(int page, int plane, int x, int y, int width, int height, ReadOnlySpan<byte> alpha, int alphaStride, int alphaX)
     {
         var p = this.pages[page];
+        var columns = Math.Min(alphaStride, width - alphaX);
         lock (this.sync)
         {
             var dst = p.Shadow + (y * Pitch) + (x * 4) + ChannelOffsets[plane];
@@ -137,7 +141,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
             {
                 var src = alpha.Slice(row * alphaStride, alphaStride);
                 var d = dst + (row * Pitch) + (alphaX * 4);
-                for (var col = 0; col < alphaStride; col++)
+                for (var col = 0; col < columns; col++)
                     d[col * 4] = src[col];
             }
 

@@ -1,15 +1,19 @@
 {
+	"exportMapChnAxisToFont": false,
 	"exportMapFontLobbyToFont": true,
+	"exportMapKrnAxisToFont": true,
+	"exportMapTcAxisToFont": false,
 	"fontSets": [
 		{
 			"discardStep": 1,
-			"expectedTexCount": 2,
+			"expectedTexCount": 6,
 			"faces": [
 				{
 					"elements": [
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -35,13 +39,13 @@
 								}
 							},
 							"renderer": 1,
-							"size": 9.600000381469727,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"size": 9.6,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -56,11 +60,77 @@
 							}
 						},
 						{
-							"gamma": 1.399999976158142,
+							"gamma": 1.7000000476837158,
 							"lookup": {
+								"features": [],
+								"name": "Source Han Sans K",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 11.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 1,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.7000000476837158,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
 								"weight": 400
 							},
 							"mergeMode": 2,
@@ -84,12 +154,12 @@
 							},
 							"renderer": 2,
 							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -105,56 +175,228 @@
 						},
 						{
 							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": true,
-									"renderMode": 1
+							"glyphMerging": {
+								"fitMode": "condenseThenShrink",
+								"letterSpacing": 0.0,
+								"lineAlignment": "center",
+								"lineSpacing": 0.0,
+								"mappings": [
+									{
+										"codepoints": "",
+										"shape": "amPm",
+										"textMode": "subtract",
+										"texts": [
+											"A\nM",
+											"P\nM"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"m",
+											"Lv",
+											"ST",
+											"Nv"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "box",
+										"textMode": "subtract",
+										"texts": [
+											"?",
+											"A",
+											"B",
+											"C",
+											"D",
+											"E",
+											"F",
+											"G",
+											"H",
+											"I",
+											"J",
+											"K",
+											"L",
+											"M",
+											"N",
+											"O",
+											"P",
+											"Q",
+											"R",
+											"S",
+											"T",
+											"U",
+											"V",
+											"W",
+											"X",
+											"Y",
+											"Z",
+											"+",
+											"E"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "bozja",
+										"textMode": "subtract",
+										"texts": [
+											"I",
+											"II",
+											"III",
+											"IV",
+											"V",
+											"VI"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "time",
+										"textMode": "subtract",
+										"texts": [
+											"LT",
+											"ST",
+											"ET",
+											"OZ",
+											"SZ",
+											"EZ",
+											"HL",
+											"HS",
+											"HE"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "numberBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9",
+											"10",
+											"11",
+											"12",
+											"13",
+											"14",
+											"15",
+											"16",
+											"17",
+											"18",
+											"19",
+											"20",
+											"21",
+											"22",
+											"23",
+											"24",
+											"25",
+											"26",
+											"27",
+											"28",
+											"29",
+											"30",
+											"31"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hexagon",
+										"textMode": "subtract",
+										"texts": [
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hollowBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "ime",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									},
+									{
+										"codepoints": "",
+										"customAdvance": 1000.0,
+										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
+										"customTextArea": [
+											443.0,
+											111.0,
+											900.0,
+											880.0
+										],
+										"shape": "custom",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									}
+								],
+								"textOffset": [
+									0.0,
+									0.0
+								],
+								"textSize": null,
+								"textTransform": {
+									"rotation": 0.0,
+									"scaleX": 1.0,
+									"scaleY": 1.0,
+									"skew": 0.0
 								}
 							},
-							"renderer": 3,
-							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "XIV PUA from Comic",
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -180,19 +422,51 @@
 							},
 							"renderer": 2,
 							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										57344,
-										63743
+										57378,
+										57378
+									],
+									[
+										57380,
+										57380
+									],
+									[
+										57384,
+										57384
+									],
+									[
+										57440,
+										57454
+									],
+									[
+										57456,
+										57482
+									],
+									[
+										57487,
+										57529
+									],
+									[
+										57537,
+										57542
+									],
+									[
+										57552,
+										57560
+									],
+									[
+										57568,
+										57577
 									]
 								],
 								"horizontalOffset": 1,
@@ -208,6 +482,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -234,12 +509,12 @@
 							},
 							"renderer": 1,
 							"size": 12.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -254,11 +529,77 @@
 							}
 						},
 						{
-							"gamma": 1.399999976158142,
+							"gamma": 1.7000000476837158,
 							"lookup": {
+								"features": [],
+								"name": "Source Han Sans K",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 13.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 1,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.7000000476837158,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
 								"weight": 400
 							},
 							"mergeMode": 2,
@@ -282,12 +623,12 @@
 							},
 							"renderer": 2,
 							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -303,56 +644,228 @@
 						},
 						{
 							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
+							"glyphMerging": {
+								"fitMode": "condenseThenShrink",
+								"letterSpacing": 0.0,
+								"lineAlignment": "center",
+								"lineSpacing": 0.0,
+								"mappings": [
+									{
+										"codepoints": "",
+										"shape": "amPm",
+										"textMode": "subtract",
+										"texts": [
+											"A\nM",
+											"P\nM"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"m",
+											"Lv",
+											"ST",
+											"Nv"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "box",
+										"textMode": "subtract",
+										"texts": [
+											"?",
+											"A",
+											"B",
+											"C",
+											"D",
+											"E",
+											"F",
+											"G",
+											"H",
+											"I",
+											"J",
+											"K",
+											"L",
+											"M",
+											"N",
+											"O",
+											"P",
+											"Q",
+											"R",
+											"S",
+											"T",
+											"U",
+											"V",
+											"W",
+											"X",
+											"Y",
+											"Z",
+											"+",
+											"E"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "bozja",
+										"textMode": "subtract",
+										"texts": [
+											"I",
+											"II",
+											"III",
+											"IV",
+											"V",
+											"VI"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "time",
+										"textMode": "subtract",
+										"texts": [
+											"LT",
+											"ST",
+											"ET",
+											"OZ",
+											"SZ",
+											"EZ",
+											"HL",
+											"HS",
+											"HE"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "numberBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9",
+											"10",
+											"11",
+											"12",
+											"13",
+											"14",
+											"15",
+											"16",
+											"17",
+											"18",
+											"19",
+											"20",
+											"21",
+											"22",
+											"23",
+											"24",
+											"25",
+											"26",
+											"27",
+											"28",
+											"29",
+											"30",
+											"31"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hexagon",
+										"textMode": "subtract",
+										"texts": [
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hollowBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "ime",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									},
+									{
+										"codepoints": "",
+										"customAdvance": 1000.0,
+										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
+										"customTextArea": [
+											443.0,
+											111.0,
+											900.0,
+											880.0
+										],
+										"shape": "custom",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									}
+								],
+								"textOffset": [
+									0.0,
+									0.0
+								],
+								"textSize": null,
+								"textTransform": {
+									"rotation": 0.0,
+									"scaleX": 1.0,
+									"scaleY": 1.0,
+									"skew": 0.0
 								}
 							},
-							"renderer": 3,
-							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "XIV PUA from Comic",
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -378,19 +891,51 @@
 							},
 							"renderer": 2,
 							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										57344,
-										63743
+										57378,
+										57378
+									],
+									[
+										57380,
+										57380
+									],
+									[
+										57384,
+										57384
+									],
+									[
+										57440,
+										57454
+									],
+									[
+										57456,
+										57482
+									],
+									[
+										57487,
+										57529
+									],
+									[
+										57537,
+										57542
+									],
+									[
+										57552,
+										57560
+									],
+									[
+										57568,
+										57577
 									]
 								],
 								"horizontalOffset": 1,
@@ -406,6 +951,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -432,12 +978,12 @@
 							},
 							"renderer": 1,
 							"size": 14.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -452,11 +998,77 @@
 							}
 						},
 						{
-							"gamma": 1.399999976158142,
+							"gamma": 1.7000000476837158,
 							"lookup": {
+								"features": [],
+								"name": "Source Han Sans K",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 15.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.7000000476837158,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
 								"weight": 400
 							},
 							"mergeMode": 2,
@@ -480,12 +1092,12 @@
 							},
 							"renderer": 2,
 							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -501,56 +1113,228 @@
 						},
 						{
 							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
+							"glyphMerging": {
+								"fitMode": "condenseThenShrink",
+								"letterSpacing": 0.0,
+								"lineAlignment": "center",
+								"lineSpacing": 0.0,
+								"mappings": [
+									{
+										"codepoints": "",
+										"shape": "amPm",
+										"textMode": "subtract",
+										"texts": [
+											"A\nM",
+											"P\nM"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"m",
+											"Lv",
+											"ST",
+											"Nv"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "box",
+										"textMode": "subtract",
+										"texts": [
+											"?",
+											"A",
+											"B",
+											"C",
+											"D",
+											"E",
+											"F",
+											"G",
+											"H",
+											"I",
+											"J",
+											"K",
+											"L",
+											"M",
+											"N",
+											"O",
+											"P",
+											"Q",
+											"R",
+											"S",
+											"T",
+											"U",
+											"V",
+											"W",
+											"X",
+											"Y",
+											"Z",
+											"+",
+											"E"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "bozja",
+										"textMode": "subtract",
+										"texts": [
+											"I",
+											"II",
+											"III",
+											"IV",
+											"V",
+											"VI"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "time",
+										"textMode": "subtract",
+										"texts": [
+											"LT",
+											"ST",
+											"ET",
+											"OZ",
+											"SZ",
+											"EZ",
+											"HL",
+											"HS",
+											"HE"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "numberBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9",
+											"10",
+											"11",
+											"12",
+											"13",
+											"14",
+											"15",
+											"16",
+											"17",
+											"18",
+											"19",
+											"20",
+											"21",
+											"22",
+											"23",
+											"24",
+											"25",
+											"26",
+											"27",
+											"28",
+											"29",
+											"30",
+											"31"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hexagon",
+										"textMode": "subtract",
+										"texts": [
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hollowBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "ime",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									},
+									{
+										"codepoints": "",
+										"customAdvance": 1000.0,
+										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
+										"customTextArea": [
+											443.0,
+											111.0,
+											900.0,
+											880.0
+										],
+										"shape": "custom",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									}
+								],
+								"textOffset": [
+									0.0,
+									0.0
+								],
+								"textSize": null,
+								"textTransform": {
+									"rotation": 0.0,
+									"scaleX": 1.0,
+									"scaleY": 1.0,
+									"skew": 0.0
 								}
 							},
-							"renderer": 3,
-							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "XIV PUA from Comic",
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -576,19 +1360,51 @@
 							},
 							"renderer": 2,
 							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										57344,
-										63743
+										57378,
+										57378
+									],
+									[
+										57380,
+										57380
+									],
+									[
+										57384,
+										57384
+									],
+									[
+										57440,
+										57454
+									],
+									[
+										57456,
+										57482
+									],
+									[
+										57487,
+										57529
+									],
+									[
+										57537,
+										57542
+									],
+									[
+										57552,
+										57560
+									],
+									[
+										57568,
+										57577
 									]
 								],
 								"horizontalOffset": 1,
@@ -604,6 +1420,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -630,12 +1447,12 @@
 							},
 							"renderer": 1,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -652,6 +1469,69 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Source Han Sans K",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 18.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
@@ -678,12 +1558,12 @@
 							},
 							"renderer": 2,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -699,56 +1579,228 @@
 						},
 						{
 							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
+							"glyphMerging": {
+								"fitMode": "condenseThenShrink",
+								"letterSpacing": 0.0,
+								"lineAlignment": "center",
+								"lineSpacing": 0.0,
+								"mappings": [
+									{
+										"codepoints": "",
+										"shape": "amPm",
+										"textMode": "subtract",
+										"texts": [
+											"A\nM",
+											"P\nM"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"m",
+											"Lv",
+											"ST",
+											"Nv"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "box",
+										"textMode": "subtract",
+										"texts": [
+											"?",
+											"A",
+											"B",
+											"C",
+											"D",
+											"E",
+											"F",
+											"G",
+											"H",
+											"I",
+											"J",
+											"K",
+											"L",
+											"M",
+											"N",
+											"O",
+											"P",
+											"Q",
+											"R",
+											"S",
+											"T",
+											"U",
+											"V",
+											"W",
+											"X",
+											"Y",
+											"Z",
+											"+",
+											"E"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "bozja",
+										"textMode": "subtract",
+										"texts": [
+											"I",
+											"II",
+											"III",
+											"IV",
+											"V",
+											"VI"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "time",
+										"textMode": "subtract",
+										"texts": [
+											"LT",
+											"ST",
+											"ET",
+											"OZ",
+											"SZ",
+											"EZ",
+											"HL",
+											"HS",
+											"HE"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "numberBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9",
+											"10",
+											"11",
+											"12",
+											"13",
+											"14",
+											"15",
+											"16",
+											"17",
+											"18",
+											"19",
+											"20",
+											"21",
+											"22",
+											"23",
+											"24",
+											"25",
+											"26",
+											"27",
+											"28",
+											"29",
+											"30",
+											"31"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hexagon",
+										"textMode": "subtract",
+										"texts": [
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hollowBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "ime",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									},
+									{
+										"codepoints": "",
+										"customAdvance": 1000.0,
+										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
+										"customTextArea": [
+											443.0,
+											111.0,
+											900.0,
+											880.0
+										],
+										"shape": "custom",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									}
+								],
+								"textOffset": [
+									0.0,
+									0.0
+								],
+								"textSize": null,
+								"textTransform": {
+									"rotation": 0.0,
+									"scaleX": 1.0,
+									"scaleY": 1.0,
+									"skew": 0.0
 								}
 							},
-							"renderer": 3,
-							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "XIV PUA from Comic",
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -774,19 +1826,51 @@
 							},
 							"renderer": 2,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										57344,
-										63743
+										57378,
+										57378
+									],
+									[
+										57380,
+										57380
+									],
+									[
+										57384,
+										57384
+									],
+									[
+										57440,
+										57454
+									],
+									[
+										57456,
+										57482
+									],
+									[
+										57487,
+										57529
+									],
+									[
+										57537,
+										57542
+									],
+									[
+										57552,
+										57560
+									],
+									[
+										57568,
+										57577
 									]
 								],
 								"horizontalOffset": 1,
@@ -795,13 +1879,14 @@
 						}
 					],
 					"name": "AXIS_18",
-					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
+					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ifi\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6[][]\r\n7[]\r\n8[]\r\n9\r\n9()[]\r\n\r\n\r\n"
 				},
 				{
 					"elements": [
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -828,12 +1913,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -850,6 +1935,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -876,12 +1962,12 @@
 							},
 							"renderer": 1,
 							"size": 36.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -898,6 +1984,7 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
 								"name": "AXIS Basic ProN",
 								"stretch": 5,
 								"style": 0,
@@ -924,12 +2011,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -939,13 +2026,76 @@
 										65535
 									]
 								],
-								"horizontalOffset": 2,
+								"horizontalOffset": 7,
 								"letterSpacing": 0
 							}
 						},
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Source Han Sans K",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 9,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
@@ -972,144 +2122,29 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										0,
-										127
-									],
-									[
-										128,
-										255
-									],
-									[
-										256,
-										383
-									],
-									[
-										384,
-										591
-									],
-									[
-										688,
-										767
-									],
-									[
-										880,
-										1023
-									],
-									[
-										1024,
-										1279
-									],
-									[
-										7680,
-										7935
-									],
-									[
-										8192,
-										8303
-									],
-									[
-										8304,
-										8351
-									],
-									[
-										8352,
-										8399
-									],
-									[
-										8448,
-										8527
-									],
-									[
-										8528,
-										8591
-									],
-									[
-										8704,
-										8959
-									],
-									[
-										9472,
-										9599
-									],
-									[
-										9632,
-										9727
-									],
-									[
-										9728,
-										9983
-									],
-									[
-										64256,
-										64335
+										32,
+										1114111
 									]
 								],
-								"horizontalOffset": 2,
+								"horizontalOffset": 6,
 								"letterSpacing": 0
 							}
 						},
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 2,
-									"renderMode": 5
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 2,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
+								"features": [],
 								"name": "XIV AXIS Std ATK",
 								"stretch": 5,
 								"style": 0,
@@ -1136,12 +2171,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1151,14 +2186,234 @@
 										63743
 									]
 								],
-								"horizontalOffset": 0,
+								"horizontalOffset": 9,
 								"letterSpacing": 0
 							}
 						},
 						{
 							"gamma": 1.399999976158142,
+							"glyphMerging": {
+								"fitMode": "condenseThenShrink",
+								"letterSpacing": 0.0,
+								"lineAlignment": "center",
+								"lineSpacing": 0.0,
+								"mappings": [
+									{
+										"codepoints": "",
+										"shape": "amPm",
+										"textMode": "subtract",
+										"texts": [
+											"A\nM",
+											"P\nM"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"m",
+											"Lv",
+											"ST",
+											"Nv"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "box",
+										"textMode": "subtract",
+										"texts": [
+											"?",
+											"A",
+											"B",
+											"C",
+											"D",
+											"E",
+											"F",
+											"G",
+											"H",
+											"I",
+											"J",
+											"K",
+											"L",
+											"M",
+											"N",
+											"O",
+											"P",
+											"Q",
+											"R",
+											"S",
+											"T",
+											"U",
+											"V",
+											"W",
+											"X",
+											"Y",
+											"Z",
+											"+",
+											"E"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "bozja",
+										"textMode": "subtract",
+										"texts": [
+											"I",
+											"II",
+											"III",
+											"IV",
+											"V",
+											"VI"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "time",
+										"textMode": "subtract",
+										"texts": [
+											"LT",
+											"ST",
+											"ET",
+											"OZ",
+											"SZ",
+											"EZ",
+											"HL",
+											"HS",
+											"HE"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "none",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "numberBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9",
+											"10",
+											"11",
+											"12",
+											"13",
+											"14",
+											"15",
+											"16",
+											"17",
+											"18",
+											"19",
+											"20",
+											"21",
+											"22",
+											"23",
+											"24",
+											"25",
+											"26",
+											"27",
+											"28",
+											"29",
+											"30",
+											"31"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hexagon",
+										"textMode": "subtract",
+										"texts": [
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "hollowBox",
+										"textMode": "subtract",
+										"texts": [
+											"0",
+											"1",
+											"2",
+											"3",
+											"4",
+											"5",
+											"6",
+											"7",
+											"8",
+											"9"
+										]
+									},
+									{
+										"codepoints": "",
+										"shape": "ime",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									},
+									{
+										"codepoints": "",
+										"customAdvance": 1000.0,
+										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
+										"customTextArea": [
+											443.0,
+											111.0,
+											900.0,
+											880.0
+										],
+										"shape": "custom",
+										"textMode": "subtract",
+										"texts": [
+											"A"
+										]
+									}
+								],
+								"textOffset": [
+									0.0,
+									0.0
+								],
+								"textSize": null,
+								"textTransform": {
+									"rotation": 0.0,
+									"scaleX": 1.0,
+									"scaleY": 1.0,
+									"skew": 0.0
+								}
+							},
 							"lookup": {
-								"name": "XIV PUA from Comic",
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -1184,232 +2439,67 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										57344,
-										63743
+										57378,
+										57378
+									],
+									[
+										57380,
+										57380
+									],
+									[
+										57384,
+										57384
+									],
+									[
+										57440,
+										57454
+									],
+									[
+										57456,
+										57482
+									],
+									[
+										57487,
+										57529
+									],
+									[
+										57537,
+										57542
+									],
+									[
+										57552,
+										57560
+									],
+									[
+										57568,
+										57577
 									]
 								],
-								"horizontalOffset": 0,
+								"horizontalOffset": 9,
 								"letterSpacing": 0
 							}
 						}
 					],
 					"name": "AXIS_36",
-					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ifi\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n9\r\n\r\n\r\n"
+					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ifi\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6[][]\r\n7[]\r\n8[]\r\n9\r\n9()[]\r\n\r\n\r\n"
 				},
 				{
 					"elements": [
 						{
 							"gamma": 1.0,
 							"lookup": {
-								"name": "AXIS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 2,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 21,
-									"lineHeight": 29
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 0,
-							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										0,
-										1114111
-									]
-								],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.0,
-							"lookup": {
-								"name": "Jupiter",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 1,
-							"size": 16.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
-										1114111
-									]
-								],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
-										1114111
-									]
-								],
-								"horizontalOffset": 2,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 2,
-								"letterSpacing": 0
-							}
-						}
-					],
-					"name": "Jupiter_16",
-					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
-				},
-				{
-					"elements": [
-						{
-							"gamma": 1.0,
-							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -1436,12 +2526,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1458,547 +2548,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
-								"name": "Jupiter",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 1,
-							"size": 20.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
-										1114111
-									]
-								],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
-										1114111
-									]
-								],
-								"horizontalOffset": 2,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 2,
-								"letterSpacing": 0
-							}
-						}
-					],
-					"name": "Jupiter_20",
-					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
-				},
-				{
-					"elements": [
-						{
-							"gamma": 1.0,
-							"lookup": {
-								"name": "AXIS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 2,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 101,
-									"lineHeight": 128
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 0,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										0,
-										1114111
-									]
-								],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.0,
-							"lookup": {
-								"name": "Jupiter",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 1,
-							"size": 23.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
-										1114111
-									]
-								],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
-										1114111
-									]
-								],
-								"horizontalOffset": 2,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 2,
-								"letterSpacing": 0
-							}
-						}
-					],
-					"name": "Jupiter_23",
-					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
-				},
-				{
-					"elements": [
-						{
-							"gamma": 1.0,
-							"lookup": {
-								"name": "Gulim",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 51,
-									"lineHeight": 61
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 0,
-							"size": 45.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": -30,
-								"codepointReplacements": {},
-								"codepoints": [],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 1,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 74.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 8,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										33,
-										33
-									]
-								],
-								"horizontalOffset": -4,
-								"letterSpacing": -10
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 45.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 6,
-								"letterSpacing": 0
-							}
-						}
-					],
-					"name": "Jupiter_45",
-					"previewText": "0123456789!!!\r\n0123456789!!!"
-				},
-				{
-					"elements": [
-						{
-							"gamma": 1.0,
-							"lookup": {
-								"name": "AXIS",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 2,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 101,
-									"lineHeight": 128
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 0,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										0,
-										1114111
-									]
-								],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.0,
-							"lookup": {
+								"features": [],
 								"name": "Jupiter",
 								"stretch": 5,
 								"style": 0,
@@ -2025,12 +2575,12 @@
 							},
 							"renderer": 1,
 							"size": 46.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2047,17 +2597,21 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"features": [],
+								"name": "Noto Sans KR",
 								"stretch": 5,
 								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
 								"weight": 400
 							},
-							"mergeMode": 2,
+							"mergeMode": 1,
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
 									"measureMode": 1,
-									"renderMode": 4
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -2073,12 +2627,73 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 5,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"onum",
+									"tnum",
+									"smcp"
+								],
+								"name": "Comic Sans MS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 2,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2091,57 +2706,9 @@
 								"horizontalOffset": 2,
 								"letterSpacing": 0
 							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 2,
-								"letterSpacing": 0
-							}
 						}
 					],
-					"name": "Jupiter_46",
+					"name": "Jupiter_16",
 					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
 				},
 				{
@@ -2149,7 +2716,8 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
-								"name": "Gulim",
+								"features": [],
+								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -2158,12 +2726,12 @@
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
-									"measureMode": 1,
+									"measureMode": 2,
 									"renderMode": 4
 								},
 								"empty": {
 									"ascent": 101,
-									"lineHeight": 121
+									"lineHeight": 128
 								},
 								"freetype": {
 									"forceAutohint": false,
@@ -2175,163 +2743,18 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": -30,
-								"codepointReplacements": {},
-								"codepoints": [],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Sans MS",
-								"stretch": 5,
-								"style": 1,
-								"weight": 400
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
 							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 2,
-							"size": 146.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 15,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										33,
-										33
-									]
-								],
-								"horizontalOffset": -8,
-								"letterSpacing": -20
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										48,
-										57
-									]
-								],
-								"horizontalOffset": 12,
-								"letterSpacing": 0
-							}
-						}
-					],
-					"name": "Jupiter_90",
-					"previewText": "0123456789!!!\r\n0123456789!!!"
-				},
-				{
-					"elements": [
-						{
-							"gamma": 1.0,
-							"lookup": {
-								"name": "Meidinger",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 0,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 16,
-									"lineHeight": 22
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": false,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 0,
-							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										32,
+										0,
 										1114111
 									]
 								],
@@ -2342,7 +2765,8 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
-								"name": "Meidinger",
+								"features": [],
+								"name": "Jupiter",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -2367,13 +2791,13 @@
 								}
 							},
 							"renderer": 1,
-							"size": 40.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"size": 46.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2390,12 +2814,181 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 5,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"onum",
+									"tnum",
+									"smcp"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
 							},
 							"mergeMode": 2,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										32,
+										1114111
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						}
+					],
+					"name": "Jupiter_20",
+					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
+				},
+				{
+					"elements": [
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "AXIS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 101,
+									"lineHeight": 128
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 0,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										0,
+										1114111
+									]
+								],
+								"horizontalOffset": 0,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "Jupiter",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
@@ -2414,21 +3007,21 @@
 									"renderMode": 1
 								}
 							},
-							"renderer": 2,
-							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"renderer": 1,
+							"size": 46.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										0,
-										127
+										32,
+										1114111
 									]
 								],
 								"horizontalOffset": 0,
@@ -2438,7 +3031,72 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Mono",
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 5,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"onum",
+									"tnum",
+									"smcp"
+								],
+								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
 								"weight": 400
@@ -2448,7 +3106,157 @@
 								"directwrite": {
 									"gridFitMode": 2,
 									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										32,
+										1114111
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						}
+					],
+					"name": "Jupiter_23",
+					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
+				},
+				{
+					"elements": [
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "Gulim",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
 									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 102,
+									"lineHeight": 123
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 0,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": -30,
+								"codepointReplacements": {},
+								"codepoints": [],
+								"horizontalOffset": 0,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [],
+								"name": "Comic Sans MS",
+								"stretch": 5,
+								"style": 1,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 146.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 15,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										33,
+										33
+									]
+								],
+								"horizontalOffset": -8,
+								"letterSpacing": -20
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"onum"
+								],
+								"name": "Comic Sans MS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -2462,14 +3270,14 @@
 									"renderMode": 1
 								}
 							},
-							"renderer": 3,
-							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2479,19 +3287,387 @@
 										57
 									]
 								],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
+								"horizontalOffset": 8,
+								"letterSpacing": -8
 							}
 						}
 					],
-					"name": "Meidinger_16",
-					"previewText": "0123456789?!%+-./"
+					"name": "Jupiter_45",
+					"previewText": "0123456789!!!\r\n0123456789!!!"
 				},
 				{
 					"elements": [
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
+								"name": "AXIS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 101,
+									"lineHeight": 128
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 0,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										0,
+										1114111
+									]
+								],
+								"horizontalOffset": 0,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "Jupiter",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 1,
+							"size": 46.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										32,
+										1114111
+									]
+								],
+								"horizontalOffset": 0,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 5,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"onum",
+									"tnum",
+									"smcp"
+								],
+								"name": "Comic Sans MS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 2,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										32,
+										1114111
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						}
+					],
+					"name": "Jupiter_46",
+					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
+				},
+				{
+					"elements": [
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "Gulim",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 204,
+									"lineHeight": 246
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 0,
+							"size": 192.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": -30,
+								"codepointReplacements": {},
+								"codepoints": [],
+								"horizontalOffset": 0,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [],
+								"name": "Comic Sans MS",
+								"stretch": 5,
+								"style": 1,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 292.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 30,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										33,
+										33
+									]
+								],
+								"horizontalOffset": -16,
+								"letterSpacing": -40
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"onum"
+								],
+								"name": "Comic Sans MS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": true,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 192.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										48,
+										57
+									]
+								],
+								"horizontalOffset": 16,
+								"letterSpacing": -16
+							}
+						}
+					],
+					"name": "Jupiter_90",
+					"previewText": "0123456789!!!\r\n0123456789!!!"
+				},
+				{
+					"elements": [
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
 								"name": "Meidinger",
 								"stretch": 5,
 								"style": 0,
@@ -2518,12 +3694,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2540,6 +3716,162 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
+								"name": "Meidinger",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 1,
+							"size": 40.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										32,
+										1114111
+									]
+								],
+								"horizontalOffset": 0,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 2,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										0,
+										127
+									]
+								],
+								"horizontalOffset": 0,
+								"letterSpacing": 0
+							}
+						}
+					],
+					"name": "Meidinger_16",
+					"previewText": "0123456789?!%+-./"
+				},
+				{
+					"elements": [
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "Meidinger",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 86,
+									"lineHeight": 115
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 0,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										32,
+										1114111
+									]
+								],
+								"horizontalOffset": 0,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
 								"name": "Meidinger",
 								"stretch": 5,
 								"style": 0,
@@ -2566,12 +3898,12 @@
 							},
 							"renderer": 1,
 							"size": 20.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2588,6 +3920,9 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
@@ -2598,7 +3933,7 @@
 								"directwrite": {
 									"gridFitMode": 2,
 									"measureMode": 1,
-									"renderMode": 4
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -2614,12 +3949,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2627,54 +3962,6 @@
 									[
 										0,
 										127
-									]
-								],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
 									]
 								],
 								"horizontalOffset": 0,
@@ -2690,6 +3977,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "Meidinger",
 								"stretch": 5,
 								"style": 0,
@@ -2716,12 +4004,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2738,6 +4026,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "Meidinger",
 								"stretch": 5,
 								"style": 0,
@@ -2764,12 +4053,12 @@
 							},
 							"renderer": 1,
 							"size": 40.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2786,6 +4075,9 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
@@ -2796,7 +4088,7 @@
 								"directwrite": {
 									"gridFitMode": 2,
 									"measureMode": 1,
-									"renderMode": 4
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -2812,12 +4104,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2825,54 +4117,6 @@
 									[
 										0,
 										127
-									]
-								],
-								"horizontalOffset": 0,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
 									]
 								],
 								"horizontalOffset": 0,
@@ -2888,6 +4132,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "MiedingerMid",
 								"stretch": 5,
 								"style": 0,
@@ -2914,12 +4159,12 @@
 							},
 							"renderer": 1,
 							"size": 10.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2936,10 +4181,73 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 11.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
-								"weight": 700
+								"weight": 400
 							},
 							"mergeMode": 2,
 							"renderSpecific": {
@@ -2962,12 +4270,12 @@
 							},
 							"renderer": 2,
 							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2975,54 +4283,6 @@
 									[
 										32,
 										1114111
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 700
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
 									]
 								],
 								"horizontalOffset": 1,
@@ -3038,6 +4298,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "MiedingerMid",
 								"stretch": 5,
 								"style": 0,
@@ -3064,12 +4325,12 @@
 							},
 							"renderer": 1,
 							"size": 12.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3086,10 +4347,73 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 13.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
-								"weight": 700
+								"weight": 400
 							},
 							"mergeMode": 2,
 							"renderSpecific": {
@@ -3112,12 +4436,12 @@
 							},
 							"renderer": 2,
 							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3125,54 +4449,6 @@
 									[
 										32,
 										1114111
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 700
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
 									]
 								],
 								"horizontalOffset": 1,
@@ -3188,6 +4464,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "MiedingerMid",
 								"stretch": 5,
 								"style": 0,
@@ -3214,12 +4491,12 @@
 							},
 							"renderer": 1,
 							"size": 14.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3236,10 +4513,73 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 15.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
-								"weight": 700
+								"weight": 400
 							},
 							"mergeMode": 2,
 							"renderSpecific": {
@@ -3262,12 +4602,12 @@
 							},
 							"renderer": 2,
 							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3275,54 +4615,6 @@
 									[
 										32,
 										1114111
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 700
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
 									]
 								],
 								"horizontalOffset": 1,
@@ -3338,6 +4630,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "MiedingerMid",
 								"stretch": 5,
 								"style": 0,
@@ -3364,12 +4657,12 @@
 							},
 							"renderer": 1,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3386,10 +4679,73 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 18.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 2,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
-								"weight": 700
+								"weight": 400
 							},
 							"mergeMode": 2,
 							"renderSpecific": {
@@ -3412,12 +4768,12 @@
 							},
 							"renderer": 2,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3425,54 +4781,6 @@
 									[
 										32,
 										1114111
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 700
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
 									]
 								],
 								"horizontalOffset": 1,
@@ -3488,6 +4796,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -3514,12 +4823,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3536,6 +4845,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "MiedingerMid",
 								"stretch": 5,
 								"style": 0,
@@ -3562,12 +4872,12 @@
 							},
 							"renderer": 1,
 							"size": 36.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3596,6 +4906,69 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 5,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
@@ -3622,135 +4995,19 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
-								"baselineShift": 1,
+								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
-										0,
-										127
-									],
-									[
-										128,
-										255
-									],
-									[
-										256,
-										383
-									],
-									[
-										384,
-										591
-									],
-									[
-										688,
-										767
-									],
-									[
-										880,
-										1023
-									],
-									[
-										1024,
-										1279
-									],
-									[
-										7680,
-										7935
-									],
-									[
-										8192,
-										8303
-									],
-									[
-										8304,
-										8351
-									],
-									[
-										8352,
-										8399
-									],
-									[
-										8448,
-										8527
-									],
-									[
-										8528,
-										8591
-									],
-									[
-										8704,
-										8959
-									],
-									[
-										9472,
-										9599
-									],
-									[
-										9632,
-										9727
-									],
-									[
-										9728,
-										9983
-									],
-									[
-										64256,
-										64335
-									]
-								],
-								"horizontalOffset": 2,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 700
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 1,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										57
+										32,
+										1114111
 									]
 								],
 								"horizontalOffset": 2,
@@ -3766,6 +5023,56 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
+								"name": "AXIS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 96,
+									"lineHeight": 119
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 0,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										0,
+										1114111
+									]
+								],
+								"horizontalOffset": 0,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
 								"name": "TrumpGothic",
 								"stretch": 5,
 								"style": 0,
@@ -3791,13 +5098,13 @@
 								}
 							},
 							"renderer": 1,
-							"size": 18.399999618530273,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"size": 34.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3814,17 +5121,21 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
-								"name": "Comic Sans MS",
+								"features": [],
+								"name": "Noto Sans KR",
 								"stretch": 5,
 								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
 								"weight": 400
 							},
-							"mergeMode": 2,
+							"mergeMode": 1,
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
+									"measureMode": 2,
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -3839,9 +5150,68 @@
 								}
 							},
 							"renderer": 2,
-							"size": 18.0,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": -3,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 5,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
+								"name": "Comic Sans MS",
+								"stretch": 5,
+								"style": 0,
+								"weight": 400
+							},
+							"mergeMode": 2,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
 							"transformationMatrix": [
-								1.0,
+								0.6666666865348816,
 								0.0,
 								0.0,
 								1.0
@@ -3853,54 +5223,6 @@
 									[
 										32,
 										1114111
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										56
 									]
 								],
 								"horizontalOffset": 1,
@@ -3916,6 +5238,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -3942,12 +5265,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3964,6 +5287,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "TrumpGothic",
 								"stretch": 5,
 								"style": 0,
@@ -3990,12 +5314,12 @@
 							},
 							"renderer": 1,
 							"size": 34.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4012,6 +5336,69 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": -3,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 5,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
@@ -4022,7 +5409,7 @@
 								"directwrite": {
 									"gridFitMode": 2,
 									"measureMode": 1,
-									"renderMode": 4
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -4039,7 +5426,7 @@
 							"renderer": 2,
 							"size": 96.0,
 							"transformationMatrix": [
-								1.0,
+								0.6666666865348816,
 								0.0,
 								0.0,
 								1.0
@@ -4051,54 +5438,6 @@
 									[
 										32,
 										1114111
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										56
 									]
 								],
 								"horizontalOffset": 1,
@@ -4114,6 +5453,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -4140,12 +5480,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4162,6 +5502,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "TrumpGothic",
 								"stretch": 5,
 								"style": 0,
@@ -4188,12 +5529,12 @@
 							},
 							"renderer": 1,
 							"size": 34.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4210,6 +5551,69 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": -3,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 5,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
@@ -4220,7 +5624,7 @@
 								"directwrite": {
 									"gridFitMode": 2,
 									"measureMode": 1,
-									"renderMode": 4
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -4237,7 +5641,7 @@
 							"renderer": 2,
 							"size": 96.0,
 							"transformationMatrix": [
-								1.0,
+								0.6666666865348816,
 								0.0,
 								0.0,
 								1.0
@@ -4254,54 +5658,6 @@
 								"horizontalOffset": 1,
 								"letterSpacing": 0
 							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										56
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
 						}
 					],
 					"name": "TrumpGothic_34",
@@ -4312,6 +5668,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "AXIS",
 								"stretch": 5,
 								"style": 0,
@@ -4338,12 +5695,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4360,6 +5717,7 @@
 						{
 							"gamma": 1.0,
 							"lookup": {
+								"features": [],
 								"name": "TrumpGothic",
 								"stretch": 5,
 								"style": 0,
@@ -4386,12 +5744,12 @@
 							},
 							"renderer": 1,
 							"size": 68.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4408,6 +5766,69 @@
 						{
 							"gamma": 1.399999976158142,
 							"lookup": {
+								"features": [],
+								"name": "Noto Sans KR",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 1,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 2,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 96.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": -3,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										4352,
+										4607
+									],
+									[
+										12592,
+										12687
+									],
+									[
+										44032,
+										55215
+									]
+								],
+								"horizontalOffset": 5,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.399999976158142,
+							"lookup": {
+								"features": [
+									"tnum"
+								],
 								"name": "Comic Sans MS",
 								"stretch": 5,
 								"style": 0,
@@ -4418,7 +5839,7 @@
 								"directwrite": {
 									"gridFitMode": 2,
 									"measureMode": 1,
-									"renderMode": 4
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -4435,7 +5856,7 @@
 							"renderer": 2,
 							"size": 96.0,
 							"transformationMatrix": [
-								1.0,
+								0.6666669845581055,
 								0.0,
 								0.0,
 								1.0
@@ -4452,58 +5873,10 @@
 								"horizontalOffset": 1,
 								"letterSpacing": 0
 							}
-						},
-						{
-							"gamma": 1.399999976158142,
-							"lookup": {
-								"name": "Comic Mono",
-								"stretch": 5,
-								"style": 0,
-								"weight": 400
-							},
-							"mergeMode": 2,
-							"renderSpecific": {
-								"directwrite": {
-									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
-								},
-								"empty": {
-									"ascent": 0,
-									"lineHeight": 0
-								},
-								"freetype": {
-									"forceAutohint": false,
-									"noAutohint": true,
-									"noBitmap": false,
-									"noHinting": false,
-									"renderMode": 1
-								}
-							},
-							"renderer": 3,
-							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
-							"wrapModifiers": {
-								"baselineShift": 0,
-								"codepointReplacements": {},
-								"codepoints": [
-									[
-										48,
-										56
-									]
-								],
-								"horizontalOffset": 1,
-								"letterSpacing": 0
-							}
 						}
 					],
 					"name": "TrumpGothic_68",
-					"previewText": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
+					"previewText": "Character\r\n!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\r\n0英en-US: _The_ (89) quick brown foxes jump over the [01] lazy dogs.\r\n1日ja-JP: _パングラム_(pangram)で[23]つの字体（フォント）をテストします。\r\n2中zh-CN: _(天)地玄黃_，宇[宙]洪荒。蓋此身髮，4大5常。\r\n3韓ko-KR: 45 _다(람)쥐_ 67 헌 쳇바퀴에 타[고]파.\r\n4露ru-RU: Съешь (ж)е ещё этих мягких 23 [ф]ранцузских булок да 45 выпей чаю.\r\n5泰th-TH: เป็นมนุษย์สุดประเสริฐเลิศคุณค่า\r\n6\r\n7\r\n8\r\n9\r\n\r\n\r\n"
 				}
 			],
 			"sideLength": 4096,
