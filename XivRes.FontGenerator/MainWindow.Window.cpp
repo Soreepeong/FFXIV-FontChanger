@@ -421,6 +421,7 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		setState(ID_EXPORT_GLYPHS, notEmpty);
 		setState(ID_EXPORT_GLYPHSWITHADJUSTMENTS, notEmpty);
 		setState(ID_EXPORT_FACEGLYPHS, m_pActiveFace != nullptr);
+		setState(ID_EXPORT_FACEOPENTYPE, m_pActiveFace != nullptr);
 	}
 	{
 		constexpr std::pair<UINT, xivres::fontgen::vertical_alignment> alignmentItems[]{
@@ -661,6 +662,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EXPORT_GLYPHS: return Menu_Export_Glyphs(false);
 				case ID_EXPORT_GLYPHSWITHADJUSTMENTS: return Menu_Export_Glyphs(true);
 				case ID_EXPORT_FACEGLYPHS: return Menu_Export_FaceGlyphs();
+				case ID_EXPORT_FACEOPENTYPE: return Menu_Export_FaceOpenType();
 				case ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING: return Menu_Export_TTMP(CompressionMode::CompressWhilePacking);
 				case ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING: return Menu_Export_TTMP(CompressionMode::CompressAfterPacking);
 				case ID_EXPORT_TOTTMP_DONOTCOMPRESS: return Menu_Export_TTMP(CompressionMode::DoNotCompress);

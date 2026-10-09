@@ -150,6 +150,7 @@ namespace App {
 		LRESULT Menu_Export_MapFontTCAxis();
 		LRESULT Menu_Export_Glyphs(bool withAdjustments);
 		LRESULT Menu_Export_FaceGlyphs();
+		LRESULT Menu_Export_FaceOpenType();
 
 		LRESULT Menu_HotReload_Reload(bool restore);
 		LRESULT Menu_HotReload_Font(xivres::font_type mode);

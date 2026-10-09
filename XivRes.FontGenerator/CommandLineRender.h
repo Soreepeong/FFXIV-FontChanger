@@ -11,6 +11,10 @@ namespace App {
 	//
 	//   XivRes.FontGenerator64.exe <config.json> --export-glyphs <folder> [--font <name>] [--element <index> [--with-adjustments]] [--no-svg] [--no-png]
 	//
+	// Also writes a font as an OpenType font:
+	//
+	//   XivRes.FontGenerator64.exe <config.json> --export-opentype <font.otf> [--font <name>]
+	//
 	// Returns the exit code of the process, or nothing if the arguments do not ask for rendering.
 	std::optional<int> RunCommandLineRender(const std::vector<std::wstring>& args);
 }

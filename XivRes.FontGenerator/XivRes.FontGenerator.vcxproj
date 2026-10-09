@@ -239,6 +239,8 @@
     <ClCompile Include="MainWindow.Window.cpp" />
     <ClCompile Include="MiscUtil.cpp" />
     <ClCompile Include="NegativeBearingCodepointsDialog.cpp" />
+    <ClCompile Include="OpenTypeLayout.cpp" />
+    <ClCompile Include="OpenTypeWriter.cpp" />
     <ClCompile Include="ProgressDialog.cpp" />
     <ClCompile Include="Structs.cpp" />
     <ClCompile Include="WicImage.cpp" />
@@ -270,6 +272,8 @@
     <ClInclude Include="MainWindow.Internal.h" />
     <ClInclude Include="MiscUtil.h" />
     <ClInclude Include="NegativeBearingCodepointsDialog.h" />
+    <ClInclude Include="OpenTypeLayout.h" />
+    <ClInclude Include="OpenTypeWriter.h" />
     <ClInclude Include="ProgressDialog.h" />
     <ClInclude Include="Structs.h" />
     <ClInclude Include="WicImage.h" />

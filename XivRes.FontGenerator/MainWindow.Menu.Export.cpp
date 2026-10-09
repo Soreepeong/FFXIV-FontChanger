@@ -469,3 +469,55 @@ LRESULT App::FontEditorWindow::Menu_Export_MapFontTCAxis() {
 	Changes_MarkDirty();
 	return 0;
 }
+
+LRESULT App::FontEditorWindow::Menu_Export_FaceOpenType() {
+	if (!m_pActiveFace)
+		return 0;
+
+	static constexpr COMDLG_FILTERSPEC fileTypes[] = {
+		{L"OpenType font (*.otf)", L"*.otf"},
+		{L"All files (*.*)", L"*"},
+	};
+	const auto fileTypesSpan = std::span(fileTypes);
+
+	return TryCatchShowError<ProgressDialog::ProgressDialogCancelledError>(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
+		IFileSaveDialogPtr pDialog;
+		DWORD dwFlags;
+		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER));
+		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_Export));
+		SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(fileTypesSpan.size()), fileTypesSpan.data()));
+		SuccessOrThrow(pDialog->SetFileTypeIndex(0));
+		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTOPENTYPE)).c_str()));
+		SuccessOrThrow(pDialog->SetFileName(std::format(L"{}.otf", xivres::util::unicode::convert<std::wstring>(m_pActiveFace->Name)).c_str()));
+		SuccessOrThrow(pDialog->SetDefaultExtension(L"otf"));
+		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
+		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
+		switch (SuccessOrThrow(pDialog->Show(m_hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
+			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
+				return 0;
+		}
+
+		std::filesystem::path path;
+		{
+			IShellItemPtr pResult;
+			PWSTR pszFileName;
+			SuccessOrThrow(pDialog->GetResult(&pResult));
+			SuccessOrThrow(pResult->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName));
+			if (!pszFileName)
+				throw std::runtime_error("DEBUG: The selected file does not have a filesystem path.");
+
+			path = pszFileName;
+			CoTaskMemFree(pszFileName);
+		}
+
+		ProgressDialog progressDialog(m_hWnd, std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTOPENTYPE)));
+		Structs::WriteOpenTypeFile(*m_pActiveFace, path, [&](size_t done, size_t total) {
+			progressDialog.ThrowIfCancelled();
+			if (done % 64 == 0 || done == total) {
+				progressDialog.UpdateStatusMessage(std::vformat(GetStringResource(IDS_EXPORTPROGRESS_GLYPHS), std::make_wformat_args(done, total)));
+				progressDialog.UpdateProgress(total ? static_cast<float>(done) / static_cast<float>(total) : 1.f);
+			}
+		});
+		return 0;
+	});
+}

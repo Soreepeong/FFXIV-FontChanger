@@ -121,6 +121,7 @@ BEGIN
         MENUITEM "导出所选元素的字形(&G)...",          ID_EXPORT_GLYPHS
         MENUITEM "导出所选元素的字形（含调整）(&J)...",    ID_EXPORT_GLYPHSWITHADJUSTMENTS
         MENUITEM "导出当前字体的合并字形(&E)...",        ID_EXPORT_FACEGLYPHS
+        MENUITEM "将当前字体导出为 OpenType 字体(&O)...", ID_EXPORT_FACEOPENTYPE
         MENUITEM SEPARATOR
         MENUITEM "同时替换登录界面字体(&M)",              ID_EXPORT_MAPFONTLOBBY
         MENUITEM "同时替换中文字体(&C)",                ID_EXPORT_MAPFONTCHNAXIS
@@ -561,6 +562,7 @@ END
 STRINGTABLE
 BEGIN
     IDS_WINDOWTITLE_EXPORTGLYPHS "导出字形"
+    IDS_WINDOWTITLE_EXPORTOPENTYPE "导出 OpenType 字体"
     IDS_EXPORTPROGRESS_GLYPHS "正在写入字形（{} / {}）..."
     IDS_RENDERER_GLYPHIMAGES "SVG/PNG 字形"
     IDS_GLYPHIMAGES_INFO    "{} 个字形，跳过 {} 个"
@@ -1029,6 +1031,7 @@ BEGIN
         MENUITEM "선택한 요소의 글리프 내보내기(&G)...",     ID_EXPORT_GLYPHS
         MENUITEM "선택한 요소의 글리프를 조정 포함하여 내보내기(&J)...", ID_EXPORT_GLYPHSWITHADJUSTMENTS
         MENUITEM "현재 폰트의 합쳐진 글리프 내보내기(&E)...", ID_EXPORT_FACEGLYPHS
+        MENUITEM "현재 폰트를 OpenType 폰트로 내보내기(&O)...", ID_EXPORT_FACEOPENTYPE
         MENUITEM SEPARATOR
         MENUITEM "일반 용도 폰트를 로비에서도 사용하기 (font_lobby 접근 시 font 사용)(&M)", ID_EXPORT_MAPFONTLOBBY
         MENUITEM "일반 용도 폰트를 ChnAXIS{}에도 사용하기(&C)", ID_EXPORT_MAPFONTCHNAXIS
@@ -1494,6 +1497,7 @@ END
 STRINGTABLE
 BEGIN
     IDS_WINDOWTITLE_EXPORTGLYPHS "글리프 내보내기"
+    IDS_WINDOWTITLE_EXPORTOPENTYPE "OpenType 폰트 내보내기"
     IDS_EXPORTPROGRESS_GLYPHS "글리프를 쓰는 중 ({} / {})..."
     IDS_RENDERER_GLYPHIMAGES "SVG/PNG 글리프"
     IDS_GLYPHIMAGES_INFO    "글리프 {}개, 건너뜀 {}개"
@@ -1823,6 +1827,7 @@ BEGIN
         MENUITEM "Export &Glyphs of Selected Elements...", ID_EXPORT_GLYPHS
         MENUITEM "Export Glyphs of Selected Elements with Ad&justments...", ID_EXPORT_GLYPHSWITHADJUSTMENTS
         MENUITEM "Export Merged Glyphs of Curr&ent Font...", ID_EXPORT_FACEGLYPHS
+        MENUITEM "Export Current Font as &OpenType Font...", ID_EXPORT_FACEOPENTYPE
         MENUITEM SEPARATOR
         MENUITEM "Additionally &map font_lobby{} to font{}", ID_EXPORT_MAPFONTLOBBY
         MENUITEM "Additionally map &ChnAXIS{} to font{}(AXIS)", ID_EXPORT_MAPFONTCHNAXIS
@@ -2399,6 +2404,7 @@ END
 STRINGTABLE
 BEGIN
     IDS_WINDOWTITLE_EXPORTGLYPHS "Export Glyphs"
+    IDS_WINDOWTITLE_EXPORTOPENTYPE "Export OpenType Font"
     IDS_EXPORTPROGRESS_GLYPHS "Writing glyphs ({} / {})..."
     IDS_RENDERER_GLYPHIMAGES "SVG/PNG Glyphs"
     IDS_GLYPHIMAGES_INFO    "{} glyphs, {} skipped"

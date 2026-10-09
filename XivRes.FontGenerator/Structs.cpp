@@ -5,6 +5,7 @@
 
 #include "FontGeneratorConfig.h"
 #include "GlyphFiles.h"
+#include "OpenTypeWriter.h"
 #include "resource.h"
 
 static std::map<xivres::font_type, xivres::fontgen::game_fontdata_set> s_fontSetCache;
@@ -1078,6 +1079,78 @@ void App::Structs::swap(Face& l, Face& r) noexcept {
 	swap(l.VerticalAlignment, r.VerticalAlignment);
 	swap(l.DeactivatedElements, r.DeactivatedElements);
 	swap(l.PreviewMergedFont, r.PreviewMergedFont);
+}
+
+// Returns the layout source of an element, or null if its glyphs keep no rules: those of other renderers, those that
+// glyph merging or monospacing remakes, and those whose transformation turns positions away from the horizontal.
+static std::shared_ptr<const App::OpenTypeWriter::LayoutSource> CreateLayoutSource(const App::Structs::FaceElement& element) {
+	using App::Structs::RendererEnum;
+	if (element.Renderer != RendererEnum::DirectWrite && element.Renderer != RendererEnum::FreeType)
+		return nullptr;
+	if (element.GlyphMerging.IsEnabled() || element.WrapModifiers.Monospacing.is_enabled())
+		return nullptr;
+
+	try {
+		const auto [factory, dwriteFont] = element.Lookup.ResolveFont();
+		auto synthesis = element.Lookup.ResolveSynthesis(element.Renderer, dwriteFont);
+
+		// DirectWrite slants by its simulation, by as much as FreeType does by the matrix.
+		if (element.Renderer == RendererEnum::DirectWrite && (synthesis.Simulations.value_or(dwriteFont->GetSimulations()) & DWRITE_FONT_SIMULATIONS_OBLIQUE))
+			synthesis.Oblique = true;
+		const auto screen = MultiplyMatrix(element.Transform.GetScreenMatrix(element.Renderer), synthesis.GetScreenMatrix());
+		if (std::abs(screen.M21) > 1e-6f || screen.M11 <= 0.f || screen.M22 <= 0.f)
+			return nullptr;
+
+		auto [stream, faceIndex, variations] = ReadFontStream(dwriteFont);
+		auto res = std::make_shared<App::OpenTypeWriter::LayoutSource>();
+		res->FileData = std::make_shared<const std::vector<uint8_t>>(stream->read_vector<uint8_t>());
+		res->FaceIndex = faceIndex;
+
+		// As the renderers do: the instance, then the axes of the synthesis, and then those that the user set; the
+		// optical size follows the font size unless the user set it.
+		const auto userAxes = element.Lookup.GetVariationAxisValues();
+		for (const auto& [tag, value] : synthesis.AxisValues)
+			variations[tag] = value;
+		for (const auto& [tag, value] : userAxes)
+			variations[tag] = value;
+		if (!userAxes.contains(DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE))
+			variations[DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE] = element.Size;
+		for (const auto& [tag, value] : variations)
+			res->AxisValues.emplace(_byteswap_ulong(tag), value);
+
+		res->Font = element.GetBaseFont()->get_threadsafe_view();
+		res->ScreenMatrix = screen;
+		res->LetterSpacing = static_cast<int>(std::lround(element.WrapModifiers.LetterSpacing));
+		res->HorizontalOffset = static_cast<int>(std::lround(element.WrapModifiers.HorizontalOffset));
+		res->BaselineShift = static_cast<int>(std::lround(element.WrapModifiers.BaselineShift));
+		res->CodepointReplacements = element.WrapModifiers.CodepointReplacements;
+		for (const auto& [tag, value] : element.Lookup.Features)
+			res->Features.emplace(_byteswap_ulong(tag), value);
+		res->Language = element.Lookup.Language;
+
+		res->Key = std::format("{}:{}:{}:{}", element.GetBaseFontKey(), res->LetterSpacing, res->HorizontalOffset, res->BaselineShift);
+		for (const auto& [from, to] : res->CodepointReplacements)
+			res->Key += std::format(":{:X}={:X}", static_cast<uint32_t>(from), static_cast<uint32_t>(to));
+		return res;
+	} catch (...) {
+		return nullptr;
+	}
+}
+
+void App::Structs::WriteOpenTypeFile(const Face& face, const std::filesystem::path& path, const std::function<void(size_t, size_t)>& progress) {
+	// Drawn with a view of its own, as the preview may draw the merged font meanwhile.
+	const auto font = face.GetMergedFont()->get_threadsafe_view();
+	OpenTypeWriter::Options options{.FamilyName = face.Name};
+	for (const auto& element : face.Elements)
+		options.LayoutSources.push_back(CreateLayoutSource(*element));
+	const auto data = OpenTypeWriter::Write(*font, options, progress);
+
+	std::ofstream out(path, std::ios::binary);
+	if (!out)
+		throw std::runtime_error(std::format("Failed to open {}.", xivres::util::unicode::convert<std::string>(path.wstring())));
+	out.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
+	if (!out)
+		throw std::runtime_error(std::format("Failed to write {}.", xivres::util::unicode::convert<std::string>(path.wstring())));
 }
 
 void App::Structs::FontSet::FlushCache() {

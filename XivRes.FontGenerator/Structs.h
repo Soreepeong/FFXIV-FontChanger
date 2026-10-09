@@ -249,6 +249,9 @@ namespace App::Structs {
 
 	void swap(Face& l, Face& r) noexcept;
 
+	// Writes the merged font of a face as an OpenType font named after the face; see OpenTypeWriter::Write.
+	void WriteOpenTypeFile(const Face& face, const std::filesystem::path& path, const std::function<void(size_t, size_t)>& progress = {});
+
 	struct FontSet {
 		std::string TexFilenameFormat;
 		int DiscardStep = 1;

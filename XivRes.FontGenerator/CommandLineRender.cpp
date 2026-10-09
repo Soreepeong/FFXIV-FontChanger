@@ -37,7 +37,7 @@ namespace {
 	}
 
 	int Render(const std::vector<std::wstring>& args) {
-		std::optional<std::wstring> text, output, fontName, exportFolder;
+		std::optional<std::wstring> text, output, fontName, exportFolder, exportOpenType;
 		std::optional<int> maxWidth;
 		std::optional<size_t> elementIndex;
 		auto withAdjustments = false, exportSvg = true, exportPng = true;
@@ -57,6 +57,8 @@ namespace {
 				maxWidth = std::stoi(takeValue());
 			else if (args[i] == L"--export-glyphs")
 				exportFolder = takeValue();
+			else if (args[i] == L"--export-opentype")
+				exportOpenType = takeValue();
 			else if (args[i] == L"--element")
 				elementIndex = std::stoul(takeValue());
 			else if (args[i] == L"--with-adjustments")
@@ -70,7 +72,7 @@ namespace {
 		}
 		if (args.size() < 2 || args[1].starts_with(L"--"))
 			throw std::invalid_argument("The first argument must be the path of a configuration file.");
-		if (!output && !exportFolder)
+		if (!output && !exportFolder && !exportOpenType)
 			throw std::invalid_argument("--output is required.");
 
 		const auto configPath = std::filesystem::absolute(std::filesystem::path(args[1]));
@@ -107,6 +109,11 @@ namespace {
 				.WithAdjustments = withAdjustments || !element,
 				.Source = element ? App::GlyphFiles::DescribeSource(*element) : App::GlyphFiles::DescribeSource(*face),
 			});
+			if (!output && !exportOpenType)
+				return 0;
+		}
+		if (exportOpenType) {
+			App::Structs::WriteOpenTypeFile(*face, *exportOpenType);
 			if (!output)
 				return 0;
 		}
@@ -127,7 +134,7 @@ namespace {
 }
 
 std::optional<int> App::RunCommandLineRender(const std::vector<std::wstring>& args) {
-	if (std::ranges::find(args, L"--render-text") == args.end() && std::ranges::find(args, L"--export-glyphs") == args.end())
+	if (std::ranges::find(args, L"--render-text") == args.end() && std::ranges::find(args, L"--export-glyphs") == args.end() && std::ranges::find(args, L"--export-opentype") == args.end())
 		return std::nullopt;
 
 	// Nobody may be there to dismiss a dialog; elements whose game installation is missing are drawn empty.
