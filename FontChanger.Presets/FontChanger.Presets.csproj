@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>0.0.0.1</Version>
+    <RootNamespace>FontChanger.Presets</RootNamespace>
+    <Description>Reads FontChanger presets (XivRes.FontGenerator JSON); without dependencies, for other solutions to include this repository as a submodule.</Description>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <!-- The solution builds it as x64; any platform runs it. -->
+    <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
+  </PropertyGroup>
+</Project>

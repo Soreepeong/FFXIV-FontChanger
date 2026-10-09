@@ -365,18 +365,10 @@
 									},
 									{
 										"codepoints": "",
-										"customAdvance": 1000.0,
-										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
-										"customTextArea": [
-											443.0,
-											111.0,
-											900.0,
-											880.0
-										],
-										"shape": "custom",
+										"shape": "ime",
 										"textMode": "subtract",
 										"texts": [
-											"A"
+											"_A"
 										]
 									}
 								],
@@ -421,7 +413,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 11.0,
+							"size": 9.6,
 							"transform": {
 								"rotation": 0.0,
 								"scaleX": 1.0,
@@ -469,7 +461,7 @@
 										57577
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -834,18 +826,10 @@
 									},
 									{
 										"codepoints": "",
-										"customAdvance": 1000.0,
-										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
-										"customTextArea": [
-											443.0,
-											111.0,
-											900.0,
-											880.0
-										],
-										"shape": "custom",
+										"shape": "ime",
 										"textMode": "subtract",
 										"texts": [
-											"A"
+											"_A"
 										]
 									}
 								],
@@ -890,7 +874,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 13.0,
+							"size": 12.0,
 							"transform": {
 								"rotation": 0.0,
 								"scaleX": 1.0,
@@ -938,7 +922,7 @@
 										57577
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -1053,7 +1037,7 @@
 										55215
 									]
 								],
-								"horizontalOffset": 2,
+								"horizontalOffset": 1,
 								"letterSpacing": 0
 							}
 						},
@@ -1303,18 +1287,10 @@
 									},
 									{
 										"codepoints": "",
-										"customAdvance": 1000.0,
-										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
-										"customTextArea": [
-											443.0,
-											111.0,
-											900.0,
-											880.0
-										],
-										"shape": "custom",
+										"shape": "ime",
 										"textMode": "subtract",
 										"texts": [
-											"A"
+											"_A"
 										]
 									}
 								],
@@ -1359,7 +1335,7 @@
 								}
 							},
 							"renderer": 2,
-							"size": 15.0,
+							"size": 14.0,
 							"transform": {
 								"rotation": 0.0,
 								"scaleX": 1.0,
@@ -1407,7 +1383,7 @@
 										57577
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -1522,7 +1498,7 @@
 										55215
 									]
 								],
-								"horizontalOffset": 2,
+								"horizontalOffset": 1,
 								"letterSpacing": 0
 							}
 						},
@@ -1769,18 +1745,10 @@
 									},
 									{
 										"codepoints": "",
-										"customAdvance": 1000.0,
-										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
-										"customTextArea": [
-											443.0,
-											111.0,
-											900.0,
-											880.0
-										],
-										"shape": "custom",
+										"shape": "ime",
 										"textMode": "subtract",
 										"texts": [
-											"A"
+											"_A"
 										]
 									}
 								],
@@ -1873,7 +1841,7 @@
 										57577
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -2382,18 +2350,10 @@
 									},
 									{
 										"codepoints": "",
-										"customAdvance": 1000.0,
-										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
-										"customTextArea": [
-											443.0,
-											111.0,
-											900.0,
-											880.0
-										],
-										"shape": "custom",
+										"shape": "ime",
 										"textMode": "subtract",
 										"texts": [
-											"A"
+											"_A"
 										]
 									}
 								],

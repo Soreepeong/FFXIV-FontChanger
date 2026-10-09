@@ -39,13 +39,13 @@
 								}
 							},
 							"renderer": 1,
-							"size": 9.600000381469727,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"size": 9.6,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -89,12 +89,12 @@
 							},
 							"renderer": 2,
 							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -148,12 +148,12 @@
 							},
 							"renderer": 2,
 							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -170,6 +170,10 @@
 						{
 							"gamma": 1.399999976158142,
 							"glyphMerging": {
+								"fitMode": "condenseThenShrink",
+								"letterSpacing": 0.0,
+								"lineAlignment": "center",
+								"lineSpacing": 0.0,
 								"mappings": [
 									{
 										"codepoints": "",
@@ -355,21 +359,24 @@
 									},
 									{
 										"codepoints": "",
-										"customAdvance": 1000.0,
-										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
-										"customTextArea": [
-											443.0,
-											111.0,
-											900.0,
-											880.0
-										],
-										"shape": "custom",
+										"shape": "ime",
 										"textMode": "subtract",
 										"texts": [
-											"A"
+											"_A"
 										]
 									}
-								]
+								],
+								"textOffset": [
+									0.0,
+									0.0
+								],
+								"textSize": null,
+								"textTransform": {
+									"rotation": 0.0,
+									"scaleX": 1.0,
+									"scaleY": 1.0,
+									"skew": 0.0
+								}
 							},
 							"lookup": {
 								"features": [
@@ -400,13 +407,13 @@
 								}
 							},
 							"renderer": 2,
-							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"size": 9.6,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -448,7 +455,7 @@
 										57577
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -488,12 +495,12 @@
 							},
 							"renderer": 1,
 							"size": 12.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -537,12 +544,12 @@
 							},
 							"renderer": 2,
 							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -596,12 +603,12 @@
 							},
 							"renderer": 2,
 							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -618,6 +625,10 @@
 						{
 							"gamma": 1.399999976158142,
 							"glyphMerging": {
+								"fitMode": "condenseThenShrink",
+								"letterSpacing": 0.0,
+								"lineAlignment": "center",
+								"lineSpacing": 0.0,
 								"mappings": [
 									{
 										"codepoints": "",
@@ -803,21 +814,24 @@
 									},
 									{
 										"codepoints": "",
-										"customAdvance": 1000.0,
-										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
-										"customTextArea": [
-											443.0,
-											111.0,
-											900.0,
-											880.0
-										],
-										"shape": "custom",
+										"shape": "ime",
 										"textMode": "subtract",
 										"texts": [
-											"A"
+											"_A"
 										]
 									}
-								]
+								],
+								"textOffset": [
+									0.0,
+									0.0
+								],
+								"textSize": null,
+								"textTransform": {
+									"rotation": 0.0,
+									"scaleX": 1.0,
+									"scaleY": 1.0,
+									"skew": 0.0
+								}
 							},
 							"lookup": {
 								"features": [
@@ -848,13 +862,13 @@
 								}
 							},
 							"renderer": 2,
-							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"size": 12.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -896,7 +910,7 @@
 										57577
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -936,12 +950,12 @@
 							},
 							"renderer": 1,
 							"size": 14.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -985,12 +999,12 @@
 							},
 							"renderer": 2,
 							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1044,12 +1058,12 @@
 							},
 							"renderer": 2,
 							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1066,6 +1080,10 @@
 						{
 							"gamma": 1.399999976158142,
 							"glyphMerging": {
+								"fitMode": "condenseThenShrink",
+								"letterSpacing": 0.0,
+								"lineAlignment": "center",
+								"lineSpacing": 0.0,
 								"mappings": [
 									{
 										"codepoints": "",
@@ -1251,21 +1269,24 @@
 									},
 									{
 										"codepoints": "",
-										"customAdvance": 1000.0,
-										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
-										"customTextArea": [
-											443.0,
-											111.0,
-											900.0,
-											880.0
-										],
-										"shape": "custom",
+										"shape": "ime",
 										"textMode": "subtract",
 										"texts": [
-											"A"
+											"_A"
 										]
 									}
-								]
+								],
+								"textOffset": [
+									0.0,
+									0.0
+								],
+								"textSize": null,
+								"textTransform": {
+									"rotation": 0.0,
+									"scaleX": 1.0,
+									"scaleY": 1.0,
+									"skew": 0.0
+								}
 							},
 							"lookup": {
 								"features": [
@@ -1296,13 +1317,13 @@
 								}
 							},
 							"renderer": 2,
-							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"size": 14.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1344,7 +1365,7 @@
 										57577
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -1384,12 +1405,12 @@
 							},
 							"renderer": 1,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1433,12 +1454,12 @@
 							},
 							"renderer": 2,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1492,12 +1513,12 @@
 							},
 							"renderer": 2,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1514,6 +1535,10 @@
 						{
 							"gamma": 1.399999976158142,
 							"glyphMerging": {
+								"fitMode": "condenseThenShrink",
+								"letterSpacing": 0.0,
+								"lineAlignment": "center",
+								"lineSpacing": 0.0,
 								"mappings": [
 									{
 										"codepoints": "",
@@ -1699,21 +1724,24 @@
 									},
 									{
 										"codepoints": "",
-										"customAdvance": 1000.0,
-										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
-										"customTextArea": [
-											443.0,
-											111.0,
-											900.0,
-											880.0
-										],
-										"shape": "custom",
+										"shape": "ime",
 										"textMode": "subtract",
 										"texts": [
-											"A"
+											"_A"
 										]
 									}
-								]
+								],
+								"textOffset": [
+									0.0,
+									0.0
+								],
+								"textSize": null,
+								"textTransform": {
+									"rotation": 0.0,
+									"scaleX": 1.0,
+									"scaleY": 1.0,
+									"skew": 0.0
+								}
 							},
 							"lookup": {
 								"features": [
@@ -1745,12 +1773,12 @@
 							},
 							"renderer": 2,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1792,7 +1820,7 @@
 										57577
 									]
 								],
-								"horizontalOffset": 1,
+								"horizontalOffset": 0,
 								"letterSpacing": 0
 							}
 						}
@@ -1832,12 +1860,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1881,12 +1909,12 @@
 							},
 							"renderer": 1,
 							"size": 36.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1930,12 +1958,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -1979,12 +2007,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2038,12 +2066,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2087,12 +2115,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2109,6 +2137,10 @@
 						{
 							"gamma": 1.399999976158142,
 							"glyphMerging": {
+								"fitMode": "condenseThenShrink",
+								"letterSpacing": 0.0,
+								"lineAlignment": "center",
+								"lineSpacing": 0.0,
 								"mappings": [
 									{
 										"codepoints": "",
@@ -2294,21 +2326,24 @@
 									},
 									{
 										"codepoints": "",
-										"customAdvance": 1000.0,
-										"customPath": "M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z M120,783 L400,783 L400,876 L120,876 Z",
-										"customTextArea": [
-											443.0,
-											111.0,
-											900.0,
-											880.0
-										],
-										"shape": "custom",
+										"shape": "ime",
 										"textMode": "subtract",
 										"texts": [
-											"A"
+											"_A"
 										]
 									}
-								]
+								],
+								"textOffset": [
+									0.0,
+									0.0
+								],
+								"textSize": null,
+								"textTransform": {
+									"rotation": 0.0,
+									"scaleX": 1.0,
+									"scaleY": 1.0,
+									"skew": 0.0
+								}
 							},
 							"lookup": {
 								"features": [
@@ -2340,12 +2375,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2427,12 +2462,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2476,12 +2511,12 @@
 							},
 							"renderer": 1,
 							"size": 46.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2525,12 +2560,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2586,12 +2621,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2641,12 +2676,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2690,12 +2725,12 @@
 							},
 							"renderer": 1,
 							"size": 46.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2739,12 +2774,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2800,12 +2835,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2855,12 +2890,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2904,12 +2939,12 @@
 							},
 							"renderer": 1,
 							"size": 46.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -2953,12 +2988,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3014,12 +3049,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3069,12 +3104,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": -30,
 								"codepointReplacements": {},
@@ -3113,12 +3148,12 @@
 							},
 							"renderer": 2,
 							"size": 146.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 15,
 								"codepointReplacements": {},
@@ -3164,12 +3199,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3219,12 +3254,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3268,12 +3303,12 @@
 							},
 							"renderer": 1,
 							"size": 46.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3317,12 +3352,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3378,12 +3413,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3433,12 +3468,12 @@
 							},
 							"renderer": 0,
 							"size": 192.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": -30,
 								"codepointReplacements": {},
@@ -3477,12 +3512,12 @@
 							},
 							"renderer": 2,
 							"size": 292.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 30,
 								"codepointReplacements": {},
@@ -3528,12 +3563,12 @@
 							},
 							"renderer": 2,
 							"size": 192.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3583,12 +3618,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3632,12 +3667,12 @@
 							},
 							"renderer": 1,
 							"size": 40.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3683,12 +3718,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3738,12 +3773,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3787,12 +3822,12 @@
 							},
 							"renderer": 1,
 							"size": 20.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3838,12 +3873,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3893,12 +3928,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3942,12 +3977,12 @@
 							},
 							"renderer": 1,
 							"size": 40.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -3993,12 +4028,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4048,12 +4083,12 @@
 							},
 							"renderer": 1,
 							"size": 10.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4097,12 +4132,12 @@
 							},
 							"renderer": 2,
 							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4156,12 +4191,12 @@
 							},
 							"renderer": 2,
 							"size": 11.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4211,12 +4246,12 @@
 							},
 							"renderer": 1,
 							"size": 12.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4260,12 +4295,12 @@
 							},
 							"renderer": 2,
 							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4319,12 +4354,12 @@
 							},
 							"renderer": 2,
 							"size": 13.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4374,12 +4409,12 @@
 							},
 							"renderer": 1,
 							"size": 14.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4423,12 +4458,12 @@
 							},
 							"renderer": 2,
 							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4482,12 +4517,12 @@
 							},
 							"renderer": 2,
 							"size": 15.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4537,12 +4572,12 @@
 							},
 							"renderer": 1,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4586,12 +4621,12 @@
 							},
 							"renderer": 2,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4645,12 +4680,12 @@
 							},
 							"renderer": 2,
 							"size": 18.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4700,12 +4735,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4749,12 +4784,12 @@
 							},
 							"renderer": 1,
 							"size": 36.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4810,12 +4845,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4869,12 +4904,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4924,12 +4959,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -4973,12 +5008,12 @@
 							},
 							"renderer": 1,
 							"size": 34.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -5022,12 +5057,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": -3,
 								"codepointReplacements": {},
@@ -5136,12 +5171,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -5185,12 +5220,12 @@
 							},
 							"renderer": 1,
 							"size": 34.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -5234,12 +5269,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": -3,
 								"codepointReplacements": {},
@@ -5348,12 +5383,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -5397,12 +5432,12 @@
 							},
 							"renderer": 1,
 							"size": 34.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -5446,12 +5481,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": -3,
 								"codepointReplacements": {},
@@ -5560,12 +5595,12 @@
 							},
 							"renderer": 0,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -5609,12 +5644,12 @@
 							},
 							"renderer": 1,
 							"size": 68.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": 0,
 								"codepointReplacements": {},
@@ -5658,12 +5693,12 @@
 							},
 							"renderer": 2,
 							"size": 96.0,
-							"transformationMatrix": [
-								1.0,
-								0.0,
-								0.0,
-								1.0
-							],
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
 							"wrapModifiers": {
 								"baselineShift": -3,
 								"codepointReplacements": {},

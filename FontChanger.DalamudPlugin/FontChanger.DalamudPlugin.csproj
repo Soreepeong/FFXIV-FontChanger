@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <Version>0.0.0.1</Version>
+    <RootNamespace>CustomFonts</RootNamespace>
+    <Description>Renders the game's UI text with DirectWrite glyphs rasterized on demand, instead of the prebaked font atlases.</Description>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Dalamud runs on Windows 10 and later; APIs of later versions are checked for where they are used. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Rendering\FontEdgePS.hlsl" LogicalName="CustomFonts.Rendering.FontEdgePS.hlsl" />
+    <!-- The built-in shapes of glyph merging, shared with xivres.fontgen. -->
+    <EmbeddedResource Include="..\xivres\xivres.fontgen\data\glyph_merge_shapes.json" LogicalName="CustomFonts.Rendering.glyph_merge_shapes.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FontChanger.Presets\FontChanger.Presets.csproj" />
+    <Using Include="FontChanger.Presets" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- FreeType, with its native library; for elements a preset draws with FreeType, and bitmap-only fonts. -->
+    <PackageReference Include="FreeTypeSharp" Version="3.1.0" />
+  </ItemGroup>
+  <PropertyGroup>
+    <!-- The game is always an x64 Windows process: under WINE, and under x64 emulation on Windows on Arm. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <!-- The solution builds it as x64; the output stays in bin\$(Configuration), where Dalamud loads it from. -->
+    <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- DirectWrite and D3D11; Dalamud ships and loads it. -->
+    <Reference Include="TerraFX.Interop.Windows" Private="false" />
+  </ItemGroup>
+</Project>
