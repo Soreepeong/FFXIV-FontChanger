@@ -1,5 +1,13 @@
 #include "pch.h"
 #include "FaceElementEditorDialog.Internal.h"
+#include "FontChanger.Presets/CodepointRanges.h"
+
+namespace {
+	// Counts the codepoints of the set in the range.
+	size_t CountInRange(const std::set<char32_t>& codepoints, char32_t c1, char32_t c2) {
+		return static_cast<size_t>(std::distance(codepoints.lower_bound(c1), codepoints.upper_bound(c2)));
+	}
+}
 
 INT_PTR App::FaceElementEditorDialog::CustomRangeEdit_OnCommand(uint16_t notiCode) {
 	if (notiCode != EN_CHANGE)
@@ -32,11 +40,9 @@ INT_PTR App::FaceElementEditorDialog::CustomRangeEdit_OnCommand(uint16_t notiCod
 }
 
 INT_PTR App::FaceElementEditorDialog::CustomRangeAdd_OnCommand(uint16_t notiCode) {
-	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
-
 	auto changed = false;
 	for (const auto& [c1, c2] : ParseCustomRangeString())
-		changed |= AddNewCodepointRange(c1, c2, charVec);
+		changed |= AddNewCodepointRange(c1, c2);
 
 	if (changed)
 		OnWrappedFontChanged();
@@ -58,8 +64,8 @@ INT_PTR App::FaceElementEditorDialog::CodepointsList_OnCommand(uint16_t notiCode
 
 INT_PTR App::FaceElementEditorDialog::CodepointsClearButton_OnCommand(uint16_t notiCode) {
 	ListBox_ResetContent(m_controls->CodepointsList);
-	OnWrappedFontChanged();
 	m_element.WrapModifiers.Codepoints.clear();
+	OnWrappedFontChanged();
 	return 0;
 }
 
@@ -83,7 +89,7 @@ INT_PTR App::FaceElementEditorDialog::CodepointsMergeModeCombo_OnCommand(uint16_
 	if (notiCode != CBN_SELCHANGE)
 		return 0;
 
-	if (const auto v = static_cast<xivres::fontgen::codepoint_merge_mode>(ComboBox_GetCurSel(m_controls->CodepointsMergeModeCombo));
+	if (const auto v = static_cast<FontChanger::FixedSizeFont::codepoint_merge_mode>(ComboBox_GetCurSel(m_controls->CodepointsMergeModeCombo));
 		v != m_element.MergeMode) {
 		m_element.MergeMode = v;
 		OnWrappedFontChanged();
@@ -112,7 +118,7 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchResultList_OnCommand(uin
 
 		ListBox_GetSelItems(m_controls->UnicodeBlockSearchResultList, static_cast<int>(selItems.size()), selItems.data());
 
-		std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
+		const auto& codepoints = m_element.GetBaseFont()->all_codepoints();
 		std::wstring containingChars;
 
 		containingChars.reserve(8192);
@@ -120,7 +126,7 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchResultList_OnCommand(uin
 		for (const auto itemIndex : selItems) {
 			const auto& block = *reinterpret_cast<xivres::util::unicode::blocks::block_definition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, itemIndex));
 
-			for (auto it = std::ranges::lower_bound(charVec, block.First), it_ = std::ranges::upper_bound(charVec, block.Last); it != it_; ++it) {
+			for (auto it = codepoints.lower_bound(block.First), it_ = codepoints.upper_bound(block.Last); it != it_; ++it) {
 				xivres::util::unicode::represent_codepoint(containingChars, *it);
 				if (containingChars.size() >= 8192)
 					break;
@@ -139,10 +145,9 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchResultList_OnCommand(uin
 
 INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchAddAll_OnCommand(uint16_t notiCode) {
 	auto changed = false;
-	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 	for (int i = 0, i_ = ListBox_GetCount(m_controls->UnicodeBlockSearchResultList); i < i_; i++) {
 		const auto& block = *reinterpret_cast<const xivres::util::unicode::blocks::block_definition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, i));
-		changed |= AddNewCodepointRange(block.First, block.Last, charVec);
+		changed |= AddNewCodepointRange(block.First, block.Last);
 	}
 
 	if (changed)
@@ -159,10 +164,9 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchAdd_OnCommand(uint16_t n
 	ListBox_GetSelItems(m_controls->UnicodeBlockSearchResultList, static_cast<int>(selItems.size()), selItems.data());
 
 	auto changed = false;
-	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 	for (const auto itemIndex : selItems) {
 		const auto& block = *reinterpret_cast<const xivres::util::unicode::blocks::block_definition*>(ListBox_GetItemData(m_controls->UnicodeBlockSearchResultList, itemIndex));
-		changed |= AddNewCodepointRange(block.First, block.Last, charVec);
+		changed |= AddNewCodepointRange(block.First, block.Last);
 	}
 
 	if (changed)
@@ -191,63 +195,10 @@ INT_PTR App::FaceElementEditorDialog::UnicodeBlockSearchSubtract_OnCommand(uint1
 }
 
 std::vector<std::pair<char32_t, char32_t>> App::FaceElementEditorDialog::ParseCustomRangeString() {
-	return ParseCodepointRanges(GetWindowString(m_controls->CustomRangeEdit));
+	return FontChanger::CodepointRanges::Parse(GetWindowString(m_controls->CustomRangeEdit));
 }
 
-std::vector<std::pair<char32_t, char32_t>> App::FaceElementEditorDialog::ParseCodepointRanges(std::wstring_view text) {
-	const auto input = xivres::util::unicode::convert<std::u32string>(text);
-	std::vector<std::pair<char32_t, char32_t>> ranges;
-	for (size_t i = 0, next; i < input.size(); i = next + 1) {
-		next = input.find_first_of(U",;", i);
-		std::u32string_view part;
-		if (next == std::u32string::npos) {
-			next = input.size() - 1;
-			part = std::u32string_view(input).substr(i);
-		} else
-			part = std::u32string_view(input).substr(i, next - i);
-
-		while (!part.empty() && part.front() < 128 && std::isspace(part.front()))
-			part = part.substr(1);
-		while (!part.empty() && part.front() < 128 && std::isspace(part.back()))
-			part = part.substr(0, part.size() - 1);
-
-		if (part.empty())
-			continue;
-
-		if (part.starts_with(U"0x") || part.starts_with(U"0X") || part.starts_with(U"U+") || part.starts_with(U"u+") || part.starts_with(U"\\x") || part.starts_with(U"\\X")) {
-			if (const auto sep = part.find_first_of(U"-~:"); sep != std::u32string::npos) {
-				auto c1 = std::strtol(xivres::util::unicode::convert<std::string>(part.substr(2, sep - 2)).c_str(), nullptr, 16);
-				auto part2 = part.substr(sep + 1);
-				while (!part2.empty() && part2.front() < 128 && std::isspace(part2.front()))
-					part2 = part2.substr(1);
-				if (part2.starts_with(U"0x") || part2.starts_with(U"0X") || part2.starts_with(U"U+") || part2.starts_with(U"u+") || part2.starts_with(U"\\x") || part2.starts_with(U"\\X"))
-					part2 = part2.substr(2);
-				auto c2 = std::strtol(xivres::util::unicode::convert<std::string>(part2).c_str(), nullptr, 16);
-				if (c1 < c2)
-					ranges.emplace_back(c1, c2);
-				else
-					ranges.emplace_back(c2, c1);
-			} else {
-				const auto c = std::strtol(xivres::util::unicode::convert<std::string>(part.substr(2)).c_str(), nullptr, 16);
-				ranges.emplace_back(c, c);
-			}
-		} else {
-			for (const auto c : part)
-				ranges.emplace_back(c, c);
-		}
-	}
-	std::sort(ranges.begin(), ranges.end());
-	for (size_t i = 1; i < ranges.size();) {
-		if (ranges[i - 1].second + 1 >= ranges[i].first) {
-			ranges[i - 1].second = (std::max)(ranges[i - 1].second, ranges[i].second);
-			ranges.erase(ranges.begin() + i);
-		} else
-			++i;
-	}
-	return ranges;
-}
-
-bool App::FaceElementEditorDialog::AddNewCodepointRange(char32_t c1, char32_t c2, const std::vector<char32_t>& charVec) {
+bool App::FaceElementEditorDialog::AddNewCodepointRange(char32_t c1, char32_t c2) {
 	const auto newItem = std::make_pair(c1, c2);
 	const auto it = std::ranges::lower_bound(m_element.WrapModifiers.Codepoints, newItem);
 	if (it != m_element.WrapModifiers.Codepoints.end() && *it == newItem)
@@ -255,14 +206,12 @@ bool App::FaceElementEditorDialog::AddNewCodepointRange(char32_t c1, char32_t c2
 
 	const auto newIndex = static_cast<int>(it - m_element.WrapModifiers.Codepoints.begin());
 	m_element.WrapModifiers.Codepoints.insert(it, newItem);
-	AddCodepointRangeToListBox(newIndex, c1, c2, charVec);
+	AddCodepointRangeToListBox(newIndex, c1, c2);
 	return true;
 }
 
-void App::FaceElementEditorDialog::AddCodepointRangeToListBox(int index, char32_t c1, char32_t c2, const std::vector<char32_t>& charVec) {
-	const auto left = std::ranges::lower_bound(charVec, c1);
-	const auto right = std::ranges::upper_bound(charVec, c2);
-	const auto count = right - left;
+void App::FaceElementEditorDialog::AddCodepointRangeToListBox(int index, char32_t c1, char32_t c2) {
+	const auto count = CountInRange(m_element.GetBaseFont()->all_codepoints(), c1, c2);
 
 	const auto block = std::lower_bound(xivres::util::unicode::blocks::all_blocks().begin(), xivres::util::unicode::blocks::all_blocks().end(), c1, [](const auto& l, const auto& r) { return l.First < r; });
 	if (block != xivres::util::unicode::blocks::all_blocks().end() && block->First == c1 && block->Last == c2) {
@@ -354,9 +303,8 @@ void App::FaceElementEditorDialog::RemoveCodepointRanges(const std::vector<std::
 		m_element.WrapModifiers.Codepoints = std::move(codepoints);
 		OnWrappedFontChanged();
 		ListBox_ResetContent(m_controls->CodepointsList);
-		std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 		for (int i = 0, i_ = static_cast<int>(m_element.WrapModifiers.Codepoints.size()); i < i_; i++)
-			AddCodepointRangeToListBox(i, m_element.WrapModifiers.Codepoints[i].first, m_element.WrapModifiers.Codepoints[i].second, charVec);
+			AddCodepointRangeToListBox(i, m_element.WrapModifiers.Codepoints[i].first, m_element.WrapModifiers.Codepoints[i].second);
 	}
 
 }
@@ -368,7 +316,7 @@ void App::FaceElementEditorDialog::RefreshUnicodeBlockSearchResults() {
 
 	const auto searchByChar = Button_GetCheck(m_controls->UnicodeBlockSearchShowBlocksWithAnyOfCharactersInput);
 
-	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
+	const auto& codepoints = m_element.GetBaseFont()->all_codepoints();
 	for (const auto& block : xivres::util::unicode::blocks::all_blocks()) {
 		const auto nameView = std::string_view(block.Name);
 		const auto it = std::search(nameView.begin(), nameView.end(), input.begin(), input.end(), [](char ch1, char ch2) {
@@ -389,9 +337,8 @@ void App::FaceElementEditorDialog::RefreshUnicodeBlockSearchResults() {
 				continue;
 		}
 
-		const auto left = std::ranges::lower_bound(charVec, block.First);
-		const auto right = std::ranges::upper_bound(charVec, block.Last);
-		if (left == right)
+		const auto count = CountInRange(codepoints, block.First, block.Last);
+		if (!count)
 			continue;
 
 		ListBox_AddString(m_controls->UnicodeBlockSearchResultList, std::format(
@@ -399,7 +346,7 @@ void App::FaceElementEditorDialog::RefreshUnicodeBlockSearchResults() {
 			static_cast<uint32_t>(block.First),
 			static_cast<uint32_t>(block.Last),
 			xivres::util::unicode::convert<std::wstring>(nameView),
-			right - left,
+			count,
 			xivres::util::unicode::represent_codepoint<std::wstring>(block.First),
 			xivres::util::unicode::represent_codepoint<std::wstring>(block.Last)
 		).c_str());

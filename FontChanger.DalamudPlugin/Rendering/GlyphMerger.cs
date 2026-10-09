@@ -7,8 +7,8 @@ using System.Text.Json;
 namespace CustomFonts;
 
 /// <summary>
-/// A font the texts of glyph merging are drawn with: the element's, at a size and transformation. Its glyphs are placed
-/// relative to the pen on the baseline.
+/// A font the texts of glyph merging are drawn with (xivres glyph_merging's text font): the element's, at a size and
+/// transformation, its gamma applied. Its glyphs are placed relative to the pen on the baseline.
 /// </summary>
 internal interface IMergeTextFont
 {
@@ -25,8 +25,12 @@ internal interface IMergeTextFont
     MergeTextLine LayOut(string text, int letterSpacing);
 }
 
-/// <summary>A laid out line: its advance, and how to draw it with the pen at an x on the baseline.</summary>
-internal sealed record MergeTextLine(int Width, bool Shaped, Func<float, RasterGlyph> Draw);
+/// <summary>
+/// A laid out line: its advance; its ink, measured by its glyphs' metrics (horizontally from the outlines of shaped
+/// glyphs, which partly covered pixels may go past; vertically in pixels from the line's top; all 0 if it has none); and
+/// how to draw it with the pen at an x on the baseline.
+/// </summary>
+internal sealed record MergeTextLine(int Width, bool Shaped, float InkX1, float InkX2, int InkY1, int InkY2, Func<float, RasterGlyph> Draw);
 
 /// <summary>
 /// Draws merged glyphs (xivres glyph_merging_fixed_size_font): a text put in a shape, the text cut out of the shape (or
@@ -44,9 +48,6 @@ internal static class GlyphMerger
     // Lines are stacked this many capital heights apart, as in the game's AM/PM glyphs.
     private const float StackedLineAdvance = 1.11f;
 
-    // The built-in shapes (xivres.fontgen's data/glyph_merge_shapes.json, which it reads too), embedded.
-    private static readonly JsonElement ShapeSpecs = LoadShapeSpecs();
-
     private const byte TagOn = 1;
     private const byte TagConic = 0;
     private const byte TagCubic = 2;
@@ -55,9 +56,9 @@ internal static class GlyphMerger
     /// Draws a merged glyph of an element whose font is <paramref name="size"/> pixels with an ascent of
     /// <paramref name="ascent"/>, relative to the pen on the baseline. <paramref name="textFont"/> makes the text's font at
     /// a size and horizontal scale; <paramref name="baseGlyph"/> is the element's own glyph of the codepoint (for
-    /// <see cref="MergeShape.Glyph"/>), and <paramref name="gamma"/> the element's gamma, which the text and that glyph
-    /// get. Pixel values of <paramref name="def"/> are scaled by <paramref name="pixelScale"/>. Built-in shapes are placed
-    /// as the game's glyphs are at its font sizes, by the element's size in the preset (<paramref name="designSize"/>).
+    /// <see cref="MergeShape.Glyph"/>). Both draw with the element's gamma; shapes are drawn without. Pixel values of
+    /// <paramref name="def"/> are scaled by <paramref name="pixelScale"/>. Built-in shapes are placed as the game's glyphs
+    /// are at its font sizes, by the element's size in the preset (<paramref name="designSize"/>).
     /// </summary>
     public static RasterGlyph Draw(
         MergeMapping mapping,
@@ -69,7 +70,6 @@ internal static class GlyphMerger
         int ascent,
         Func<float, float, IMergeTextFont> textFont,
         RasterGlyph? baseGlyph,
-        byte[]? gamma,
         ImageRenderer? images,
         FreeTypeFonts? freeType)
     {
@@ -111,7 +111,7 @@ internal static class GlyphMerger
                 shape.Advance = g.Advance / scale;
                 if (g.Width != 0)
                 {
-                    raster = (gamma is null ? g : g.WithCoverage(gamma)) with { Top = g.Top + ascent };
+                    raster = g with { Top = g.Top + ascent };
                     SetAreaFromPixels(raster.Value);
                 }
             }
@@ -127,7 +127,7 @@ internal static class GlyphMerger
                 var by1 = (int)MathF.Floor(baselineY - (2 * ShapeUnitsPerEm * scale));
                 var by2 = (int)MathF.Ceiling(baselineY + (ShapeUnitsPerEm * scale));
                 var coverage = images.DrawSvg(mapping.CustomSvg, [scale, 0, -bx1, 0, scale, baselineY - (ShapeBaselineY * scale) - by1], bx2 - bx1, by2 - by1);
-                var trimmed = GlyphImages.Trim(new(0, bx1, by1, bx2 - bx1, by2 - by1, coverage));
+                var trimmed = new RasterGlyph(0, bx1, by1, bx2 - bx1, by2 - by1, coverage).Trimmed();
                 if (trimmed.Width != 0)
                 {
                     raster = trimmed;
@@ -154,7 +154,7 @@ internal static class GlyphMerger
         IMergeTextFont GetTextFont(float s, float c)
         {
             // Sizes in steps of 1/20 pixel, scales of 1/1000.
-            var key = ((int)MathF.Round(s * 20), (int)MathF.Round(c * 1000));
+            var key = ((int)Rounding.Round(s * 20), (int)Rounding.Round(c * 1000));
             if (!cache.TryGetValue(key, out var font))
                 cache.Add(key, font = textFont(key.Item1 / 20f, key.Item2 / 1000f));
             return font;
@@ -198,7 +198,7 @@ internal static class GlyphMerger
         var layout = LayOut(font, lines, def, pixelScale, hasArea);
         float textX;
         int textY;
-        var advance = (int)MathF.Round(shape.Advance * scale);
+        var advance = (int)Rounding.Round(shape.Advance * scale);
         if (mapping.Shape == MergeShape.Glyph && baseGlyph is { } bg)
             advance = bg.Advance;
         if (hasArea)
@@ -210,22 +210,19 @@ internal static class GlyphMerger
             // Letters and digits are centered by the capitals' height, so they line up across glyphs; symbols such as +
             // sit around the middle of lowercase letters instead, and are centered by themselves.
             textY = IsSymbolsOnly(text) && layout.InkY1 < layout.InkY2
-                ? (int)MathF.Round(centerY - ((layout.InkY1 + layout.InkY2) / 2f))
-                : (int)MathF.Round(centerY - ((layout.CapTop + layout.LastBaseline) / 2f));
+                ? (int)Rounding.Round(centerY - ((layout.InkY1 + layout.InkY2) / 2f))
+                : (int)Rounding.Round(centerY - ((layout.CapTop + layout.LastBaseline) / 2f));
         }
         else
         {
             // Without a shape, the text sits on the element's baseline.
             textX = def.TextOffsetX * pixelScale;
-            textY = (int)MathF.Round(baselineY - font.Ascent + (def.TextOffsetY * pixelScale));
+            textY = (int)Rounding.Round(baselineY - font.Ascent + (def.TextOffsetY * pixelScale));
             if (!hasShape)
                 advance = layout.AdvanceWidth;
         }
 
-        return Compose(mapping, shape, raster, hasShape, scale, baselineY, layout, font, textX, textY, advance, gamma, freeType) with
-        {
-            GammaApplied = true,
-        };
+        return Compose(mapping, shape, raster, hasShape, scale, baselineY, layout, font, textX, textY, advance, freeType);
     }
 
     /// <summary>
@@ -244,7 +241,6 @@ internal static class GlyphMerger
         float textX,
         int textY,
         int advance,
-        byte[]? gamma,
         FreeTypeFonts? freeType)
     {
         // The glyph's bounds: the shape's, and the text's where it can be seen.
@@ -277,7 +273,7 @@ internal static class GlyphMerger
         var textCoverage = new byte[width * height];
         if (raster is { } shapeRaster)
         {
-            Blit(shapeCoverage, width, height, shapeRaster, shapeRaster.Left - x1, shapeRaster.Top - y1);
+            RasterGlyph.BlitMax(shapeCoverage, width, height, shapeRaster, shapeRaster.Left - x1, shapeRaster.Top - y1);
         }
         else if (hasShape && freeType is not null)
         {
@@ -288,9 +284,7 @@ internal static class GlyphMerger
         foreach (var (line, shift, y) in layout.Lines)
         {
             var g = line.Draw(textX + shift);
-            if (gamma is not null)
-                g = g.WithCoverage(gamma);
-            Blit(textCoverage, width, height, g, g.Left - x1, textY + y + font.Ascent + g.Top - y1);
+            RasterGlyph.BlitMax(textCoverage, width, height, g, g.Left - x1, textY + y + font.Ascent + g.Top - y1);
         }
 
         var alpha = new byte[width * height];
@@ -303,21 +297,8 @@ internal static class GlyphMerger
             alpha[i] = (byte)Math.Clamp(v, 0, 255);
         }
 
-        var trimmed = GlyphImages.Trim(new(advance, x1, y1, width, height, alpha));
+        var trimmed = new RasterGlyph(advance, x1, y1, width, height, alpha).Trimmed();
         return trimmed with { Top = trimmed.Top - (int)baselineY };
-    }
-
-    /// <summary>Draws coverage into a buffer at a position, keeping the larger value where it overlaps.</summary>
-    private static void Blit(byte[] buffer, int width, int height, RasterGlyph g, int x, int y)
-    {
-        for (var row = Math.Max(0, -y); row < g.Height && row + y < height; row++)
-        {
-            for (var col = Math.Max(0, -x); col < g.Width && col + x < width; col++)
-            {
-                ref var d = ref buffer[((row + y) * width) + col + x];
-                d = Math.Max(d, g.Alpha[(row * g.Width) + col]);
-            }
-        }
     }
 
     /// <summary>Gets whether a text has nothing but symbols (+, arrows) besides spaces and line breaks.</summary>
@@ -338,36 +319,35 @@ internal static class GlyphMerger
     }
 
     /// <summary>
-    /// Lays out the lines of a text, stacked closely. Lines are aligned by their ink when the text is put in a shape, else
-    /// by their advances, keeping the side bearings as they are in text of the font. Coordinates are from the top of the
-    /// first line.
+    /// Lays out the lines of a text, stacked closely, measured by the glyphs' metrics (xivres glyph_merging layout_text).
+    /// Lines are aligned by their ink when the text is put in a shape, else by their advances, keeping the side bearings
+    /// as they are in text of the font. Coordinates are from the top of the first line.
     /// </summary>
     private static Layout LayOut(IMergeTextFont font, string[] lines, GlyphMergingDef def, float pixelScale, bool alignByInk)
     {
-        var letterSpacing = (int)MathF.Round(def.LetterSpacing * pixelScale);
-        var laidOut = new List<(MergeTextLine Line, float InkX1, float InkX2, int InkY1, int InkY2)>();
+        var letterSpacing = (int)Rounding.Round(def.LetterSpacing * pixelScale);
+        var laidOut = new List<MergeTextLine>();
         var maxInkWidth = 0f;
         var res = new Layout();
         foreach (var text in lines)
         {
             var available = string.Concat(text.EnumerateRunes().Where(r => font.Has(r.Value)).Select(r => r.ToString()));
             var line = font.LayOut(available, letterSpacing);
-            var ink = line.Draw(0);
-            var (ix1, ix2) = ink.Width == 0 ? (0f, 0f) : (ink.Left, ink.Left + ink.Width);
-            laidOut.Add((line, ix1, ix2, font.Ascent + ink.Top, font.Ascent + ink.Top + ink.Height));
-            maxInkWidth = Math.Max(maxInkWidth, ix2 - ix1);
+            laidOut.Add(line);
+            maxInkWidth = Math.Max(maxInkWidth, line.InkX2 - line.InkX1);
             res.AdvanceWidth = Math.Max(res.AdvanceWidth, line.Width);
         }
 
         // The capitals' height, from H's ink.
-        var h = font.Has('H') ? font.LayOut("H", 0).Draw(0) : default;
-        var capHeight = h.Width != 0 ? -h.Top : (int)MathF.Round(font.Ascent * 0.7f);
-        var lineAdvance = (int)MathF.Round((capHeight * StackedLineAdvance) + (def.LineSpacing * pixelScale));
+        var h = font.Has('H') ? font.LayOut("H", 0) : null;
+        var capHeight = h is not null && h.InkY1 < h.InkY2 ? font.Ascent - h.InkY1 : (int)Rounding.Round(font.Ascent * 0.7f);
+        var lineAdvance = (int)Rounding.Round((capHeight * StackedLineAdvance) + (def.LineSpacing * pixelScale));
 
         (res.InkX1, res.InkX2, res.InkY1, res.InkY2) = (float.MaxValue, float.MinValue, int.MaxValue, int.MinValue);
         for (var i = 0; i < laidOut.Count; i++)
         {
-            var (line, ix1, ix2, iy1, iy2) = laidOut[i];
+            var line = laidOut[i];
+            var (ix1, ix2, iy1, iy2) = (line.InkX1, line.InkX2, line.InkY1, line.InkY2);
             var lineWidth = alignByInk ? ix2 - ix1 : line.Width;
             var maxWidth = alignByInk ? maxInkWidth : res.AdvanceWidth;
             var shift = alignByInk ? -ix1 : 0;
@@ -378,7 +358,7 @@ internal static class GlyphMerger
                 _ => 0,
             };
             if (!line.Shaped)
-                shift = MathF.Round(shift);
+                shift = Rounding.Round(shift);
 
             var y = i * lineAdvance;
             res.Lines.Add((line, shift, y));
@@ -397,14 +377,6 @@ internal static class GlyphMerger
         return res;
     }
 
-    private static JsonElement LoadShapeSpecs()
-    {
-        using var stream = typeof(GlyphMerger).Assembly.GetManifestResourceStream("CustomFonts.Rendering.glyph_merge_shapes.json")
-                           ?? throw new InvalidOperationException("The shapes of glyph merging aren't embedded.");
-        using var document = JsonDocument.Parse(stream);
-        return document.RootElement.GetProperty("shapes").Clone();
-    }
-
     /// <summary>
     /// Makes a built-in shape, as glyph_merge_shapes.json describes it. <paramref name="characters"/> is the length of the
     /// text, which some shapes are sized by; <paramref name="size"/> is the font's, at which the game's glyphs may say
@@ -413,58 +385,53 @@ internal static class GlyphMerger
     private static Shape MakeShape(MergeShape kind, int characters, float size = 0, bool underline = false)
     {
         var s = new Shape();
-        var key = kind switch
-        {
-            MergeShape.AmPm => "amPm",
-            MergeShape.Ime => "ime",
-            MergeShape.Box => "box",
-            MergeShape.NumberBox => "numberBox",
-            MergeShape.HollowBox => "hollowBox",
-            MergeShape.Hexagon => "hexagon",
-            MergeShape.Rhombus => "rhombus",
-            MergeShape.Bozja => "bozja",
-            MergeShape.Time => "time",
-            _ => null,
-        };
-        if (key is null)
+        var specs = GlyphMergeShapes.Shapes;
+        if (!specs.TryGetProperty(GlyphMergeShapes.NameOf(kind), out var spec))
             return s;
-
-        var spec = ShapeSpecs.GetProperty(key);
         if (characters > 1 && spec.TryGetProperty("more", out var more))
             spec = more;
-
-        var vertices = spec.TryGetProperty("rect", out var rect)
-            ? Rect(ReadBox(rect))
-            : spec.GetProperty("polygon").EnumerateArray().Select(v => (X: v[0].GetSingle(), Y: v[1].GetSingle())).ToArray();
-        var radius = spec.GetProperty("radius").GetSingle();
-        s.Path.AddRoundedPolygon(vertices, radius);
         s.Advance = spec.GetProperty("advance").GetSingle();
-        s.Area = ReadBox(spec.GetProperty("area"));
 
-        // The box of the vertices, which the game's placements are of.
-        var nominal = (X1: vertices.Min(v => v.X), Y1: vertices.Min(v => v.Y), X2: vertices.Max(v => v.X), Y2: vertices.Max(v => v.Y));
-
-        // A hollow shape: the inside is cut out (reversed, so that it is a hole), at least a pixel in, as the game's small
-        // glyphs draw it; the text is drawn on it.
-        if (spec.TryGetProperty("ring", out var ringSpec))
+        // The box of the vertices, which the game's placements are of; path data is placed as another shape is, and the
+        // text is fitted in that shape's box.
+        var placed = spec;
+        (float X1, float Y1, float X2, float Y2) nominal;
+        if (spec.TryGetProperty("path", out var path))
         {
-            var ring = size > 0 ? Math.Max(ringSpec.GetSingle(), ShapeUnitsPerEm / size) : ringSpec.GetSingle();
-            s.Path.AddRoundedPolygon(Rect((nominal.X1 + ring, nominal.Y1 + ring, nominal.X2 - ring, nominal.Y2 - ring), true), Math.Max(0, radius - ring));
-            s.DrawsText = true;
+            s.Path = ParseSvgPath(path.GetString()!);
+            placed = specs.GetProperty(spec.GetProperty("placedAs").GetString()!);
+            s.Area = nominal = Bounds(Vertices(placed));
         }
-
-        if (underline && spec.TryGetProperty("underline", out var underlineSpec))
+        else
         {
-            var bar = Rect(ReadBox(underlineSpec.GetProperty("bar")), true);
-            s.Path.MoveTo(bar[0]);
-            foreach (var v in bar[1..])
-                s.Path.LineTo(v);
-            s.Path.Close();
-            s.Area = ReadBox(underlineSpec.GetProperty("area"));
+            var vertices = Vertices(spec);
+            var radius = spec.GetProperty("radius").GetSingle();
+            s.Path.AddRoundedPolygon(vertices, radius);
+            nominal = Bounds(vertices);
+            s.Area = ReadBox(spec.GetProperty("area"));
+
+            // A hollow shape: the inside is cut out (reversed, so that it is a hole), at least a pixel in, as the game's
+            // small glyphs draw it; the text is drawn on it.
+            if (spec.TryGetProperty("ring", out var ringSpec))
+            {
+                var ring = size > 0 ? Math.Max(ringSpec.GetSingle(), ShapeUnitsPerEm / size) : ringSpec.GetSingle();
+                s.Path.AddRoundedPolygon(Rect((nominal.X1 + ring, nominal.Y1 + ring, nominal.X2 - ring, nominal.Y2 - ring), true), Math.Max(0, radius - ring));
+                s.DrawsText = true;
+            }
+
+            if (underline && spec.TryGetProperty("underline", out var underlineSpec))
+            {
+                var bar = Rect(ReadBox(underlineSpec.GetProperty("bar")), true);
+                s.Path.MoveTo(bar[0]);
+                foreach (var v in bar[1..])
+                    s.Path.LineTo(v);
+                s.Path.Close();
+                s.Area = ReadBox(underlineSpec.GetProperty("area"));
+            }
         }
 
         // Stretched from the box of the vertices to the game's, at the sizes of its fonts.
-        var placement = spec.GetProperty("game").EnumerateArray().FirstOrDefault(p => MathF.Abs(p[0].GetSingle() - size) < 0.01f);
+        var placement = placed.GetProperty("game").EnumerateArray().FirstOrDefault(p => MathF.Abs(p[0].GetSingle() - size) < 0.01f);
         if (placement.ValueKind != JsonValueKind.Array)
             return s;
 
@@ -483,6 +450,14 @@ internal static class GlyphMerger
 
         static (float X, float Y)[] Rect((float X1, float Y1, float X2, float Y2) r, bool reverse = false) =>
             reverse ? [(r.X1, r.Y1), (r.X1, r.Y2), (r.X2, r.Y2), (r.X2, r.Y1)] : [(r.X1, r.Y1), (r.X2, r.Y1), (r.X2, r.Y2), (r.X1, r.Y2)];
+
+        // The vertices of a shape of rounded corners: those of its rectangle or its polygon.
+        static (float X, float Y)[] Vertices(JsonElement spec) => spec.TryGetProperty("rect", out var rect)
+            ? Rect(ReadBox(rect))
+            : spec.GetProperty("polygon").EnumerateArray().Select(v => (X: v[0].GetSingle(), Y: v[1].GetSingle())).ToArray();
+
+        static (float X1, float Y1, float X2, float Y2) Bounds((float X, float Y)[] vertices) =>
+            (vertices.Min(v => v.X), vertices.Min(v => v.Y), vertices.Max(v => v.X), vertices.Max(v => v.Y));
     }
 
     /// <summary>Parses SVG path data: M, L, H, V, C, S, Q, T, A and Z, absolute and relative.</summary>

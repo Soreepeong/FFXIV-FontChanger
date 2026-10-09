@@ -11,9 +11,7 @@
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <!-- The built-in shapes of glyph merging, shared with xivres.fontgen. -->
-    <EmbeddedResource Include="..\xivres\xivres.fontgen\data\glyph_merge_shapes.json" LogicalName="CustomFonts.Rendering.glyph_merge_shapes.json" />
-    <EmbeddedResource Include="..\xivres\xivres.fontgen\data\game_font_signatures.json" LogicalName="CustomFonts.game_font_signatures.json" />
+    <EmbeddedResource Include="..\xivres\data\game_font_signatures.json" LogicalName="CustomFonts.game_font_signatures.json" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FontChanger.Presets\FontChanger.Presets.csproj" />

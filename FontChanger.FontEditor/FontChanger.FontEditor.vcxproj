@@ -73,28 +73,28 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(SolutionDir)FontChanger.Presets.Native\include;$(SolutionDir)xivres\xivres\include;$(SolutionDir)xivres\xivres.fontgen\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)FontChanger.Presets.Native\include;$(SolutionDir)xivres\xivres\include;$(SolutionDir)FontChanger.FixedSizeFont\include;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\Temp_$(Platform)_$(ProjectName)\</IntDir>
     <TargetName>$(ProjectName)$(PlatformArchitecture)</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(SolutionDir)FontChanger.Presets.Native\include;$(SolutionDir)xivres\xivres\include;$(SolutionDir)xivres\xivres.fontgen\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)FontChanger.Presets.Native\include;$(SolutionDir)xivres\xivres\include;$(SolutionDir)FontChanger.FixedSizeFont\include;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\Temp_$(Platform)_$(ProjectName)\</IntDir>
     <TargetName>$(ProjectName)$(PlatformArchitecture)</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(SolutionDir)FontChanger.Presets.Native\include;$(SolutionDir)xivres\xivres\include;$(SolutionDir)xivres\xivres.fontgen\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)FontChanger.Presets.Native\include;$(SolutionDir)xivres\xivres\include;$(SolutionDir)FontChanger.FixedSizeFont\include;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\Temp_$(Platform)_$(ProjectName)\</IntDir>
     <TargetName>$(ProjectName)$(PlatformArchitecture)</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(SolutionDir)FontChanger.Presets.Native\include;$(SolutionDir)xivres\xivres\include;$(SolutionDir)xivres\xivres.fontgen\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)FontChanger.Presets.Native\include;$(SolutionDir)xivres\xivres\include;$(SolutionDir)FontChanger.FixedSizeFont\include;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\Temp_$(Platform)_$(ProjectName)\</IntDir>
     <TargetName>$(ProjectName)$(PlatformArchitecture)</TargetName>
@@ -220,8 +220,8 @@
     <ClCompile Include="FaceElementEditorDialog.GlyphMerging.cpp" />
     <ClCompile Include="FaceElementEditorDialog.GlyphImages.cpp" />
     <ClCompile Include="FaceElementEditorDialog.Monospacing.cpp" />
-    <ClCompile Include="FaceFromFont.cpp" />
     <ClCompile Include="GameFontReloader.cpp" />
+    <ClCompile Include="GlyphFileTools.cpp" />
     <ClCompile Include="FontGeneratorConfig.cpp" />
     <ClCompile Include="GameInstallationManagerDialog.cpp" />
     <ClCompile Include="GameInstallationRepository.cpp" />
@@ -240,6 +240,7 @@
     <ClCompile Include="MiscUtil.cpp" />
     <ClCompile Include="NegativeBearingCodepointsDialog.cpp" />
     <ClCompile Include="ProgressDialog.cpp" />
+    <ClCompile Include="WicImage.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
@@ -258,8 +259,8 @@
     <ClInclude Include="ExportPreviewWindow.h" />
     <ClInclude Include="FaceElementEditorDialog.h" />
     <ClInclude Include="FaceElementEditorDialog.Internal.h" />
-    <ClInclude Include="FaceFromFont.h" />
     <ClInclude Include="GameFontReloader.h" />
+    <ClInclude Include="GlyphFileTools.h" />
     <ClInclude Include="CommandLineRender.h" />
     <ClInclude Include="FileHistory.h" />
     <ClInclude Include="FontGeneratorConfig.h" />
@@ -269,6 +270,7 @@
     <ClInclude Include="MiscUtil.h" />
     <ClInclude Include="NegativeBearingCodepointsDialog.h" />
     <ClInclude Include="ProgressDialog.h" />
+    <ClInclude Include="WicImage.h" />
     <ClInclude Include="MainWindow.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="resource.h" />
@@ -280,7 +282,7 @@
     <ProjectReference Include="..\FontChanger.Presets.Native\FontChanger.Presets.Native.vcxproj">
       <Project>{fe56ed18-3140-423b-8100-d2fd1ac9164e}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\xivres\xivres.fontgen\xivres.fontgen.vcxproj">
+    <ProjectReference Include="..\FontChanger.FixedSizeFont\FontChanger.FixedSizeFont.vcxproj">
       <Project>{90e4b098-e528-44ee-b643-56a0ee1a4ffb}</Project>
     </ProjectReference>
     <ProjectReference Include="..\xivres\xivres\xivres.vcxproj">

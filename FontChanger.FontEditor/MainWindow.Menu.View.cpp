@@ -10,19 +10,8 @@ LRESULT App::FontEditorWindow::Menu_View_NextOrPrevFont(int direction) {
 		|| i + direction >= ListBox_GetCount(m_hFacesListBox))
 		return 0;
 
-	i += direction;
-	ListBox_SetCurSel(m_hFacesListBox, i);
-
-	for (const auto& pFontSet : m_multiFontSet.FontSets) {
-		if (i < pFontSet->Faces.size()) {
-			m_pActiveFace = pFontSet->Faces[i].get();
-			UpdateFaceElementList();
-			break;
-		}
-
-		i -= static_cast<int>(pFontSet->Faces.size());
-	}
-	return 0;
+	ListBox_SetCurSel(m_hFacesListBox, i + direction);
+	return FaceListBox_OnCommand(LBN_SELCHANGE);
 }
 
 LRESULT App::FontEditorWindow::Menu_View_WordWrap() {

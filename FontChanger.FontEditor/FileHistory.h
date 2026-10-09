@@ -10,8 +10,7 @@ struct FileHistory {
 	static FileHistory Load();
 	void Save() const;
 
-	static void Add(const std::filesystem::path& path);
-	static void Add(IShellItem* item) noexcept;
+	static void Add(const std::filesystem::path& path) noexcept;
 	static void Remove(const std::filesystem::path& path);
 	static void Clear();
 };

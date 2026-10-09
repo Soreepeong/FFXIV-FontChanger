@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "GlyphFileTools.h"
 #include "FontChanger.Presets/GlyphFiles.h"
 #include "MainWindow.h"
 #include "ProgressDialog.h"
@@ -9,8 +10,8 @@ namespace {
 
 	struct ExportJob {
 		std::wstring FolderName;
-		std::shared_ptr<xivres::fontgen::fixed_size_font> Font;
-		App::GlyphFiles::ExportOptions Options;
+		std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> Font;
+		App::GlyphFileTools::ExportOptions Options;
 	};
 
 	// Characters that cannot be in file names are replaced.
@@ -24,30 +25,9 @@ namespace {
 		return name.empty() ? L"_" : name;
 	}
 
-	std::optional<std::filesystem::path> PickFolder(HWND hWnd) {
-		IFileOpenDialogPtr pDialog;
-		DWORD dwFlags;
-		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
-		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_ExportGlyphs));
-		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTGLYPHS)).c_str()));
-		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
-		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM | FOS_PICKFOLDERS));
-		if (SuccessOrThrow(pDialog->Show(hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)}) == HRESULT_FROM_WIN32(ERROR_CANCELLED))
-			return std::nullopt;
-
-		IShellItemPtr pResult;
-		PWSTR pszFileName;
-		SuccessOrThrow(pDialog->GetResult(&pResult));
-		SuccessOrThrow(pResult->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName));
-		if (!pszFileName)
-			throw std::runtime_error("DEBUG: The selected file does not have a filesystem path.");
-		std::unique_ptr<std::remove_pointer_t<PWSTR>, decltype(&CoTaskMemFree)> pszFileNamePtr(pszFileName, &CoTaskMemFree);
-		return std::filesystem::path(pszFileName);
-	}
-
 	LRESULT RunExportJobs(HWND hWnd, const std::vector<ExportJob>& jobs) {
 		return TryCatchShowError<App::ProgressDialog::ProgressDialogCancelledError>(hWnd, IDS_ERROR_EXPORTFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
-			const auto folder = PickFolder(hWnd);
+			const auto folder = PickFolder(hWnd, Guid_IFileDialog_ExportGlyphs, IDS_WINDOWTITLE_EXPORTGLYPHS);
 			if (!folder)
 				return 0;
 
@@ -55,7 +35,7 @@ namespace {
 			for (size_t i = 0; i < jobs.size(); i++) {
 				const auto& job = jobs[i];
 				const auto target = jobs.size() == 1 ? *folder : *folder / SanitizeFileName(job.FolderName);
-				App::GlyphFiles::ExportGlyphs(*job.Font, target, job.Options, [&](size_t done, size_t total) {
+				App::GlyphFileTools::ExportGlyphs(*job.Font, target, job.Options, [&](size_t done, size_t total) {
 					progressDialog.ThrowIfCancelled();
 					if (done % 64 == 0 || done == total) {
 						progressDialog.UpdateStatusMessage(std::vformat(GetStringResource(IDS_EXPORTPROGRESS_GLYPHS), std::make_wformat_args(done, total)));
@@ -69,26 +49,19 @@ namespace {
 }
 
 void App::FontEditorWindow::UpdateProjectDirectory() {
-	std::filesystem::path directory;
-	if (m_currentShellItem) {
-		if (PWSTR pszFileName{}; SUCCEEDED(m_currentShellItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName)) && pszFileName) {
-			directory = std::filesystem::path(pszFileName).parent_path();
-			CoTaskMemFree(pszFileName);
-		}
-	}
-
-	if (directory != Structs::GetProjectDirectory()) {
-		Structs::SetProjectDirectory(std::move(directory));
-		Structs::OnProjectDirectoryChange(m_multiFontSet);
+	auto directory = m_currentPath.parent_path();
+	if (directory != ElementFonts::GetProjectDirectory()) {
+		ElementFonts::SetProjectDirectory(std::move(directory));
+		ElementFonts::OnProjectDirectoryChange(m_multiFontSet);
 	}
 }
 
 void App::FontEditorWindow::StartWatchingGlyphFolders() {
-	GlyphFiles::SetChangeNotificationWindow(m_hWnd, GetGlyphFoldersChangedMessage());
+	GlyphFileTools::SetChangeNotificationWindow(m_hWnd, GetGlyphFoldersChangedMessage());
 }
 
 void App::FontEditorWindow::StopWatchingGlyphFolders() {
-	GlyphFiles::SetChangeNotificationWindow(nullptr, 0);
+	GlyphFileTools::SetChangeNotificationWindow(nullptr, 0);
 }
 
 UINT App::FontEditorWindow::GetGlyphFoldersChangedMessage() {
@@ -97,7 +70,7 @@ UINT App::FontEditorWindow::GetGlyphFoldersChangedMessage() {
 }
 
 LRESULT App::FontEditorWindow::OnGlyphFoldersChanged() {
-	const auto changed = GlyphFiles::TakeChangedFolders();
+	const auto changed = GlyphFileTools::TakeChangedFolders();
 	if (changed.empty())
 		return 0;
 
@@ -133,20 +106,17 @@ LRESULT App::FontEditorWindow::Menu_Export_Glyphs(bool withAdjustments) {
 		return 0;
 
 	std::vector<ExportJob> jobs;
-	for (auto i = ListView_GetNextItem(m_hFaceElementsListView, -1, LVNI_SELECTED); i >= 0; i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED)) {
-		if (static_cast<size_t>(i) >= m_pActiveFace->Elements.size())
-			continue;
-
+	for (const auto i : GetSelectedElementIndices()) {
 		const auto& element = *m_pActiveFace->Elements[i];
 		if (element.Renderer == Structs::RendererEnum::Empty)
 			continue;
 
 		jobs.push_back({
 			.FolderName = std::format(L"{} {}", i + 1, xivres::util::unicode::convert<std::wstring>(element.GetBaseFont()->family_name())),
-			.Font = GlyphFiles::GetElementFontForExport(element, withAdjustments),
+			.Font = GlyphFileTools::GetElementFontForExport(element, withAdjustments),
 			.Options = {
 				.WithAdjustments = withAdjustments,
-				.Source = GlyphFiles::DescribeSource(element),
+				.Source = GlyphFileTools::DescribeSource(element),
 			},
 		});
 	}
@@ -165,7 +135,7 @@ LRESULT App::FontEditorWindow::Menu_Export_FaceGlyphs() {
 		.Font = m_pActiveFace->GetMergedFont(),
 		.Options = {
 			.WithAdjustments = true,
-			.Source = GlyphFiles::DescribeSource(*m_pActiveFace),
+			.Source = GlyphFileTools::DescribeSource(*m_pActiveFace),
 		},
 	}});
 }

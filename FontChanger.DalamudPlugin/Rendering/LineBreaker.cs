@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
-using Dalamud.Hooking;
-
 namespace CustomFonts;
 
 /// <summary>
@@ -35,7 +33,7 @@ internal sealed unsafe class LineBreaker : IDisposable
     private const byte HyphenChar = 0x1E;
 
     private readonly FontReplacer replacer;
-    private readonly Hook<SplitWordDelegate> splitWordHook;
+    private readonly IHostHook<SplitWordDelegate> splitWordHook;
     private readonly delegate* unmanaged<nint, byte*, int, int, int*, int> fitUnits;
 
     // Wrapper: the units of the current word already put on earlier lines (0 on its first split), and the unit limit.
@@ -58,12 +56,21 @@ internal sealed unsafe class LineBreaker : IDisposable
         {
             // uint SplitWord(Wrapper* this, int width, int unused, byte* word, byte* measuredWord, bool lineStart), with
             // its call to int FitUnits(Wrapper* this, byte* measuredWord, int width, int maxUnits, int* bytes).
-            var m = CodeSignature.Find("SplitWord");
-            this.fitUnits = (delegate* unmanaged<nint, byte*, int, int, int*, int>)m.Target("FitUnits");
-            this.consumedUnitsOffset = m.Int("Wrapper.ConsumedUnits");
-            this.maxUnitsOffset = m.Int("Wrapper.MaxUnits");
-            this.usedUnitsOffset = m.Int("Wrapper.UsedUnits");
-            this.splitWordHook = Plugin.GameInterop.HookFromAddress<SplitWordDelegate>(m.Address, this.SplitWordDetour);
+            nint splitWord = 0, fitUnits = 0;
+            int consumedUnits = 0, maxUnits = 0, usedUnits = 0;
+            GameLayout.Resolve("Line breaking", () =>
+            {
+                splitWord = GameLayout.Address("SplitWord");
+                fitUnits = GameLayout.Address("SplitWord", "FitUnits");
+                consumedUnits = GameLayout.Get("Wrapper.ConsumedUnits");
+                maxUnits = GameLayout.Get("Wrapper.MaxUnits");
+                usedUnits = GameLayout.Get("Wrapper.UsedUnits");
+            });
+            this.fitUnits = (delegate* unmanaged<nint, byte*, int, int, int*, int>)fitUnits;
+            this.consumedUnitsOffset = consumedUnits;
+            this.maxUnitsOffset = maxUnits;
+            this.usedUnitsOffset = usedUnits;
+            this.splitWordHook = Host.Current.Hook<SplitWordDelegate>(splitWord, this.SplitWordDetour);
             this.splitWordHook.Enable();
         }
         catch
@@ -85,16 +92,16 @@ internal sealed unsafe class LineBreaker : IDisposable
     {
         while (*p != 0)
         {
-            if (*p == 0x02)
+            if (*p == GameText.MacroStart)
             {
-                var length = MacroLength(p);
+                var length = GameText.MacroLength(p);
                 if (length == 0)
                     return false;
                 p += length;
                 continue;
             }
 
-            var n = SequenceLength(p);
+            var n = GameText.CharacterLength(p);
             if (n == 0)
                 return false;
             if (Rune.DecodeFromUtf8(new ReadOnlySpan<byte>(p, n), out var rune, out _) == System.Buffers.OperationStatus.Done)
@@ -120,37 +127,6 @@ internal sealed unsafe class LineBreaker : IDisposable
         return false;
     }
 
-    /// <summary>Gets the length of the character at <paramref name="p"/> as the game steps; 0 if it runs into the end of the text.</summary>
-    private static int SequenceLength(byte* p)
-    {
-        var n = GameUtf8.SequenceLength(*p);
-        for (var i = 1; i < n; i++)
-        {
-            if (p[i] == 0)
-                return 0;
-        }
-
-        return n;
-    }
-
-    /// <summary>Gets the length of the macro at <paramref name="p"/>; 0 if it is malformed.</summary>
-    private static int MacroLength(byte* p)
-    {
-        if (p[1] == 0)
-            return 0;
-        var n = TextShaper.ReadInteger(p + 2, out var payload);
-        if (n == 0 || payload < 0)
-            return 0;
-        var total = 2 + n + payload + 1;
-        for (var i = 2; i < total - 1; i++)
-        {
-            if (p[i] == 0)
-                return 0;
-        }
-
-        return p[total - 1] == 0x03 ? total : 0;
-    }
-
     private uint SplitWordDetour(nint wrapper, int width, int unused, byte* word, byte* measuredWord, byte lineStart)
     {
         var first = *(int*)(wrapper + this.consumedUnitsOffset) == 0;
@@ -163,7 +139,7 @@ internal sealed unsafe class LineBreaker : IDisposable
         }
         catch (Exception ex)
         {
-            Plugin.Log.Error(ex, "Splitting a word failed");
+            Host.Log.Error(ex, "Splitting a word failed");
 
             // The game's own split can take over a word only at its first split; later ones index the table the game
             // built at the first. Past that, a forced split at the fit keeps the line filled.
@@ -252,9 +228,9 @@ internal sealed unsafe class LineBreaker : IDisposable
         Span<char> utf16 = stackalloc char[2];
         while (*p != 0)
         {
-            if (*p == 0x02)
+            if (*p == GameText.MacroStart)
             {
-                var length = MacroLength(p);
+                var length = GameText.MacroLength(p);
                 if (length == 0)
                     break;
                 var icon = p[1] is IconMacro or Icon2Macro;
@@ -265,7 +241,7 @@ internal sealed unsafe class LineBreaker : IDisposable
                 continue;
             }
 
-            var n = SequenceLength(p);
+            var n = GameText.CharacterLength(p);
             if (n == 0)
                 break;
             var rune = *p switch

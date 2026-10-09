@@ -1,5 +1,9 @@
 #include "pch.h"
 #include "GameFontReloader.h"
+#include "resource.h"
+
+#include "FontChanger.Presets/Structs.h"
+#include "xivres/game_layout.h"
 
 template<typename T>
 inline T NotNull(T v) {
@@ -8,49 +12,14 @@ inline T NotNull(T v) {
 	return v;
 }
 
-static const char Framework_GetUiModulePatternText[] = "\x48\x8B\x0D\x00\x00\x00\x00" "\x4C\x89\x00\x24\x00\x00\x00\x00" "\xE8\x00\x00\x00\x00\x80\x7B\x1D\x01";
-static const char Framework_GetUiModulePatternMask[] = "\xFF\xFF\xFF\x00\x00\x00\x00" "\xFF\xFF\x00\xFF\x00\x00\x00\x00" "\xFF\x00\x00\x00\x00\xFF\xFF\xFF\xFF";
-static const size_t Framework_GetUiModulePattern_FrameworkOffsetOffset = 3;
-static const size_t Framework_GetUiModulePattern_GetUiModuleOffsetOffset = 16;
-
-static const char FontDef_PatternText[] = "\x48\x8d\x00\x00\x00\x00\x00\x48\x8d\x00\x00\x00\x00\x00\x48\x0f\x45\x00\xeb\x07\x48\x8d\x00\x00\x00\x00\x00";
-static const char FontDef_PatternMask[] = "\xFF\xFF\x00\x00\x00\x00\x00\xFF\xFF\x00\x00\x00\x00\x00\xFF\xFF\xFF\x00\xFF\xFF\xFF\xFF\x00\x00\x00\x00\x00";
-static const size_t FontDef_HqSetOffset = 23;
-
-// Call to AtkUnitManager::GetAddonByName(this, name, index).
-static const char AtkUnitManager_GetAddonByNameCallPatternText[] = "\xE8\x00\x00\x00\x00\x48\x8B\xF8\x41\xB0\x01";
-static const char AtkUnitManager_GetAddonByNameCallPatternMask[] = "\xFF\x00\x00\x00\x00\xFF\xFF\xFF\xFF\xFF\xFF";
-
-// Start of AtkTextNode::ToggleFontCache(this, enable).
-static const char AtkTextNode_ToggleFontCachePatternText[] = "\x48\x85\xC9\x74\x00\x48\x89\x5C\x24\x00\x57\x48\x83\xEC\x00\x44\x0F\xB6\x81\x00\x00\x00\x00\x0F\xB6\xC2\x41\x80\xE0\xBF\xC0\xE0\x06";
-static const char AtkTextNode_ToggleFontCachePatternMask[] = "\xFF\xFF\xFF\xFF\x00\xFF\xFF\xFF\xFF\x00\xFF\xFF\xFF\xFF\x00\xFF\xFF\xFF\xFF\x00\x00\x00\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF";
-
-// Offsets as of game version 7.56; see FFXIVClientStructs and AddonNamePlate::ToggleTextRenderMode.
-static const size_t AtkModule_AtkStageOffset = 0x128;
-static const size_t AtkModule_IsLobbyOffset = 0x8190;  // the bIsLobby last passed to vf43
-static const size_t AtkStage_RaptureAtkUnitManagerOffset = 0x20;
-static const size_t AddonNamePlate_NamePlateObjectsOffset = 0x480;
-static const size_t AddonNamePlate_NamePlateObjectStride = 0x78;
-static const size_t AddonNamePlate_NamePlateObjectCount = 50;
-static const size_t NamePlateObject_NameTextOffset = 0x20;
-static const size_t AtkTextNode_Flags2Offset = 0x171;  // 0x40: font cache enabled
-
-static std::span<char> LookupForData(std::span<char> range, std::span<const char> pattern, std::span<const char> mask) {
-	for (size_t i = 0, i_ = range.size() - pattern.size(); i < i_; ++i) {
-		auto equals = true;
-		for (size_t j = 0; equals && j < pattern.size(); ++j) {
-			if ((range[i + j] & mask[j]) != (pattern[j] & mask[j])) {
-				equals = false;
-			}
-		}
-		if (equals)
-			return {&range[i], pattern.size()};
-	}
-
-	return {};
-}
-
 extern "C" void asm_call_atkmodule_vf43_via_wndproc();
+
+// The signatures of the game's code (xivres's data/game_font_signatures.json), compiled in as a resource.
+static std::string_view GetGameFontSignatures() {
+	const auto hRes = NotNull(FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_GAMEFONTSIGNATURES), RT_RCDATA));
+	const auto hGlob = NotNull(LoadResource(nullptr, hRes));
+	return {static_cast<const char*>(LockResource(hGlob)), SizeofResource(nullptr, hRes)};
+}
 
 static std::vector<std::span<uint8_t>> Segmentize(void* pfn) {
 	static constexpr std::array<uint8_t, 8> marker{{0x90, 0xcc, 0x90, 0xcc, 0x90, 0xcc, 0x90, 0xcc}};
@@ -97,81 +66,106 @@ GameFontReloader::GameProcess::GameProcess(DWORD pid)
 	if (m_gameExePath.filename() != L"ffxiv_dx11.exe")
 		throw std::runtime_error("Not a ffxiv executable");
 
-	std::shared_ptr<void> hFile(CreateFileW(m_gameExePath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr), &CloseHandle);
-	std::vector<char> buf(GetFileSize(hFile.get(), nullptr));
-	DWORD rd;
-	if (!ReadFile(hFile.get(), buf.data(), static_cast<DWORD>(buf.size()), &rd, nullptr) || rd != buf.size())
-		throw std::runtime_error(std::format("Failed to read file: {}", GetLastError()));
+	// The code is read from the executable rather than from the game, so hooks that others placed don't hide it.
+	std::vector<uint8_t> exe(std::filesystem::file_size(m_gameExePath));
+	if (std::ifstream file(m_gameExePath, std::ios::binary); !file.read(reinterpret_cast<char*>(exe.data()), static_cast<std::streamsize>(exe.size())))
+		throw std::runtime_error("Failed to read the game's executable.");
 
-	const auto& dosHeader = *reinterpret_cast<IMAGE_DOS_HEADER*>(buf.data());
-	const auto& ntHeader64 = *reinterpret_cast<IMAGE_NT_HEADERS64*>(&buf[dosHeader.e_lfanew]);
+	const auto realBase = reinterpret_cast<uint64_t>(m_hModule);
+	xivres::game_layout layout(GetGameFontSignatures(), exe, realBase);
+	std::vector<uint64_t> tableAddresses;
+	int32_t tableEntrySize{}, tableCount{};
+	layout.resolve("Hot reload", [&] {
+		m_game.ppFramework = reinterpret_cast<void*>(layout.target("Framework.Instance"));
+		m_game.pfnFrameworkGetUiModule = reinterpret_cast<void*>(layout.target("Framework.GetUIModule"));
+		m_game.UIModule_GetRaptureAtkModule_VtableOffset = layout.get("UIModule.GetRaptureAtkModule.VtableOffset");
+		m_game.pfnAtkModuleLoadFonts = reinterpret_cast<void*>(layout.address("AtkModuleLoadFonts"));
+		m_game.AtkModule_IsLobby = layout.get("AtkModule.IsLobby");
+		m_game.ppAtkStage = reinterpret_cast<void*>(layout.target("AtkStage.Instance"));
+		m_game.AtkStage_RaptureAtkUnitManager = layout.get("AtkStage.RaptureAtkUnitManager");
+		m_game.pfnAtkUnitManagerGetAddonByName = reinterpret_cast<void*>(layout.target("AtkUnitManager.GetAddonByName"));
+		m_game.AddonNamePlate_NamePlateObjects = layout.get("AddonNamePlate.NamePlateObjectArray");
+		m_game.NamePlateObject_Size = layout.get("NamePlateObject");
+		m_game.NamePlateObject_NameText = layout.get("NamePlateObject.NameText");
+		m_game.NamePlateObjectCount = layout.get("NamePlateObjectArray") / std::max(1, layout.get("NamePlateObject"));
+		m_game.pfnAtkTextNodeToggleFontCache = reinterpret_cast<void*>(layout.address("ToggleFontCache"));
+		m_game.AtkTextNode_FontCacheFlags = layout.get("AtkTextNode.FontCacheFlags");
+		m_game.UseFontCacheFlag = layout.get("AtkTextNode.FontCacheFlags.UseFontCache");
+		tableAddresses = {layout.target("GameTable"), layout.target("LobbyTableA"), layout.target("LobbyTableB")};
+		tableEntrySize = layout.get("FontTableEntry");
+		tableCount = layout.get("FontTable.Count");
+	});
+	if (tableEntrySize != sizeof(FontSetInGame::Face) || tableCount != FaceCount)
+		throw std::runtime_error("The game's font tables changed.");
+
+	// The tables as the executable has them; their pointers are of the executable's preferred base.
+	const auto& dosHeader = *reinterpret_cast<const IMAGE_DOS_HEADER*>(exe.data());
+	const auto& ntHeader64 = *reinterpret_cast<const IMAGE_NT_HEADERS64*>(&exe[dosHeader.e_lfanew]);
 	const auto sectionHeaders = std::span(IMAGE_FIRST_SECTION(&ntHeader64), ntHeader64.FileHeader.NumberOfSections);
-	const auto realBase = reinterpret_cast<char*>(m_hModule);
-	const auto imageBase = reinterpret_cast<char*>(ntHeader64.OptionalHeader.ImageBase);
-	const auto& rva2sec = [&](size_t rva) -> IMAGE_SECTION_HEADER& {
-		for (auto& sectionHeader2 : sectionHeaders) {
-			if (sectionHeader2.VirtualAddress <= rva && rva < sectionHeader2.VirtualAddress + sectionHeader2.Misc.VirtualSize)
-				return sectionHeader2;
+	const auto imageBase = ntHeader64.OptionalHeader.ImageBase;
+	const auto fileOffset = [&](uint64_t rva) -> size_t {
+		for (const auto& s : sectionHeaders) {
+			if (s.VirtualAddress <= rva && rva < s.VirtualAddress + s.Misc.VirtualSize)
+				return rva - s.VirtualAddress + s.PointerToRawData;
 		}
 		throw std::runtime_error("rva");
 	};
-	const auto& va2rva = [&](void* va) {
-		return reinterpret_cast<char*>(va) - imageBase;
-	};
-	const auto& va2sec = [&](void* va) -> IMAGE_SECTION_HEADER& {
-		return rva2sec(reinterpret_cast<char*>(va) - imageBase);
-	};
-	for (const auto& sectionHeader : sectionHeaders) {
-		const auto section = std::span(&buf[sectionHeader.PointerToRawData], sectionHeader.SizeOfRawData);
-		if (strncmp(reinterpret_cast<const char*>(sectionHeader.Name), ".text", IMAGE_SIZEOF_SHORT_NAME) != 0)
+	for (const auto address : tableAddresses) {
+		if (std::ranges::any_of(m_tables, [&](const auto& t) { return t.Address == reinterpret_cast<void*>(address); }))
 			continue;
 
-		if (const auto found = LookupForData(section, Framework_GetUiModulePatternText, Framework_GetUiModulePatternMask); !found.empty()) {
-			auto rvaBase = found.data() - buf.data() + sectionHeader.VirtualAddress - sectionHeader.PointerToRawData;
-			auto rvapFramework = rvaBase + Framework_GetUiModulePattern_FrameworkOffsetOffset + 4 + *reinterpret_cast<int*>(&found[Framework_GetUiModulePattern_FrameworkOffsetOffset]);
-			auto rvaGetUiModule = rvaBase + Framework_GetUiModulePattern_GetUiModuleOffsetOffset + 4 + *reinterpret_cast<int*>(&found[Framework_GetUiModulePattern_GetUiModuleOffsetOffset]);
-
-			m_ppFramework = realBase + rvapFramework;
-			m_pfnFrameworkGetUiModule = realBase + rvaGetUiModule;
+		auto& table = m_tables.emplace_back(reinterpret_cast<void*>(address));
+		memcpy(&table.Original, &exe[fileOffset(address - realBase)], sizeof table.Original);
+		for (size_t i = 0; i < FaceCount; i++) {
+			auto& source = table.Original.Faces[i];
+			auto& target = table.Faces.Faces[i];
+			target.TexCount = source.TexCount;
+			target.TexPattern = reinterpret_cast<const char*>(&exe[fileOffset(reinterpret_cast<uint64_t>(source.TexPattern) - imageBase)]);
+			target.Fdt = reinterpret_cast<const char*>(&exe[fileOffset(reinterpret_cast<uint64_t>(source.Fdt) - imageBase)]);
+			source.TexPattern += realBase - imageBase;
+			source.Fdt += realBase - imageBase;
 		}
+	}
 
-		if (const auto found = LookupForData(section, AtkUnitManager_GetAddonByNameCallPatternText, AtkUnitManager_GetAddonByNameCallPatternMask); !found.empty()) {
-			auto rvaBase = found.data() - buf.data() + sectionHeader.VirtualAddress - sectionHeader.PointerToRawData;
-			m_pfnAtkUnitManagerGetAddonByName = realBase + rvaBase + 5 + *reinterpret_cast<int*>(&found[1]);
-		}
-
-		if (const auto found = LookupForData(section, AtkTextNode_ToggleFontCachePatternText, AtkTextNode_ToggleFontCachePatternMask); !found.empty()) {
-			auto rvaBase = found.data() - buf.data() + sectionHeader.VirtualAddress - sectionHeader.PointerToRawData;
-			m_pfnAtkTextNodeToggleFontCache = realBase + rvaBase;
-		}
-
-		if (const auto found = LookupForData(section, FontDef_PatternText, FontDef_PatternMask); !found.empty()) {
-			auto rvaBase = found.data() - buf.data() + sectionHeader.VirtualAddress - sectionHeader.PointerToRawData;
-			auto rva = rvaBase + FontDef_HqSetOffset + 4 + *reinterpret_cast<int*>(&found[FontDef_HqSetOffset]);
-
-			const auto& fontSetSection = rva2sec(rva);
-			auto& fontSet = m_sets.emplace_back();
-			auto& originals = m_originals.emplace_back() = *reinterpret_cast<FontSetInGame*>(&buf[rva - fontSetSection.VirtualAddress + fontSetSection.PointerToRawData]);
-			m_setAddresses.emplace_back(realBase + rva);
-
-			for (size_t i = 0; i < 0x29; i++) {
-				auto& sourceItem = originals.Faces[i];
-				auto& targetItem = fontSet.Faces[i];
-				const auto& texPatternSection = va2sec(sourceItem.TexPattern);
-				const auto& fdtSection = va2sec(sourceItem.Fdt);
-				targetItem.TexPattern = &buf[va2rva(sourceItem.TexPattern) + texPatternSection.PointerToRawData - texPatternSection.VirtualAddress];
-				targetItem.Fdt = &buf[va2rva(sourceItem.Fdt) + fdtSection.PointerToRawData - fdtSection.VirtualAddress];
-				targetItem.TexCount = sourceItem.TexCount;
-				sourceItem.TexPattern = sourceItem.TexPattern + (realBase - imageBase);
-				sourceItem.Fdt = sourceItem.Fdt + (realBase - imageBase);
-			}
-		}
+	for (const auto type : {xivres::font_type::font, xivres::font_type::chn_axis, xivres::font_type::krn_axis}) {
+		const auto defaults = FontChanger::FixedSizeFont::get_font_table(type);
+		if (defaults.size() == FaceCount && std::ranges::equal(m_tables.front().Faces.Faces, defaults, [](const auto& f, const auto& d) { return f.Fdt == d.Face->Name + ".fdt"; }))
+			m_fontType = type;
 	}
 }
 
-void GameFontReloader::GameProcess::RefreshFonts(const FontSet* pTargetSet) const {
-	if (!m_ppFramework || !m_pfnFrameworkGetUiModule || !m_pfnAtkUnitManagerGetAddonByName || !m_pfnAtkTextNodeToggleFontCache || m_setAddresses.empty())
-		throw std::runtime_error("Game functions not found; the game version may not be supported.");
+void GameFontReloader::GameProcess::RefreshFonts(const FontChanger::Structs::MultiFontSet* pProject, xivres::font_type fontType) const {
+	if (pProject && fontType != xivres::font_type::undefined && fontType != xivres::font_type::font && fontType != m_fontType)
+		throw std::runtime_error("The game has no fonts of the font type.");
+
+	// What each table will be: as the executable has it without a project; with the faces of the project loaded from the
+	// project's textures; or the game's table of a font type, the lobby's staying.
+	std::vector<std::optional<FontSet>> targets(m_tables.size());
+	if (pProject) {
+		for (size_t i = 0; i < m_tables.size(); i++) {
+			if (fontType != xivres::font_type::undefined) {
+				if (i == 0)
+					targets[i] = GetDefaultFontSet(fontType);
+				continue;
+			}
+
+			auto& target = targets[i].emplace(m_tables[i].Faces);
+			for (const auto& f : pProject->FontSets) {
+				std::string texNameFormat = f->TexFilenameFormat;
+				for (size_t pos; (pos = texNameFormat.find("{}")) != std::string::npos;)
+					texNameFormat.replace(pos, 2, "%d");
+
+				for (const auto& face : f->Faces) {
+					for (auto& slot : target.Faces) {
+						if (slot.Fdt == face->Name + ".fdt" && slot.TexPattern != texNameFormat) {
+							slot.TexPattern = texNameFormat;
+							slot.TexCount = f->ExpectedTexCount;
+						}
+					}
+				}
+			}
+		}
+	}
 
 	HWND hGameWindow = nullptr;
 	{
@@ -205,11 +199,16 @@ void GameFontReloader::GameProcess::RefreshFonts(const FontSet* pTargetSet) cons
 	std::vector<uint8_t> code(1 + &segments.back().back() - &segments.front().front());
 	memcpy(code.data(), &segments.front().front(), code.size());
 
-	FontSetInGame target{};
-	if (pTargetSet) {
+	// The tables to write, the original if unchanged; the strings of a changed one go after the code, at offsets from
+	// it until the code is placed.
+	std::vector<FontSetInGame> written(m_tables.size());
+	for (size_t t = 0; t < m_tables.size(); t++) {
+		written[t] = m_tables[t].Original;
+		if (!targets[t])
+			continue;
 		for (size_t i = 0; i < FaceCount; i++) {
-			const auto& local = pTargetSet->Faces[i];
-			auto& remote = target.Faces[i];
+			const auto& local = targets[t]->Faces[i];
+			auto& remote = written[t].Faces[i];
 			remote.TexCount = local.TexCount;
 
 			remote.TexPattern = reinterpret_cast<char*>(code.size());
@@ -248,52 +247,48 @@ void GameFontReloader::GameProcess::RefreshFonts(const FontSet* pTargetSet) cons
 	pData[3] = NotNull(GetProcAddress(NotNull(GetModuleHandleW(L"kernel32.dll")), "SetEvent"));
 	pData[4] = NotNull(GetProcAddress(NotNull(GetModuleHandleW(L"kernel32.dll")), "ResetEvent"));
 	pData[5] = NotNull(GetProcAddress(NotNull(GetModuleHandleW(L"kernel32.dll")), "WaitForSingleObject"));
-	pData[6] = m_ppFramework;
-	pData[7] = m_pfnFrameworkGetUiModule;
+	pData[6] = m_game.ppFramework;
+	pData[7] = m_game.pfnFrameworkGetUiModule;
 	pData[8] = hGameWindow;
 	pData[9] = hEvent1Target;
 	pData[10] = hEvent2Target;
 	// pData[11] is the previous window procedure, set by the injected code.
-	pData[12] = m_pfnAtkUnitManagerGetAddonByName;
-	pData[13] = m_pfnAtkTextNodeToggleFontCache;
-	pData[14] = reinterpret_cast<void*>(AtkModule_AtkStageOffset);
-	pData[15] = reinterpret_cast<void*>(AtkModule_IsLobbyOffset);
-	pData[16] = reinterpret_cast<void*>(AtkStage_RaptureAtkUnitManagerOffset);
-	pData[17] = reinterpret_cast<void*>(AddonNamePlate_NamePlateObjectsOffset);
-	pData[18] = reinterpret_cast<void*>(AddonNamePlate_NamePlateObjectStride);
-	pData[19] = reinterpret_cast<void*>(NamePlateObject_NameTextOffset);
-	pData[20] = reinterpret_cast<void*>(AtkTextNode_Flags2Offset);
-	pData[21] = reinterpret_cast<void*>(AddonNamePlate_NamePlateObjectCount);
+	pData[12] = m_game.pfnAtkUnitManagerGetAddonByName;
+	pData[13] = m_game.pfnAtkTextNodeToggleFontCache;
+	pData[14] = m_game.ppAtkStage;
+	pData[15] = reinterpret_cast<void*>(m_game.AtkModule_IsLobby);
+	pData[16] = reinterpret_cast<void*>(m_game.AtkStage_RaptureAtkUnitManager);
+	pData[17] = reinterpret_cast<void*>(m_game.AddonNamePlate_NamePlateObjects);
+	pData[18] = reinterpret_cast<void*>(m_game.NamePlateObject_Size);
+	pData[19] = reinterpret_cast<void*>(m_game.NamePlateObject_NameText);
+	pData[20] = reinterpret_cast<void*>(m_game.AtkTextNode_FontCacheFlags);
+	pData[21] = reinterpret_cast<void*>(m_game.NamePlateObjectCount);
+	pData[22] = reinterpret_cast<void*>(m_game.UIModule_GetRaptureAtkModule_VtableOffset);
+	pData[23] = m_game.pfnAtkModuleLoadFonts;
+	pData[24] = reinterpret_cast<void*>(m_game.UseFontCacheFlag);
 
-	if (pTargetSet) {
-		for (auto& remote : target.Faces) {
+	for (size_t t = 0; t < m_tables.size(); t++) {
+		if (!targets[t])
+			continue;
+		for (auto& remote : written[t].Faces) {
 			remote.Fdt = pRemote + reinterpret_cast<size_t>(remote.Fdt);
 			remote.TexPattern = pRemote + reinterpret_cast<size_t>(remote.TexPattern);
 		}
-	} else {
-		// Unless we're restoring the string data, we cannot free the newly allocated memory
-		remotePtrFreer = {pRemote, [hProcess = m_hProcess.get()](void* p) { VirtualFreeEx(hProcess, p, 0, MEM_RELEASE); }};
 	}
 
-	size_t written{};
-	WriteProcessMemory(m_hProcess.get(), pRemote, code.data(), code.size(), &written);
+	// The memory can be freed afterwards unless a table points to strings in it.
+	if (std::ranges::none_of(targets, [](const auto& t) { return t.has_value(); }))
+		remotePtrFreer = {pRemote, [hProcess = m_hProcess.get()](void* p) { VirtualFreeEx(hProcess, p, 0, MEM_RELEASE); }};
+
+	WriteProcessMemory(m_hProcess.get(), pRemote, code.data(), code.size(), nullptr);
 
 	const auto hRemoteThread = NotNull(CreateRemoteThread(m_hProcess.get(), nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(pRemote + offsetRedirectWndProc), nullptr, 0, nullptr));
 	WaitForSingleObject(hRemoteThread, INFINITE);
 	PostMessage(hGameWindow, WM_NULL, 0, 0);
 
 	WaitForSingleObject(hEvent1.get(), INFINITE);
-	if (pTargetSet) {
-		for (size_t i = 0; i < m_setAddresses.size(); i++) {
-			size_t written{};
-			WriteProcessMemory(m_hProcess.get(), m_setAddresses[i], &target, sizeof target, &written);
-		}
-	} else {
-		for (size_t i = 0; i < m_setAddresses.size(); i++) {
-			size_t written{};
-			WriteProcessMemory(m_hProcess.get(), m_setAddresses[i], &m_originals[i], sizeof m_originals[i], &written);
-		}
-	}
+	for (size_t t = 0; t < m_tables.size(); t++)
+		WriteProcessMemory(m_hProcess.get(), m_tables[t].Address, &written[t], sizeof written[t], nullptr);
 	ResetEvent(hEvent1.get());
 	SetEvent(hEvent2.get());
 
@@ -303,197 +298,17 @@ void GameFontReloader::GameProcess::RefreshFonts(const FontSet* pTargetSet) cons
 	DuplicateHandle(m_hProcess.get(), hEvent2Target, nullptr, nullptr, 0, FALSE, DUPLICATE_CLOSE_SOURCE);
 }
 
-const GameFontReloader::FontSet& GameFontReloader::GetDefaultFontSet(xivres::font_type type) {
-	static const FontSet PresetFont{
-		{
-			{7, "font%d.tex", "AXIS_18.fdt"},
-			{7, "font%d.tex", "AXIS_14.fdt"},
-			{7, "font%d.tex", "AXIS_12.fdt"},
-			{7, "font%d.tex", "AXIS_96.fdt"},
-			{7, "font%d.tex", "MiedingerMid_36.fdt"},
-			{7, "font%d.tex", "MiedingerMid_18.fdt"},
-			{7, "font%d.tex", "MiedingerMid_14.fdt"},
-			{7, "font%d.tex", "MiedingerMid_12.fdt"},
-			{7, "font%d.tex", "MiedingerMid_10.fdt"},
-			{7, "font%d.tex", "Meidinger_40.fdt"},
-			{7, "font%d.tex", "Meidinger_20.fdt"},
-			{7, "font%d.tex", "Meidinger_16.fdt"},
-			{7, "font%d.tex", "TrumpGothic_68.fdt"},
-			{7, "font%d.tex", "TrumpGothic_34.fdt"},
-			{7, "font%d.tex", "TrumpGothic_23.fdt"},
-			{7, "font%d.tex", "TrumpGothic_184.fdt"},
-			{7, "font%d.tex", "Jupiter_46.fdt"},
-			{7, "font%d.tex", "Jupiter_23.fdt"},
-			{7, "font%d.tex", "Jupiter_20.fdt"},
-			{7, "font%d.tex", "Jupiter_16.fdt"},
-			{7, "font%d.tex", "Jupiter_90.fdt"},
-			{7, "font%d.tex", "Jupiter_45.fdt"},
-			{7, "font%d.tex", "AXIS_36.fdt"},
-			{7, "font%d.tex", "MiedingerMid_36.fdt"},
-			{7, "font%d.tex", "MiedingerMid_18.fdt"},
-			{7, "font%d.tex", "MiedingerMid_14.fdt"},
-			{7, "font%d.tex", "MiedingerMid_12.fdt"},
-			{7, "font%d.tex", "MiedingerMid_10.fdt"},
-			{7, "font%d.tex", "Meidinger_40.fdt"},
-			{7, "font%d.tex", "Meidinger_20.fdt"},
-			{7, "font%d.tex", "Meidinger_16.fdt"},
-			{7, "font%d.tex", "TrumpGothic_68.fdt"},
-			{7, "font%d.tex", "TrumpGothic_34.fdt"},
-			{7, "font%d.tex", "TrumpGothic_23.fdt"},
-			{7, "font%d.tex", "TrumpGothic_184.fdt"},
-			{7, "font%d.tex", "Jupiter_46.fdt"},
-			{7, "font%d.tex", "Jupiter_23.fdt"},
-			{7, "font%d.tex", "Jupiter_20.fdt"},
-			{7, "font%d.tex", "Jupiter_16.fdt"},
-			{7, "font%d.tex", "Jupiter_90.fdt"},
-			{7, "font%d.tex", "Jupiter_45.fdt"},
-		}
-	};
+GameFontReloader::FontSet GameFontReloader::GetDefaultFontSet(xivres::font_type type) {
+	const auto table = FontChanger::FixedSizeFont::get_font_table(type);
+	if (table.size() != FaceCount)
+		throw std::out_of_range("font/lobby/chn/krn are supported");
 
-	static const FontSet PresetFontLobby{
-		{
-			{6, "font_lobby%d.tex", "AXIS_18_lobby.fdt"},
-			{6, "font_lobby%d.tex", "AXIS_14_lobby.fdt"},
-			{6, "font_lobby%d.tex", "AXIS_12_lobby.fdt"},
-			{6, "font_lobby%d.tex", "AXIS_12_lobby.fdt"},
-			{6, "font_lobby%d.tex", "MiedingerMid_36_lobby.fdt"},
-			{6, "font_lobby%d.tex", "MiedingerMid_18_lobby.fdt"},
-			{6, "font_lobby%d.tex", "MiedingerMid_14_lobby.fdt"},
-			{6, "font_lobby%d.tex", "MiedingerMid_12_lobby.fdt"},
-			{6, "font_lobby%d.tex", "MiedingerMid_10_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Meidinger_40_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Meidinger_20_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Meidinger_16_lobby.fdt"},
-			{6, "font_lobby%d.tex", "TrumpGothic_68_lobby.fdt"},
-			{6, "font_lobby%d.tex", "TrumpGothic_34_lobby.fdt"},
-			{6, "font_lobby%d.tex", "TrumpGothic_23_lobby.fdt"},
-			{6, "font_lobby%d.tex", "TrumpGothic_184_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_46_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_23_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_20_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_16_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_90_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_45_lobby.fdt"},
-			{6, "font_lobby%d.tex", "AXIS_36_lobby.fdt"},
-			{6, "font_lobby%d.tex", "MiedingerMid_36_lobby.fdt"},
-			{6, "font_lobby%d.tex", "MiedingerMid_18_lobby.fdt"},
-			{6, "font_lobby%d.tex", "MiedingerMid_14_lobby.fdt"},
-			{6, "font_lobby%d.tex", "MiedingerMid_12_lobby.fdt"},
-			{6, "font_lobby%d.tex", "MiedingerMid_10_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Meidinger_40_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Meidinger_20_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Meidinger_16_lobby.fdt"},
-			{6, "font_lobby%d.tex", "TrumpGothic_68_lobby.fdt"},
-			{6, "font_lobby%d.tex", "TrumpGothic_34_lobby.fdt"},
-			{6, "font_lobby%d.tex", "TrumpGothic_23_lobby.fdt"},
-			{6, "font_lobby%d.tex", "TrumpGothic_184_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_46_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_23_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_20_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_16_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_90_lobby.fdt"},
-			{6, "font_lobby%d.tex", "Jupiter_45_lobby.fdt"},
-		}
-	};
-
-	static const FontSet PresetFontChnAxis{
-		{
-			{20, "font_chn_%d.tex", "ChnAXIS_180.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_140.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_120.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_120.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_180.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_180.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_180.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_180.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_180.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_180.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_180.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_180.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{20, "font_chn_%d.tex", "ChnAXIS_360.fdt"},
-			{3, "font%d.tex", "MiedingerMid_36.fdt"},
-			{3, "font%d.tex", "MiedingerMid_18.fdt"},
-			{3, "font%d.tex", "MiedingerMid_14.fdt"},
-			{3, "font%d.tex", "MiedingerMid_12.fdt"},
-			{3, "font%d.tex", "MiedingerMid_10.fdt"},
-			{3, "font%d.tex", "Meidinger_40.fdt"},
-			{3, "font%d.tex", "Meidinger_20.fdt"},
-			{3, "font%d.tex", "Meidinger_16.fdt"},
-			{3, "font%d.tex", "TrumpGothic_68.fdt"},
-			{3, "font%d.tex", "TrumpGothic_34.fdt"},
-			{3, "font%d.tex", "TrumpGothic_23.fdt"},
-			{3, "font%d.tex", "TrumpGothic_184.fdt"},
-			{3, "font%d.tex", "Jupiter_46.fdt"},
-			{3, "font%d.tex", "Jupiter_23.fdt"},
-			{3, "font%d.tex", "Jupiter_20.fdt"},
-			{3, "font%d.tex", "Jupiter_16.fdt"},
-			{3, "font%d.tex", "Jupiter_90.fdt"},
-			{3, "font%d.tex", "Jupiter_45.fdt"},
-		}
-	};
-
-	static const FontSet PresetFontKrnAxis{
-		{
-			{9, "font_krn_%d.tex", "KrnAXIS_180.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_140.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_120.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_120.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_180.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_180.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_180.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_180.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_180.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_180.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_180.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_180.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{9, "font_krn_%d.tex", "KrnAXIS_360.fdt"},
-			{3, "font%d.tex", "MiedingerMid_36.fdt"},
-			{3, "font%d.tex", "MiedingerMid_18.fdt"},
-			{3, "font%d.tex", "MiedingerMid_14.fdt"},
-			{3, "font%d.tex", "MiedingerMid_12.fdt"},
-			{3, "font%d.tex", "MiedingerMid_10.fdt"},
-			{3, "font%d.tex", "Meidinger_40.fdt"},
-			{3, "font%d.tex", "Meidinger_20.fdt"},
-			{3, "font%d.tex", "Meidinger_16.fdt"},
-			{3, "font%d.tex", "TrumpGothic_68.fdt"},
-			{3, "font%d.tex", "TrumpGothic_34.fdt"},
-			{3, "font%d.tex", "TrumpGothic_23.fdt"},
-			{3, "font%d.tex", "TrumpGothic_184.fdt"},
-			{3, "font%d.tex", "Jupiter_46.fdt"},
-			{3, "font%d.tex", "Jupiter_23.fdt"},
-			{3, "font%d.tex", "Jupiter_20.fdt"},
-			{3, "font%d.tex", "Jupiter_16.fdt"},
-			{3, "font%d.tex", "Jupiter_90.fdt"},
-			{3, "font%d.tex", "Jupiter_45.fdt"},
-		}
-	};
-
-	switch (type) {
-		case xivres::font_type::font: return PresetFont;
-		case xivres::font_type::font_lobby: return PresetFontLobby;
-		case xivres::font_type::chn_axis: return PresetFontChnAxis;
-			return PresetFontChnAxis;
-		case xivres::font_type::krn_axis: return PresetFontKrnAxis;
-		default: throw std::out_of_range("font/lobby/chn/krn are supported");
+	FontSet res;
+	for (size_t i = 0; i < FaceCount; i++) {
+		std::string_view format(FontChanger::FixedSizeFont::get_font_tex_filename_format(table[i].Face->FontType));
+		auto texPattern = std::string(format.substr(format.rfind('/') + 1));
+		texPattern.replace(texPattern.find("{}"), 2, "%d");
+		res.Faces[i] = {table[i].TextureCount, std::move(texPattern), table[i].Face->Name + ".fdt"};
 	}
+	return res;
 }

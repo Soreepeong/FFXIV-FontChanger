@@ -1,7 +1,10 @@
 #ifndef FACEELEMENTEDITORDIALOG_INTERNAL_H
 #define FACEELEMENTEDITORDIALOG_INTERNAL_H
 
+#include <exprtk.hpp>
+
 #include "FaceElementEditorDialog.h"
+#include "FontChanger.Presets/GlyphMergingPresets.h"
 #include "resource.h"
 
 typedef struct hb_face_t hb_face_t;
@@ -23,25 +26,19 @@ namespace App::FaceElementEditorDialogInternal {
 
 	// Number of the preset checkboxes of the Glyph merging page, whose IDs follow IDC_CHECK_GLYPHMERGING_PRESET_0.
 	inline constexpr size_t GlyphMergingPresetCount = IDC_CHECK_GLYPHMERGING_PRESET_12 - IDC_CHECK_GLYPHMERGING_PRESET_0 + 1;
+	static_assert(GlyphMergingPresetCount == FontChanger::GlyphMergingPresets::Count, "a checkbox per preset");
 
-	struct GlyphMergingPreset {
-		std::vector<xivres::fontgen::glyph_merge_mapping> Mappings;
+	// Whether the renderer draws the font files of a system font, which have features and variations, and which it can make
+	// at other sizes.
+	inline bool DrawsFontFiles(Structs::RendererEnum renderer) {
+		return renderer == Structs::RendererEnum::DirectWrite || renderer == Structs::RendererEnum::FreeType;
+	}
 
-		// Codepoints of all the mappings.
-		std::u32string Codepoints;
-
-		explicit GlyphMergingPreset(std::vector<xivres::fontgen::glyph_merge_mapping> mappings)
-			: Mappings(std::move(mappings)) {
-			for (const auto& mapping : Mappings)
-				Codepoints += mapping.Codepoints;
-		}
-	};
-
-	// Index of the preset of the IME indicators, which FaceFromFont draws by its own mappings.
-	inline constexpr size_t GlyphMergingPresetImeIndicators = 2;
-
-	// Presets in the order of the checkboxes, drawing the private use area glyphs of the game fonts.
-	const std::array<GlyphMergingPreset, GlyphMergingPresetCount>& GetGlyphMergingPresets();
+	// Whether the element takes a system font by its family, weight, style, and stretch: those that draw font files, and
+	// glyph images, whose texts of glyph merging are drawn with the font.
+	inline bool UsesSystemFont(Structs::RendererEnum renderer) {
+		return DrawsFontFiles(renderer) || renderer == Structs::RendererEnum::GlyphImages;
+	}
 
 	// Creates a HarfBuzz face of the font file of the lookup.
 	std::shared_ptr<hb_face_t> CreateHarfBuzzFace(const Structs::LookupStruct& lookup);

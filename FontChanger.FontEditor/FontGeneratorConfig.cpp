@@ -1,45 +1,42 @@
 ﻿#include "pch.h"
 #include "FontGeneratorConfig.h"
 #include "MainWindow.Internal.h"
+#include "resource.h"
+
+const std::array<FontGeneratorConfig::GameRelease, 4> FontGeneratorConfig::GameReleases{{
+	{"global", xivres::font_type::font, IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_SQEX},
+	{"china", xivres::font_type::chn_axis, IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_SNDA},
+	{"korea", xivres::font_type::krn_axis, IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_ACTOZ},
+	{"traditionalchinese", xivres::font_type::tc_axis, IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_USERJOY},
+}};
 
 const FontGeneratorConfig FontGeneratorConfig::Default{
-	.Global = {
-		R"(C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game)",
-	},
-	.China = {
-		u8R"(C:\Program Files (x86)\上海数龙科技有限公司\最终幻想XIV\game)",
-		R"(C:\Program Files (x86)\SNDA\FFXIV\game)"
-	},
-	.Korea = {
-		R"(C:\Program Files (x86)\FINAL FANTASY XIV - KOREA\game)",
-	},
-	.TraditionalChinese = {
-		R"(C:\Program Files\USERJOY GAMES\FINAL FANTASY XIV TC\game)",
-	},
+	.GamePaths = {{
+		{
+			R"(C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game)",
+		},
+		{
+			u8R"(C:\Program Files (x86)\上海数龙科技有限公司\最终幻想XIV\game)",
+			R"(C:\Program Files (x86)\SNDA\FFXIV\game)",
+		},
+		{
+			R"(C:\Program Files (x86)\FINAL FANTASY XIV - KOREA\game)",
+		},
+		{
+			R"(C:\Program Files\USERJOY GAMES\FINAL FANTASY XIV TC\game)",
+		},
+	}},
 	.FaceElementListViewHeight = ::FaceElementListViewHeight,
 	.PreviewEditHeight = ::PreviewEditHeight,
 };
 
 void from_json(const nlohmann::json& json, FontGeneratorConfig& value) {
 	value = {};
-	if (auto it = json.find("global"); it != json.end() && it->is_array()) {
-		for (const auto& [_, p] : it->items())
-			value.Global.emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
-	}
-
-	if (auto it = json.find("china"); it != json.end() && it->is_array()) {
-		for (const auto& [_, p] : it->items())
-			value.China.emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
-	}
-
-	if (auto it = json.find("korea"); it != json.end() && it->is_array()) {
-		for (const auto& [_, p] : it->items())
-			value.Korea.emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
-	}
-	
-	if (auto it = json.find("traditionalchinese"); it != json.end() && it->is_array()) {
-		for (const auto& [_, p] : it->items())
-			value.TraditionalChinese.emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
+	for (size_t i = 0; i < FontGeneratorConfig::GameReleases.size(); i++) {
+		if (auto it = json.find(FontGeneratorConfig::GameReleases[i].JsonKey); it != json.end() && it->is_array()) {
+			for (const auto& [_, p] : it->items())
+				value.GamePaths[i].emplace_back(xivres::util::unicode::convert<std::wstring>(p.get<std::string>()));
+		}
 	}
 
 	value.FaceElementListViewHeight = (std::max)(
@@ -55,25 +52,12 @@ void from_json(const nlohmann::json& json, FontGeneratorConfig& value) {
 void to_json(nlohmann::json& json, const FontGeneratorConfig& value) {
 	json = nlohmann::json::object();
 
-	auto arr = nlohmann::json::array();
-	for (const auto& p : value.Global)
-		arr.emplace_back(xivres::util::unicode::convert<std::string>(p.wstring()));
-	json.emplace("global", std::move(arr));
-
-	arr = {};
-	for (const auto& p : value.China)
-		arr.emplace_back(xivres::util::unicode::convert<std::string>(p.wstring()));
-	json.emplace("china", std::move(arr));
-
-	arr = {};
-	for (const auto& p : value.Korea)
-		arr.emplace_back(xivres::util::unicode::convert<std::string>(p.wstring()));
-	json.emplace("korea", std::move(arr));
-	
-	arr = {};
-	for (const auto& p : value.TraditionalChinese)
-		arr.emplace_back(xivres::util::unicode::convert<std::string>(p.wstring()));
-	json.emplace("traditionalchinese", std::move(arr));
+	for (size_t i = 0; i < FontGeneratorConfig::GameReleases.size(); i++) {
+		auto arr = nlohmann::json::array();
+		for (const auto& p : value.GamePaths[i])
+			arr.emplace_back(xivres::util::unicode::convert<std::string>(p.wstring()));
+		json.emplace(FontGeneratorConfig::GameReleases[i].JsonKey, std::move(arr));
+	}
 
 	json.emplace("FaceElementListViewHeight", value.FaceElementListViewHeight);
 	json.emplace("PreviewEditHeight", value.PreviewEditHeight);
@@ -90,6 +74,32 @@ std::filesystem::path FontGeneratorConfig::GetConfigPath() {
 			static_cast<DWORD>(path.size())));
 
 	return std::filesystem::path(path).parent_path() / "config.json";
+}
+
+FontGeneratorConfig FontGeneratorConfig::Load() {
+	if (!exists(GetConfigPath())) {
+		Default.Save();
+		return Default;
+	}
+
+	FontGeneratorConfig res = Default;
+	if (std::ifstream configFile(GetConfigPath()); configFile)
+		from_json(nlohmann::json::parse(configFile), res);
+	return res;
+}
+
+std::vector<std::filesystem::path> FontGeneratorConfig::GetGamePaths(xivres::font_type fontType) const {
+	// The releases other than the global one have fonts of their own.
+	for (size_t i = 1; i < GameReleases.size(); i++) {
+		if (GameReleases[i].FontType == fontType)
+			return GamePaths[i];
+	}
+
+	// Every release has the fonts of the global one.
+	std::vector<std::filesystem::path> paths;
+	for (const auto& list : GamePaths)
+		paths.insert(paths.end(), list.begin(), list.end());
+	return paths;
 }
 
 void FontGeneratorConfig::MarkDirty() {

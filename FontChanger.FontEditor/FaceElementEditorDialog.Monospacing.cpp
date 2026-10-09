@@ -5,11 +5,11 @@ using namespace App::FaceElementEditorDialogInternal;
 
 namespace {
 	// Width that an edit shows when monospacing is turned on without a width to start from.
-	float DefaultMonospacingWidth(xivres::fontgen::monospacing_unit unit) {
+	float DefaultMonospacingWidth(FontChanger::FixedSizeFont::monospacing_unit unit) {
 		switch (unit) {
-			case xivres::fontgen::monospacing_unit::Pixels: return 8.f;
-			case xivres::fontgen::monospacing_unit::Em: return 0.6f;
-			case xivres::fontgen::monospacing_unit::ReferenceGlyph:
+			case FontChanger::FixedSizeFont::monospacing_unit::Pixels: return 8.f;
+			case FontChanger::FixedSizeFont::monospacing_unit::Em: return 0.6f;
+			case FontChanger::FixedSizeFont::monospacing_unit::ReferenceGlyph:
 			default: return 1.f;
 		}
 	}
@@ -40,22 +40,22 @@ void App::FaceElementEditorDialog::InitializeMonospacingControls() {
 			std::make_pair(MonospacingMode::AtMost, IDS_MONOSPACING_MODE_ATMOST),
 			std::make_pair(MonospacingMode::Between, IDS_MONOSPACING_MODE_BETWEEN),
 		});
-	SetComboboxContent<xivres::fontgen::monospacing_alignment>(
+	SetComboboxContent<FontChanger::FixedSizeFont::monospacing_alignment>(
 		m_controls->MonospacingAlignmentCombo,
 		m.Alignment,
 		{
-			std::make_pair(xivres::fontgen::monospacing_alignment::Left, IDS_MONOSPACING_ALIGNMENT_LEFT),
-			std::make_pair(xivres::fontgen::monospacing_alignment::CenterAdvance, IDS_MONOSPACING_ALIGNMENT_CENTERADVANCE),
-			std::make_pair(xivres::fontgen::monospacing_alignment::CenterInk, IDS_MONOSPACING_ALIGNMENT_CENTERINK),
-			std::make_pair(xivres::fontgen::monospacing_alignment::Right, IDS_MONOSPACING_ALIGNMENT_RIGHT),
+			std::make_pair(FontChanger::FixedSizeFont::monospacing_alignment::Left, IDS_MONOSPACING_ALIGNMENT_LEFT),
+			std::make_pair(FontChanger::FixedSizeFont::monospacing_alignment::CenterAdvance, IDS_MONOSPACING_ALIGNMENT_CENTERADVANCE),
+			std::make_pair(FontChanger::FixedSizeFont::monospacing_alignment::CenterInk, IDS_MONOSPACING_ALIGNMENT_CENTERINK),
+			std::make_pair(FontChanger::FixedSizeFont::monospacing_alignment::Right, IDS_MONOSPACING_ALIGNMENT_RIGHT),
 		});
-	SetComboboxContent<xivres::fontgen::monospacing_unit>(
+	SetComboboxContent<FontChanger::FixedSizeFont::monospacing_unit>(
 		m_controls->MonospacingUnitCombo,
 		m.Unit,
 		{
-			std::make_pair(xivres::fontgen::monospacing_unit::Pixels, IDS_MONOSPACING_UNIT_PIXELS),
-			std::make_pair(xivres::fontgen::monospacing_unit::Em, IDS_MONOSPACING_UNIT_EM),
-			std::make_pair(xivres::fontgen::monospacing_unit::ReferenceGlyph, IDS_MONOSPACING_UNIT_REFERENCEGLYPH),
+			std::make_pair(FontChanger::FixedSizeFont::monospacing_unit::Pixels, IDS_MONOSPACING_UNIT_PIXELS),
+			std::make_pair(FontChanger::FixedSizeFont::monospacing_unit::Em, IDS_MONOSPACING_UNIT_EM),
+			std::make_pair(FontChanger::FixedSizeFont::monospacing_unit::ReferenceGlyph, IDS_MONOSPACING_UNIT_REFERENCEGLYPH),
 		});
 
 	// The names of the alignments are longer than the combobox is wide.
@@ -84,7 +84,7 @@ void App::FaceElementEditorDialog::SetMonospacingControlsEnabled() {
 	EnableWindow(m_controls->MonospacingMinEdit, on);
 	EnableWindow(m_controls->MonospacingMaxEdit, on && m_monospacingMode == MonospacingMode::Between);
 	EnableWindow(m_controls->MonospacingUnitCombo, on);
-	EnableWindow(m_controls->MonospacingReferenceEdit, on && m_element.WrapModifiers.Monospacing.Unit == xivres::fontgen::monospacing_unit::ReferenceGlyph);
+	EnableWindow(m_controls->MonospacingReferenceEdit, on && m_element.WrapModifiers.Monospacing.Unit == FontChanger::FixedSizeFont::monospacing_unit::ReferenceGlyph);
 	EnableWindow(m_controls->MonospacingDropKerningCheck, on);
 }
 
@@ -92,9 +92,9 @@ void App::FaceElementEditorDialog::ApplyMonospacingWidths() {
 	auto& m = m_element.WrapModifiers.Monospacing;
 
 	// Widths are kept within what the font data can store; see wrapping_fixed_size_font::MaxMonospacingAdvance.
-	const auto unitPixels = xivres::fontgen::wrapping_fixed_size_font::get_monospacing_unit_pixels(*m_element.GetBaseFont(), m.Unit, m.ReferenceCharacter);
+	const auto unitPixels = FontChanger::FixedSizeFont::wrapping_fixed_size_font::get_monospacing_unit_pixels(*m_element.GetBaseFont(), m.Unit, m.ReferenceCharacter);
 	const auto maxWidth = unitPixels && *unitPixels > 0
-		? static_cast<float>(xivres::fontgen::wrapping_fixed_size_font::MaxMonospacingAdvance) / *unitPixels
+		? static_cast<float>(FontChanger::FixedSizeFont::wrapping_fixed_size_font::MaxMonospacingAdvance) / *unitPixels
 		: (std::numeric_limits<float>::max)();
 	const auto read = [&](HWND hwnd, float fallback) {
 		auto value = fallback;
@@ -149,7 +149,7 @@ INT_PTR App::FaceElementEditorDialog::Monospacing_OnCommand(uint16_t id, uint16_
 		case IDC_COMBO_MONOSPACING_ALIGNMENT:
 			if (notiCode != CBN_SELCHANGE)
 				return 0;
-			m.Alignment = GetComboboxSelData<xivres::fontgen::monospacing_alignment>(m_controls->MonospacingAlignmentCombo);
+			m.Alignment = GetComboboxSelData<FontChanger::FixedSizeFont::monospacing_alignment>(m_controls->MonospacingAlignmentCombo);
 			break;
 
 		case IDC_EDIT_MONOSPACING_MIN:
@@ -172,7 +172,7 @@ INT_PTR App::FaceElementEditorDialog::Monospacing_OnCommand(uint16_t id, uint16_
 		case IDC_COMBO_MONOSPACING_UNIT:
 			if (notiCode != CBN_SELCHANGE)
 				return 0;
-			m.Unit = GetComboboxSelData<xivres::fontgen::monospacing_unit>(m_controls->MonospacingUnitCombo);
+			m.Unit = GetComboboxSelData<FontChanger::FixedSizeFont::monospacing_unit>(m_controls->MonospacingUnitCombo);
 			ApplyMonospacingWidths();
 			SetMonospacingControlsEnabled();
 			break;

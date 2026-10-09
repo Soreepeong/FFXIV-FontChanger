@@ -1,12 +1,13 @@
 #include "pch.h"
 #include "FaceElementEditorDialog.Internal.h"
+#include "FontChanger.Presets/CodepointRanges.h"
 
 using namespace App::FaceElementEditorDialogInternal;
-using xivres::fontgen::glyph_merge_fit_mode;
-using xivres::fontgen::glyph_merge_line_alignment;
-using xivres::fontgen::glyph_merge_mapping;
-using xivres::fontgen::glyph_merge_shape;
-using xivres::fontgen::glyph_merge_text_mode;
+using FontChanger::FixedSizeFont::glyph_merge_fit_mode;
+using FontChanger::FixedSizeFont::glyph_merge_line_alignment;
+using FontChanger::FixedSizeFont::glyph_merge_mapping;
+using FontChanger::FixedSizeFont::glyph_merge_shape;
+using FontChanger::FixedSizeFont::glyph_merge_text_mode;
 
 namespace {
 	constexpr GUID Guid_IFileDialog_GlyphMergingSvg{0x5c2fc703, 0x7406, 0x4704, {0x92, 0x12, 0xae, 0x41, 0x1d, 0x4b, 0x74, 0x70}};
@@ -14,131 +15,31 @@ namespace {
 	// Codepoints that are drawn this many times or more by a mapping are not worth typing in one by one.
 	constexpr size_t MaxMappingCodepoints = 65536;
 
-	bool IsGlyphMergingSupported(App::Structs::RendererEnum renderer) {
-		return renderer == App::Structs::RendererEnum::DirectWrite || renderer == App::Structs::RendererEnum::FreeType || renderer == App::Structs::RendererEnum::GlyphImages;
-	}
-
 	// The text is drawn over these shapes instead of being cut out of them.
 	bool IsDrawingShape(glyph_merge_shape shape) {
 		return shape == glyph_merge_shape::None || shape == glyph_merge_shape::HollowBox;
 	}
 
+	// The shapes, in the order of the combobox, and their names.
+	constexpr std::pair<glyph_merge_shape, UINT> ShapeNames[]{
+		{glyph_merge_shape::None, IDS_GLYPHMERGING_SHAPE_NONE},
+		{glyph_merge_shape::AmPm, IDS_GLYPHMERGING_SHAPE_AMPM},
+		{glyph_merge_shape::Ime, IDS_GLYPHMERGING_SHAPE_IME},
+		{glyph_merge_shape::Box, IDS_GLYPHMERGING_SHAPE_BOX},
+		{glyph_merge_shape::NumberBox, IDS_GLYPHMERGING_SHAPE_NUMBERBOX},
+		{glyph_merge_shape::HollowBox, IDS_GLYPHMERGING_SHAPE_HOLLOWBOX},
+		{glyph_merge_shape::Hexagon, IDS_GLYPHMERGING_SHAPE_HEXAGON},
+		{glyph_merge_shape::Rhombus, IDS_GLYPHMERGING_SHAPE_RHOMBUS},
+		{glyph_merge_shape::Bozja, IDS_GLYPHMERGING_SHAPE_BOZJA},
+		{glyph_merge_shape::Time, IDS_GLYPHMERGING_SHAPE_TIME},
+		{glyph_merge_shape::Star, IDS_GLYPHMERGING_SHAPE_STAR},
+		{glyph_merge_shape::Custom, IDS_GLYPHMERGING_SHAPE_CUSTOM},
+		{glyph_merge_shape::Glyph, IDS_GLYPHMERGING_SHAPE_GLYPH},
+	};
+
 	UINT GetShapeNameId(glyph_merge_shape shape) {
-		switch (shape) {
-			case glyph_merge_shape::None: return IDS_GLYPHMERGING_SHAPE_NONE;
-			case glyph_merge_shape::AmPm: return IDS_GLYPHMERGING_SHAPE_AMPM;
-			case glyph_merge_shape::Ime: return IDS_GLYPHMERGING_SHAPE_IME;
-			case glyph_merge_shape::Box: return IDS_GLYPHMERGING_SHAPE_BOX;
-			case glyph_merge_shape::NumberBox: return IDS_GLYPHMERGING_SHAPE_NUMBERBOX;
-			case glyph_merge_shape::HollowBox: return IDS_GLYPHMERGING_SHAPE_HOLLOWBOX;
-			case glyph_merge_shape::Hexagon: return IDS_GLYPHMERGING_SHAPE_HEXAGON;
-			case glyph_merge_shape::Rhombus: return IDS_GLYPHMERGING_SHAPE_RHOMBUS;
-			case glyph_merge_shape::Bozja: return IDS_GLYPHMERGING_SHAPE_BOZJA;
-			case glyph_merge_shape::Time: return IDS_GLYPHMERGING_SHAPE_TIME;
-			case glyph_merge_shape::Glyph: return IDS_GLYPHMERGING_SHAPE_GLYPH;
-			case glyph_merge_shape::Custom:
-			default: return IDS_GLYPHMERGING_SHAPE_CUSTOM;
-		}
-	}
-
-}
-
-namespace App::FaceElementEditorDialogInternal {
-	const std::array<GlyphMergingPreset, GlyphMergingPresetCount>& GetGlyphMergingPresets() {
-		static const auto presets = [] {
-			using items = std::vector<std::pair<char32_t, std::u32string>>;
-			const auto Make = [](glyph_merge_shape shape, items items) {
-				std::ranges::sort(items);
-				glyph_merge_mapping mapping{ .Shape = shape };
-				for (auto& [c, text] : items) {
-					mapping.Codepoints.push_back(c);
-					mapping.Texts.emplace_back(std::move(text));
-				}
-				return mapping;
-			};
-			const auto Numbers = [](char32_t first, int from, int to) {
-				items res;
-				for (int i = from; i <= to; i++)
-					res.emplace_back(static_cast<char32_t>(first + i - from), xivres::util::unicode::convert<std::u32string>(std::to_string(i)));
-				return res;
-			};
-			const auto Texts = [](char32_t first, std::initializer_list<const char32_t*> texts) {
-				items res;
-				for (const auto text : texts)
-					res.emplace_back(static_cast<char32_t>(first + res.size()), text);
-				return res;
-			};
-			const auto Concat = [](items a, const items& b) {
-				a.insert(a.end(), b.begin(), b.end());
-				return a;
-			};
-
-			items letters;
-			for (int i = 0; i < 26; i++)
-				letters.emplace_back(static_cast<char32_t>(0xE071 + i), std::u32string(1, static_cast<char32_t>(U'A' + i)));
-
-			// The star is not a text in a box; it splits the box of the Bozja glyphs in two, with its points through the edges.
-			auto star = Make(glyph_merge_shape::Custom, Texts(0xE0C0, { U" " }));
-			star.CustomAdvance = 1750;
-			star.CustomPath =
-				"M335,50 Q240,52 176,116 Q112,180 110,275 L110,725 Q112,820 176,883 Q240,946 335,948 "
-				"L689,948 L647,665 L313,500 L647,335 L689,50 Z "
-				"M784,50 L962,233 L1330,169 L1156,500 L1330,831 L962,767 L784,948 L1377,948 "
-				"Q1472,946 1536,883 Q1600,820 1602,725 L1602,275 Q1600,180 1536,116 Q1472,52 1377,50 Z";
-
-			// The half-width IME indicators have a bar at the bottom left, and the text to the right of it; fonts draw
-			// underscores below the baseline, where they would be outside of the box.
-			const auto ImeWithBar = [&Make](char32_t codepoint, std::u32string text, std::string bar, std::array<float, 4> textArea) {
-				auto mapping = Make(glyph_merge_shape::Custom, { {codepoint, std::move(text)} });
-				mapping.CustomAdvance = 1000;
-				mapping.CustomPath =
-					"M972,149 Q971,98 936,64 Q902,29 851,28 L149,28 Q98,29 64,64 Q29,98 28,149 L28,851 "
-					"Q29,901 64,934 Q98,968 149,969 L851,969 Q902,968 936,934 Q971,901 972,851 Z " + bar;
-				mapping.CustomTextArea = textArea;
-				return mapping;
-			};
-			auto imeIndicators = Make(glyph_merge_shape::Ime, Texts(0xE020, { U"\u3042", U"\u30A2", U"A" }));
-			auto imeHalfKatakana = ImeWithBar(0xE023, U"\uFF71", "M130,783 L410,783 L410,876 L130,876 Z", {481, 111, 886, 880});
-			auto imeHalfLatin = ImeWithBar(0xE024, U"A", "M120,783 L400,783 L400,876 L120,876 Z", {443, 111, 900, 880});
-			auto imeOthers = Make(glyph_merge_shape::Ime, Texts(0xE025, { U"\uAC00", U"\u4E2D", U"\u82F1" }));
-
-			return std::array<GlyphMergingPreset, GlyphMergingPresetCount>{
-				GlyphMergingPreset({ Make(glyph_merge_shape::AmPm, Texts(0xE06D, { U"A\nM", U"P\nM" })) }),
-				GlyphMergingPreset({ Make(glyph_merge_shape::None, Concat(Numbers(0xE060, 0, 9), Texts(0xE06A, { U"Lv", U"ST", U"Nv" }))) }),
-				GlyphMergingPreset({ std::move(imeIndicators), std::move(imeHalfKatakana), std::move(imeHalfLatin), std::move(imeOthers) }),
-				GlyphMergingPreset({ Make(glyph_merge_shape::None, Texts(0xE028, { U"m", U"\u5206" })) }),
-				GlyphMergingPreset({ Make(glyph_merge_shape::Box, Concat(Concat(Texts(0xE070, { U"?" }), letters), Texts(0xE0AF, { U"+", U"E" }))) }),
-				GlyphMergingPreset({ Make(glyph_merge_shape::NumberBox, Numbers(0xE08F, 0, 31)) }),
-				GlyphMergingPreset({ Make(glyph_merge_shape::HollowBox, Numbers(0xE0E0, 0, 9)) }),
-				GlyphMergingPreset({ Make(glyph_merge_shape::Hexagon, Numbers(0xE0B1, 1, 9)) }),
-				GlyphMergingPreset({ Make(glyph_merge_shape::Rhombus, Texts(0xE0BE, { U"\u2193", U"\u00D7" })) }),
-				GlyphMergingPreset({ std::move(star) }),
-				GlyphMergingPreset({ Make(glyph_merge_shape::Bozja, Texts(0xE0C1, { U"I", U"II", U"III", U"IV", U"V", U"VI" })) }),
-				GlyphMergingPreset({ Make(glyph_merge_shape::Time, Texts(0xE0D0, { U"LT", U"ST", U"ET", U"OZ", U"SZ", U"EZ", U"HL", U"HS", U"HE" })) }),
-				GlyphMergingPreset({ Make(glyph_merge_shape::Time, Texts(0xE0D9, { U"\u672C", U"\u670D", U"\u827E" })) }),
-			};
-		}();
-		return presets;
-	}
-}
-
-namespace {
-	// Formats runs of consecutive codepoints as ranges, in a way that ParseCodepointRanges reads back.
-	std::wstring FormatCodepoints(const std::u32string& codepoints) {
-		std::wstring res;
-		for (size_t i = 0; i < codepoints.size(); i++) {
-			const auto first = codepoints[i];
-			while (i + 1 < codepoints.size() && codepoints[i + 1] == codepoints[i] + 1)
-				i++;
-
-			if (!res.empty())
-				res += L", ";
-			if (first == codepoints[i])
-				res += std::format(L"U+{:04X}", static_cast<uint32_t>(first));
-			else
-				res += std::format(L"U+{:04X}-{:04X}", static_cast<uint32_t>(first), static_cast<uint32_t>(codepoints[i]));
-		}
-		return res;
+		const auto it = std::ranges::find(ShapeNames, shape, &std::pair<glyph_merge_shape, UINT>::first);
+		return it == std::end(ShapeNames) ? IDS_GLYPHMERGING_SHAPE_CUSTOM : it->second;
 	}
 
 	// Texts may span multiple lines; line breaks in them are written as \n, so that each line of the edit is a text.
@@ -214,10 +115,6 @@ namespace {
 		return false;
 	}
 
-	bool IsInRanges(const std::vector<std::pair<char32_t, char32_t>>& ranges, char32_t codepoint) {
-		return std::ranges::any_of(ranges, [codepoint](const auto& r) { return r.first <= codepoint && codepoint <= r.second; });
-	}
-
 	// Removes the codepoints from the mappings, along with their texts. Mappings left without any codepoint are removed.
 	bool RemoveCodepointsFromMappings(std::vector<glyph_merge_mapping>& mappings, const std::u32string& codepoints) {
 		auto changed = false;
@@ -273,21 +170,11 @@ namespace {
 }
 
 void App::FaceElementEditorDialog::InitializeGlyphMergingPage() {
-	const auto zoom = GetZoomFromWindow(m_hWnd);
-	const auto AddColumn = [zoom](HWND hList, int columnIndex, int width, UINT resId) {
-		std::wstring name(GetStringResource(resId));
-		LVCOLUMNW col{
-			.mask = LVCF_TEXT | LVCF_WIDTH,
-			.cx = static_cast<int>(width * zoom),
-			.pszText = const_cast<wchar_t*>(name.c_str()),
-		};
-		ListView_InsertColumn(hList, columnIndex, &col);
-	};
 	ListView_SetExtendedListViewStyle(m_controls->GlyphMergingMappingsList, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
-	AddColumn(m_controls->GlyphMergingMappingsList, 0, 64, IDS_GLYPHMERGING_COLUMN_CHARACTERS);
-	AddColumn(m_controls->GlyphMergingMappingsList, 1, 64, IDS_GLYPHMERGING_COLUMN_TEXTS);
-	AddColumn(m_controls->GlyphMergingMappingsList, 2, 48, IDS_GLYPHMERGING_COLUMN_SHAPE);
-	AddColumn(m_controls->GlyphMergingMappingsList, 3, 40, IDS_GLYPHMERGING_COLUMN_TEXT);
+	AddListViewColumn(m_controls->GlyphMergingMappingsList, 0, 64, IDS_GLYPHMERGING_COLUMN_CHARACTERS);
+	AddListViewColumn(m_controls->GlyphMergingMappingsList, 1, 64, IDS_GLYPHMERGING_COLUMN_TEXTS);
+	AddListViewColumn(m_controls->GlyphMergingMappingsList, 2, 48, IDS_GLYPHMERGING_COLUMN_SHAPE);
+	AddListViewColumn(m_controls->GlyphMergingMappingsList, 3, 40, IDS_GLYPHMERGING_COLUMN_TEXT);
 
 	const auto& params = m_element.GlyphMerging.Params;
 	m_bRefreshingGlyphMerging = true;
@@ -307,23 +194,7 @@ void App::FaceElementEditorDialog::InitializeGlyphMergingPage() {
 			std::make_pair(glyph_merge_line_alignment::Center, IDS_GLYPHMERGING_ALIGN_CENTER),
 			std::make_pair(glyph_merge_line_alignment::Right, IDS_GLYPHMERGING_ALIGN_RIGHT),
 		});
-	SetComboboxContent<glyph_merge_shape>(
-		m_controls->GlyphMergingShapeCombo,
-		glyph_merge_shape::Box,
-		{
-			std::make_pair(glyph_merge_shape::None, IDS_GLYPHMERGING_SHAPE_NONE),
-			std::make_pair(glyph_merge_shape::AmPm, IDS_GLYPHMERGING_SHAPE_AMPM),
-			std::make_pair(glyph_merge_shape::Ime, IDS_GLYPHMERGING_SHAPE_IME),
-			std::make_pair(glyph_merge_shape::Box, IDS_GLYPHMERGING_SHAPE_BOX),
-			std::make_pair(glyph_merge_shape::NumberBox, IDS_GLYPHMERGING_SHAPE_NUMBERBOX),
-			std::make_pair(glyph_merge_shape::HollowBox, IDS_GLYPHMERGING_SHAPE_HOLLOWBOX),
-			std::make_pair(glyph_merge_shape::Hexagon, IDS_GLYPHMERGING_SHAPE_HEXAGON),
-			std::make_pair(glyph_merge_shape::Rhombus, IDS_GLYPHMERGING_SHAPE_RHOMBUS),
-			std::make_pair(glyph_merge_shape::Bozja, IDS_GLYPHMERGING_SHAPE_BOZJA),
-			std::make_pair(glyph_merge_shape::Time, IDS_GLYPHMERGING_SHAPE_TIME),
-			std::make_pair(glyph_merge_shape::Custom, IDS_GLYPHMERGING_SHAPE_CUSTOM),
-			std::make_pair(glyph_merge_shape::Glyph, IDS_GLYPHMERGING_SHAPE_GLYPH),
-		});
+	SetComboboxContent<glyph_merge_shape>(m_controls->GlyphMergingShapeCombo, glyph_merge_shape::Box, ShapeNames);
 	m_bRefreshingGlyphMerging = false;
 
 	// An empty size fits the text in the shape.
@@ -332,7 +203,7 @@ void App::FaceElementEditorDialog::InitializeGlyphMergingPage() {
 	RefreshGlyphMergingPlacement();
 	RefreshGlyphMergingMappingsList(-1);
 	RefreshGlyphMergingPresets();
-	SetGlyphMergingControlsEnabled(IsGlyphMergingSupported(m_element.Renderer));
+	SetGlyphMergingControlsEnabled(UsesSystemFont(m_element.Renderer));
 }
 
 void App::FaceElementEditorDialog::RefreshGlyphMergingPlacement() {
@@ -367,16 +238,16 @@ INT_PTR App::FaceElementEditorDialog::GlyphMergingPlacement_OnCommand(uint16_t i
 			if (notiCode != CBN_SELCHANGE)
 				return 0;
 
-			const auto combo = GetDlgItem(GetParent(m_controls->GlyphMergingFitCombo), id);
-			const auto value = ComboBox_GetItemData(combo, ComboBox_GetCurSel(combo));
 			if (id == IDC_COMBO_GLYPHMERGING_FIT) {
-				if (static_cast<glyph_merge_fit_mode>(value) == params.FitMode)
+				const auto value = GetComboboxSelData<glyph_merge_fit_mode>(m_controls->GlyphMergingFitCombo);
+				if (value == params.FitMode)
 					return 0;
-				params.FitMode = static_cast<glyph_merge_fit_mode>(value);
+				params.FitMode = value;
 			} else {
-				if (static_cast<glyph_merge_line_alignment>(value) == params.LineAlignment)
+				const auto value = GetComboboxSelData<glyph_merge_line_alignment>(m_controls->GlyphMergingLineAlignmentCombo);
+				if (value == params.LineAlignment)
 					return 0;
-				params.LineAlignment = static_cast<glyph_merge_line_alignment>(value);
+				params.LineAlignment = value;
 			}
 			break;
 		}
@@ -386,23 +257,8 @@ INT_PTR App::FaceElementEditorDialog::GlyphMergingPlacement_OnCommand(uint16_t i
 				return 0;
 
 			std::optional<float> size;
-			if (const auto str = GetWindowString(m_controls->GlyphMergingTextSizeEdit, true); !str.empty()) {
-				float value;
-				if (str.starts_with(L'=')) {
-					if (!TryEvaluate(str, value, true))
-						return 0;
-				} else {
-					// Keep the last valid value while the text is being typed.
-					wchar_t* end;
-					value = std::wcstof(str.c_str(), &end);
-					if (end == str.c_str() || *end)
-						return 0;
-				}
-				if (!(value > 0.f))
-					return 0;
-				size = value;
-			}
-
+			if (!TryReadOptionalNumber(m_controls->GlyphMergingTextSizeEdit, size) || (size && !(*size > 0.f)))
+				return 0;
 			if (size == params.TextSize)
 				return 0;
 			params.TextSize = size;
@@ -473,7 +329,7 @@ void App::FaceElementEditorDialog::RefreshGlyphMergingMappingsList(int selectInd
 void App::FaceElementEditorDialog::UpdateGlyphMergingMappingsListItem(int index) {
 	const auto& mapping = m_element.GlyphMerging.Params.Mappings[index];
 
-	auto characters = FormatCodepoints(mapping.Codepoints);
+	auto characters = FontChanger::CodepointRanges::Format(mapping.Codepoints);
 	auto texts = FormatTexts(mapping.Texts, L" ");
 	std::wstring shape(GetStringResource(GetShapeNameId(mapping.Shape)));
 	std::wstring mode(GetStringResource(
@@ -499,7 +355,7 @@ void App::FaceElementEditorDialog::RefreshGlyphMergingMappingEditor() {
 	const auto* mapping = index >= 0 ? &m_element.GlyphMerging.Params.Mappings[index] : nullptr;
 
 	m_bRefreshingGlyphMerging = true;
-	SetWindowTextW(m_controls->GlyphMergingCharactersEdit, mapping ? FormatCodepoints(mapping->Codepoints).c_str() : L"");
+	SetWindowTextW(m_controls->GlyphMergingCharactersEdit, mapping ? FontChanger::CodepointRanges::Format(mapping->Codepoints).c_str() : L"");
 	SetWindowTextW(m_controls->GlyphMergingTextsEdit, mapping ? FormatTexts(mapping->Texts, L"\r\n").c_str() : L"");
 
 	const auto shape = mapping ? mapping->Shape : glyph_merge_shape::Box;
@@ -524,7 +380,7 @@ void App::FaceElementEditorDialog::RefreshGlyphMergingMappingEditor() {
 	}
 	m_bRefreshingGlyphMerging = false;
 
-	const auto enabled = mapping && IsGlyphMergingSupported(m_element.Renderer);
+	const auto enabled = mapping && UsesSystemFont(m_element.Renderer);
 	EnableWindow(m_controls->GlyphMergingDeleteButton, enabled);
 	EnableWindow(m_controls->GlyphMergingCharactersEdit, enabled);
 	EnableWindow(m_controls->GlyphMergingTextsEdit, enabled);
@@ -536,14 +392,14 @@ void App::FaceElementEditorDialog::RefreshGlyphMergingMappingEditor() {
 void App::FaceElementEditorDialog::RefreshGlyphMergingPresets() {
 	const auto& mappings = m_element.GlyphMerging.Params.Mappings;
 	const auto& characters = m_element.WrapModifiers.Codepoints;
-	const auto& presets = GetGlyphMergingPresets();
+	const auto& presets = FontChanger::GlyphMergingPresets::Get();
 	for (size_t i = 0; i < presets.size(); i++) {
 		size_t mapped = 0, included = 0;
 		for (const auto c : presets[i].Codepoints) {
 			if (!IsMapped(mappings, c))
 				continue;
 			mapped++;
-			if (IsInRanges(characters, c))
+			if (FontChanger::CodepointRanges::Contains(characters, c))
 				included++;
 		}
 
@@ -625,7 +481,7 @@ INT_PTR App::FaceElementEditorDialog::GlyphMergingMappingEditor_OnCommand(uint16
 				return 0;
 
 			std::u32string codepoints;
-			for (const auto& [c1, c2] : ParseCodepointRanges(GetWindowString(m_controls->GlyphMergingCharactersEdit))) {
+			for (const auto& [c1, c2] : FontChanger::CodepointRanges::Parse(GetWindowString(m_controls->GlyphMergingCharactersEdit))) {
 				for (auto c = c1; c <= c2 && codepoints.size() < MaxMappingCodepoints; c++)
 					codepoints.push_back(c);
 			}
@@ -691,31 +547,13 @@ INT_PTR App::FaceElementEditorDialog::GlyphMergingImportSvgButton_OnCommand(uint
 	};
 
 	return TryCatchShowError(m_controls->Window, IDS_ERROR_OPENFILEFAILURE_BODY, INT_PTR{0}, [&]() -> INT_PTR {
-		IFileOpenDialogPtr pDialog;
-		DWORD dwFlags;
-		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
-		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_GlyphMergingSvg));
-		SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(std::size(fileTypes)), fileTypes));
-		SuccessOrThrow(pDialog->SetFileTypeIndex(0));
-		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_OPEN)).c_str()));
-		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
-		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
-		switch (SuccessOrThrow(pDialog->Show(m_controls->Window), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
-			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
-				return 0;
-		}
-
-		IShellItemPtr pResult;
-		PWSTR pszFileName;
-		SuccessOrThrow(pDialog->GetResult(&pResult));
-		SuccessOrThrow(pResult->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName));
-		if (!pszFileName)
-			throw std::runtime_error("DEBUG: The selected file does not have a filesystem path.");
-		std::unique_ptr<std::remove_pointer_t<PWSTR>, decltype(&CoTaskMemFree)> pszFileNamePtr(pszFileName, &CoTaskMemFree);
+		const auto fileName = PickFile(m_controls->Window, false, Guid_IFileDialog_GlyphMergingSvg, IDS_WINDOWTITLE_OPEN, fileTypes);
+		if (!fileName)
+			return 0;
 
 		std::string svg;
 		{
-			std::ifstream in(std::filesystem::path(pszFileName), std::ios::binary);
+			std::ifstream in(*fileName, std::ios::binary);
 			if (!in)
 				throw std::runtime_error("Failed to open the file.");
 			svg.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
@@ -731,8 +569,8 @@ INT_PTR App::FaceElementEditorDialog::GlyphMergingImportSvgButton_OnCommand(uint
 			}
 		}
 
-		xivres::fontgen::image_fixed_size_font::svg_metrics metrics;
-		if (!xivres::fontgen::image_fixed_size_font::try_read_svg_metrics(svg, metrics)) {
+		FontChanger::FixedSizeFont::image_fixed_size_font::svg_metrics metrics;
+		if (!FontChanger::FixedSizeFont::image_fixed_size_font::try_read_svg_metrics(svg, metrics)) {
 			MessageBoxW(
 				m_controls->Window,
 				std::wstring(GetStringResource(IDS_GLYPHMERGING_IMPORTSVG_FAILED)).c_str(),
@@ -761,7 +599,7 @@ INT_PTR App::FaceElementEditorDialog::GlyphMergingPresetCheck_OnCommand(size_t p
 	if (notiCode != BN_CLICKED || presetIndex >= GlyphMergingPresetCount)
 		return 0;
 
-	const auto& preset = GetGlyphMergingPresets()[presetIndex];
+	const auto& preset = FontChanger::GlyphMergingPresets::Get()[presetIndex];
 	auto& mappings = m_element.GlyphMerging.Params.Mappings;
 
 	if (Button_GetCheck(m_controls->GlyphMergingPresetChecks[presetIndex]) == BST_CHECKED) {
@@ -773,19 +611,13 @@ INT_PTR App::FaceElementEditorDialog::GlyphMergingPresetCheck_OnCommand(size_t p
 		mappings.insert(mappings.end(), preset.Mappings.begin(), preset.Mappings.end());
 
 		// The element draws only the codepoints in the Characters page.
-		std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
-		std::vector<char32_t> missing;
+		std::u32string missing;
 		for (const auto c : preset.Codepoints) {
-			if (!IsInRanges(m_element.WrapModifiers.Codepoints, c))
+			if (!FontChanger::CodepointRanges::Contains(m_element.WrapModifiers.Codepoints, c))
 				missing.push_back(c);
 		}
-		std::ranges::sort(missing);
-		for (size_t i = 0; i < missing.size(); i++) {
-			const auto first = missing[i];
-			while (i + 1 < missing.size() && missing[i + 1] == missing[i] + 1)
-				i++;
-			AddNewCodepointRange(first, missing[i], charVec);
-		}
+		for (const auto& [c1, c2] : FontChanger::CodepointRanges::FromCodepoints(missing))
+			AddNewCodepointRange(c1, c2);
 	}
 
 	RefreshGlyphMergingMappingsList(-1);

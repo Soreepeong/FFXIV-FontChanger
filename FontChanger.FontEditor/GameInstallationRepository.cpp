@@ -85,12 +85,6 @@ static std::wstring ReadRegistryAsString(HKEY rootKey, const wchar_t* lpSubKey, 
 	return buf;
 }
 
-App::GameInstallationRepository::GameInstallationRepository() {
-}
-
-App::GameInstallationRepository::~GameInstallationRepository() {
-}
-
 App::GameReleaseVendor App::GameInstallationRepository::DetermineGameRelease(std::filesystem::path path, std::filesystem::path& normalizedPath) {
 	for (std::filesystem::path gameVersionPath; !exists(gameVersionPath = path / "game" / "ffxivgame.ver"); ) {
 		auto parentPath = path.parent_path();
@@ -123,81 +117,39 @@ App::GameReleaseVendor App::GameInstallationRepository::DetermineGameRelease(std
 }
 
 std::vector<std::pair<App::GameReleaseVendor, std::filesystem::path>> App::GameInstallationRepository::AutoDetectInstalledGameReleases() {
+	// Registry values that hold the path of a file of an installation, or a command line that starts with one.
+	struct Source {
+		HKEY Root;
+		const wchar_t* SubKey;
+		const wchar_t* ValueName;
+		bool IsCommandLine;
+	};
+	static const Source Sources[]{
+		{HKEY_LOCAL_MACHINE, LR"(SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{2B41E132-07DF-4925-A3D3-F2D1765CCDFE})", L"DisplayIcon", false},
+		{HKEY_LOCAL_MACHINE, LR"(SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 39210)", L"InstallLocation", false}, // paid
+		{HKEY_LOCAL_MACHINE, LR"(SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 312060)", L"InstallLocation", false}, // free trial
+		{HKEY_CLASSES_ROOT, LR"(ff14kr\shell\open\command)", L"", true},
+		{HKEY_LOCAL_MACHINE, LR"(SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\FFXIV)", L"DisplayIcon", false},
+		{HKEY_CLASSES_ROOT, LR"(com.userjoy.ffxiv\shell\open\command)", L"", true},
+	};
+
 	std::vector<std::pair<GameReleaseVendor, std::filesystem::path>> res;
+	for (const auto& source : Sources) {
+		auto value = ReadRegistryAsString(source.Root, source.SubKey, source.ValueName);
+		if (source.IsCommandLine && !value.empty()) {
+			int n;
+			const auto args = CommandLineToArgvW(value.c_str(), &n);
+			value = args && n ? args[0] : L"";
+			if (args)
+				LocalFree(args);
+		}
+		if (value.empty())
+			continue;
 
-	if (const auto reg = ReadRegistryAsString(
-		HKEY_LOCAL_MACHINE,
-		LR"(SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{2B41E132-07DF-4925-A3D3-F2D1765CCDFE})",
-		L"DisplayIcon"
-	); !reg.empty()) {
 		std::filesystem::path path;
-		if (const auto r = DetermineGameRelease(reg, path); r != GameReleaseVendor::None)
-			res.emplace_back(std::make_pair(r, std::move(path)));
-	}
-
-	for (const auto steamAppId : {
-			39210,  // paid
-			312060,  // free trial
-		}) {
-		if (const auto reg = ReadRegistryAsString(
-			HKEY_LOCAL_MACHINE,
-			std::format(LR"(SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App {})", steamAppId).c_str(),
-			L"InstallLocation"); !reg.empty()) {
-			std::filesystem::path path;
-			if (const auto r = DetermineGameRelease(reg, path); r != GameReleaseVendor::None)
-				res.emplace_back(std::make_pair(r, std::move(path)));
-		}
-	}
-
-	if (const auto reg = ReadRegistryAsString(
-		HKEY_CLASSES_ROOT,
-		LR"(ff14kr\shell\open\command)",
-		L""
-	); !reg.empty()) {
-		int n;
-		const auto args = CommandLineToArgvW(reg.c_str(), &n);
-		if (args) {
-			if (n) {
-				std::filesystem::path path;
-				if (const auto r = DetermineGameRelease(args[0], path); r != GameReleaseVendor::None)
-					res.emplace_back(std::make_pair(r, std::move(path)));
-			}
-			LocalFree(args);
-		}
-	}
-
-	if (const auto reg = ReadRegistryAsString(
-		HKEY_LOCAL_MACHINE,
-		LR"(SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\FFXIV)",
-		L"DisplayIcon"
-	); !reg.empty()) {
-		std::filesystem::path path;
-		if (const auto r = DetermineGameRelease(reg, path); r != GameReleaseVendor::None)
-			res.emplace_back(std::make_pair(r, std::move(path)));
-	}
-
-	if (const auto reg = ReadRegistryAsString(
-		HKEY_CLASSES_ROOT,
-		LR"(com.userjoy.ffxiv\shell\open\command)",
-		L""
-	); !reg.empty()) {
-		int n;
-		const auto args = CommandLineToArgvW(reg.c_str(), &n);
-		if (args) {
-			if (n) {
-				std::filesystem::path path;
-				if (const auto r = DetermineGameRelease(args[0], path); r != GameReleaseVendor::None)
-					res.emplace_back(std::make_pair(r, std::move(path)));
-			}
-			LocalFree(args);
-		}
+		if (const auto r = DetermineGameRelease(value, path); r != GameReleaseVendor::None)
+			res.emplace_back(r, std::move(path));
 	}
 
 	return res;
-}
-
-void App::GameInstallationRepository::LoadFrom(const FontGeneratorConfig& config) {
-}
-
-void App::GameInstallationRepository::SaveTo(FontGeneratorConfig& config) {
 }

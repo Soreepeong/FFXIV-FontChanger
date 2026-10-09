@@ -38,15 +38,9 @@ INT_PTR App::NegativeBearingCodepointsDialog::Dialog_OnInitDialog() {
 
 	ListView_SetExtendedListViewStyle(m_controls->List, LVS_EX_FULLROWSELECT);
 
-	const auto zoom = GetZoomFromWindow(m_hWnd);
-	const auto AddColumn = [&](int col, int cx, UINT resId) {
-		std::wstring name(GetStringResource(resId));
-		LVCOLUMNW lvc{.mask = LVCF_TEXT | LVCF_WIDTH, .cx = static_cast<int>(cx * zoom), .pszText = name.data()};
-		ListView_InsertColumn(m_controls->List, col, &lvc);
-	};
-	AddColumn(ColCodepoint, 80, IDS_NEGATIVEBEARING_COLUMN_CODEPOINT);
-	AddColumn(ColCharacter, 100, IDS_NEGATIVEBEARING_COLUMN_CHARACTER);
-	AddColumn(ColX1, 60, IDS_NEGATIVEBEARING_COLUMN_X1);
+	AddListViewColumn(m_controls->List, ColCodepoint, 80, IDS_NEGATIVEBEARING_COLUMN_CODEPOINT);
+	AddListViewColumn(m_controls->List, ColCharacter, 100, IDS_NEGATIVEBEARING_COLUMN_CHARACTER);
+	AddListViewColumn(m_controls->List, ColX1, 60, IDS_NEGATIVEBEARING_COLUMN_X1);
 
 	for (int i = 0; i < static_cast<int>(m_entries.size()); ++i) {
 		const auto [cp, x1] = m_entries[i];
@@ -55,16 +49,7 @@ INT_PTR App::NegativeBearingCodepointsDialog::Dialog_OnInitDialog() {
 		LVITEMW lvi{.mask = LVIF_TEXT, .iItem = i, .iSubItem = 0, .pszText = cpText.data()};
 		ListView_InsertItem(m_controls->List, &lvi);
 
-		std::wstring charText;
-		if (cp >= U' ' && cp != 0x7F) {
-			if (cp < 0x10000) {
-				charText += static_cast<wchar_t>(cp);
-			} else {
-				const auto reduced = cp - 0x10000u;
-				charText += static_cast<wchar_t>(0xD800 + (reduced >> 10));
-				charText += static_cast<wchar_t>(0xDC00 + (reduced & 0x3FF));
-			}
-		}
+		auto charText = cp >= U' ' && cp != 0x7F ? xivres::util::unicode::convert_from_codepoint<std::wstring>(cp) : std::wstring();
 		ListView_SetItemText(m_controls->List, i, ColCharacter, charText.data());
 
 		auto x1Text = std::format(L"{}", x1);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -22,6 +23,9 @@ internal sealed class MainWindow : Window
     // The font chooser open, if one is.
     private FontChooser? fontChooser;
     private EdgeSettings? pendingEdge;
+
+    // The name shown of the system font last shown, which takes listing the system's fonts to find.
+    private (FamilyFont Font, string Label)? fontLabel;
 
     // The family presets are selected for; null for all.
     private string? family;
@@ -164,7 +168,7 @@ internal sealed class MainWindow : Window
 
     /// <summary>
     /// Draws the system font that draws the family's faces (or every family's, for all families) over its presets, made as
-    /// the font editor's Add from Font makes them; and its face.
+    /// <see cref="FaceFromFont"/> makes them; and its face.
     /// </summary>
     private void DrawFontChoice()
     {
@@ -172,11 +176,9 @@ internal sealed class MainWindow : Window
         var chosen = (this.family is { } f ? (IReadOnlyList<string>)[f] : presets.Families).Select(presets.GetFont).ToList();
         var current = chosen.Count != 0 && chosen.All(c => c == chosen[0]) ? chosen[0] : null;
         var various = current is null && chosen.Any(c => c is not null);
-        var fontFamily = current is null ? null : presets.Fonts.Families.FirstOrDefault(x => string.Equals(x.Name, current.Name, StringComparison.OrdinalIgnoreCase));
-        var face = current is null ? null : fontFamily?.Faces.FirstOrDefault(x => x.Weight == current.Weight && x.Stretch == current.Stretch && x.Style == current.Style);
 
         // Dalamud's font chooser, with the system's fonts; what is chosen in it goes to the family (or all) it was opened for.
-        var label = current is null ? various ? "(various)" : "(presets)" : $"{fontFamily?.DisplayName ?? current.Name} {face?.Name}".TrimEnd();
+        var label = current is null ? various ? "(various)" : "(presets)" : this.GetFontLabel(current);
         if (ImGui.Button($"{label}###chooseSystemFont") && this.fontChooser is null)
         {
             var dialog = SingleFontChooserDialog.CreateAuto((UiBuilder)Plugin.PluginInterface.UiBuilder);
@@ -202,14 +204,18 @@ internal sealed class MainWindow : Window
                     if (open.Applied is not null)
                         presets.SetFonts(open.Before);
                 }
-                else if (ToFamilyFont(result.Result) is { } final && final != open.Applied)
+                else if (ToFamilyFont(result.Result) is { } final)
                 {
-                    presets.SetFont(open.Family, final);
+                    // The last preview is the choice, only to be saved.
+                    if (final != open.Applied)
+                        presets.SetFont(open.Family, final);
+                    else
+                        presets.Save();
                 }
             }
             else if (open.TakePreview() is { } preview)
             {
-                presets.SetFont(open.Family, preview);
+                presets.SetFont(open.Family, preview, false);
             }
         }
 
@@ -236,6 +242,17 @@ internal sealed class MainWindow : Window
             return null;
         var name = id.Family is SystemFontFamilyId familyId ? familyId.EnglishName : id.EnglishName;
         return new() { Name = name, Weight = id.Weight, Stretch = id.Stretch, Style = id.Style };
+    }
+
+    /// <summary>Gets a system font's name as shown: its family's and its face's, in the user's language.</summary>
+    private string GetFontLabel(FamilyFont font)
+    {
+        if (this.fontLabel is { } cached && cached.Font == font)
+            return cached.Label;
+        var locale = CultureInfo.CurrentUICulture.Name.ToLowerInvariant();
+        var label = FindSystemFont(font) is { } id ? $"{id.Family.GetLocalizedName(locale)} {id.GetLocalizedName(locale)}" : font.Name;
+        this.fontLabel = (font, label);
+        return label;
     }
 
     /// <summary>Finds a system font's face as Dalamud's font chooser lists it; null if it isn't installed.</summary>

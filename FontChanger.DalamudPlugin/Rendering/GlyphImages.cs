@@ -83,8 +83,6 @@ internal sealed class GlyphImages
 
     public float LineHeight { get; }
 
-    public float UnitsPerEm => this.unitsPerEm;
-
     /// <summary>Loads the files of an element, from its folder or the preset. Files that can't be read are left out.</summary>
     public static GlyphImages Load(GlyphImagesDef def, ImageRenderer? renderer)
     {
@@ -97,13 +95,13 @@ internal sealed class GlyphImages
                 try
                 {
                     if (svg is not null)
-                        glyphs[codepoint] = new(svg, null, 0, 0);
+                        glyphs[codepoint] = new(svg, ReadSvgMetrics(svg), null, 0, 0);
                     else if (png is not null && renderer is not null)
                         glyphs[codepoint] = Bitmap(renderer, Convert.FromBase64String(png));
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.Warning(ex, "Embedded glyph U+{codepoint:X4} can't be read", codepoint);
+                    Host.Log.Warning(ex, "Embedded glyph U+{codepoint:X4} can't be read", codepoint);
                 }
             }
         }
@@ -132,9 +130,7 @@ internal sealed class GlyphImages
                     if (extension == ".svg")
                     {
                         var svg = File.ReadAllText(file);
-                        if (ReadSvgMetrics(svg) is null)
-                            throw new InvalidDataException("Not an SVG document.");
-                        glyphs[codepoint] = new(svg, null, 0, 0);
+                        glyphs[codepoint] = new(svg, ReadSvgMetrics(svg) ?? throw new InvalidDataException("Not an SVG document."), null, 0, 0);
                     }
                     else if (renderer is not null)
                     {
@@ -143,13 +139,13 @@ internal sealed class GlyphImages
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.Warning(ex, "Glyph file {file} can't be read", file);
+                    Host.Log.Warning(ex, "Glyph file {file} can't be read", file);
                 }
             }
         }
         else
         {
-            Plugin.Log.Warning("Glyph images folder {folder} isn't there", def.Folder);
+            Host.Log.Warning("Glyph images folder {folder} isn't there", def.Folder);
         }
 
         return new(def, glyphs, metadata);
@@ -159,13 +155,13 @@ internal sealed class GlyphImages
 
     /// <summary>Gets the kerning between two codepoints in pixels at a size, as the transformation scales advances.</summary>
     public int GetKerning(int left, int right, float px, GlyphTransform transform) =>
-        this.kerning.TryGetValue((left, right), out var k) ? (int)MathF.Round(k * px / this.unitsPerEm * transform.M11) : 0;
+        this.kerning.TryGetValue((left, right), out var k) ? (int)Rounding.Round(k * px / this.unitsPerEm * transform.M11) : 0;
 
     /// <summary>Gets the line metrics at a size, scaled vertically as the glyphs are.</summary>
     public (int Ascent, int LineHeight) GetLineMetrics(float px, GlyphTransform transform)
     {
         var scale = px / this.unitsPerEm * MathF.Abs(transform.M22);
-        return ((int)MathF.Round(this.Ascent * scale), (int)MathF.Round(this.LineHeight * scale));
+        return ((int)Rounding.Round(this.Ascent * scale), (int)Rounding.Round(this.LineHeight * scale));
     }
 
     /// <summary>
@@ -182,7 +178,7 @@ internal sealed class GlyphImages
             float unitsPerEm, baselineY, advance, x1, y1, x2, y2;
             if (source.Svg is not null)
             {
-                var metrics = ReadSvgMetrics(source.Svg) ?? throw new InvalidDataException("Not an SVG document.");
+                var metrics = source.SvgMetrics ?? throw new InvalidDataException("Not an SVG document.");
                 unitsPerEm = this.unitsPerEmOverrides ? this.unitsPerEm : metrics.UnitsPerEm ?? this.unitsPerEm;
                 baselineY = this.baselineYOverrides ? this.baselineY : metrics.BaselineY ?? this.baselineY;
                 advance = metrics.Advance ?? unitsPerEm;
@@ -193,7 +189,7 @@ internal sealed class GlyphImages
             else
             {
                 unitsPerEm = this.bitmapUnitsPerEm ?? px;
-                baselineY = this.bitmapBaselineY ?? MathF.Round(unitsPerEm * DefaultBaselineY / DefaultUnitsPerEm);
+                baselineY = this.bitmapBaselineY ?? Rounding.Round(unitsPerEm * DefaultBaselineY / DefaultUnitsPerEm);
                 advance = source.Advance ?? source.Width;
                 (x1, y1) = (-source.OriginX, -source.OriginY);
                 (x2, y2) = (x1 + source.Width, y1 + source.Height);
@@ -209,7 +205,7 @@ internal sealed class GlyphImages
                 transform.M11 * s, transform.M12 * s, -transform.M12 * s * baselineY,
                 transform.M21 * s, transform.M22 * s, -transform.M22 * s * baselineY,
             ];
-            var advancePx = (int)MathF.Round(advance * s * transform.M11);
+            var advancePx = (int)Rounding.Round(advance * s * transform.M11);
 
             // The pixels the rectangle covers, with one to spare for antialiasing.
             float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
@@ -238,39 +234,17 @@ internal sealed class GlyphImages
             {
                 // Pixel art keeps its pixels when it is only moved, or scaled by whole numbers.
                 var whole = transform.M12 == 0 && transform.M21 == 0 &&
-                            MathF.Abs(m[0] - MathF.Round(m[0])) < 1e-4f && MathF.Abs(m[4] - MathF.Round(m[4])) < 1e-4f;
+                            MathF.Abs(m[0] - Rounding.Round(m[0])) < 1e-4f && MathF.Abs(m[4] - Rounding.Round(m[4])) < 1e-4f;
                 coverage = renderer.DrawCoverage(this.GetBitmapCoverage(source), source.Width, source.Height, (x1, y1, x2, y2), m, width, height, whole);
             }
 
-            return Trim(new(advancePx, left, top, width, height, coverage));
+            return new RasterGlyph(advancePx, left, top, width, height, coverage).Trimmed();
         }
         catch (Exception ex)
         {
-            Plugin.Log.Warning(ex, "Glyph image U+{codepoint:X4} can't be drawn", codepoint);
+            Host.Log.Warning(ex, "Glyph image U+{codepoint:X4} can't be drawn", codepoint);
             return new RasterGlyph(0, 0, 0, 0, 0, []);
         }
-    }
-
-    /// <summary>Gets a glyph with its empty rows and columns cut off.</summary>
-    public static RasterGlyph Trim(RasterGlyph g)
-    {
-        int x1 = g.Width, y1 = g.Height, x2 = 0, y2 = 0;
-        for (var y = 0; y < g.Height; y++)
-        {
-            for (var x = 0; x < g.Width; x++)
-            {
-                if (g.Alpha[(y * g.Width) + x] != 0)
-                    (x1, y1, x2, y2) = (Math.Min(x1, x), Math.Min(y1, y), Math.Max(x2, x + 1), Math.Max(y2, y + 1));
-            }
-        }
-
-        if (x1 >= x2 || y1 >= y2)
-            return g with { Left = 0, Top = 0, Width = 0, Height = 0, Alpha = [] };
-        var w = x2 - x1;
-        var alpha = new byte[w * (y2 - y1)];
-        for (var y = y1; y < y2; y++)
-            g.Alpha.AsSpan((y * g.Width) + x1, w).CopyTo(alpha.AsSpan((y - y1) * w));
-        return g with { Left = g.Left + x1, Top = g.Top + y1, Width = w, Height = y2 - y1, Alpha = alpha };
     }
 
     /// <summary>Gets the codepoint of a glyph file's name: uniXXXX, uXXXXX or u+XXXX, with an optional suffix after an underscore.</summary>
@@ -291,7 +265,7 @@ internal sealed class GlyphImages
     private static Source Bitmap(ImageRenderer renderer, byte[] data)
     {
         var (pixels, width, height) = renderer.Decode(data);
-        return new(null, pixels, width, height);
+        return new(null, null, pixels, width, height);
     }
 
     private static float? Number(JsonElement? json, string name) =>
@@ -376,10 +350,10 @@ internal sealed class GlyphImages
     }
 
     /// <summary>
-    /// A glyph's file: an SVG document, or a bitmap's straight-alpha BGRA pixels with its advance in pixels (if not its
-    /// width) and where the origin on the top of the line is in it.
+    /// A glyph's file: an SVG document with its root's metrics (null if it isn't one), or a bitmap's straight-alpha BGRA
+    /// pixels with its advance in pixels (if not its width) and where the origin on the top of the line is in it.
     /// </summary>
-    private sealed record Source(string? Svg, uint[]? Pixels, int Width, int Height)
+    private sealed record Source(string? Svg, SvgMetrics? SvgMetrics, uint[]? Pixels, int Width, int Height)
     {
         public float? Advance { get; init; }
 

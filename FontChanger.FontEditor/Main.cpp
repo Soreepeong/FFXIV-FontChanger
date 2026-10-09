@@ -4,7 +4,7 @@
 #include "CommandLineRender.h"
 #include "ExportPreviewWindow.h"
 #include "FaceElementEditorDialog.h"
-#include "FontChanger.Presets/Structs.h"
+#include "FontChanger.Presets/ElementFonts.h"
 #include "MainWindow.h"
 #include "FontGeneratorConfig.h"
 
@@ -39,49 +39,22 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
 		g_localeName = L"en-us";
 	}
 
-	g_langId = LANGIDFROMLCID(LocaleNameToLCID(g_localeName.c_str(), LOCALE_ALLOW_NEUTRAL_NAMES));
+	g_langId = GetLanguageIdFromLocaleName(g_localeName);
 
 	if (const auto r = TryCatchShowError(nullptr, IDS_ERROR_OPENFILEFAILURE_BODY, 1, [&] {
-		if (!exists(FontGeneratorConfig::GetConfigPath())) {
-			nlohmann::json json;
-			to_json(json, g_config = FontGeneratorConfig::Default);
-
-			std::ofstream configFile(FontGeneratorConfig::GetConfigPath());
-			configFile << json;
-		} else if (std::ifstream configFile(FontGeneratorConfig::GetConfigPath()); configFile) {
-			nlohmann::json json;
-			configFile >> json;
-			from_json(json, g_config);
-			if (!g_config.Language.empty()) {
-				g_localeName = xivres::util::unicode::convert<std::wstring>(g_config.Language);
-				g_langId = LANGIDFROMLCID(LocaleNameToLCID(g_localeName.c_str(), LOCALE_ALLOW_NEUTRAL_NAMES));
-			}
+		g_config = FontGeneratorConfig::Load();
+		if (!g_config.Language.empty()) {
+			g_localeName = xivres::util::unicode::convert<std::wstring>(g_config.Language);
+			g_langId = GetLanguageIdFromLocaleName(g_localeName);
 		}
 		return 0;
 	}))
 		return r;
 
-	App::Structs::SetGameInstallationPathsProvider([](xivres::font_type fontType) {
-		std::vector<std::filesystem::path> paths;
-		switch (fontType) {
-			case xivres::font_type::chn_axis:
-				paths = g_config.China;
-				break;
-			case xivres::font_type::krn_axis:
-				paths = g_config.Korea;
-				break;
-			case xivres::font_type::tc_axis:
-				paths = g_config.TraditionalChinese;
-				break;
-			default:
-				// Every release has the fonts of the global one.
-				for (const auto& list : {g_config.Global, g_config.China, g_config.Korea, g_config.TraditionalChinese})
-					paths.insert(paths.end(), list.begin(), list.end());
-				break;
-		}
-		return paths;
+	App::ElementFonts::SetGameInstallationPathsProvider([](xivres::font_type fontType) {
+		return g_config.GetGamePaths(fontType);
 	});
-	App::Structs::SetGameFontErrorHandler([](const std::exception& e) {
+	App::ElementFonts::SetGameFontErrorHandler([](const std::exception& e) {
 		if (const auto systemError = dynamic_cast<const std::system_error*>(&e))
 			ShowErrorMessageBox(nullptr, IDS_ERROR_GAMENOTFOUND_BODY, *systemError);
 		else

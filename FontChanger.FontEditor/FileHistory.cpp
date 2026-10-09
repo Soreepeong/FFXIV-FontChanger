@@ -58,29 +58,17 @@ void FileHistory::Save() const {
 	out << json.dump(1, '\t');
 }
 
-void FileHistory::Add(const std::filesystem::path& path) {
-	const auto normalized = Normalize(path);
-	auto history = Load();
-	std::erase_if(history.Files, [&](const auto& p) { return IsSamePath(p, normalized); });
-	history.Files.insert(history.Files.begin(), normalized);
-	if (history.Files.size() > MaxFiles)
-		history.Files.resize(MaxFiles);
-	history.Save();
-}
-
-void FileHistory::Add(IShellItem* item) noexcept {
-	if (!item)
-		return;
-
-	PWSTR pszPath = nullptr;
-	if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &pszPath)) || !pszPath)
-		return;
-
-	const std::unique_ptr<std::remove_pointer_t<PWSTR>, decltype(&CoTaskMemFree)> pathPtr(pszPath, &CoTaskMemFree);
+void FileHistory::Add(const std::filesystem::path& path) noexcept {
 	try {
-		Add(std::filesystem::path(pszPath));
+		const auto normalized = Normalize(path);
+		auto history = Load();
+		std::erase_if(history.Files, [&](const auto& p) { return IsSamePath(p, normalized); });
+		history.Files.insert(history.Files.begin(), normalized);
+		if (history.Files.size() > MaxFiles)
+			history.Files.resize(MaxFiles);
+		history.Save();
 	} catch (...) {
-		// pass
+		// The history is not worth failing to open or save a file for.
 	}
 }
 

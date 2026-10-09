@@ -34,18 +34,13 @@ std::optional<FontGeneratorConfig> App::GameInstallationManagerDialog::Show(HWND
 	const auto hglob = LoadResourceWithLanguageFallback(RT_DIALOG, IDD_GAMEINSTALLATIONMANAGER);
 
 	GameInstallationManagerDialog dlg(hParentWnd, config);
-	const auto r = reinterpret_cast<FontGeneratorConfig*>(DialogBoxIndirectParamW(
+	DialogBoxIndirectParamW(
 		g_hInstance,
 		static_cast<DLGTEMPLATE*>(LockResource(hglob.get())),
 		hParentWnd,
 		DlgProcStatic,
-		reinterpret_cast<LPARAM>(&dlg)));
-	if (!r)
-		return std::nullopt;
-
-	FontGeneratorConfig newConfig(*r);
-	delete r;
-	return newConfig;
+		reinterpret_cast<LPARAM>(&dlg));
+	return std::move(dlg.m_result);
 }
 
 App::GameInstallationManagerDialog::GameInstallationManagerDialog(HWND hParentWnd, const FontGeneratorConfig& config)
@@ -61,54 +56,24 @@ INT_PTR App::GameInstallationManagerDialog::Dialog_OnInitDialog() {
 	m_controls = new ControlStruct{ m_hWnd };
 	ListView_SetExtendedListViewStyle(m_controls->PathList, LVS_EX_FULLROWSELECT);
 
-	const auto AddColumn = [this, zoom = GetZoomFromWindow(m_hWnd)](int columnIndex, int width, UINT resId) {
-		std::wstring name(GetStringResource(resId));
-		LVCOLUMNW col{
-			.mask = LVCF_TEXT | LVCF_WIDTH,
-			.cx = static_cast<int>(width * zoom),
-			.pszText = const_cast<wchar_t*>(name.c_str()),
-		};
-		ListView_InsertColumn(m_controls->PathList, columnIndex, &col);
-		};
-	AddColumn(ListViewColsPath, 180, IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_PATH);
-	AddColumn(ListViewColsVendor, 80, IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR);
-	AddColumn(ListViewColsExists, 80, IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_EXISTS);
+	AddListViewColumn(m_controls->PathList, ListViewColsPath, 180, IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_PATH);
+	AddListViewColumn(m_controls->PathList, ListViewColsVendor, 80, IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR);
+	AddListViewColumn(m_controls->PathList, ListViewColsExists, 80, IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_EXISTS);
 
-	for (const auto& p : m_prevConfig.Global)
-		AddInstallation(p, GameReleaseVendor::SquareEnix);
-	for (const auto& p : m_prevConfig.China)
-		AddInstallation(p, GameReleaseVendor::ShandaGames);
-	for (const auto& p : m_prevConfig.Korea)
-		AddInstallation(p, GameReleaseVendor::ActozSoft);
-	for (const auto& p : m_prevConfig.TraditionalChinese)
-		AddInstallation(p, GameReleaseVendor::UserjoyGames);
+	for (size_t i = 0; i < m_prevConfig.GamePaths.size(); i++) {
+		for (const auto& p : m_prevConfig.GamePaths[i])
+			AddInstallation(p, static_cast<GameReleaseVendor>(i + 1));
+	}
 
 	return 0;
 }
 
 INT_PTR App::GameInstallationManagerDialog::OkButton_OnCommand(uint16_t notiCode) {
-	auto newConfig = new FontGeneratorConfig(m_prevConfig);
-	newConfig->Global.clear();
-	newConfig->China.clear();
-	newConfig->Korea.clear();
-	newConfig->TraditionalChinese.clear();
-	for (const auto& installation : m_installations) {
-		switch (installation.Vendor) {
-			case GameReleaseVendor::SquareEnix:
-				newConfig->Global.emplace_back(installation.Path);
-				break;
-			case GameReleaseVendor::ShandaGames:
-				newConfig->China.emplace_back(installation.Path);
-				break;
-			case GameReleaseVendor::ActozSoft:
-				newConfig->Korea.emplace_back(installation.Path);
-				break;
-			case GameReleaseVendor::UserjoyGames:
-				newConfig->TraditionalChinese.emplace_back(installation.Path);
-				break;
-		}
-	}
-	EndDialog(m_controls->Window, reinterpret_cast<INT_PTR>(newConfig));
+	auto& newConfig = m_result.emplace(m_prevConfig);
+	newConfig.GamePaths = {};
+	for (const auto& installation : m_installations)
+		newConfig.GamePaths[static_cast<size_t>(installation.Vendor) - 1].emplace_back(installation.Path);
+	EndDialog(m_controls->Window, IDOK);
 	return 0;
 }
 
@@ -154,38 +119,21 @@ INT_PTR App::GameInstallationManagerDialog::DetectButton_OnCommand(uint16_t noti
 }
 
 INT_PTR App::GameInstallationManagerDialog::AddButton_OnCommand(uint16_t notiCode) {
-	using namespace xivres::fontgen;
+	using namespace FontChanger::FixedSizeFont;
 
 	const auto allFilesName = std::wstring(GetStringResource(IDS_FILTERSPEC_ALLFILES));
 	COMDLG_FILTERSPEC fileTypes[] = {
 		{L"ffxiv.exe, ffxiv_dx11.exe", L"ffxiv.exe;ffxiv_dx11.exe"},
 		{allFilesName.c_str(), L"*"},
 	};
-	const auto fileTypesSpan = std::span(fileTypes);
 
 	return TryCatchShowError(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, INT_PTR{1}, [&]() -> INT_PTR {
-		IFileOpenDialogPtr pDialog;
-		DWORD dwFlags;
-		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
-		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_GameExecutablePath));
-		SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(fileTypesSpan.size()), fileTypesSpan.data()));
-		SuccessOrThrow(pDialog->SetFileTypeIndex(0));
-		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_OPEN)).c_str()));
-		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
-		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
-		switch (SuccessOrThrow(pDialog->Show(m_hWnd), { HRESULT_FROM_WIN32(ERROR_CANCELLED) })) {
-			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
-				return 0;
-		}
-
-		IShellItemPtr pResult;
-		SuccessOrThrow(pDialog->GetResult(&pResult));
-
-		LPWSTR pszName;
-		SuccessOrThrow(pResult->GetDisplayName(SIGDN_FILESYSPATH, &pszName));
+		const auto file = PickFile(m_hWnd, false, Guid_IFileDialog_GameExecutablePath, IDS_WINDOWTITLE_OPEN, fileTypes);
+		if (!file)
+			return 0;
 
 		std::filesystem::path path;
-		const auto vendor = GameInstallationRepository::DetermineGameRelease(pszName, path);
+		const auto vendor = GameInstallationRepository::DetermineGameRelease(*file, path);
 		if (vendor == GameReleaseVendor::None) {
 			MessageBoxW(
 				m_hWnd,
@@ -202,32 +150,24 @@ INT_PTR App::GameInstallationManagerDialog::AddButton_OnCommand(uint16_t notiCod
 }
 
 INT_PTR App::GameInstallationManagerDialog::RemoveButton_OnCommand(uint16_t notiCode) {
-	const auto count = ListView_GetSelectedCount(m_controls->PathList);
-	if (!count)
+	if (!ListView_GetSelectedCount(m_controls->PathList))
 		return 0;
-	
-	std::vector<int> vecIndices;
-	std::vector<int> listIndices;
-	vecIndices.reserve(count);
-	listIndices.reserve(count);
-	for (int i = -1; (i = ListView_GetNextItem(m_controls->PathList, i, LVNI_SELECTED)) != -1;) {
-		LVITEMW lvi{ .mask = LVIF_PARAM, .iItem = i };
+
+	// Items refer to installations by their indices, so the list is made again from the remaining ones, in its order.
+	std::vector<Installation> remaining;
+	for (int i = 0, i_ = ListView_GetItemCount(m_controls->PathList); i < i_; i++) {
+		LVITEMW lvi{.mask = LVIF_PARAM | LVIF_STATE, .iItem = i, .stateMask = LVIS_SELECTED};
 		ListView_GetItem(m_controls->PathList, &lvi);
-		vecIndices.emplace_back(static_cast<int>(lvi.lParam));
-		listIndices.emplace_back(i);
+		if (!(lvi.state & LVIS_SELECTED))
+			remaining.emplace_back(std::move(m_installations[lvi.lParam]));
 	}
 
-	std::ranges::sort(vecIndices);
-	std::ranges::sort(listIndices);
+	m_installations.clear();
+	ListView_DeleteAllItems(m_controls->PathList);
+	for (auto& installation : remaining)
+		AddInstallation(std::move(installation.Path), installation.Vendor);
 
-	for (const auto i : std::ranges::reverse_view(vecIndices))
-		m_installations.erase(m_installations.begin() + i);
-
-	for (const auto i : std::ranges::reverse_view(listIndices))
-		ListView_DeleteItem(m_controls->PathList, i);
-
-	EnableWindow(m_controls->RemoveButton, !!ListView_GetSelectedCount(m_controls->PathList));
-
+	EnableWindow(m_controls->RemoveButton, FALSE);
 	return 0;
 }
 
@@ -276,22 +216,7 @@ void App::GameInstallationManagerDialog::AddInstallation(std::filesystem::path p
 	ListView_InsertItem(m_controls->PathList, &lvi);
 	ListView_SetItemText(m_controls->PathList, i, ListViewColsPath, const_cast<wchar_t*>(inst.Path.c_str()));
 
-	std::wstring tmp;
-	switch (inst.Vendor) {
-		case GameReleaseVendor::SquareEnix:
-			tmp = GetStringResource(IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_SQEX);
-			break;
-		case GameReleaseVendor::ShandaGames:
-			tmp = GetStringResource(IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_SNDA);
-			break;
-		case GameReleaseVendor::ActozSoft:
-			tmp = GetStringResource(IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_ACTOZ);
-			break;
-		case GameReleaseVendor::UserjoyGames:
-			tmp = GetStringResource(IDS_GAMEINSTALLATIONLISTVIEW_COLUMN_VENDOR_USERJOY);
-			break;
-	}
-
+	std::wstring tmp(GetStringResource(FontGeneratorConfig::GameReleases[static_cast<size_t>(inst.Vendor) - 1].VendorNameResId));
 	ListView_SetItemText(m_controls->PathList, i, ListViewColsVendor, const_cast<wchar_t*>(tmp.c_str()));
 
 	tmp = GetStringResource(inst.Exists

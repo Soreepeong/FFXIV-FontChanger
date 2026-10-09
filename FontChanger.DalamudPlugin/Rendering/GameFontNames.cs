@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 
@@ -35,7 +34,7 @@ internal static unsafe class GameFontNames
             entryCount = GameLayout.Get("FontTable.Count");
 
             // Before 6.30, entries are indexed as i * 3 * 8.
-            entrySize = GameLayout.Get("FontTableEntry", 0x18);
+            entrySize = GameLayout.Get("FontTableEntry");
             fdtName = GameLayout.Get("FontTableEntry.FdtName");
             lobbyA = GameLayout.Address("FontTables", "LobbyTableA");
             lobbyB = GameLayout.Address("FontTables", "LobbyTableB");
@@ -91,14 +90,8 @@ internal static unsafe class GameFontNames
         return handle != 0 && GameUi.GetFileName(handle).Contains("font_lobby", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Gets the size a font name stands for: the number after the last underscore, in tenths for 96 and 184.</summary>
-    private static float SizeOf(string name)
-    {
-        var i = name.LastIndexOf('_');
-        if (i < 0 || !int.TryParse(name.AsSpan(i + 1), NumberStyles.None, CultureInfo.InvariantCulture, out var n))
-            return 0;
-        return n is 96 or 184 ? n / 10f : n;
-    }
+    /// <summary>Gets the size of a game font by its name (FontChanger.FixedSizeFont's data/game_fonts.json); 0 if it isn't one.</summary>
+    private static float SizeOf(string name) => GameFonts.Find(name)?.Size ?? 0;
 
     /// <summary>Reads a table's FDT names as face names: without the extension, nor the lobby suffix.</summary>
     private static string[] Read(nint table, int entrySize, int fdtNameOffset)

@@ -1,9 +1,7 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 
 namespace CustomFonts;
 
@@ -15,6 +13,8 @@ namespace CustomFonts;
 /// <para>A value is known when at least one signature captured it and none disagree. Several signatures capture most
 /// fields, so one of them no longer matching after a patch doesn't stop the plugin, and fields that move are read where
 /// they are now.</para>
+/// <para>What no signature captures is a constant of the same file: an int one is a value as if captured (a signature that
+/// captures it too must agree), the others are read with <see cref="GetString"/> and <see cref="GetList"/>.</para>
 /// <para>Each part of the plugin resolves what it uses (<see cref="Resolve"/>), and fails alone if something of it isn't
 /// known. Structures that kept their layout since 2020 stay C# structures, checked against the captures
 /// (<see cref="CheckFixed"/>).</para>
@@ -25,6 +25,7 @@ internal static class GameLayout
     private static readonly Dictionary<string, string> Failures = [];
     private static readonly Dictionary<string, (int Value, string Source)> Values = [];
     private static readonly Dictionary<string, string> Conflicts = [];
+    private static readonly Dictionary<string, object> OtherConstants = [];
     private static readonly List<string> Problems = [];
     private static bool loaded;
 
@@ -48,37 +49,47 @@ internal static class GameLayout
     }
 
     /// <summary>
-    /// Gets a captured value. A field at offset 0 has no displacement to capture: give <paramref name="implied"/> 0 for
-    /// those. Records a problem and returns -1 if the value isn't known.
+    /// Gets a captured value, or a constant. Records a problem and returns -1 if the value isn't known.
     /// </summary>
-    public static int Get(string name, int? implied = null)
+    public static int Get(string name)
     {
         if (Conflicts.TryGetValue(name, out var conflict))
             Problems.Add(conflict);
         else if (Values.TryGetValue(name, out var v))
             return v.Value;
-        else if (implied is { } i)
-            return i;
         else
             Problems.Add($"no signature found says where {name} is");
         return -1;
     }
 
     /// <summary>Gets a captured value if any signature captured it (and they agree).</summary>
-    public static int? TryGet(string name) =>
-        !Conflicts.ContainsKey(name) && Values.TryGetValue(name, out var v) ? v.Value : null;
+    public static int? TryGet(string name)
+    {
+        Load();
+        return !Conflicts.ContainsKey(name) && Values.TryGetValue(name, out var v) ? v.Value : null;
+    }
+
+    /// <summary>Gets a string constant. Records a problem and returns an empty string if there is none.</summary>
+    public static string GetString(string name) => GetConstant<string>(name) ?? string.Empty;
+
+    /// <summary>Gets a constant list of ints. Records a problem and returns an empty list if there is none.</summary>
+    public static int[] GetList(string name) => GetConstant<int[]>(name) ?? [];
+
+    private static T? GetConstant<T>(string name)
+        where T : class
+    {
+        if (OtherConstants.GetValueOrDefault(name) is T value)
+            return value;
+        Problems.Add($"there is no constant {name}");
+        return null;
+    }
 
     /// <summary>
     /// Gets what a signature resolves to, or with <paramref name="rel32"/>, the target it captures. Records a problem and
     /// returns 0 if the signature wasn't found.
     /// </summary>
-    public static nint Address(string signature, string? rel32 = null)
-    {
-        if (Matches.TryGetValue(signature, out var m))
-            return rel32 is null ? m.Address : m.Target(rel32);
-        Problems.Add(Failures.GetValueOrDefault(signature, $"Signature {signature} wasn't looked for"));
-        return 0;
-    }
+    public static nint Address(string signature, string? rel32 = null) =>
+        Match(signature) is { } m ? rel32 is null ? m.Address : m.Target(rel32) : 0;
 
     /// <summary>
     /// Gets the target of a rel32 that several signatures may capture (a global, a function), checking that they agree.
@@ -141,27 +152,15 @@ internal static class GameLayout
             return;
         loaded = true;
 
-        var found = new ConcurrentDictionary<string, CodeMatch>();
-        var failed = new ConcurrentDictionary<string, string>();
-        Parallel.ForEach(CodeSignature.Definitions, s =>
-        {
-            try
-            {
-                found[s.Name] = s.Find();
-            }
-            catch (InvalidOperationException ex)
-            {
-                failed[s.Name] = ex.Message;
-            }
-        });
-
+        // Only a part that needs one of these can't work; Resolve reports them then.
+        var (found, failed) = CodeSignature.FindAll();
         foreach (var (name, message) in failed.OrderBy(x => x.Key))
         {
             Failures[name] = message;
-            Plugin.Log.Warning("{Message}", message);
+            Host.Log.Debug("{Message}", message);
         }
 
-        foreach (var match in found.Values.OrderBy(m => m.Signature.Name))
+        foreach (var match in found.OrderBy(m => m.Signature.Name))
         {
             Matches[match.Signature.Name] = match;
             foreach (var (capture, type) in match.Signature.Types)
@@ -178,6 +177,16 @@ internal static class GameLayout
                     AddConflict(capture, $"{capture} is 0x{known.Value:X} by {known.Source} but 0x{value:X} by {match.Signature.Name}");
                 }
             }
+        }
+
+        foreach (var (name, constant) in CodeSignature.LoadConstants())
+        {
+            if (constant is not int value)
+                OtherConstants[name] = constant;
+            else if (!Values.TryGetValue(name, out var known))
+                Values[name] = (value, "the constants");
+            else if (known.Value != value)
+                AddConflict(name, $"{name} is 0x{known.Value:X} by {known.Source} but 0x{value:X} by the constants");
         }
 
         // A field captured relative to another ("Structure.Field-Structure.Other") is that field where the other is known,
@@ -202,6 +211,6 @@ internal static class GameLayout
     {
         if (!Conflicts.TryAdd(name, message))
             return;
-        Plugin.Log.Warning("{Message}", message);
+        Host.Log.Debug("{Message}", message);
     }
 }

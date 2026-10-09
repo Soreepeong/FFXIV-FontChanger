@@ -127,7 +127,7 @@ internal sealed unsafe class GlyphRunCollector : IDisposable
         }
         catch (Exception ex)
         {
-            Plugin.Log.Error(ex, "Collecting a glyph run failed");
+            Host.Log.Error(ex, "Collecting a glyph run failed");
             return E.E_FAIL;
         }
     }

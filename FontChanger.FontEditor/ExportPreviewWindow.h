@@ -19,7 +19,7 @@ namespace App {
 		std::shared_ptr<xivres::texture::memory_mipmap_stream> m_pMipmap;
 		bool m_bNeedRedraw = false;
 
-		std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::fixed_size_font>>> m_fonts;
+		std::vector<std::pair<std::string, std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font>>> m_fonts;
 
 		HWND m_hWnd{};
 		HFONT m_hUiFont{};
@@ -50,10 +50,10 @@ namespace App {
 
 		[[nodiscard]] double GetZoom() const noexcept;
 
-		ExportPreviewWindow(std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::fixed_size_font>>> fonts);
+		ExportPreviewWindow(std::vector<std::pair<std::string, std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font>>> fonts);
 
 	public:
-		static void ShowNew(std::vector<std::pair<std::string, std::shared_ptr<xivres::fontgen::fixed_size_font>>> fonts) {
+		static void ShowNew(std::vector<std::pair<std::string, std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font>>> fonts) {
 			new ExportPreviewWindow(std::move(fonts));
 		}
 

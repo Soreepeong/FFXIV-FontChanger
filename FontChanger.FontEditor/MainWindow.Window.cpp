@@ -7,6 +7,48 @@
 #include "MainWindow.Internal.h"
 #include "FontGeneratorConfig.h"
 
+namespace {
+	// Menu items that choose a value, checked when it is the current one.
+	constexpr std::pair<UINT, const char*> LanguageItems[]{
+		{ID_FILE_LANGUAGE_AUTO, ""},
+		{ID_FILE_LANGUAGE_ENGLISH, "en-us"},
+		{ID_FILE_LANGUAGE_KOREAN, "ko-kr"},
+		{ID_FILE_LANGUAGE_CHINESE, "zh-hans"},
+	};
+
+	constexpr std::pair<UINT, xivres::font_type> HotReloadFontItems[]{
+		{ID_HOTRELOAD_FONT_AUTO, xivres::font_type::undefined},
+		{ID_HOTRELOAD_FONT_FONT, xivres::font_type::font},
+		{ID_HOTRELOAD_FONT_LOBBY, xivres::font_type::font_lobby},
+		{ID_HOTRELOAD_FONT_CHNAXIS, xivres::font_type::chn_axis},
+		{ID_HOTRELOAD_FONT_KRNAXIS, xivres::font_type::krn_axis},
+	};
+
+	constexpr std::pair<UINT, FontChanger::FixedSizeFont::vertical_alignment> AlignmentItems[]{
+		{ID_EDIT_VERTICALALIGNMENT_TOP, FontChanger::FixedSizeFont::vertical_alignment::Top},
+		{ID_EDIT_VERTICALALIGNMENT_MIDDLE, FontChanger::FixedSizeFont::vertical_alignment::Middle},
+		{ID_EDIT_VERTICALALIGNMENT_BASELINE, FontChanger::FixedSizeFont::vertical_alignment::Baseline},
+		{ID_EDIT_VERTICALALIGNMENT_BOTTOM, FontChanger::FixedSizeFont::vertical_alignment::Bottom},
+		{ID_EDIT_VERTICALALIGNMENT_ROMANBASELINE, FontChanger::FixedSizeFont::vertical_alignment::RomanBaseline},
+		{ID_EDIT_VERTICALALIGNMENT_IDEOGRAPHICCENTER, FontChanger::FixedSizeFont::vertical_alignment::IdeographicCenter},
+	};
+
+	struct MinimumHeights {
+		int List;
+		int Edit;
+		int Preview;
+	};
+
+	// Gets the smallest heights of the list, the edit and the preview in pixels.
+	MinimumHeights GetMinimumHeights(double zoom) {
+		return {
+			static_cast<int>(std::lround(MinFaceElementListViewHeight * zoom)),
+			static_cast<int>(std::lround(MinPreviewEditHeight * zoom)),
+			static_cast<int>(std::lround(MinPreviewHeight * zoom)),
+		};
+	}
+}
+
 bool App::FontEditorWindow::ConsumeDialogMessage(MSG& msg) {
 	if (IsDialogMessage(m_hWnd, &msg))
 		return true;
@@ -78,14 +120,8 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 		return DefSubclassProc(hWnd, msg, wParam, lParam);
 	}, 1, 0);
 
-	const auto AddColumn = [this, zoom = GetZoom()](int columnIndex, int width, UINT resId) {
-		std::wstring name(GetStringResource(resId));
-		LVCOLUMNW col{
-			.mask = LVCF_TEXT | LVCF_WIDTH,
-			.cx = static_cast<int>(width * zoom),
-			.pszText = const_cast<wchar_t*>(name.c_str()),
-		};
-		ListView_InsertColumn(m_hFaceElementsListView, columnIndex, &col);
+	const auto AddColumn = [this](int columnIndex, int width, UINT resId) {
+		AddListViewColumn(m_hFaceElementsListView, columnIndex, width, resId);
 	};
 	AddColumn(ListViewColsFamilyName, 120, IDS_FONTLISTVIEW_COLUMN_FAMILY);
 	AddColumn(ListViewColsSubfamilyName, 80, IDS_FONTLISTVIEW_COLUMN_SUBFAMILY);
@@ -103,14 +139,12 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 
 	if (m_args.size() >= 2 && std::filesystem::exists(m_args[1])) {
 		if (const auto r = TryCatchShowError(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
-			IShellItemPtr shellItem;
-			SuccessOrThrow(SHCreateItemFromParsingName(m_args[1].c_str(), nullptr, IID_PPV_ARGS(&shellItem)));
-			SetCurrentMultiFontSet(std::move(shellItem));
+			OpenFile(m_args[1]);
 			return 0;
 		}))
 			return r;
 	}
-	if (!m_currentShellItem)
+	if (m_currentPath.empty())
 		Menu_File_New(xivres::font_type::font);
 
 	Window_OnSize();
@@ -130,9 +164,7 @@ LRESULT App::FontEditorWindow::Window_OnSize() {
 	splitterThickness = (std::max)(2, splitterThickness);
 	splitterThickness = (std::min<int>)(splitterThickness, (std::max<int>)(1, availableHeight / 8));
 
-	const auto minListPx = static_cast<int>(std::lround(MinFaceElementListViewHeight * zoom));
-	const auto minEditPx = static_cast<int>(std::lround(MinPreviewEditHeight * zoom));
-	const auto minPreviewPx = static_cast<int>(std::lround(MinPreviewHeight * zoom));
+	const auto [minListPx, minEditPx, minPreviewPx] = GetMinimumHeights(zoom);
 
 	auto listViewHeightPx = static_cast<int>(std::lround(g_config.FaceElementListViewHeight * zoom));
 	auto editHeightPx = static_cast<int>(std::lround(g_config.PreviewEditHeight * zoom));
@@ -222,11 +254,11 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 		const auto buf = m_pMipmap->as_span<xivres::util::b8g8r8a8>();
 		std::ranges::fill(buf, xivres::util::b8g8r8a8{0x88, 0x88, 0x88, 0xFF});
 
-		const auto measured = [&]() -> std::optional<xivres::fontgen::text_measure_result> {
+		const auto measured = [&]() -> std::optional<FontChanger::FixedSizeFont::text_measure_result> {
 			if (!m_pActiveFace || m_pActiveFace->PreviewText.empty())
 				return std::nullopt;
 
-			return xivres::fontgen::text_measurer(*m_pActiveFace->GetPreviewMergedFont())
+			return FontChanger::FixedSizeFont::text_measurer(*GetPreviewFont())
 			       .max_width(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
 			       .use_kerning(m_bKerning)
 			       .measure(m_pActiveFace->PreviewText);
@@ -263,25 +295,18 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 		}
 
 		if (m_pActiveFace) {
-			const auto& mergedFont = *m_pActiveFace->GetPreviewMergedFont();
+			const auto pMergedFont = GetPreviewFont();
+			const auto& mergedFont = *pMergedFont;
 
+			// The part of each line below the ascent is shaded; if lines have nothing below it, every other line is.
 			if (int lineHeight = mergedFont.line_height(), ascent = mergedFont.ascent();
-				lineHeight > 0 && m_bShowLineMetrics) {
-				if (ascent < lineHeight) {
-					for (int y = pad - m_nPreviewScrollY, y_ = m_pMipmap->Height - pad; y < y_; y += lineHeight) {
-						if (y + ascent >= pad) {
-							for (int y2 = y + ascent, y2_ = (std::min)(y_, y + lineHeight); y2 < y2_; y2++)
-								for (int x = previewContentRect.left; x < previewContentRect.right; x++)
-									buf[y2 * m_pMipmap->Width + x] = {0x33, 0x33, 0x33, 0xFF};
-						}
-					}
-				} else if (ascent == lineHeight) {
-					for (int y = pad - m_nPreviewScrollY, y_ = m_pMipmap->Height - pad; y < y_; y += 2 * lineHeight) {
-						if (y + lineHeight >= pad) {
-							for (int y2 = y + lineHeight, y2_ = (std::min)(y_, y + 2 * lineHeight); y2 < y2_; y2++)
-								for (int x = previewContentRect.left; x < previewContentRect.right; x++)
-									buf[y2 * m_pMipmap->Width + x] = {0x33, 0x33, 0x33, 0xFF};
-						}
+				lineHeight > 0 && m_bShowLineMetrics && ascent <= lineHeight) {
+				const auto period = ascent < lineHeight ? lineHeight : 2 * lineHeight;
+				for (int y = pad - m_nPreviewScrollY, y_ = m_pMipmap->Height - pad; y < y_; y += period) {
+					if (y + ascent >= pad) {
+						for (int y2 = y + ascent, y2_ = (std::min)(y_, y + period); y2 < y2_; y2++)
+							for (int x = previewContentRect.left; x < previewContentRect.right; x++)
+								buf[y2 * m_pMipmap->Width + x] = {0x33, 0x33, 0x33, 0xFF};
 					}
 				}
 			}
@@ -344,63 +369,20 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		}
 	}
 
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language.empty() ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_AUTO, FALSE, &mii);
-	}
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "en-us" ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_ENGLISH, FALSE, &mii);
-	}
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "ko-kr" ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_KOREAN, FALSE, &mii);
-	}
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(g_config.Language == "zh-hans" ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_FILE_LANGUAGE_CHINESE, FALSE, &mii);
-	}
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bWordWrap ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_VIEW_WORDWRAP, FALSE, &mii);
-	}
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bKerning ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_VIEW_KERNING, FALSE, &mii);
-	}
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_bShowLineMetrics ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_VIEW_SHOWLINEMETRICS, FALSE, &mii);
-	}
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapFontLobbyToFont ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTLOBBY, FALSE, &mii);
-	}
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapChnAxisToFont ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTCHNAXIS, FALSE, &mii);
-	}
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapKrnAxisToFont ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTKRNAXIS, FALSE, &mii);
-	}
-	{
-		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_multiFontSet.ExportMapTcAxisToFont ? MFS_CHECKED : 0)};
-		SetMenuItemInfoW(hMenu, ID_EXPORT_MAPFONTTCAXIS, FALSE, &mii);
-	}
-	{
-		constexpr std::pair<UINT, xivres::font_type> hotReloadFontItems[]{
-			{ ID_HOTRELOAD_FONT_AUTO, xivres::font_type::undefined },
-			{ ID_HOTRELOAD_FONT_FONT, xivres::font_type::font },
-			{ ID_HOTRELOAD_FONT_LOBBY, xivres::font_type::font_lobby },
-			{ ID_HOTRELOAD_FONT_CHNAXIS, xivres::font_type::chn_axis },
-			{ ID_HOTRELOAD_FONT_KRNAXIS, xivres::font_type::krn_axis },
-		};
-		for (const auto& [id, fontType] : hotReloadFontItems) {
-			const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(m_hotReloadFontType == fontType ? MFS_CHECKED : 0)};
-			SetMenuItemInfoW(hMenu, id, FALSE, &mii);
-		}
-	}
+	const auto setChecked = [hMenu](UINT id, bool checked) {
+		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(checked ? MFS_CHECKED : 0)};
+		SetMenuItemInfoW(hMenu, id, FALSE, &mii);
+	};
+	for (const auto& [id, language] : LanguageItems)
+		setChecked(id, g_config.Language == language);
+	setChecked(ID_VIEW_WORDWRAP, m_bWordWrap);
+	setChecked(ID_VIEW_KERNING, m_bKerning);
+	setChecked(ID_VIEW_SHOWLINEMETRICS, m_bShowLineMetrics);
+	for (const auto& mapping : ExportMappings)
+		setChecked(mapping.MenuId, m_multiFontSet.*mapping.Enabled);
+	for (const auto& [id, fontType] : HotReloadFontItems)
+		setChecked(id, m_hotReloadFontType == fontType);
+
 	{
 		const auto i = ListView_GetNextItem(m_hFaceElementsListView, -1, LVNI_SELECTED);
 		const bool hasElement = m_pActiveFace && i >= 0;
@@ -422,24 +404,14 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		setState(ID_EXPORT_GLYPHSWITHADJUSTMENTS, notEmpty);
 		setState(ID_EXPORT_FACEGLYPHS, m_pActiveFace != nullptr);
 	}
-	{
-		constexpr std::pair<UINT, xivres::fontgen::vertical_alignment> alignmentItems[]{
-			{ ID_EDIT_VERTICALALIGNMENT_TOP, xivres::fontgen::vertical_alignment::Top },
-			{ ID_EDIT_VERTICALALIGNMENT_MIDDLE, xivres::fontgen::vertical_alignment::Middle },
-			{ ID_EDIT_VERTICALALIGNMENT_BASELINE, xivres::fontgen::vertical_alignment::Baseline },
-			{ ID_EDIT_VERTICALALIGNMENT_BOTTOM, xivres::fontgen::vertical_alignment::Bottom },
-			{ ID_EDIT_VERTICALALIGNMENT_ROMANBASELINE, xivres::fontgen::vertical_alignment::RomanBaseline },
-			{ ID_EDIT_VERTICALALIGNMENT_IDEOGRAPHICCENTER, xivres::fontgen::vertical_alignment::IdeographicCenter },
+	for (const auto& [id, alignment] : AlignmentItems) {
+		const MENUITEMINFOW mii{
+			.cbSize = sizeof mii,
+			.fMask = MIIM_STATE | MIIM_FTYPE,
+			.fType = MFT_RADIOCHECK,
+			.fState = static_cast<UINT>((m_pActiveFace ? MFS_ENABLED : MFS_GRAYED) | (m_pActiveFace && m_pActiveFace->VerticalAlignment == alignment ? MFS_CHECKED : 0)),
 		};
-		for (const auto& [id, alignment] : alignmentItems) {
-			const MENUITEMINFOW mii{
-				.cbSize = sizeof mii,
-				.fMask = MIIM_STATE | MIIM_FTYPE,
-				.fType = MFT_RADIOCHECK,
-				.fState = static_cast<UINT>((m_pActiveFace ? MFS_ENABLED : MFS_GRAYED) | (m_pActiveFace && m_pActiveFace->VerticalAlignment == alignment ? MFS_CHECKED : 0)),
-			};
-			SetMenuItemInfoW(hMenu, id, FALSE, &mii);
-		}
+		SetMenuItemInfoW(hMenu, id, FALSE, &mii);
 	}
 	return 0;
 }
@@ -512,10 +484,11 @@ LRESULT App::FontEditorWindow::Window_OnMouseLButtonUp(uint16_t states, int16_t 
 	}
 
 	if (m_previewPan.Active) {
+		// Inactive first, so that WM_CAPTURECHANGED does not show the cursor again.
+		m_previewPan.Active = false;
 		ReleaseCapture();
 		SetCursorPos(m_previewPan.StartPosition.x, m_previewPan.StartPosition.y);
 		ShowCursor(TRUE);
-		m_previewPan.Active = false;
 	}
 
 	return 0;
@@ -564,15 +537,6 @@ LRESULT App::FontEditorWindow::Window_OnSetCursor(HWND hContainer, int hittest, 
 	return TRUE;
 }
 
-LRESULT App::FontEditorWindow::Window_OnCaptureChanged(HWND newCapture) {
-	if (newCapture != m_hWnd && m_previewPan.Active) {
-		ShowCursor(TRUE);
-		m_previewPan.Active = false;
-	}
-
-	return 0;
-}
-
 LRESULT App::FontEditorWindow::Window_OnDestroy() {
 	StopWatchingGlyphFolders();
 	DeleteFont(m_hUiFont);
@@ -594,6 +558,22 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 	switch (msg) {
 		case WM_COMMAND:
+			for (const auto& [id, language] : LanguageItems) {
+				if (LOWORD(wParam) == id)
+					return Menu_File_Language(language);
+			}
+			for (const auto& [id, fontType] : HotReloadFontItems) {
+				if (LOWORD(wParam) == id)
+					return Menu_HotReload_Font(fontType);
+			}
+			for (const auto& [id, alignment] : AlignmentItems) {
+				if (LOWORD(wParam) == id)
+					return Menu_Edit_SetVerticalAlignment(alignment);
+			}
+			for (const auto& mapping : ExportMappings) {
+				if (LOWORD(wParam) == mapping.MenuId)
+					return Menu_Export_ToggleMapping(mapping);
+			}
 			switch (LOWORD(wParam)) {
 				case Id_Edit: return Edit_OnCommand(HIWORD(wParam));
 				case Id_FaceListBox: return FaceListBox_OnCommand(HIWORD(wParam));
@@ -606,10 +586,6 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_FILE_SAVE: return Menu_File_Save();
 				case ID_FILE_SAVEAS: return Menu_File_SaveAs(true);
 				case ID_FILE_SAVECOPYAS: return Menu_File_SaveAs(false);
-				case ID_FILE_LANGUAGE_AUTO: return Menu_File_Language("");
-				case ID_FILE_LANGUAGE_ENGLISH: return Menu_File_Language("en-us");
-				case ID_FILE_LANGUAGE_KOREAN: return Menu_File_Language("ko-kr");
-				case ID_FILE_LANGUAGE_CHINESE: return Menu_File_Language("zh-hans");
 				case ID_FILE_RECENT_CLEAR: return Menu_File_ClearRecent();
 				case ID_FILE_GAMEINSTALLATIONMANAGER: return Menu_File_GameInstallationManager();
 				case ID_FILE_EXIT: return Menu_File_Exit();
@@ -632,12 +608,6 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EDIT_DECREASEFONTSIZEBY0_2: return Menu_Edit_ChangeParams(0, 0, 0, -0.2f);
 				case ID_EDIT_INCREASEFONTSIZEBY0_2: return Menu_Edit_ChangeParams(0, 0, 0, +0.2f);
 				case ID_EDIT_TOGGLEMERGEMODE: return Menu_Edit_ToggleMergeMode();
-				case ID_EDIT_VERTICALALIGNMENT_TOP: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::Top);
-				case ID_EDIT_VERTICALALIGNMENT_MIDDLE: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::Middle);
-				case ID_EDIT_VERTICALALIGNMENT_BASELINE: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::Baseline);
-				case ID_EDIT_VERTICALALIGNMENT_BOTTOM: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::Bottom);
-				case ID_EDIT_VERTICALALIGNMENT_ROMANBASELINE: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::RomanBaseline);
-				case ID_EDIT_VERTICALALIGNMENT_IDEOGRAPHICCENTER: return Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment::IdeographicCenter);
 				case ID_EDIT_MOVEUP: return Menu_Edit_MoveUpOrDown(-1);
 				case ID_EDIT_MOVEDOWN: return Menu_Edit_MoveUpOrDown(+1);
 				case ID_EDIT_CREATEEMPTYCOPYFROMSELECTION: return Menu_Edit_CreateEmptyCopyFromSelection();
@@ -667,15 +637,6 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EXPORT_TOTTMP_DONOTCOMPRESS: return Menu_Export_TTMP(CompressionMode::DoNotCompress);
 				case ID_HOTRELOAD_RELOAD: return Menu_HotReload_Reload(false);
 				case ID_HOTRELOAD_RESTORE: return Menu_HotReload_Reload(true);
-				case ID_HOTRELOAD_FONT_AUTO: return Menu_HotReload_Font(xivres::font_type::undefined);
-				case ID_HOTRELOAD_FONT_FONT: return Menu_HotReload_Font(xivres::font_type::font);
-				case ID_HOTRELOAD_FONT_LOBBY: return Menu_HotReload_Font(xivres::font_type::font_lobby);
-				case ID_HOTRELOAD_FONT_CHNAXIS: return Menu_HotReload_Font(xivres::font_type::chn_axis);
-				case ID_HOTRELOAD_FONT_KRNAXIS: return Menu_HotReload_Font(xivres::font_type::krn_axis);
-				case ID_EXPORT_MAPFONTLOBBY: return Menu_Export_MapFontLobby();
-				case ID_EXPORT_MAPFONTCHNAXIS: return Menu_Export_MapFontChnAxis();
-				case ID_EXPORT_MAPFONTKRNAXIS: return Menu_Export_MapFontKrnAxis();
-				case ID_EXPORT_MAPFONTTCAXIS: return Menu_Export_MapFontTCAxis();
 			}
 			if (LOWORD(wParam) >= ID_FILE_RECENT_FIRST && LOWORD(wParam) <= ID_FILE_RECENT_LAST)
 				return Menu_File_OpenRecent(LOWORD(wParam) - ID_FILE_RECENT_FIRST);
@@ -710,8 +671,13 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_CLOSE: return Menu_File_Exit();
 		case WM_DESTROY: return Window_OnDestroy();
 		case WM_CAPTURECHANGED:
-			if (reinterpret_cast<HWND>(lParam) != m_hWnd)
+			if (reinterpret_cast<HWND>(lParam) != m_hWnd) {
 				m_activeSplitter = VerticalSplitter::None;
+				if (m_previewPan.Active) {
+					ShowCursor(TRUE);
+					m_previewPan.Active = false;
+				}
+			}
 			return 0;
 	}
 
@@ -753,9 +719,7 @@ void App::FontEditorWindow::UpdateSplitterDragPosition(int16_t y) {
 	RECT rc;
 	GetClientRect(m_hWnd, &rc);
 	const auto zoom = GetZoom();
-	const auto minListPx = static_cast<int>(std::lround(MinFaceElementListViewHeight * zoom));
-	const auto minEditPx = static_cast<int>(std::lround(MinPreviewEditHeight * zoom));
-	const auto minPreviewPx = static_cast<int>(std::lround(MinPreviewHeight * zoom));
+	const auto [minListPx, minEditPx, minPreviewPx] = GetMinimumHeights(zoom);
 	const auto availableHeight = static_cast<int>(rc.bottom - rc.top);
 
 	auto updated = false;

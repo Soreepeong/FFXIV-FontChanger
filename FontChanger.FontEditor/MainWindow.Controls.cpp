@@ -1,12 +1,12 @@
 ﻿#include "pch.h"
 #include "FaceElementEditorDialog.h"
-#include "FaceFromFont.h"
+#include "FontChanger.Presets/FaceFromFont.h"
 #include "resource.h"
 #include "FontChanger.Presets/Structs.h"
 #include "MainWindow.h"
 #include "xivres/textools.h"
 
-using App::FaceFromFont::GetGameFontFamilyAndSize;
+using FontChanger::FaceFromFont::GetGameFontFamilyAndSize;
 
 namespace {
 	// Returns the size that the face is drawn at: that of its first element, which the merged font takes its size from,
@@ -91,17 +91,10 @@ LRESULT App::FontEditorWindow::Edit_OnCommand(uint16_t commandId) {
 LRESULT App::FontEditorWindow::FaceListBox_OnCommand(uint16_t commandId) {
 	switch (commandId) {
 		case LBN_SELCHANGE: {
-			auto iItem = static_cast<size_t>(ListBox_GetCurSel(m_hFacesListBox));
-			if (iItem != static_cast<size_t>(LB_ERR)) {
-				for (auto& pFontSet : m_multiFontSet.FontSets) {
-					if (iItem < pFontSet->Faces.size()) {
-						m_pActiveFace = pFontSet->Faces[iItem].get();
-						m_nPreviewScrollY = 0;
-						UpdateFaceElementList();
-						break;
-					}
-					iItem -= static_cast<int>(pFontSet->Faces.size());
-				}
+			if (const auto index = ListBox_GetCurSel(m_hFacesListBox); index != LB_ERR) {
+				m_pActiveFace = reinterpret_cast<Structs::Face*>(ListBox_GetItemData(m_hFacesListBox, index));
+				m_nPreviewScrollY = 0;
+				UpdateFaceElementList();
 			}
 			return 0;
 		}
@@ -135,17 +128,9 @@ LRESULT App::FontEditorWindow::FaceListBox_OnContextMenu(POINT screenPos) {
 		}
 	}
 
-	Structs::FontSet* pFontSet = nullptr;
-	Structs::Face* pFace = nullptr;
-	for (auto i = static_cast<size_t>(index); const auto& p : m_multiFontSet.FontSets) {
-		if (i < p->Faces.size()) {
-			pFontSet = p.get();
-			pFace = p->Faces[i].get();
-			break;
-		}
-		i -= p->Faces.size();
-	}
-	if (!pFace)
+	const auto pFace = reinterpret_cast<Structs::Face*>(ListBox_GetItemData(m_hFacesListBox, index));
+	const auto pFontSet = pFace ? FindFontSet(*pFace) : nullptr;
+	if (!pFontSet)
 		return 0;
 
 	const auto familyAndSize = GetGameFontFamilyAndSize(pFace->Name);
@@ -303,65 +288,29 @@ bool App::FontEditorWindow::FaceElementsListView_DragProcessDragging(int16_t x, 
 		}
 	}
 
-	auto& face = *m_pActiveFace;
+	// The selected elements move, in their order, to end at the dropped item.
+	auto& elements = m_pActiveFace->Elements;
+	const auto sourceIndices = GetSelectedElementIndices();
+	std::vector<const Structs::FaceElement*> previousOrder;
+	for (const auto& pElement : elements)
+		previousOrder.push_back(pElement.get());
 
-	// Rearrange the items
-	std::set<int> sourceIndices;
-	for (auto iPos = -1; -1 != (iPos = ListView_GetNextItem(m_hFaceElementsListView, iPos, LVNI_SELECTED));)
-		sourceIndices.insert(iPos);
+	std::vector<std::unique_ptr<Structs::FaceElement>> moved, others;
+	for (int i = 0, i_ = static_cast<int>(elements.size()); i < i_; i++)
+		(std::ranges::binary_search(sourceIndices, i) ? moved : others).emplace_back(std::move(elements[i]));
 
-	struct SortInfoType {
-		std::vector<int> oldIndices;
-		std::vector<int> newIndices;
-		std::map<LPARAM, int> sourcePtrs;
-	} sortInfo;
-	sortInfo.oldIndices.reserve(face.Elements.size());
-	for (int i = 0, i_ = static_cast<int>(face.Elements.size()); i < i_; i++) {
-		LVITEMW lvi{.mask = LVIF_PARAM, .iItem = i};
-		ListView_GetItem(m_hFaceElementsListView, &lvi);
-		sortInfo.sourcePtrs[lvi.lParam] = i;
-		if (!sourceIndices.contains(i))
-			sortInfo.oldIndices.push_back(i);
-	}
+	const auto insertAt = (std::min)(others.size(), static_cast<size_t>((std::max<int>)(0, 1 + lvhti.iItem - static_cast<int>(moved.size()))));
+	std::vector<std::unique_ptr<Structs::FaceElement>> reordered;
+	std::ranges::move(others.begin(), others.begin() + insertAt, std::back_inserter(reordered));
+	std::ranges::move(moved, std::back_inserter(reordered));
+	std::ranges::move(others.begin() + insertAt, others.end(), std::back_inserter(reordered));
 
-	{
-		int i = (std::max<int>)(0, 1 + lvhti.iItem - static_cast<int>(sourceIndices.size()));
-		for (const auto sourceIndex : sourceIndices)
-			sortInfo.oldIndices.insert(sortInfo.oldIndices.begin() + i++, sourceIndex);
-	}
-
-	sortInfo.newIndices.resize(sortInfo.oldIndices.size());
-	auto changed = false;
-	for (int i = 0, i_ = static_cast<int>(sortInfo.oldIndices.size()); i < i_; i++) {
-		changed |= i != sortInfo.oldIndices[i];
-		sortInfo.newIndices[sortInfo.oldIndices[i]] = i;
-	}
-
-	if (!changed)
+	elements = std::move(reordered);
+	if (std::ranges::equal(elements, previousOrder, {}, &std::unique_ptr<Structs::FaceElement>::get))
 		return false;
 
-	const auto listViewSortCallback = [](LPARAM lp1, LPARAM lp2, LPARAM ctx) -> int {
-		auto& sortInfo = *reinterpret_cast<SortInfoType*>(ctx);
-		const auto il = sortInfo.sourcePtrs[lp1];
-		const auto ir = sortInfo.sourcePtrs[lp2];
-		const auto nl = sortInfo.newIndices[il];
-		const auto nr = sortInfo.newIndices[ir];
-		return nl == nr ? 0 : (nl > nr ? 1 : -1);
-	};
-	ListView_SortItems(m_hFaceElementsListView, listViewSortCallback, &sortInfo);
-
-	std::ranges::sort(face.Elements, [&sortInfo](const auto& l, const auto& r) -> bool {
-		const auto il = sortInfo.sourcePtrs[reinterpret_cast<LPARAM>(l.get())];
-		const auto ir = sortInfo.sourcePtrs[reinterpret_cast<LPARAM>(r.get())];
-		const auto nl = sortInfo.newIndices[il];
-		const auto nr = sortInfo.newIndices[ir];
-		return nl < nr;
-	});
-
-	Changes_MarkDirty();
-	m_pActiveFace->OnElementChange();
-	Window_Redraw();
-
+	UpdateFaceElementList();
+	OnActiveFaceElementsChanged();
 	return true;
 }
 
@@ -387,16 +336,4 @@ LRESULT App::FontEditorWindow::FaceElementsListView_OnRightClick(NMITEMACTIVATE&
 
 double App::FontEditorWindow::GetZoom() const noexcept {
 	return GetZoomFromWindow(m_hWnd);
-}
-
-void App::FontEditorWindow::FaceElementsListView_InsertItem(int pos, Structs::FaceElement& element) {
-	LVITEMW lvi{
-		.mask = LVIF_PARAM | LVIF_STATE,
-		.iItem = pos,
-		.state = LVIS_SELECTED,
-		.stateMask = LVIS_SELECTED,
-		.lParam = reinterpret_cast<LPARAM>(&element),
-	};
-	ListView_InsertItem(m_hFaceElementsListView, &lvi);
-	UpdateFaceElementListViewItem(element);
 }

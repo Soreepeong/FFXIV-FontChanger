@@ -139,8 +139,11 @@ public enum MonospacingAlignment
     Right,
 }
 
-/// <summary>Limits of the advances of an element's glyphs, each placed in a cell of the resulting width.</summary>
-public sealed record MonospacingDef(float? Min, float? Max, MonospacingUnit Unit, int ReferenceCharacter, MonospacingAlignment Alignment);
+/// <summary>
+/// Limits of the advances of an element's glyphs, each placed in a cell of the resulting width; and whether kerning pairs
+/// involving them are dropped (in the plugin, the cell's advance always takes the place of the shaped one, kerning and all).
+/// </summary>
+public sealed record MonospacingDef(float? Min, float? Max, MonospacingUnit Unit, int ReferenceCharacter, MonospacingAlignment Alignment, bool DropKerning = true);
 
 /// <summary>What a merged glyph's text is put in (xivres glyph_merge_shape); the shapes follow the Lodestone web font's.</summary>
 public enum MergeShape
@@ -160,6 +163,9 @@ public enum MergeShape
     Rhombus,
     Bozja,
     Time,
+
+    /// <summary>The star that splits the box of the Bozja glyphs in two.</summary>
+    Star,
 
     /// <summary>An SVG path, or a whole SVG document.</summary>
     Custom,
@@ -277,7 +283,8 @@ public sealed class GlyphImagesDef
 /// <summary>DirectWrite rendering parameters of an element; values of the DWRITE_* enums.</summary>
 public readonly record struct DirectWriteParams(int RenderMode, int MeasureMode, int GridFitMode)
 {
-    public static readonly DirectWriteParams Default = new(5, 0, 0);
+    /// <summary>The default without settings, as FontChanger's: natural, GDI classic measuring, grid fitting.</summary>
+    public static readonly DirectWriteParams Default = new(4, 1, 2);
 }
 
 /// <summary>FreeType loading and rendering of an element (FontChanger's freetype settings); FT_LOAD_* flags and an FT_Render_Mode.</summary>
@@ -417,18 +424,15 @@ public sealed class Preset
     }
 
     /// <summary>
-    /// Gets the family of a face: its name before the size (<c>AXIS</c> of <c>AXIS_12</c>); <c>JupiterN</c> for
-    /// <c>Jupiter_45</c> and <c>Jupiter_90</c>, which are of JupiterN, a font of only digits, though the game names them so.
+    /// Gets the family of a face: that of the game's font of the name (<c>AXIS</c> of <c>AXIS_12</c>, <c>JupiterN</c> of
+    /// <c>Jupiter_45</c>), or the name before the last underscore.
     /// </summary>
     public static string FamilyOf(string faceName)
     {
+        if (GameFonts.Find(faceName) is { } font)
+            return font.Family;
         var underscore = faceName.LastIndexOf('_');
-        if (underscore <= 0)
-            return faceName;
-        var family = faceName[..underscore];
-        if (family.Equals("Jupiter", StringComparison.OrdinalIgnoreCase) && faceName[(underscore + 1)..] is "45" or "90")
-            return "JupiterN";
-        return family;
+        return underscore <= 0 ? faceName : faceName[..underscore];
     }
 
     /// <summary>Gets the preset with only the faces of a family.</summary>
@@ -598,21 +602,7 @@ public sealed class Preset
             }
 
             var mapping = new MergeMapping(
-                GetString(m, "shape") switch
-                {
-                    "none" => MergeShape.None,
-                    "amPm" => MergeShape.AmPm,
-                    "ime" => MergeShape.Ime,
-                    "numberBox" => MergeShape.NumberBox,
-                    "hollowBox" => MergeShape.HollowBox,
-                    "hexagon" => MergeShape.Hexagon,
-                    "rhombus" => MergeShape.Rhombus,
-                    "bozja" => MergeShape.Bozja,
-                    "time" => MergeShape.Time,
-                    "custom" => MergeShape.Custom,
-                    "glyph" => MergeShape.Glyph,
-                    _ => MergeShape.Box,
-                },
+                GlyphMergeShapes.ShapeOf(GetString(m, "shape")),
                 GetString(m, "textMode") == "difference" ? MergeTextMode.Difference : MergeTextMode.Subtract,
                 GetString(m, "customPath"),
                 GetString(m, "customSvg"),
@@ -750,7 +740,8 @@ public sealed class Preset
                 "centerInk" => MonospacingAlignment.CenterInk,
                 "right" => MonospacingAlignment.Right,
                 _ => MonospacingAlignment.CenterAdvance,
-            });
+            },
+            !json.TryGetProperty("dropKerning", out var drop) || drop.ValueKind != JsonValueKind.False);
     }
 
     private static LookupDef ReadLookup(JsonElement json)
@@ -803,7 +794,7 @@ public sealed class Preset
     }
 
     /// <summary>Gets an OpenType tag as DirectWrite takes it (DWRITE_MAKE_OPENTYPE_TAG): the first byte lowest, padded with spaces.</summary>
-    private static uint Tag(string s)
+    public static uint Tag(string s)
     {
         var t = s.PadRight(4);
         return (byte)t[0] | ((uint)(byte)t[1] << 8) | ((uint)(byte)t[2] << 16) | ((uint)(byte)t[3] << 24);

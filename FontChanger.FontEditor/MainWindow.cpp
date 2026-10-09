@@ -31,61 +31,52 @@ App::FontEditorWindow::FontEditorWindow(std::vector<std::wstring> args)
 
 App::FontEditorWindow::~FontEditorWindow() = default;
 
-void App::FontEditorWindow::SetCurrentMultiFontSet(IShellItemPtr path) {
-	IBindCtxPtr bindCtx;
-	SuccessOrThrow(CreateBindCtx(0, &bindCtx));
+void App::FontEditorWindow::OpenFile(std::filesystem::path path) {
+	// Relative paths in the file are resolved against its folder.
+	path = absolute(path);
+	std::ifstream in(path, std::ios::binary);
+	if (!in)
+		throw std::system_error(std::error_code(static_cast<int>(GetLastError()), std::system_category()));
+	auto multiFontSet = nlohmann::json::parse(in).get<Structs::MultiFontSet>();
 
-	BIND_OPTS bindOpts{
-		.cbStruct = sizeof bindOpts,
-		.grfMode = STGM_READ | STGM_SHARE_DENY_WRITE,
-	};
-	SuccessOrThrow(bindCtx->SetBindOptions(&bindOpts));
-
-	IStreamPtr stream;
-	SuccessOrThrow(path->BindToHandler(bindCtx, BHID_Stream, IID_PPV_ARGS(&stream)));
-
-	STATSTG stat;
-	SuccessOrThrow(stream->Stat(&stat, STATFLAG_NONAME));
-	std::vector<char> buf(stat.cbSize.QuadPart);
-
-	for (std::span remaining(buf); !remaining.empty();) {
-		ULONG read;
-		SuccessOrThrow(stream->Read(buf.data(), static_cast<ULONG>((std::min<size_t>)(buf.size(), 0x10000000)), &read));
-		if (!read)
-			throw std::system_error(std::error_code(ERROR_HANDLE_EOF, std::system_category()));
-		remaining = remaining.subspan(read);
-	}
-	const auto j = nlohmann::json::parse(buf.begin(), buf.end());
-	auto multiFontSet = j.get<Structs::MultiFontSet>();
-
-	FileHistory::Add(path.GetInterfacePtr());
-
-	SetCurrentMultiFontSet(std::move(multiFontSet), std::move(path), false);
+	FileHistory::Add(path);
+	SetCurrentMultiFontSet(std::move(multiFontSet), std::move(path));
 }
 
-void App::FontEditorWindow::SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, IShellItemPtr path, bool fakePath) {
+void App::FontEditorWindow::SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, std::filesystem::path path) {
 	m_multiFontSet = std::move(multiFontSet);
-	m_currentShellItem = std::move(path);
+	m_currentPath = std::move(path);
 	UpdateProjectDirectory();
 
-	m_pFontSet = nullptr;
 	m_pActiveFace = nullptr;
 
 	UpdateFaceList();
 	Changes_MarkFresh();
 }
 
-std::wstring App::FontEditorWindow::GetCurrentFileName() {
-	std::wstring fileName(GetStringResource(IDS_FILENAME_UNTITLED));
-	if (m_currentShellItem) {
-		PWSTR pszFileName;
-		SuccessOrThrow(m_currentShellItem->GetDisplayName(SIGDN_NORMALDISPLAY, &pszFileName));
-		if (pszFileName)
-			fileName = pszFileName;
-		CoTaskMemFree(pszFileName);
-	}
+std::wstring App::FontEditorWindow::GetCurrentFileName() const {
+	return m_currentPath.empty() ? std::wstring(GetStringResource(IDS_FILENAME_UNTITLED)) : m_currentPath.filename().wstring();
+}
 
-	return fileName;
+App::Structs::FontSet* App::FontEditorWindow::FindFontSet(const Structs::Face& face) const {
+	for (const auto& pFontSet : m_multiFontSet.FontSets) {
+		if (std::ranges::any_of(pFontSet->Faces, [&face](const auto& pFace) { return pFace.get() == &face; }))
+			return pFontSet.get();
+	}
+	return nullptr;
+}
+
+std::vector<int> App::FontEditorWindow::GetSelectedElementIndices() const {
+	std::vector<int> indices;
+	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
+		indices.push_back(i);
+	return indices;
+}
+
+void App::FontEditorWindow::OnActiveFaceElementsChanged() {
+	Changes_MarkDirty();
+	m_pActiveFace->OnElementChange();
+	Window_Redraw();
 }
 
 void App::FontEditorWindow::Changes_MarkFresh() {
@@ -143,15 +134,51 @@ void App::FontEditorWindow::ShowEditor(Structs::FaceElement& element) {
 			Changes_MarkDirty();
 			m_pActiveFace->OnElementChange();
 			Window_Redraw();
-		}, [this, &element, &face = *m_pActiveFace](bool deactivated) {
-			face.SetElementDeactivated(element, deactivated);
+		}, [this, &element](bool deactivated) {
+			if (deactivated)
+				m_deactivatedElements.insert(&element);
+			else
+				m_deactivatedElements.erase(&element);
 			Window_Redraw();
 		});
 	}
 }
 
+std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> App::FontEditorWindow::GetPreviewFont() {
+	// Elements that are gone may leave their addresses to new ones.
+	std::erase_if(m_deactivatedElements, [this](const Structs::FaceElement* p) {
+		return std::ranges::none_of(m_multiFontSet.FontSets, [p](const auto& fontSet) {
+			return std::ranges::any_of(fontSet->Faces, [p](const auto& face) {
+				return std::ranges::any_of(face->Elements, [p](const auto& e) { return e.get() == p; });
+			});
+		});
+	});
+
+	const auto& face = *m_pActiveFace;
+	std::set<const Structs::FaceElement*> skip;
+	for (const auto& e : face.Elements) {
+		if (m_deactivatedElements.contains(e.get()))
+			skip.insert(e.get());
+	}
+	if (skip.empty())
+		return face.GetMergedFont();
+
+	// Made again when what it is made of changes: the elements, the fonts and merge modes of those kept, and the alignment.
+	std::vector<const void*> key{&face, reinterpret_cast<const void*>(static_cast<size_t>(face.VerticalAlignment))};
+	for (const auto& e : face.Elements) {
+		key.push_back(e.get());
+		if (!skip.contains(e.get())) {
+			key.push_back(e->GetWrappedFont().get());
+			key.push_back(reinterpret_cast<const void*>(static_cast<size_t>(e->MergeMode)));
+		}
+	}
+	if (key != m_previewFont.Key)
+		m_previewFont = {std::move(key), ElementFonts::MergeElements(face, skip)};
+	return m_previewFont.Font;
+}
+
 void App::FontEditorWindow::UpdateFaceList() {
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFacesListBox, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFacesListBox, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFacesListBox);
 
 	Structs::Face* currentTag = nullptr;
 	if (int curSel = ListBox_GetCurSel(m_hFacesListBox); curSel != LB_ERR)
@@ -161,26 +188,21 @@ void App::FontEditorWindow::UpdateFaceList() {
 	auto selectionRestored = false;
 
 	for (auto& pFontSet : m_multiFontSet.FontSets) {
-		for (int i = 0, i_ = static_cast<int>(pFontSet->Faces.size()); i < i_; i++) {
-			auto& face = *pFontSet->Faces[i];
-			ListBox_AddString(m_hFacesListBox, xivres::util::unicode::convert<std::wstring>(std::format("{}: {}", pFontSet->TexFilenameFormat, face.Name)).c_str());
-			ListBox_SetItemData(m_hFacesListBox, i, &face);
-			if (currentTag == &face) {
-				ListBox_SetCurSel(m_hFacesListBox, i);
+		for (auto& pFace : pFontSet->Faces) {
+			const auto index = ListBox_AddString(m_hFacesListBox, xivres::util::unicode::convert<std::wstring>(std::format("{}: {}", pFontSet->TexFilenameFormat, pFace->Name)).c_str());
+			ListBox_SetItemData(m_hFacesListBox, index, pFace.get());
+			if (currentTag == pFace.get()) {
+				ListBox_SetCurSel(m_hFacesListBox, index);
 				selectionRestored = true;
 			}
 		}
 	}
 
 	if (!selectionRestored) {
-		m_pFontSet = nullptr;
-		if (!m_multiFontSet.FontSets.empty()) {
-			m_pFontSet = m_multiFontSet.FontSets[0].get();
-			m_pActiveFace = nullptr;
-			if (!m_pFontSet->Faces.empty()) {
-				ListBox_SetCurSel(m_hFacesListBox, 0);
-				m_pActiveFace = m_pFontSet->Faces[0].get();
-			}
+		m_pActiveFace = nullptr;
+		if (!m_multiFontSet.FontSets.empty() && !m_multiFontSet.FontSets[0]->Faces.empty()) {
+			ListBox_SetCurSel(m_hFacesListBox, 0);
+			m_pActiveFace = m_multiFontSet.FontSets[0]->Faces[0].get();
 		}
 	}
 
@@ -189,7 +211,7 @@ void App::FontEditorWindow::UpdateFaceList() {
 }
 
 void App::FontEditorWindow::UpdateFaceElementList() {
-	const auto tempDisableRedraw = std::shared_ptr<void>(nullptr, [this, _ = SendMessage(m_hFaceElementsListView, WM_SETREDRAW, FALSE, 0)](void*) { SendMessage(m_hFaceElementsListView, WM_SETREDRAW, TRUE, 0); });
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	if (!m_pActiveFace) {
 		ListView_DeleteAllItems(m_hFaceElementsListView);
@@ -228,8 +250,80 @@ void App::FontEditorWindow::UpdateFaceElementList() {
 	};
 	ListView_SortItems(m_hFaceElementsListView, listViewSortCallback, &activeElementTags);
 
-	Edit_SetText(m_hEdit, xivres::util::unicode::convert<std::wstring>(m_pActiveFace->PreviewText).c_str());
+	// The text is set only when another face became active, to keep the caret where it is otherwise.
+	if (const auto previewText = xivres::util::unicode::convert<std::wstring>(m_pActiveFace->PreviewText); previewText != GetWindowString(m_hEdit))
+		Edit_SetText(m_hEdit, previewText.c_str());
 	Window_Redraw();
+}
+
+void App::FontEditorWindow::SelectFaceElements(const std::set<const Structs::FaceElement*>& elements) {
+	for (int i = 0, i_ = static_cast<int>(m_pActiveFace->Elements.size()); i < i_; i++)
+		ListView_SetItemState(m_hFaceElementsListView, i, elements.contains(m_pActiveFace->Elements[i].get()) ? LVIS_SELECTED : 0, LVIS_SELECTED);
+}
+
+std::wstring GetRangeRepresentation(const App::Structs::FaceElement& element) {
+	if (element.WrapModifiers.Codepoints.empty())
+		return L"(None)";
+
+	std::wstring res;
+	std::vector<char32_t> charVec(element.GetBaseFont()->all_codepoints().begin(), element.GetBaseFont()->all_codepoints().end());
+	for (const auto& [c1, c2] : element.WrapModifiers.Codepoints) {
+		if (!res.empty())
+			res += L", ";
+
+		const auto left = std::ranges::lower_bound(charVec, c1);
+		const auto right = std::ranges::upper_bound(charVec, c2);
+		const auto count = right - left;
+
+		const auto blk = std::lower_bound(xivres::util::unicode::blocks::all_blocks().begin(), xivres::util::unicode::blocks::all_blocks().end(), c1, [](const auto& l, const auto& r) { return l.First < r; });
+		if (blk != xivres::util::unicode::blocks::all_blocks().end() && blk->First == c1 && blk->Last == c2) {
+			res += std::format(L"{}({})", xivres::util::unicode::convert<std::wstring>(blk->Name), count);
+		} else if (c1 == c2) {
+			res += std::format(
+				L"U+{:04X} [{}]",
+				static_cast<uint32_t>(c1),
+				xivres::util::unicode::represent_codepoint<std::wstring>(c1)
+			);
+		} else {
+			res += std::format(
+				L"U+{:04X}~{:04X} ({}) {} ~ {}",
+				static_cast<uint32_t>(c1),
+				static_cast<uint32_t>(c2),
+				count,
+				xivres::util::unicode::represent_codepoint<std::wstring>(c1),
+				xivres::util::unicode::represent_codepoint<std::wstring>(c2)
+			);
+		}
+	}
+
+	return res;
+}
+
+std::wstring GetRendererRepresentation(const App::Structs::FaceElement& element) {
+	using App::Structs::RendererEnum;
+	switch (element.Renderer) {
+		case RendererEnum::Empty:
+			return L"Empty";
+
+		case RendererEnum::PrerenderedGameInstallation:
+			return L"Prerendered (Game)";
+
+		case RendererEnum::DirectWrite:
+			return std::format(L"DirectWrite ({}, {}, {})",
+				element.RendererSpecific.DirectWrite.get_rendering_mode_string(),
+				element.RendererSpecific.DirectWrite.get_measuring_mode_string(),
+				element.RendererSpecific.DirectWrite.get_grid_fit_mode_string()
+			);
+
+		case RendererEnum::FreeType:
+			return std::format(L"FreeType ({}, {})", element.RendererSpecific.FreeType.get_render_mode_string(), element.RendererSpecific.FreeType.get_load_flags_string());
+
+		case RendererEnum::GlyphImages:
+			return L"SVG/PNG";
+
+		default:
+			return L"INVALID";
+	}
 }
 
 static std::wstring GetLookupRepresentation(const App::Structs::FaceElement& element) {
@@ -284,16 +378,16 @@ void App::FontEditorWindow::UpdateFaceElementListViewItem(const Structs::FaceEle
 	}
 	setItemText(ListViewColsHorizontalOffset, FormatPixelValue(element.Renderer == Structs::RendererEnum::Empty ? 0.f : element.WrapModifiers.HorizontalOffset));
 	setItemText(ListViewColsLetterSpacing, FormatPixelValue(element.Renderer == Structs::RendererEnum::Empty ? 0.f : element.WrapModifiers.LetterSpacing));
-	setItemText(ListViewColsCodepoints, element.GetRangeRepresentation());
+	setItemText(ListViewColsCodepoints, GetRangeRepresentation(element));
 	setItemText(ListViewColsGlyphCount, std::format(L"{}", element.GetWrappedFont()->all_codepoints().size()));
 	switch (element.MergeMode) {
-		case xivres::fontgen::codepoint_merge_mode::AddNew:
+		case FontChanger::FixedSizeFont::codepoint_merge_mode::AddNew:
 			setItemText(ListViewColsMergeMode, std::wstring(GetStringResource(IDS_CODEPOINTMERGEMODE_ADDNEW)));
 			break;
-		case xivres::fontgen::codepoint_merge_mode::AddAll:
+		case FontChanger::FixedSizeFont::codepoint_merge_mode::AddAll:
 			setItemText(ListViewColsMergeMode, std::wstring(GetStringResource(IDS_CODEPOINTMERGEMODE_ADDALL)));
 			break;
-		case xivres::fontgen::codepoint_merge_mode::Replace:
+		case FontChanger::FixedSizeFont::codepoint_merge_mode::Replace:
 			setItemText(ListViewColsMergeMode, std::wstring(GetStringResource(IDS_CODEPOINTMERGEMODE_REPLACE)));
 			break;
 		default:
@@ -301,84 +395,6 @@ void App::FontEditorWindow::UpdateFaceElementListViewItem(const Structs::FaceEle
 			break;
 	}
 	setItemText(ListViewColsGamma, std::format(L"{:g}", element.Gamma));
-	setItemText(ListViewColsRenderer, element.GetRendererRepresentation());
+	setItemText(ListViewColsRenderer, GetRendererRepresentation(element));
 	setItemText(ListViewColsLookup, GetLookupRepresentation(element));
-}
-
-std::pair<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<std::shared_ptr<xivres::texture::memory_mipmap_stream>>> App::FontEditorWindow::CompileCurrentFontSet(ProgressDialog& progressDialog, Structs::FontSet& fontSet) {
-	progressDialog.UpdateStatusMessage(GetStringResource(IDS_EXPORTPROGRESS_LOADFONTS));
-	fontSet.ConsolidateFonts();
-
-	{
-		progressDialog.UpdateStatusMessage(GetStringResource(IDS_EXPORTPROGRESS_KERNINGPAIRS));
-		xivres::util::thread_pool::pool pool(1);
-		xivres::util::thread_pool::task_waiter<std::pair<Structs::Face*, size_t>> waiter(pool);
-		for (auto& pFace : fontSet.Faces) {
-			waiter.submit([pFace = pFace.get(), &progressDialog](auto&) -> std::pair<Structs::Face*, size_t> {
-				if (progressDialog.IsCancelled())
-					return {pFace, 0};
-				return {pFace, pFace->GetMergedFont()->all_kerning_pairs().size()};
-			});
-		}
-
-		std::vector<std::string> tooManyKernings;
-		for (std::optional<std::pair<Structs::Face*, size_t>> res; (res = waiter.get());) {
-			const auto& [pFace, nKerns] = *res;
-			if (nKerns >= 65536)
-				tooManyKernings.emplace_back(std::format("\n{}: {}", pFace->Name, nKerns));
-		}
-		if (!tooManyKernings.empty()) {
-			std::ranges::sort(tooManyKernings);
-			std::wstring s(GetStringResource(IDS_ERROR_KERNINGTABLETOOLARGE));
-			for (const auto& s2 : tooManyKernings)
-				s += xivres::util::unicode::convert<std::wstring>(s2);
-			throw WException(s);
-		}
-	}
-	progressDialog.ThrowIfCancelled();
-
-	xivres::fontgen::fontdata_packer packer;
-	packer.set_discard_step(fontSet.DiscardStep);
-	packer.set_side_length(fontSet.SideLength);
-
-	for (auto& pFace : fontSet.Faces)
-		packer.add_font(pFace->GetMergedFont());
-
-	packer.compile();
-
-	while (!packer.wait(std::chrono::milliseconds(200))) {
-		progressDialog.ThrowIfCancelled();
-
-		switch (packer.progress_description()) {
-			case xivres::fontgen::fontdata_packer::progress_status::prepare_source_fonts:
-				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_PREPARESOURCEFONTS));
-				break;
-			case xivres::fontgen::fontdata_packer::progress_status::prepare_target_fonts:
-				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_PREPARETARGETFONTS));
-				break;
-			case xivres::fontgen::fontdata_packer::progress_status::discover_glyphs:
-				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_DISCOVERGLYPHS));
-				break;
-			case xivres::fontgen::fontdata_packer::progress_status::measure_glyphs:
-				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_MEASUREGLYPHS));
-				break;
-			case xivres::fontgen::fontdata_packer::progress_status::layout_and_draw:
-				progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_LAYOUTANDDRAW));
-				break;
-		}
-		progressDialog.UpdateProgress(packer.progress_scaled());
-	}
-	if (const auto err = packer.get_error_if_failed(); !err.empty())
-		throw std::runtime_error(err);
-
-	const auto& fdts = packer.compiled_fontdatas();
-	const auto& mips = packer.compiled_mipmap_streams();
-	if (mips.empty())
-		throw std::runtime_error("DEBUG: No mipmap produced");
-
-	if (fontSet.ExpectedTexCount != static_cast<int>(mips.size())) {
-		fontSet.ExpectedTexCount = static_cast<int>(mips.size());
-		Changes_MarkDirty();
-	}
-	return std::make_pair(fdts, mips);
 }

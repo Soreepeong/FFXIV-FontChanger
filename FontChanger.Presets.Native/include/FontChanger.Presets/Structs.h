@@ -14,14 +14,16 @@
 #include <nlohmann/json.hpp>
 
 #include "xivres/fontdata.h"
-#include "xivres.fontgen/directwrite_fixed_size_font.h"
-#include "xivres.fontgen/fontdata_fixed_size_font.h"
-#include "xivres.fontgen/freetype_fixed_size_font.h"
-#include "xivres.fontgen/glyph_merging_fixed_size_font.h"
-#include "xivres.fontgen/image_fixed_size_font.h"
-#include "xivres.fontgen/merged_fixed_size_font.h"
-#include "xivres.fontgen/wrapping_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/directwrite_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/fontdata_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/freetype_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/glyph_merging_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/image_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/merged_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/wrapping_fixed_size_font.h"
 
+// The preset model and its JSON: the C++ twin of FontChanger.Presets/Preset.cs. The fonts that elements and faces make
+// are made by ElementFonts.cpp (ElementFonts.h).
 namespace FontChanger::Structs {
 	enum class RendererEnum : uint8_t {
 		Empty,
@@ -45,7 +47,7 @@ namespace FontChanger::Structs {
 		std::optional<float> Ascent;
 		std::optional<float> LineHeight;
 
-		xivres::fontgen::image_coverage_mode BitmapCoverage = xivres::fontgen::image_coverage_mode::Auto;
+		FontChanger::FixedSizeFont::image_coverage_mode BitmapCoverage = FontChanger::FixedSizeFont::image_coverage_mode::Auto;
 
 		// Files stored in the configuration instead of the folder: font.json, and the files of the glyphs, which are SVG
 		// documents, or PNG files as base64.
@@ -59,47 +61,10 @@ namespace FontChanger::Structs {
 		[[nodiscard]] bool IsEmbedded() const { return !Embedded.empty(); }
 	};
 
-	struct EmptyFontDef {
-		int Ascent = 0;
-		int LineHeight = 0;
-	};
-
 	struct SynthesisStruct {
 		// Whether weights, styles, and widths that the family lacks are made from the closest face of the family.
 		bool Allow = true;
 	};
-
-	// How a requested face is made from the closest face of the family.
-	struct SynthesizedFace {
-		// Slope of the oblique simulation of DirectWrite, which shears the outline by x += 0.33985 * height
-		// (about 18.77 degrees), as measured from GetGlyphRunOutline of Arial 'l'; FreeType slants by the same.
-		static constexpr float ObliqueSlope = 0.33985f;
-
-		// Simulations for DirectWrite to apply; unset to keep those of the matched font, as earlier versions did.
-		std::optional<DWRITE_FONT_SIMULATIONS> Simulations;
-
-		// Weight to add by emboldening outlines, for FreeType; negative values make glyphs thinner.
-		int WeightDelta = 0;
-
-		// Whether glyphs are slanted by the matrix, for FreeType; DirectWrite slants with Simulations instead.
-		bool Oblique = false;
-
-		// Horizontal scale that makes the width of the face the requested one.
-		float ScaleX = 1.f;
-
-		// Axis values of variable fonts that give the requested properties, keyed by axis tags in DWRITE_FONT_AXIS_TAG
-		// byte order; Variations of the lookup override them.
-		std::map<uint32_t, float> AxisValues;
-
-		// Returns the transformation on screen, applied before that of the element: the slant, and then the scale.
-		[[nodiscard]] xivres::fontgen::font_render_transformation_matrix GetScreenMatrix() const;
-
-		// Returns the emboldening for FreeType in ems.
-		[[nodiscard]] float GetEmbolden() const;
-	};
-
-	// Returns the width of the stretch as a percentage of the normal width, as in usWidthClass of OS/2; 0 if undefined.
-	[[nodiscard]] float GetStretchPercent(DWRITE_FONT_STRETCH stretch);
 
 	struct LookupStruct {
 		std::string Name;
@@ -121,29 +86,18 @@ namespace FontChanger::Structs {
 
 		// Returns Variations keyed by axis tags in DWRITE_FONT_AXIS_TAG byte order.
 		std::map<uint32_t, float> GetVariationAxisValues() const;
-
-		std::pair<IDWriteFactoryPtr, IDWriteFontPtr> ResolveFont() const;
-
-		// Returns the font file, the index of the face in it, and the axis values of the instance if it is a variable font.
-		std::tuple<std::shared_ptr<xivres::stream>, int, std::map<uint32_t, float>> ResolveStream() const;
-
-		// Returns how to make the requested face from the font that ResolveFont returns.
-		[[nodiscard]] SynthesizedFace ResolveSynthesis(RendererEnum renderer, IDWriteFont* font) const;
-
-		// Sets Synthesis if unset, changing the requested properties so that the font is drawn as before.
-		void ConvertToExplicitSynthesis(RendererEnum renderer);
 	};
 
 	struct RendererSpecificStruct {
-		xivres::fontgen::empty_fixed_size_font::create_struct Empty;
-		xivres::fontgen::freetype_fixed_size_font::create_struct FreeType;
-		xivres::fontgen::directwrite_fixed_size_font::create_struct DirectWrite;
+		FontChanger::FixedSizeFont::empty_fixed_size_font::create_struct Empty;
+		FontChanger::FixedSizeFont::freetype_fixed_size_font::create_struct FreeType;
+		FontChanger::FixedSizeFont::directwrite_fixed_size_font::create_struct DirectWrite;
 		GlyphImagesStruct GlyphImages;
 	};
 
 	// Scaling, skewing, and rotation of glyphs on screen, where y grows downwards.
 	struct TransformStruct {
-		using matrix = xivres::fontgen::font_render_transformation_matrix;
+		using matrix = FontChanger::FixedSizeFont::font_render_transformation_matrix;
 
 		// Negative values mirror.
 		float ScaleX = 1.f;
@@ -155,28 +109,22 @@ namespace FontChanger::Structs {
 		// Positive values rotate counterclockwise.
 		float RotationDegrees = 0.f;
 
-		// Matrix stored by earlier versions, passed to renderers as is; DirectWrite and FreeType interpret it differently.
-		// When set, the components above are not used.
-		std::optional<matrix> LegacyMatrix;
-
 		// Returns the transformation for column vectors on screen: x' = M11 x + M12 y, y' = M21 x + M22 y.
-		[[nodiscard]] matrix GetScreenMatrix(RendererEnum renderer) const;
+		[[nodiscard]] matrix GetScreenMatrix() const;
 
-		// Returns the matrix to pass to the renderer.
-		[[nodiscard]] matrix GetRendererMatrix(RendererEnum renderer) const;
+		// Returns a * b, with matrices laid out as [[M11, M12], [M21, M22]].
+		[[nodiscard]] static matrix Multiply(const matrix& a, const matrix& b);
 
+		// Returns the matrix of a transformation on screen as the renderer takes it, and the other way around: each
+		// conversion is its own inverse.
 		[[nodiscard]] static matrix ScreenToRenderer(RendererEnum renderer, const matrix& screen);
-
-		[[nodiscard]] static matrix RendererToScreen(RendererEnum renderer, const matrix& m);
 
 		// Decomposes a transformation on screen into rotation * skew * scale.
 		[[nodiscard]] static TransformStruct FromScreenMatrix(const matrix& screen);
-
-		[[nodiscard]] bool IsIdentity() const;
 	};
 
 	struct GlyphMergingStruct {
-		xivres::fontgen::glyph_merge_params Params;
+		FontChanger::FixedSizeFont::glyph_merge_params Params;
 
 		// Applied to the texts after the transformation of the element.
 		TransformStruct TextTransform;
@@ -186,85 +134,63 @@ namespace FontChanger::Structs {
 	};
 
 	class FaceElement {
-		mutable std::shared_ptr<xivres::fontgen::fixed_size_font> m_baseFont;
-		mutable std::shared_ptr<xivres::fontgen::wrapping_fixed_size_font> m_wrappedFont;
+		mutable std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> m_baseFont;
+		mutable std::shared_ptr<FontChanger::FixedSizeFont::wrapping_fixed_size_font> m_wrappedFont;
 		friend struct FontSet;
 
 	public:
 		float Size = 0.f;
 		float Gamma = 1.f;
-		xivres::fontgen::codepoint_merge_mode MergeMode = xivres::fontgen::codepoint_merge_mode::AddNew;
+		FontChanger::FixedSizeFont::codepoint_merge_mode MergeMode = FontChanger::FixedSizeFont::codepoint_merge_mode::AddNew;
 		TransformStruct Transform;
-		xivres::fontgen::wrap_modifiers WrapModifiers;
+		FontChanger::FixedSizeFont::wrap_modifiers WrapModifiers;
 		RendererEnum Renderer = RendererEnum::Empty;
 		LookupStruct Lookup;
 		RendererSpecificStruct RendererSpecific;
 		GlyphMergingStruct GlyphMerging;
 
-		FaceElement() noexcept;
-		FaceElement(FaceElement&& r) noexcept;
-		FaceElement(const FaceElement& r);
-		FaceElement operator=(FaceElement&& r) noexcept;
-		FaceElement operator=(const FaceElement& r);
+		// The fonts of the element, made by ElementFonts.cpp when first asked for, until the parameters change.
+		const std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font>& GetBaseFont() const;
+		const std::shared_ptr<FontChanger::FixedSizeFont::wrapping_fixed_size_font>& GetWrappedFont() const;
 
-		friend void swap(FaceElement& l, FaceElement& r) noexcept;
-
-		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetBaseFont() const;
-		const std::shared_ptr<xivres::fontgen::wrapping_fixed_size_font>& GetWrappedFont() const;
-
-		void FlushCache();
-
+		// Drops the wrapped font, for changes of how it picks and moves the glyphs of the base font.
 		void OnFontWrappingParametersChange();
+
+		// Drops the fonts, for changes of what the base font is made from.
 		void OnFontCreateParametersChange();
 
 		// Scales the size and the values in pixels, as for a copy of the element in a font of another size.
 		void Scale(float factor);
 
+		// Returns what the base font is made from, which elements of the same base font share.
 		std::string GetBaseFontKey() const;
 
 		// Whether the font is made from files at a path relative to the project directory.
 		[[nodiscard]] bool UsesProjectDirectory() const;
-
-		std::wstring GetRangeRepresentation() const;
-		std::wstring GetRendererRepresentation() const;
 	};
 
-	void swap(FaceElement& l, FaceElement& r) noexcept;
-
 	class Face {
-		mutable std::shared_ptr<xivres::fontgen::fixed_size_font> MergedFont;
-		mutable std::shared_ptr<xivres::fontgen::fixed_size_font> PreviewMergedFont;
-
-		// Elements left out of the preview, such as for comparing the face without them; not saved, nor copied.
-		mutable std::set<const FaceElement*> DeactivatedElements;
+		mutable std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> MergedFont;
 
 	public:
 		std::string Name;
 		std::string PreviewText;
 		std::vector<std::unique_ptr<FaceElement>> Elements;
-		xivres::fontgen::vertical_alignment VerticalAlignment = xivres::fontgen::vertical_alignment::Baseline;
+		FontChanger::FixedSizeFont::vertical_alignment VerticalAlignment = FontChanger::FixedSizeFont::vertical_alignment::Baseline;
 
-		Face() noexcept;
-		Face(Face&& r) noexcept;
+		Face() noexcept = default;
+		Face(Face&& r) noexcept = default;
 		Face(const Face& r);
-		Face& operator=(Face&& r) noexcept;
+		Face& operator=(Face&& r) noexcept = default;
 		Face& operator=(const Face& r);
 
-		friend void swap(Face& l, Face& r) noexcept;
-
-		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetMergedFont() const;
-
-		// Returns the merged font without the deactivated elements, for the preview; exports use GetMergedFont.
-		const std::shared_ptr<xivres::fontgen::fixed_size_font>& GetPreviewMergedFont() const;
-
-		void SetElementDeactivated(const FaceElement& element, bool deactivated);
+		// The merged font of the elements, made by ElementFonts.cpp when first asked for, until the elements change.
+		const std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font>& GetMergedFont() const;
 
 		void FlushCache();
 
 		void OnElementChange();
 	};
-
-	void swap(Face& l, Face& r) noexcept;
 
 	struct FontSet {
 		std::string TexFilenameFormat;
@@ -289,24 +215,6 @@ namespace FontChanger::Structs {
 
 		void FlushCache();
 	};
-
-	void FlushCachedFonts();
-
-	// Sets the function that returns the game installations to read the fonts of a type from, in the order to try them;
-	// without one, elements of game fonts are drawn empty.
-	void SetGameInstallationPathsProvider(std::function<std::vector<std::filesystem::path>(xivres::font_type fontType)> provider);
-
-	// Sets the function that reports a game installation whose fonts could not be read, once until the cached fonts are
-	// flushed; without one, as for runs without a window, nothing is reported. Elements of these fonts are drawn empty.
-	void SetGameFontErrorHandler(std::function<void(const std::exception& e)> handler);
-
-	// Folder of the file of the current configuration, which relative paths in it are resolved against; empty if the
-	// configuration has not been saved.
-	void SetProjectDirectory(std::filesystem::path path);
-	[[nodiscard]] std::filesystem::path GetProjectDirectory();
-
-	// Drops the fonts of the elements that read files by paths relative to the project directory.
-	void OnProjectDirectoryChange(const MultiFontSet& multiFontSet);
 
 	void to_json(nlohmann::json& json, const LookupStruct& value);
 
@@ -343,7 +251,7 @@ namespace FontChanger::Structs {
 	const char* GetDefaultPreviewText();
 }
 
-namespace xivres::fontgen {
+namespace FontChanger::FixedSizeFont {
 	void to_json(nlohmann::json& json, const wrap_modifiers& value);
 
 	void from_json(const nlohmann::json& json, wrap_modifiers& value);

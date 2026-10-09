@@ -10,4 +10,9 @@
     <!-- The solution builds it as x64; any platform runs it. -->
     <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Data FontChanger.FixedSizeFont reads too: the game's fonts, and the shapes and presets of glyph merging. -->
+    <EmbeddedResource Include="..\FontChanger.FixedSizeFont\data\game_fonts.json" LogicalName="FontChanger.Presets.game_fonts.json" />
+    <EmbeddedResource Include="..\FontChanger.FixedSizeFont\data\glyph_merge_shapes.json" LogicalName="FontChanger.Presets.glyph_merge_shapes.json" />
+  </ItemGroup>
 </Project>

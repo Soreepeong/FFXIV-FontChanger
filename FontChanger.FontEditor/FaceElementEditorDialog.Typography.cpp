@@ -1,22 +1,18 @@
 #include "pch.h"
 #include "FaceElementEditorDialog.Internal.h"
+#include "FontChanger.Presets/DirectWriteUtil.h"
 
 #include <harfbuzz/hb-ot.h>
 
-#include "xivres.fontgen/opentype_positioning.h"
+#include "FontChanger.FixedSizeFont/opentype_positioning.h"
+
+using namespace App::FaceElementEditorDialogInternal;
 
 std::shared_ptr<hb_face_t> App::FaceElementEditorDialogInternal::CreateHarfBuzzFace(const Structs::LookupStruct& lookup) {
-	const auto [stream, faceIndex, _] = lookup.ResolveStream();
-	auto data = std::make_unique<std::vector<char>>(stream->read_vector<char>());
-
-	// The blob keeps the data alive for as long as the face refers to it.
-	const auto pData = data.get();
-	const auto blob = std::unique_ptr<hb_blob_t, decltype(&hb_blob_destroy)>(
-		hb_blob_create(pData->data(), static_cast<unsigned>(pData->size()), HB_MEMORY_MODE_READONLY, data.release(), [](void* p) {
-			delete static_cast<std::vector<char>*>(p);
-		}),
-		&hb_blob_destroy);
-	return { hb_face_create(blob.get(), static_cast<unsigned>(faceIndex) & 0xFFFF), &hb_face_destroy };
+	// The tables are read from the font as DirectWrite has it, instead of from a copy of the file.
+	IDWriteFontFacePtr face;
+	SuccessOrThrow(ElementFonts::ResolveFont(lookup).second->CreateFontFace(&face));
+	return {FontChanger::FixedSizeFont::create_harfbuzz_face(face), &hb_face_destroy};
 }
 
 std::map<DWRITE_FONT_FEATURE_TAG, uint32_t> App::FaceElementEditorDialogInternal::GetFeatureAlternateCounts(hb_face_t* face) {
@@ -62,7 +58,7 @@ std::map<DWRITE_FONT_FEATURE_TAG, uint32_t> App::FaceElementEditorDialogInternal
 std::set<DWRITE_FONT_FEATURE_TAG> App::FaceElementEditorDialogInternal::GetDefaultOnFeatures(hb_face_t* face, const std::string& language) {
 	std::set<hb_tag_t> featureTags;
 	std::set<hb_script_t> scripts;
-	if (const auto script = hb_script_from_string(xivres::fontgen::get_default_script_for_language(language).c_str(), -1); script != HB_SCRIPT_INVALID && script != HB_SCRIPT_UNKNOWN)
+	if (const auto script = hb_script_from_string(FontChanger::FixedSizeFont::get_default_script_for_language(language).c_str(), -1); script != HB_SCRIPT_INVALID && script != HB_SCRIPT_UNKNOWN)
 		scripts.insert(script);
 	for (const auto table : { HB_OT_TAG_GSUB, HB_OT_TAG_GPOS }) {
 		std::vector<hb_tag_t> tags(hb_ot_layout_table_get_feature_tags(face, table, 0, nullptr, nullptr));
@@ -137,13 +133,9 @@ INT_PTR App::FaceElementEditorDialog::FontFeaturesList_OnKeyDown(const NMLVKEYDO
 		return 0;
 
 	switch (nmkd.wVKey) {
-		case VK_SPACE: {
-			// Cycles through all the choices, from the default back to the default.
-			const auto choices = GetFontFeatureChoices(index);
-			const auto it = std::ranges::find(choices, GetFontFeatureValue(index));
-			SetFontFeatureValue(index, it == choices.end() || it + 1 == choices.end() ? choices.front() : *(it + 1));
+		case VK_SPACE:
+			CycleFontFeatureValue(index);
 			return 0;
-		}
 		case VK_DELETE:
 		case VK_BACK:
 			SetFontFeatureValue(index, std::nullopt);
@@ -156,10 +148,15 @@ INT_PTR App::FaceElementEditorDialog::FontFeaturesList_OnDblClick(const NMITEMAC
 	if (nmia.iItem < 0 || nmia.iItem >= static_cast<int>(m_features.size()))
 		return 0;
 
-	const auto choices = GetFontFeatureChoices(nmia.iItem);
-	const auto it = std::ranges::find(choices, GetFontFeatureValue(nmia.iItem));
-	SetFontFeatureValue(nmia.iItem, it == choices.end() || it + 1 == choices.end() ? choices.front() : *(it + 1));
+	CycleFontFeatureValue(nmia.iItem);
 	return 0;
+}
+
+void App::FaceElementEditorDialog::CycleFontFeatureValue(int index) {
+	// Cycles through all the choices, from the default back to the default.
+	const auto choices = GetFontFeatureChoices(index);
+	const auto it = std::ranges::find(choices, GetFontFeatureValue(index));
+	SetFontFeatureValue(index, it == choices.end() || it + 1 == choices.end() ? choices.front() : *(it + 1));
 }
 
 INT_PTR App::FaceElementEditorDialog::FontFeaturesList_OnCustomDraw(const NMLVCUSTOMDRAW& nmcd) {
@@ -296,8 +293,7 @@ INT_PTR App::FaceElementEditorDialog::FontVariationValueEdit_OnCommand(uint16_t 
 	if (axisIndex < 0)
 		return 0;
 
-	std::string tag(4, ' ');
-	memcpy(tag.data(), &m_variationAxes[axisIndex].Tag, 4);
+	const auto tag = FontChanger::DirectWriteUtil::TagToString(m_variationAxes[axisIndex].Tag);
 
 	auto changed = false;
 	if (const auto str = GetWindowString(m_controls->FontVariationValueEdit, true); str.empty()) {
@@ -326,7 +322,6 @@ INT_PTR App::FaceElementEditorDialog::FontVariationValueEdit_OnCommand(uint16_t 
 void App::FaceElementEditorDialog::RefreshFontFeatureDefaults() {
 	std::set<DWRITE_FONT_FEATURE_TAG> defaultOn;
 	try {
-		using namespace FaceElementEditorDialogInternal;
 		defaultOn = GetDefaultOnFeatures(CreateHarfBuzzFace(m_element.Lookup).get(), m_element.Lookup.Language);
 	} catch (...) {
 		// Show every feature as off by default if the font cannot be read.
@@ -422,7 +417,7 @@ void App::FaceElementEditorDialog::RefreshFontFeatureValueCombo() {
 	}
 	m_bSettingFeatureValueCombo = false;
 
-	EnableWindow(m_controls->FontFeatureValueCombo, index >= 0 && (m_element.Renderer == Structs::RendererEnum::DirectWrite || m_element.Renderer == Structs::RendererEnum::FreeType));
+	EnableWindow(m_controls->FontFeatureValueCombo, index >= 0 && DrawsFontFiles(m_element.Renderer));
 }
 
 void App::FaceElementEditorDialog::RepopulateFontLanguageCombobox() {
@@ -461,9 +456,9 @@ void App::FaceElementEditorDialog::RepopulateFontVariationsList() {
 	ListView_DeleteAllItems(m_controls->FontVariationsList);
 	m_variationAxes.clear();
 
-	if (m_element.Renderer == Structs::RendererEnum::DirectWrite || m_element.Renderer == Structs::RendererEnum::FreeType) {
+	if (DrawsFontFiles(m_element.Renderer)) {
 		try {
-			const auto [factory, font] = m_element.Lookup.ResolveFont();
+			const auto [factory, font] = ElementFonts::ResolveFont(m_element.Lookup);
 
 			IDWriteFontFacePtr face;
 			SuccessOrThrow(font->CreateFontFace(&face));
@@ -495,28 +490,15 @@ void App::FaceElementEditorDialog::RepopulateFontVariationsList() {
 							axis.InstanceValue = v.value;
 					}
 
-					if (IDWriteLocalizedStringsPtr names; SUCCEEDED(resource->GetAxisNames(i, &names)) && names->GetCount()) {
-						UINT32 index;
-						if (BOOL exists; FAILED(names->FindLocaleName(g_localeName.c_str(), &index, &exists)) || !exists) {
-							if (FAILED(names->FindLocaleName(L"en-us", &index, &exists)) || !exists)
-								index = 0;
-						}
-
-						if (UINT32 length; SUCCEEDED(names->GetStringLength(index, &length))) {
-							axis.Name.resize(length + 1);
-							if (SUCCEEDED(names->GetString(index, axis.Name.data(), length + 1)))
-								axis.Name.resize(length);
-							else
-								axis.Name.clear();
-						}
-					}
+					if (IDWriteLocalizedStringsPtr names; SUCCEEDED(resource->GetAxisNames(i, &names)))
+						axis.Name = FontChanger::DirectWriteUtil::GetLocalizedString(names, {g_localeName.c_str(), L"en-us"});
 				}
 			}
 
 			// Values of axes that the font does not have, or cannot vary, would be ignored, and cannot be seen or edited from here.
 			std::erase_if(m_element.Lookup.Variations, [this](const auto& kv) {
 				return kv.first.size() != 4 || std::ranges::none_of(m_variationAxes, [&kv](const VariationAxis& axis) {
-					return memcmp(&axis.Tag, kv.first.data(), 4) == 0;
+					return FontChanger::DirectWriteUtil::TagToString(axis.Tag) == kv.first;
 				});
 			});
 		} catch (...) {
@@ -526,7 +508,7 @@ void App::FaceElementEditorDialog::RepopulateFontVariationsList() {
 
 	for (int i = 0; i < static_cast<int>(m_variationAxes.size()); i++) {
 		const auto& axis = m_variationAxes[i];
-		const auto tag = xivres::util::unicode::convert<std::wstring>(std::string_view(reinterpret_cast<const char*>(&axis.Tag), 4));
+		const auto tag = xivres::util::unicode::convert<std::wstring>(FontChanger::DirectWriteUtil::TagToString(axis.Tag));
 		auto name = axis.Name.empty() ? tag : std::format(L"{} ({})", axis.Name, tag);
 		auto range = std::format(L"{:g}\u2013{:g}", axis.Minimum, axis.Maximum);
 
@@ -540,7 +522,7 @@ void App::FaceElementEditorDialog::RepopulateFontVariationsList() {
 		UpdateFontVariationsListItem(i);
 	}
 
-	if (m_element.Renderer == Structs::RendererEnum::DirectWrite || m_element.Renderer == Structs::RendererEnum::FreeType)
+	if (DrawsFontFiles(m_element.Renderer))
 		EnableWindow(m_controls->FontVariationsList, !m_variationAxes.empty());
 	RefreshFontVariationValueEdit();
 }
@@ -548,8 +530,7 @@ void App::FaceElementEditorDialog::RepopulateFontVariationsList() {
 void App::FaceElementEditorDialog::UpdateFontVariationsListItem(int index) {
 	const auto& axis = m_variationAxes[index];
 
-	std::string tag(4, ' ');
-	memcpy(tag.data(), &axis.Tag, 4);
+	const auto tag = FontChanger::DirectWriteUtil::TagToString(axis.Tag);
 
 	std::wstring text;
 	if (const auto it = m_element.Lookup.Variations.find(tag); it != m_element.Lookup.Variations.end())
@@ -573,8 +554,7 @@ void App::FaceElementEditorDialog::RefreshFontVariationValueEdit() {
 	if (axisIndex >= 0) {
 		const auto& axis = m_variationAxes[axisIndex];
 
-		std::string tag(4, ' ');
-		memcpy(tag.data(), &axis.Tag, 4);
+		const auto tag = FontChanger::DirectWriteUtil::TagToString(axis.Tag);
 		if (const auto it = m_element.Lookup.Variations.find(tag); it != m_element.Lookup.Variations.end())
 			text = std::format(L"{:g}", it->second);
 
@@ -590,6 +570,6 @@ void App::FaceElementEditorDialog::RefreshFontVariationValueEdit() {
 	m_bSettingVariationValueEdit = false;
 	Edit_SetCueBannerTextFocused(m_controls->FontVariationValueEdit, cue.c_str(), TRUE);
 
-	const auto enabled = axisIndex >= 0 && (m_element.Renderer == Structs::RendererEnum::DirectWrite || m_element.Renderer == Structs::RendererEnum::FreeType);
+	const auto enabled = axisIndex >= 0 && DrawsFontFiles(m_element.Renderer);
 	EnableWindow(m_controls->FontVariationValueEdit, enabled);
 }

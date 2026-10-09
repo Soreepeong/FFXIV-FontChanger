@@ -113,6 +113,30 @@ void App::FaceElementEditorDialog::Reactivate() {
 		m_onDeactivatedChange(false);
 }
 
+bool App::FaceElementEditorDialog::TryReadOptionalNumber(HWND hwnd, std::optional<float>& value) {
+	const auto str = GetWindowString(hwnd, true);
+	if (str.empty()) {
+		value.reset();
+		return true;
+	}
+
+	float v;
+	if (str.starts_with(L'=')) {
+		if (!TryEvaluate(str, v, true))
+			return false;
+	} else {
+		wchar_t* end;
+		v = std::wcstof(str.c_str(), &end);
+		if (end == str.c_str() || *end)
+			return false;
+	}
+	if (!std::isfinite(v))
+		return false;
+
+	value = v;
+	return true;
+}
+
 INT_PTR App::FaceElementEditorDialog::ExpressionHelpButton_OnCommand(uint16_t notiCode) {
 	ShellExecuteW(
 		m_controls->Window,
@@ -155,32 +179,23 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	TabCtrl_SetCurSel(m_controls->Tab, s_lastPageIndex);
 	ShowPage(s_lastPageIndex);
 
-	const auto AddColumn = [zoom = GetZoomFromWindow(m_hWnd)](HWND hList, int columnIndex, int width, UINT resId) {
-		std::wstring name(GetStringResource(resId));
-		LVCOLUMNW col{
-			.mask = LVCF_TEXT | LVCF_WIDTH,
-			.cx = static_cast<int>(width * zoom),
-			.pszText = const_cast<wchar_t*>(name.c_str()),
-		};
-		ListView_InsertColumn(hList, columnIndex, &col);
-	};
 	ListView_SetExtendedListViewStyle(m_controls->FontFeaturesList, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
 	{
 		// The name takes the width that the value column and the scroll bar leave.
 		RECT rc;
 		GetClientRect(m_controls->FontFeaturesList, &rc);
-		const auto zoom = GetZoomFromWindow(m_hWnd);
+		const auto zoom = GetZoomFromWindow(m_controls->FontFeaturesList);
 		const auto valueWidth = static_cast<int>(64 * zoom);
-		AddColumn(m_controls->FontFeaturesList, 0, static_cast<int>((rc.right - valueWidth - GetSystemMetrics(SM_CXVSCROLL)) / zoom), IDS_FONTFEATURES_COLUMN_FEATURE);
-		AddColumn(m_controls->FontFeaturesList, 1, 64, IDS_FONTVARIATIONS_COLUMN_VALUE);
+		AddListViewColumn(m_controls->FontFeaturesList, 0, static_cast<int>((rc.right - valueWidth - GetSystemMetrics(SM_CXVSCROLL)) / zoom), IDS_FONTFEATURES_COLUMN_FEATURE);
+		AddListViewColumn(m_controls->FontFeaturesList, 1, 64, IDS_FONTVARIATIONS_COLUMN_VALUE);
 	}
 	ListView_SetExtendedListViewStyle(m_controls->FontVariationsList, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
-	AddColumn(m_controls->FontVariationsList, 0, 100, IDS_FONTVARIATIONS_COLUMN_AXIS);
-	AddColumn(m_controls->FontVariationsList, 1, 56, IDS_FONTVARIATIONS_COLUMN_RANGE);
-	AddColumn(m_controls->FontVariationsList, 2, 48, IDS_FONTVARIATIONS_COLUMN_VALUE);
+	AddListViewColumn(m_controls->FontVariationsList, 0, 100, IDS_FONTVARIATIONS_COLUMN_AXIS);
+	AddListViewColumn(m_controls->FontVariationsList, 1, 56, IDS_FONTVARIATIONS_COLUMN_RANGE);
+	AddListViewColumn(m_controls->FontVariationsList, 2, 48, IDS_FONTVARIATIONS_COLUMN_VALUE);
 
 	// Elements of earlier versions get the explicit model of synthesis, drawn as before; Cancel reverts this too.
-	m_element.Lookup.ConvertToExplicitSynthesis(m_element.Renderer);
+	ElementFonts::ConvertToExplicitSynthesis(m_element.Lookup, m_element.Renderer);
 
 	RepopulateFontLanguageCombobox();
 	SetControlsEnabledOrDisabled();
@@ -264,17 +279,16 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	SetWindowNumber(m_controls->AdjustmentHorizontalOffsetEdit, m_element.WrapModifiers.HorizontalOffset);
 	SetWindowNumber(m_controls->AdjustmentGammaEdit, m_element.Gamma);
 
-	std::vector<char32_t> charVec(m_element.GetBaseFont()->all_codepoints().begin(), m_element.GetBaseFont()->all_codepoints().end());
 	for (int i = 0, i_ = static_cast<int>(m_element.WrapModifiers.Codepoints.size()); i < i_; i++)
-		AddCodepointRangeToListBox(i, m_element.WrapModifiers.Codepoints[i].first, m_element.WrapModifiers.Codepoints[i].second, charVec);
+		AddCodepointRangeToListBox(i, m_element.WrapModifiers.Codepoints[i].first, m_element.WrapModifiers.Codepoints[i].second);
 
-	SetComboboxContent<xivres::fontgen::codepoint_merge_mode>(
+	SetComboboxContent<FontChanger::FixedSizeFont::codepoint_merge_mode>(
 		m_controls->CodepointsMergeModeCombo,
 		m_element.MergeMode,
 		{
-			std::make_pair(xivres::fontgen::codepoint_merge_mode::AddNew, IDS_CODEPOINTMERGEMODE_ADDNEW),
-			std::make_pair(xivres::fontgen::codepoint_merge_mode::AddAll, IDS_CODEPOINTMERGEMODE_ADDALL),
-			std::make_pair(xivres::fontgen::codepoint_merge_mode::Replace, IDS_CODEPOINTMERGEMODE_REPLACE),
+			std::make_pair(FontChanger::FixedSizeFont::codepoint_merge_mode::AddNew, IDS_CODEPOINTMERGEMODE_ADDNEW),
+			std::make_pair(FontChanger::FixedSizeFont::codepoint_merge_mode::AddAll, IDS_CODEPOINTMERGEMODE_ADDALL),
+			std::make_pair(FontChanger::FixedSizeFont::codepoint_merge_mode::Replace, IDS_CODEPOINTMERGEMODE_REPLACE),
 		});
 
 	RefreshTransformEdits();
@@ -282,129 +296,55 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 	InitializeMonospacingControls();
 	InitializeGlyphMergingPage();
 
-	for (const auto& controlHwnd : {
-		     m_controls->EmptyAscentEdit,
-		     m_controls->EmptyLineHeightEdit,
-		     m_controls->AdjustmentBaselineShiftEdit,
-		     m_controls->AdjustmentLetterSpacingEdit,
-		     m_controls->AdjustmentHorizontalOffsetEdit
-	     }) {
-		SetWindowSubclass(controlHwnd, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
-			// Values in pixels, which may be fractional after scaling; Ctrl changes them in finer steps.
-			const auto minValue = -128.f, maxValue = 127.f;
-			const auto step = GetKeyState(VK_CONTROL) & 0x8000 ? 0.1f : 1.f;
+	// Edits of numbers, which Up and Down change by a step; Ctrl changes them by a finer step.
+	const auto setSpinRange = [this](SpinRange range, std::initializer_list<HWND> edits) {
+		for (const auto edit : edits)
+			m_spinRanges.emplace(edit, range);
+	};
+	// Values in pixels, which may be fractional after scaling.
+	setSpinRange({-128.f, 127.f, 1.f, 0.1f}, {
+		m_controls->EmptyAscentEdit,
+		m_controls->EmptyLineHeightEdit,
+		m_controls->AdjustmentBaselineShiftEdit,
+		m_controls->AdjustmentLetterSpacingEdit,
+		m_controls->AdjustmentHorizontalOffsetEdit,
+	});
+	setSpinRange({1.f, 3.f, 0.1f, 0.1f}, {m_controls->AdjustmentGammaEdit});
+	setSpinRange({8.f, 255.f, 1.f, 0.1f}, {m_controls->FontSizeEdit});
+	setSpinRange({-1000.f, 1000.f, 1.f, 0.1f}, {
+		m_controls->TransformScaleXEdit,
+		m_controls->TransformScaleYEdit,
+		m_controls->TransformSkewEdit,
+		m_controls->TransformRotationEdit,
+		m_controls->GlyphMergingOffsetXEdit,
+		m_controls->GlyphMergingOffsetYEdit,
+		m_controls->GlyphMergingScaleXEdit,
+		m_controls->GlyphMergingScaleYEdit,
+		m_controls->GlyphMergingSkewEdit,
+		m_controls->GlyphMergingRotationEdit,
+		m_controls->GlyphMergingLetterSpacingEdit,
+		m_controls->GlyphMergingLineSpacingEdit,
+		m_controls->MonospacingMinEdit,
+		m_controls->MonospacingMaxEdit,
+	});
+
+	for (const auto& edit : m_spinRanges | std::views::keys) {
+		SetWindowSubclass(edit, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
+			auto& dlg = *reinterpret_cast<FaceElementEditorDialog*>(dwRefData);
+			const auto& range = dlg.m_spinRanges.at(hWnd);
+			const auto step = GetKeyState(VK_CONTROL) & 0x8000 ? range.FineStep : range.Step;
 			if (msg == WM_KEYDOWN && wParam == VK_DOWN && !GetWindowString(hWnd).starts_with(L"=")) {
-				SetWindowNumber(hWnd, (std::max)(minValue, GetWindowNumber<float>(hWnd) + step));
+				SetWindowNumber(hWnd, (std::max)(range.Min, GetWindowNumber<float>(hWnd) + step));
 				return 0;
 			} else if (msg == WM_KEYDOWN && wParam == VK_UP && !GetWindowString(hWnd).starts_with(L"=")) {
-				SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - step));
+				SetWindowNumber(hWnd, (std::min)(range.Max, GetWindowNumber<float>(hWnd) - step));
 				return 0;
 			} else if (msg == WM_GETDLGCODE && wParam == VK_RETURN && GetWindowString(hWnd).starts_with(L"=")) {
 				return DefSubclassProc(hWnd, msg, wParam, lParam) | DLGC_WANTALLKEYS;
 			} else if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
 				if (const auto wstr = GetWindowString(hWnd); wstr.starts_with(L"=")) {
-					if (float r; reinterpret_cast<FaceElementEditorDialog*>(dwRefData)->TryEvaluate(wstr, r))
-						SetWindowNumber(hWnd, (std::min)(maxValue, (std::max)(minValue, r)));
-					return 0;
-				}
-			}
-
-			return DefSubclassProc(hWnd, msg, wParam, lParam);
-		}, 1, reinterpret_cast<DWORD_PTR>(this));
-	}
-
-	for (const auto& controlHwnd : {
-		     m_controls->AdjustmentGammaEdit,
-	     }) {
-		SetWindowSubclass(controlHwnd, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
-			const auto minValue = 1.f, maxValue = 3.f;
-			if (msg == WM_KEYDOWN && wParam == VK_DOWN && !GetWindowString(hWnd).starts_with(L"=")) {
-				SetWindowNumber(hWnd, (std::max)(minValue, GetWindowNumber<float>(hWnd) + 0.1f));
-				return 0;
-			} else if (msg == WM_KEYDOWN && wParam == VK_UP && !GetWindowString(hWnd).starts_with(L"=")) {
-				SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - 0.1f));
-				return 0;
-			} else if (msg == WM_GETDLGCODE && wParam == VK_RETURN && GetWindowString(hWnd).starts_with(L"=")) {
-				return DefSubclassProc(hWnd, msg, wParam, lParam) | DLGC_WANTALLKEYS;
-			} else if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
-				if (const auto wstr = GetWindowString(hWnd); wstr.starts_with(L"=")) {
-					if (float r; reinterpret_cast<FaceElementEditorDialog*>(dwRefData)->TryEvaluate(wstr, r))
-						SetWindowNumber(hWnd, (std::min)(maxValue, (std::max)(minValue, r)));
-					return 0;
-				}
-			}
-
-			return DefSubclassProc(hWnd, msg, wParam, lParam);
-		}, 1, reinterpret_cast<DWORD_PTR>(this));
-	}
-
-	for (const auto& controlHwnd : {
-		     m_controls->FontSizeEdit,
-	     }) {
-		SetWindowSubclass(controlHwnd, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
-			const auto minValue = 8.f, maxValue = 255.f;
-			if (msg == WM_KEYDOWN && wParam == VK_DOWN && !GetWindowString(hWnd).starts_with(L"=")) {
-				if (GetKeyState(VK_CONTROL) & 0x8000)
-					SetWindowNumber(hWnd, (std::max)(minValue, GetWindowNumber<float>(hWnd) + 0.1f));
-				else
-					SetWindowNumber(hWnd, (std::max)(minValue, GetWindowNumber<float>(hWnd) + 1.f));
-				return 0;
-			} else if (msg == WM_KEYDOWN && wParam == VK_UP && !GetWindowString(hWnd).starts_with(L"=")) {
-				if (GetKeyState(VK_CONTROL) & 0x8000)
-					SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - 0.1f));
-				else
-					SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - 1.f));
-				return 0;
-			} else if (msg == WM_GETDLGCODE && wParam == VK_RETURN && GetWindowString(hWnd).starts_with(L"=")) {
-				return DefSubclassProc(hWnd, msg, wParam, lParam) | DLGC_WANTALLKEYS;
-			} else if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
-				if (const auto wstr = GetWindowString(hWnd); wstr.starts_with(L"=")) {
-					if (float r; reinterpret_cast<FaceElementEditorDialog*>(dwRefData)->TryEvaluate(wstr, r))
-						SetWindowNumber(hWnd, (std::min)(maxValue, (std::max)(minValue, r)));
-					return 0;
-				}
-			}
-
-			return DefSubclassProc(hWnd, msg, wParam, lParam);
-		}, 1, reinterpret_cast<DWORD_PTR>(this));
-	}
-
-	for (const auto& controlHwnd : {
-		     m_controls->TransformScaleXEdit,
-		     m_controls->TransformScaleYEdit,
-		     m_controls->TransformSkewEdit,
-		     m_controls->TransformRotationEdit,
-		     m_controls->GlyphMergingOffsetXEdit,
-		     m_controls->GlyphMergingOffsetYEdit,
-		     m_controls->GlyphMergingScaleXEdit,
-		     m_controls->GlyphMergingScaleYEdit,
-		     m_controls->GlyphMergingSkewEdit,
-		     m_controls->GlyphMergingRotationEdit,
-		     m_controls->GlyphMergingLetterSpacingEdit,
-		     m_controls->GlyphMergingLineSpacingEdit,
-		     m_controls->MonospacingMinEdit,
-		     m_controls->MonospacingMaxEdit,
-	     }) {
-		SetWindowSubclass(controlHwnd, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
-			const auto minValue = -1000.f, maxValue = 1000.f;
-			if (msg == WM_KEYDOWN && wParam == VK_DOWN && !GetWindowString(hWnd).starts_with(L"=")) {
-				if (GetKeyState(VK_CONTROL) & 0x8000)
-					SetWindowNumber(hWnd, (std::max)(minValue, GetWindowNumber<float>(hWnd) + 0.1f));
-				else
-					SetWindowNumber(hWnd, (std::max)(minValue, GetWindowNumber<float>(hWnd) + 1.f));
-				return 0;
-			} else if (msg == WM_KEYDOWN && wParam == VK_UP && !GetWindowString(hWnd).starts_with(L"=")) {
-				if (GetKeyState(VK_CONTROL) & 0x8000)
-					SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - 0.1f));
-				else
-					SetWindowNumber(hWnd, (std::min)(maxValue, GetWindowNumber<float>(hWnd) - 1.f));
-				return 0;
-			} else if (msg == WM_GETDLGCODE && wParam == VK_RETURN && GetWindowString(hWnd).starts_with(L"=")) {
-				return DefSubclassProc(hWnd, msg, wParam, lParam) | DLGC_WANTALLKEYS;
-			} else if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
-				if (const auto wstr = GetWindowString(hWnd); wstr.starts_with(L"=")) {
-					if (float r; reinterpret_cast<FaceElementEditorDialog*>(dwRefData)->TryEvaluate(wstr, r))
-						SetWindowNumber(hWnd, (std::min)(maxValue, (std::max)(minValue, r)));
+					if (float r; dlg.TryEvaluate(wstr, r))
+						SetWindowNumber(hWnd, (std::min)(range.Max, (std::max)(range.Min, r)));
 					return 0;
 				}
 			}
@@ -444,7 +384,8 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 			if (msg == WM_CHAR)
 				return 0;
 
-			const auto& c = *reinterpret_cast<FaceElementEditorDialog*>(dwRefData)->m_controls;
+			const auto& dlg = *reinterpret_cast<FaceElementEditorDialog*>(dwRefData);
+			const auto& c = *dlg.m_controls;
 			const std::array<std::pair<HWND, HWND>, 4> pairs{{
 				{c.AdjustmentHorizontalOffsetEdit, c.AdjustmentBaselineShiftEdit},
 				{c.GlyphMergingOffsetXEdit, c.GlyphMergingOffsetYEdit},
@@ -460,240 +401,74 @@ INT_PTR App::FaceElementEditorDialog::Dialog_OnInitDialog() {
 				return 0;
 
 			// Shift changes the value in finer steps.
-			const auto [minValue, maxValue] = it == pairs.begin() ? std::pair{-128.f, 127.f} : std::pair{-1000.f, 1000.f};
-			const auto step = GetKeyState(VK_SHIFT) < 0 ? 0.1f : 1.f;
-			SetWindowNumber(target, (std::min)(maxValue, (std::max)(minValue, GetWindowNumber<float>(target) + direction * step)));
+			const auto& range = dlg.m_spinRanges.at(target);
+			const auto step = GetKeyState(VK_SHIFT) < 0 ? range.FineStep : range.Step;
+			SetWindowNumber(target, (std::min)(range.Max, (std::max)(range.Min, GetWindowNumber<float>(target) + direction * step)));
 			return 0;
 		}, 2, reinterpret_cast<DWORD_PTR>(this));
 	}
 
-	RECT rc, rcParent;
-	GetWindowRect(m_controls->Window, &rc);
-	GetWindowRect(m_hParentWnd, &rcParent);
-	rc.right -= rc.left;
-	rc.bottom -= rc.top;
-	rc.left = (rcParent.left + rcParent.right - rc.right) / 2;
-	rc.top = (rcParent.top + rcParent.bottom - rc.bottom) / 2;
-	rc.right += rc.left;
-	rc.bottom += rc.top;
-	SetWindowPos(m_controls->Window, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_NOACTIVATE | SWP_NOZORDER);
-
+	CenterWindowOnParent(m_controls->Window, m_hParentWnd);
 	ShowWindow(m_controls->Window, SW_SHOW);
 
 	return 0;
 }
 
 void App::FaceElementEditorDialog::SetControlsEnabledOrDisabled() {
-	switch (m_element.Renderer) {
-		case Structs::RendererEnum::Empty:
-			EnableWindow(m_controls->FontCombo, FALSE);
-			EnableWindow(m_controls->FontSizeEdit, TRUE);
-			EnableWindow(m_controls->FontWeightCombo, FALSE);
-			EnableWindow(m_controls->FontStyleCombo, FALSE);
-			EnableWindow(m_controls->FontStretchCombo, FALSE);
-			EnableWindow(m_controls->FontFeaturesList, FALSE);
-			EnableWindow(m_controls->FontFeatureValueCombo, FALSE);
-			EnableWindow(m_controls->FontLanguageCombo, FALSE);
-			EnableWindow(m_controls->FontVariationsList, FALSE);
-			EnableWindow(m_controls->FontVariationValueEdit, FALSE);
-			EnableWindow(m_controls->EmptyAscentEdit, TRUE);
-			EnableWindow(m_controls->EmptyLineHeightEdit, TRUE);
-			EnableWindow(m_controls->FreeTypeHintingCombo, FALSE);
-			EnableWindow(m_controls->FreeTypeEmbeddedBitmapsCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeRenderModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteRenderModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteMeasureModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteGridFitModeCombo, FALSE);
-			EnableWindow(m_controls->AdjustmentBaselineShiftEdit, FALSE);
-			EnableWindow(m_controls->AdjustmentLetterSpacingEdit, FALSE);
-			EnableWindow(m_controls->AdjustmentHorizontalOffsetEdit, FALSE);
-			EnableWindow(m_controls->AdjustmentGammaEdit, FALSE);
-			EnableWindow(m_controls->TransformScaleXEdit, FALSE);
-			EnableWindow(m_controls->TransformScaleYEdit, FALSE);
-			EnableWindow(m_controls->TransformSkewEdit, FALSE);
-			EnableWindow(m_controls->TransformRotationEdit, FALSE);
-			EnableWindow(m_controls->CustomRangeEdit, FALSE);
-			EnableWindow(m_controls->CustomRangeAdd, FALSE);
-			EnableWindow(m_controls->CustomRangeSubtract, FALSE);
-			EnableWindow(m_controls->CodepointsList, FALSE);
-			EnableWindow(m_controls->CodepointsDeleteButton, FALSE);
-			EnableWindow(m_controls->CodepointsMergeModeCombo, FALSE);
-			EnableWindow(m_controls->UnicodeBlockSearchNameEdit, FALSE);
-			EnableWindow(m_controls->UnicodeBlockSearchResultList, FALSE);
-			EnableWindow(m_controls->UnicodeBlockSearchAddAll, FALSE);
-			EnableWindow(m_controls->UnicodeBlockSearchAdd, FALSE);
-			EnableWindow(m_controls->UnicodeBlockSearchSubtract, FALSE);
-			break;
+	const auto renderer = m_element.Renderer;
+	const auto isEmpty = renderer == Structs::RendererEnum::Empty;
+	const auto drawsFontFiles = DrawsFontFiles(renderer);
+	const auto usesSystemFont = UsesSystemFont(renderer);
+	const auto isFreeType = renderer == Structs::RendererEnum::FreeType;
+	const auto isDirectWrite = renderer == Structs::RendererEnum::DirectWrite;
 
-		case Structs::RendererEnum::PrerenderedGameInstallation:
-			EnableWindow(m_controls->FontCombo, TRUE);
-			EnableWindow(m_controls->FontSizeEdit, TRUE);
-			EnableWindow(m_controls->FontWeightCombo, FALSE);
-			EnableWindow(m_controls->FontStyleCombo, FALSE);
-			EnableWindow(m_controls->FontStretchCombo, FALSE);
-			EnableWindow(m_controls->FontFeaturesList, FALSE);
-			EnableWindow(m_controls->FontFeatureValueCombo, FALSE);
-			EnableWindow(m_controls->FontLanguageCombo, FALSE);
-			EnableWindow(m_controls->FontVariationsList, FALSE);
-			EnableWindow(m_controls->FontVariationValueEdit, FALSE);
-			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
-			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
-			EnableWindow(m_controls->FreeTypeHintingCombo, FALSE);
-			EnableWindow(m_controls->FreeTypeEmbeddedBitmapsCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeRenderModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteRenderModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteMeasureModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteGridFitModeCombo, FALSE);
-			EnableWindow(m_controls->AdjustmentBaselineShiftEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentLetterSpacingEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentHorizontalOffsetEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentGammaEdit, FALSE);
-			EnableWindow(m_controls->TransformScaleXEdit, FALSE);
-			EnableWindow(m_controls->TransformScaleYEdit, FALSE);
-			EnableWindow(m_controls->TransformSkewEdit, FALSE);
-			EnableWindow(m_controls->TransformRotationEdit, FALSE);
-			EnableWindow(m_controls->CustomRangeEdit, TRUE);
-			EnableWindow(m_controls->CustomRangeAdd, TRUE);
-			EnableWindow(m_controls->CustomRangeSubtract, TRUE);
-			EnableWindow(m_controls->CodepointsList, TRUE);
-			EnableWindow(m_controls->CodepointsDeleteButton, TRUE);
-			EnableWindow(m_controls->CodepointsMergeModeCombo, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchNameEdit, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchResultList, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchAddAll, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchAdd, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchSubtract, TRUE);
-			break;
-
-		case Structs::RendererEnum::DirectWrite:
-			EnableWindow(m_controls->FontCombo, TRUE);
-			EnableWindow(m_controls->FontSizeEdit, TRUE);
-			EnableWindow(m_controls->FontWeightCombo, TRUE);
-			EnableWindow(m_controls->FontStyleCombo, TRUE);
-			EnableWindow(m_controls->FontStretchCombo, TRUE);
-			EnableWindow(m_controls->FontFeaturesList, TRUE);
-			EnableWindow(m_controls->FontFeatureValueCombo, GetSelectedFontFeature() >= 0);
-			EnableWindow(m_controls->FontLanguageCombo, TRUE);
-			EnableWindow(m_controls->FontVariationsList, !m_variationAxes.empty());
-			EnableWindow(m_controls->FontVariationValueEdit, GetSelectedFontVariationAxis() >= 0);
-			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
-			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
-			EnableWindow(m_controls->FreeTypeHintingCombo, FALSE);
-			EnableWindow(m_controls->FreeTypeEmbeddedBitmapsCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeRenderModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteRenderModeCombo, TRUE);
-			EnableWindow(m_controls->DirectWriteMeasureModeCombo, TRUE);
-			EnableWindow(m_controls->DirectWriteGridFitModeCombo, TRUE);
-			EnableWindow(m_controls->AdjustmentBaselineShiftEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentLetterSpacingEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentHorizontalOffsetEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentGammaEdit, TRUE);
-			EnableWindow(m_controls->TransformScaleXEdit, TRUE);
-			EnableWindow(m_controls->TransformScaleYEdit, TRUE);
-			EnableWindow(m_controls->TransformSkewEdit, TRUE);
-			EnableWindow(m_controls->TransformRotationEdit, TRUE);
-			EnableWindow(m_controls->CustomRangeEdit, TRUE);
-			EnableWindow(m_controls->CustomRangeAdd, TRUE);
-			EnableWindow(m_controls->CustomRangeSubtract, TRUE);
-			EnableWindow(m_controls->CodepointsList, TRUE);
-			EnableWindow(m_controls->CodepointsDeleteButton, TRUE);
-			EnableWindow(m_controls->CodepointsMergeModeCombo, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchNameEdit, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchResultList, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchAddAll, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchAdd, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchSubtract, TRUE);
-			break;
-
-		case Structs::RendererEnum::FreeType:
-			EnableWindow(m_controls->FontCombo, TRUE);
-			EnableWindow(m_controls->FontSizeEdit, TRUE);
-			EnableWindow(m_controls->FontWeightCombo, TRUE);
-			EnableWindow(m_controls->FontStyleCombo, TRUE);
-			EnableWindow(m_controls->FontStretchCombo, TRUE);
-			EnableWindow(m_controls->FontFeaturesList, TRUE);
-			EnableWindow(m_controls->FontFeatureValueCombo, GetSelectedFontFeature() >= 0);
-			EnableWindow(m_controls->FontLanguageCombo, TRUE);
-			EnableWindow(m_controls->FontVariationsList, !m_variationAxes.empty());
-			EnableWindow(m_controls->FontVariationValueEdit, GetSelectedFontVariationAxis() >= 0);
-			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
-			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
-			EnableWindow(m_controls->FreeTypeHintingCombo, TRUE);
-			EnableWindow(m_controls->FreeTypeEmbeddedBitmapsCheck, TRUE);
-			EnableWindow(m_controls->FreeTypeRenderModeCombo, TRUE);
-			EnableWindow(m_controls->DirectWriteRenderModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteMeasureModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteGridFitModeCombo, FALSE);
-			EnableWindow(m_controls->AdjustmentBaselineShiftEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentLetterSpacingEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentHorizontalOffsetEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentGammaEdit, TRUE);
-			EnableWindow(m_controls->TransformScaleXEdit, TRUE);
-			EnableWindow(m_controls->TransformScaleYEdit, TRUE);
-			EnableWindow(m_controls->TransformSkewEdit, TRUE);
-			EnableWindow(m_controls->TransformRotationEdit, TRUE);
-			EnableWindow(m_controls->CustomRangeEdit, TRUE);
-			EnableWindow(m_controls->CustomRangeAdd, TRUE);
-			EnableWindow(m_controls->CustomRangeSubtract, TRUE);
-			EnableWindow(m_controls->CodepointsList, TRUE);
-			EnableWindow(m_controls->CodepointsDeleteButton, TRUE);
-			EnableWindow(m_controls->CodepointsMergeModeCombo, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchNameEdit, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchResultList, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchAddAll, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchAdd, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchSubtract, TRUE);
-			break;
-
-		case Structs::RendererEnum::GlyphImages:
-			// The font is the one that glyph merging draws texts with.
-			EnableWindow(m_controls->FontCombo, TRUE);
-			EnableWindow(m_controls->FontSizeEdit, TRUE);
-			EnableWindow(m_controls->FontWeightCombo, TRUE);
-			EnableWindow(m_controls->FontStyleCombo, TRUE);
-			EnableWindow(m_controls->FontStretchCombo, TRUE);
-			EnableWindow(m_controls->FontFeaturesList, FALSE);
-			EnableWindow(m_controls->FontFeatureValueCombo, FALSE);
-			EnableWindow(m_controls->FontLanguageCombo, FALSE);
-			EnableWindow(m_controls->FontVariationsList, FALSE);
-			EnableWindow(m_controls->FontVariationValueEdit, FALSE);
-			EnableWindow(m_controls->EmptyAscentEdit, FALSE);
-			EnableWindow(m_controls->EmptyLineHeightEdit, FALSE);
-			EnableWindow(m_controls->FreeTypeHintingCombo, FALSE);
-			EnableWindow(m_controls->FreeTypeEmbeddedBitmapsCheck, FALSE);
-			EnableWindow(m_controls->FreeTypeRenderModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteRenderModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteMeasureModeCombo, FALSE);
-			EnableWindow(m_controls->DirectWriteGridFitModeCombo, FALSE);
-			EnableWindow(m_controls->AdjustmentBaselineShiftEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentLetterSpacingEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentHorizontalOffsetEdit, TRUE);
-			EnableWindow(m_controls->AdjustmentGammaEdit, TRUE);
-			EnableWindow(m_controls->TransformScaleXEdit, TRUE);
-			EnableWindow(m_controls->TransformScaleYEdit, TRUE);
-			EnableWindow(m_controls->TransformSkewEdit, TRUE);
-			EnableWindow(m_controls->TransformRotationEdit, TRUE);
-			EnableWindow(m_controls->CustomRangeEdit, TRUE);
-			EnableWindow(m_controls->CustomRangeAdd, TRUE);
-			EnableWindow(m_controls->CustomRangeSubtract, TRUE);
-			EnableWindow(m_controls->CodepointsList, TRUE);
-			EnableWindow(m_controls->CodepointsDeleteButton, TRUE);
-			EnableWindow(m_controls->CodepointsMergeModeCombo, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchNameEdit, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchResultList, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchAddAll, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchAdd, TRUE);
-			EnableWindow(m_controls->UnicodeBlockSearchSubtract, TRUE);
-			break;
-	}
+	for (const auto& [hwnd, enabled] : {
+		     std::pair{m_controls->FontCombo, !isEmpty},
+		     std::pair{m_controls->FontSizeEdit, true},
+		     std::pair{m_controls->FontWeightCombo, usesSystemFont},
+		     std::pair{m_controls->FontStyleCombo, usesSystemFont},
+		     std::pair{m_controls->FontStretchCombo, usesSystemFont},
+		     std::pair{m_controls->FontFeaturesList, drawsFontFiles},
+		     std::pair{m_controls->FontFeatureValueCombo, drawsFontFiles && GetSelectedFontFeature() >= 0},
+		     std::pair{m_controls->FontLanguageCombo, drawsFontFiles},
+		     std::pair{m_controls->FontVariationsList, drawsFontFiles && !m_variationAxes.empty()},
+		     std::pair{m_controls->FontVariationValueEdit, drawsFontFiles && GetSelectedFontVariationAxis() >= 0},
+		     std::pair{m_controls->EmptyAscentEdit, isEmpty},
+		     std::pair{m_controls->EmptyLineHeightEdit, isEmpty},
+		     std::pair{m_controls->FreeTypeHintingCombo, isFreeType},
+		     std::pair{m_controls->FreeTypeEmbeddedBitmapsCheck, isFreeType},
+		     std::pair{m_controls->FreeTypeRenderModeCombo, isFreeType},
+		     std::pair{m_controls->DirectWriteRenderModeCombo, isDirectWrite},
+		     std::pair{m_controls->DirectWriteMeasureModeCombo, isDirectWrite},
+		     std::pair{m_controls->DirectWriteGridFitModeCombo, isDirectWrite},
+		     std::pair{m_controls->AdjustmentBaselineShiftEdit, !isEmpty},
+		     std::pair{m_controls->AdjustmentLetterSpacingEdit, !isEmpty},
+		     std::pair{m_controls->AdjustmentHorizontalOffsetEdit, !isEmpty},
+		     std::pair{m_controls->AdjustmentGammaEdit, usesSystemFont},
+		     std::pair{m_controls->TransformScaleXEdit, usesSystemFont},
+		     std::pair{m_controls->TransformScaleYEdit, usesSystemFont},
+		     std::pair{m_controls->TransformSkewEdit, usesSystemFont},
+		     std::pair{m_controls->TransformRotationEdit, usesSystemFont},
+		     std::pair{m_controls->CustomRangeEdit, !isEmpty},
+		     std::pair{m_controls->CustomRangeAdd, !isEmpty},
+		     std::pair{m_controls->CustomRangeSubtract, !isEmpty},
+		     std::pair{m_controls->CodepointsList, !isEmpty},
+		     std::pair{m_controls->CodepointsDeleteButton, !isEmpty},
+		     std::pair{m_controls->CodepointsMergeModeCombo, !isEmpty},
+		     std::pair{m_controls->UnicodeBlockSearchNameEdit, !isEmpty},
+		     std::pair{m_controls->UnicodeBlockSearchResultList, !isEmpty},
+		     std::pair{m_controls->UnicodeBlockSearchAddAll, !isEmpty},
+		     std::pair{m_controls->UnicodeBlockSearchAdd, !isEmpty},
+		     std::pair{m_controls->UnicodeBlockSearchSubtract, !isEmpty},
+		     std::pair{m_controls->FontAllowSynthesisCheck, drawsFontFiles},
+	     })
+		EnableWindow(hwnd, enabled);
 
 	RefreshGlyphImagesGroup();
 
 	// Texts are drawn with the font of the element, which only these renderers can make at other sizes.
-	const auto drawsFontFiles = m_element.Renderer == Structs::RendererEnum::DirectWrite || m_element.Renderer == Structs::RendererEnum::FreeType;
-	SetGlyphMergingControlsEnabled(drawsFontFiles || m_element.Renderer == Structs::RendererEnum::GlyphImages);
+	SetGlyphMergingControlsEnabled(usesSystemFont);
 
-	EnableWindow(m_controls->FontAllowSynthesisCheck, drawsFontFiles);
 	Button_SetCheck(m_controls->FontAllowSynthesisCheck, drawsFontFiles && m_element.Lookup.Synthesis && m_element.Lookup.Synthesis->Allow ? BST_CHECKED : BST_UNCHECKED);
 	SetMonospacingControlsEnabled();
 }
@@ -731,26 +506,26 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 				case IDC_CHECK_FACEELEMENTEDITOR_DEACTIVATE: return DeactivateCheck_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_FONT_RENDERER: return FontRendererCombo_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_FONT: return FontCombo_OnCommand(HIWORD(wParam));
-				case IDC_EDIT_FONT_SIZE: return FontSizeEdit_OnCommand(HIWORD(wParam));
-				case IDC_COMBO_FONT_WEIGHT: return FontWeightCombo_OnCommand(HIWORD(wParam));
-				case IDC_COMBO_FONT_STYLE: return FontStyleCombo_OnCommand(HIWORD(wParam));
-				case IDC_COMBO_FONT_STRETCH: return FontStretchCombo_OnCommand(HIWORD(wParam));
+				case IDC_EDIT_FONT_SIZE:
+				case IDC_EDIT_EMPTY_ASCENT:
+				case IDC_EDIT_EMPTY_LINEHEIGHT:
+				case IDC_EDIT_ADJUSTMENT_BASELINESHIFT:
+				case IDC_EDIT_ADJUSTMENT_LETTERSPACING:
+				case IDC_EDIT_ADJUSTMENT_HORIZONTALOFFSET:
+				case IDC_EDIT_ADJUSTMENT_GAMMA: return NumberEdit_OnCommand(LOWORD(wParam), HIWORD(wParam));
+				case IDC_COMBO_FONT_WEIGHT:
+				case IDC_COMBO_FONT_STYLE:
+				case IDC_COMBO_FONT_STRETCH:
+				case IDC_COMBO_FREETYPE_RENDERMODE:
+				case IDC_COMBO_DIRECTWRITE_RENDERMODE:
+				case IDC_COMBO_DIRECTWRITE_MEASUREMODE:
+				case IDC_COMBO_DIRECTWRITE_GRIDFITMODE: return SettingCombo_OnCommand(LOWORD(wParam), HIWORD(wParam));
 				case IDC_CHECK_FONT_ALLOWSYNTHESIS: return FontAllowSynthesisCheck_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_FONT_FEATURE_VALUE: return FontFeatureValueCombo_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_FONT_LANGUAGE: return FontLanguageCombo_OnCommand(HIWORD(wParam));
 				case IDC_EDIT_FONT_VARIATION_VALUE: return FontVariationValueEdit_OnCommand(HIWORD(wParam));
-				case IDC_EDIT_EMPTY_ASCENT: return EmptyAscentEdit_OnCommand(HIWORD(wParam));
-				case IDC_EDIT_EMPTY_LINEHEIGHT: return EmptyLineHeightEdit_OnCommand(HIWORD(wParam));
 				case IDC_COMBO_FREETYPE_HINTING:
 				case IDC_CHECK_FREETYPE_EMBEDDEDBITMAPS: return FreeTypeHinting_OnCommand(HIWORD(wParam));
-				case IDC_COMBO_FREETYPE_RENDERMODE: return FreeTypeRenderModeCombo_OnCommand(HIWORD(wParam));
-				case IDC_COMBO_DIRECTWRITE_RENDERMODE: return DirectWriteRenderModeCombo_OnCommand(HIWORD(wParam));
-				case IDC_COMBO_DIRECTWRITE_MEASUREMODE: return DirectWriteMeasureModeCombo_OnCommand(HIWORD(wParam));
-				case IDC_COMBO_DIRECTWRITE_GRIDFITMODE: return DirectWriteGridFitModeCombo_OnCommand(HIWORD(wParam));
-				case IDC_EDIT_ADJUSTMENT_BASELINESHIFT: return AdjustmentBaselineShiftEdit_OnCommand(HIWORD(wParam));
-				case IDC_EDIT_ADJUSTMENT_LETTERSPACING: return AdjustmentLetterSpacingEdit_OnCommand(HIWORD(wParam));
-				case IDC_EDIT_ADJUSTMENT_HORIZONTALOFFSET: return AdjustmentHorizontalOffsetEdit_OnCommand(HIWORD(wParam));
-				case IDC_EDIT_ADJUSTMENT_GAMMA: return AdjustmentGammaEdit_OnCommand(HIWORD(wParam));
 				case IDC_EDIT_TRANSFORM_SCALEX: return TransformEdit_OnCommand(0, HIWORD(wParam));
 				case IDC_EDIT_TRANSFORM_SCALEY: return TransformEdit_OnCommand(1, HIWORD(wParam));
 				case IDC_EDIT_TRANSFORM_SKEW: return TransformEdit_OnCommand(2, HIWORD(wParam));

@@ -4,7 +4,6 @@
 // 0x140000000). RE write-up: private-scratch/ffxiv/ui/font_rendering_756h.md.
 
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -29,7 +28,6 @@ public enum GameFontType
 [StructLayout(LayoutKind.Sequential, Size = 1)]
 public unsafe struct GameFontManager
 {
-    private static nint stageInstance;
     private static int stageFontManager;
     private static int fontSets;
     private static int fonts;
@@ -49,7 +47,7 @@ public unsafe struct GameFontManager
     /// <summary>Gets the font manager of the UI, or null before it is set up.</summary>
     public static GameFontManager* Instance()
     {
-        var stage = *(nint*)stageInstance;
+        var stage = GameUi.Stage;
         return stage == 0 ? null : *(GameFontManager**)(stage + stageFontManager);
     }
 
@@ -71,9 +69,9 @@ public unsafe struct GameFontManager
 
     internal static void Resolve()
     {
-        stageInstance = GameLayout.Target("AtkStage.Instance");
+        GameUi.ResolveStage();
         stageFontManager = GameLayout.Get("AtkStage.AtkFontManager");
-        fontSets = GameLayout.Get("AtkFontManager.FontSets", 0);
+        fontSets = GameLayout.Get("AtkFontManager.FontSets");
         fonts = GameLayout.Get("AtkFontManager.Fonts");
         fontCount = GameLayout.Get("AtkFontManager.FontCount");
         FontSetCount = GameLayout.Get("AtkFontManager.FontSetCount");
@@ -94,6 +92,48 @@ internal static class GameFontStructs
         GameLayout.CheckFixed("GameKerningEntry", typeof(GameKerningEntry));
         GameLayout.CheckFixed("GlyphMap", typeof(GameGlyphMap));
         GameLayout.CheckFixed("GlyphMap.Node", typeof(GameGlyphMap.Node));
+    }
+}
+
+/// <summary>The fixed tables the game loads its fonts from (FontTables): the game's, and the lobby's two.</summary>
+internal static unsafe class GameFontTables
+{
+    /// <summary>
+    /// Gets the most textures a font of the tables has (the indices from there on are free in every font); the global
+    /// client's if the tables aren't found.
+    /// </summary>
+    public static int GetMaxTextureCount()
+    {
+        int count = 0, entrySize = 0, textureCount = 0;
+        var tables = new nint[3];
+        try
+        {
+            GameLayout.Resolve("Reading the game's font tables", () =>
+            {
+                count = GameLayout.Get("FontTable.Count");
+                entrySize = GameLayout.Get("FontTableEntry");
+                textureCount = GameLayout.Get("FontTableEntry.TextureCount");
+                tables[0] = GameLayout.Address("FontTables", "GameTable");
+                tables[1] = GameLayout.Address("FontTables", "LobbyTableA");
+                tables[2] = GameLayout.Address("FontTables", "LobbyTableB");
+            });
+        }
+        catch (Exception ex)
+        {
+            if (GameLayout.TryGet("FontTable.MaxTextureCount") is not { } fallback)
+                throw;
+            Host.Log.Warning(ex, "The font tables weren't found; taking the global client's texture count");
+            return fallback;
+        }
+
+        var max = 0;
+        foreach (var table in tables)
+        {
+            for (var i = 0; i < count; i++)
+                max = Math.Max(max, (int)*(ulong*)(table + (i * entrySize) + textureCount));
+        }
+
+        return max;
     }
 }
 
@@ -168,12 +208,16 @@ public unsafe struct GameFont
     private static int textures;
     private static int kerningCount;
     private static int textureWidth;
+    private static int textureHeight;
     private static int size;
+    private static int lineHeight;
     private static int ascent;
     private static int glyphMap;
     private static int secondary;
     private static int secondaryRatio;
     private static int textureCount;
+    private static int flags;
+    private static int readyFlag;
     private static int italicCorrection = -1;
 
     /// <summary>Gets the size of a font, the stride of <see cref="GameFontManager.Fonts"/>.</summary>
@@ -195,11 +239,10 @@ public unsafe struct GameFont
         set => *(ushort*)this.At(textureWidth) = value;
     }
 
-    /// <summary>Follows <see cref="TextureWidth"/> (the FDT header's order).</summary>
     public ushort TextureHeight
     {
-        get => *(ushort*)this.At(textureWidth + 2);
-        set => *(ushort*)this.At(textureWidth + 2) = value;
+        get => *(ushort*)this.At(textureHeight);
+        set => *(ushort*)this.At(textureHeight) = value;
     }
 
     /// <summary>The size the glyphs are drawn at; the renderer scales them by the requested size / this.</summary>
@@ -209,11 +252,10 @@ public unsafe struct GameFont
         set => *(float*)this.At(size) = value;
     }
 
-    /// <summary>Follows <see cref="Size"/> (BuildFont copies both from the FDT header at once).</summary>
     public int LineHeight
     {
-        get => *(int*)this.At(size + 4);
-        set => *(int*)this.At(size + 4) = value;
+        get => *(int*)this.At(lineHeight);
+        set => *(int*)this.At(lineHeight) = value;
     }
 
     public int Ascent
@@ -246,6 +288,9 @@ public unsafe struct GameFont
         get => *(ushort*)this.At(textureCount);
         set => *(ushort*)this.At(textureCount) = value;
     }
+
+    /// <summary>Gets whether the font is built (BuildFont); a font that isn't may have no glyph map, or a freed one.</summary>
+    public bool IsReady => (*this.At(flags) & readyFlag) != 0;
 
     /// <summary>
     /// Gets or sets how far the glyph after italics moves right (2 to 6 per font, set with the font sets), for the overhang
@@ -288,11 +333,13 @@ public unsafe struct GameFont
     {
         StructSize = GameLayout.Get("GameFont");
         MaxTextures = GameLayout.Get("GameFont.MaxTextures");
-        textureResourceHandles = GameLayout.Get("GameFont.TextureResourceHandles", 0);
+        textureResourceHandles = GameLayout.Get("GameFont.TextureResourceHandles");
         textures = GameLayout.Get("GameFont.Textures");
         kerningCount = GameLayout.Get("GameFont.KerningCount");
         textureWidth = GameLayout.Get("GameFont.TextureWidth");
+        textureHeight = GameLayout.Get("GameFont.TextureHeight");
         size = GameLayout.Get("GameFont.Size");
+        lineHeight = GameLayout.Get("GameFont.LineHeight");
         ascent = GameLayout.Get("GameFont.Ascent");
 
         // The glyph map replaced a sorted glyph array in 7.40; the plugin only looks glyphs up in the map.
@@ -300,6 +347,8 @@ public unsafe struct GameFont
         secondary = GameLayout.Get("GameFont.Secondary");
         secondaryRatio = GameLayout.Get("GameFont.SecondaryRatio");
         textureCount = GameLayout.Get("GameFont.TextureCount");
+        flags = GameLayout.Get("GameFont.Flags");
+        readyFlag = GameLayout.Get("GameFont.Flags.Ready");
 
         // Optional: only changed in copies.
         italicCorrection = GameLayout.TryGet("GameFont.XShift") ?? -1;
@@ -407,15 +456,6 @@ public unsafe struct GameGlyphMap
             node = node->Prev;
         }
     }
-
-    /// <summary>Enumerates every node, in list order.</summary>
-    public readonly IEnumerable<nint> EnumerateNodes()
-    {
-        var list = new List<nint>((int)this.Count);
-        for (var node = this.Head->Next; node != this.Head; node = node->Next)
-            list.Add((nint)node);
-        return list;
-    }
 }
 
 /// <summary>Conversions between codepoints and the game's packed UTF-8 values.</summary>
@@ -424,16 +464,18 @@ public static class GameUtf8
     /// <summary>Packs a codepoint's UTF-8 bytes big-endian, the way the game keys glyphs.</summary>
     public static uint Pack(int codepoint)
     {
-        Span<byte> buf = stackalloc byte[4];
-        var n = new Rune(codepoint).EncodeToUtf8(buf);
-        var v = 0u;
-        for (var i = 0; i < n; i++)
-            v = (v << 8) | buf[i];
-        return v;
+        var c = (uint)codepoint;
+        return c switch
+        {
+            < 0x80 => c,
+            < 0x800 => 0xC080u | ((c << 2) & 0x1F00) | (c & 0x3F),
+            < 0x10000 => 0xE08080u | ((c << 4) & 0x0F0000) | ((c << 2) & 0x3F00) | (c & 0x3F),
+            _ => 0xF0808080u | ((c << 6) & 0x07000000) | ((c << 4) & 0x3F0000) | ((c << 2) & 0x3F00) | (c & 0x3F),
+        };
     }
 
     /// <summary>The length of a UTF-8 sequence by its first byte, as the game steps through text (LayOutCharacter).</summary>
-    public static int SequenceLength(byte b) => b < 0x80 ? 1 : b < 0xC0 ? 1 : b < 0xE0 ? 2 : b < 0xF0 ? 3 : b < 0xF8 ? 4 : 1;
+    public static int SequenceLength(byte b) => b < 0xC0 ? 1 : b < 0xE0 ? 2 : b < 0xF0 ? 3 : b < 0xF8 ? 4 : 1;
 
     /// <summary>Packs a UTF-8 sequence's bytes big-endian, the way the game keys glyphs.</summary>
     public static unsafe uint PackSequence(byte* p, int length)

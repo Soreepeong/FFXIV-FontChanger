@@ -7,7 +7,7 @@ struct App::ProgressDialog::ControlStruct {
 	HWND CancelButton = GetDlgItem(Window, IDCANCEL);
 	HWND StepNameStatic = GetDlgItem(Window, IDC_STATIC_STEPNAME);
 	HWND ProgrssBar = GetDlgItem(Window, IDC_PROGRESS);
-}* m_controls = nullptr;
+};
 
 App::ProgressDialog::ProgressDialog(HWND hParentWnd, std::wstring windowTitle)
 	: m_hParentWnd(hParentWnd)
@@ -18,26 +18,7 @@ App::ProgressDialog::ProgressDialog(HWND hParentWnd, std::wstring windowTitle)
 
 	bool bFailed = false;
 	m_dialogThread = std::thread([this, &bFailed]() {
-		std::unique_ptr<std::remove_pointer_t<HGLOBAL>, decltype(&FreeResource)> hglob(
-			LoadResource(
-				g_hInstance,
-				FindResourceExW(
-					g_hInstance,
-					RT_DIALOG,
-					MAKEINTRESOURCE(IDD_PROGRESS),
-					g_langId)),
-			&FreeResource);
-		if (!hglob) {
-			hglob = {
-				LoadResource(
-					g_hInstance,
-					FindResourceW(
-						g_hInstance,
-						MAKEINTRESOURCE(IDD_PROGRESS),
-						RT_DIALOG)),
-				&FreeResource,
-			};
-		}
+		const auto hglob = LoadResourceWithLanguageFallback(RT_DIALOG, IDD_PROGRESS);
 		if (-1 == DialogBoxIndirectParamW(
 			g_hInstance,
 			reinterpret_cast<DLGTEMPLATE*>(LockResource(hglob.get())),
@@ -97,16 +78,7 @@ INT_PTR App::ProgressDialog::Dialog_OnInitDialog() {
 	SendMessageW(m_controls->ProgrssBar, PBM_SETRANGE32, 0, 10000);
 	UpdateProgress(std::nanf(""));
 
-	RECT rc, rcParent;
-	GetWindowRect(m_controls->Window, &rc);
-	GetWindowRect(m_hParentWnd, &rcParent);
-	rc.right -= rc.left;
-	rc.bottom -= rc.top;
-	rc.left = (rcParent.left + rcParent.right - rc.right) / 2;
-	rc.top = (rcParent.top + rcParent.bottom - rc.bottom) / 2;
-	rc.right += rc.left;
-	rc.bottom += rc.top;
-	SetWindowPos(m_controls->Window, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_NOACTIVATE | SWP_NOZORDER);
+	CenterWindowOnParent(m_controls->Window, m_hParentWnd);
 
 	SetEvent(m_hReadyEvent);
 
@@ -137,9 +109,6 @@ INT_PTR App::ProgressDialog::DlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 				return 1;
 			return 0;
 		}
-		case WM_DESTROY: {
-			return 0;
-		}
 	}
 	return 0;
 }
@@ -153,5 +122,4 @@ INT_PTR __stdcall App::ProgressDialog::DlgProcStatic(HWND hwnd, UINT message, WP
 	} else {
 		return reinterpret_cast<ProgressDialog*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))->DlgProc(message, wParam, lParam);
 	}
-	return 0;
 }

@@ -10,11 +10,6 @@ namespace CustomFonts;
 /// </summary>
 internal static unsafe class GameUi
 {
-    /// <summary>AtkResNode.Type of a text node; types of 1000 and up are component nodes.</summary>
-    public const ushort TextNodeType = 3;
-
-    public const ushort FirstComponentNodeType = 1000;
-
     private static nint stageInstance;
     private static int stageUnitManager;
     private static int loadedUnitsCount;
@@ -32,13 +27,22 @@ internal static unsafe class GameUi
 
     private static int textureD3D11Texture2D;
 
+    /// <summary>Gets AtkResNode.Type of a text node.</summary>
+    public static int TextNodeType { get; private set; }
+
+    /// <summary>Gets the first AtkResNode.Type of component nodes: the types from there on are.</summary>
+    public static int FirstComponentNodeType { get; private set; }
+
     /// <summary>Gets AtkStage, or 0 before it is made.</summary>
     public static nint Stage => *(nint*)stageInstance;
+
+    /// <summary>Resolves <see cref="Stage"/>.</summary>
+    public static void ResolveStage() => stageInstance = GameLayout.Target("AtkStage.Instance");
 
     /// <summary>Resolves the loaded units and their node trees: <see cref="ForEachLoadedUnit"/> and the node accessors.</summary>
     public static void ResolveUnits()
     {
-        stageInstance = GameLayout.Target("AtkStage.Instance");
+        ResolveStage();
         stageUnitManager = GameLayout.Get("AtkStage.RaptureAtkUnitManager");
         loadedUnitsCount = GameLayout.Get("AtkUnitManager.AllLoadedUnitsList.Count");
         loadedUnitsEntries = GameLayout.Get("AtkUnitManager.AllLoadedUnitsList.Entries");
@@ -48,6 +52,8 @@ internal static unsafe class GameUi
         nodeType = GameLayout.Get("AtkResNode.Type");
         componentNodeComponent = GameLayout.Get("AtkComponentNode.Component");
         componentUld = GameLayout.Get("AtkComponentBase.UldManager");
+        TextNodeType = GameLayout.Get("NodeType.Text");
+        FirstComponentNodeType = GameLayout.Get("NodeType.FirstComponent");
     }
 
     /// <summary>Resolves <see cref="GetFileName"/>.</summary>

@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "GlyphFileTools.h"
 #include "FaceElementEditorDialog.Internal.h"
 #include "FontChanger.Presets/GlyphFiles.h"
 
@@ -89,25 +90,10 @@ INT_PTR App::FaceElementEditorDialog::GlyphImages_OnCommand(uint16_t id, uint16_
 			return 0;
 
 		const auto& [_, hwnd, field] = *it;
+		// Units per em divide the sizes.
 		std::optional<float> value;
-		if (const auto str = GetWindowString(hwnd, true); !str.empty()) {
-			float v;
-			if (str.starts_with(L'=')) {
-				if (!TryEvaluate(str, v, true))
-					return 0;
-			} else {
-				// Keep the last valid value while the text is being typed.
-				wchar_t* end;
-				v = std::wcstof(str.c_str(), &end);
-				if (end == str.c_str() || *end)
-					return 0;
-			}
-
-			// Units per em divide the sizes.
-			if (!std::isfinite(v) || (id == IDC_EDIT_GLYPHIMAGES_UNITSPEREM && !(v > 0)))
-				return 0;
-			value = v;
-		}
+		if (!TryReadOptionalNumber(hwnd, value) || (id == IDC_EDIT_GLYPHIMAGES_UNITSPEREM && value && !(*value > 0)))
+			return 0;
 		if (value == *field)
 			return 0;
 		*field = value;
@@ -120,27 +106,13 @@ INT_PTR App::FaceElementEditorDialog::GlyphImages_OnCommand(uint16_t id, uint16_
 
 INT_PTR App::FaceElementEditorDialog::GlyphImagesBrowseButton_OnCommand(uint16_t notiCode) {
 	return TryCatchShowError(m_controls->Window, IDS_ERROR_OPENFILEFAILURE_BODY, INT_PTR{0}, [&]() -> INT_PTR {
-		IFileOpenDialogPtr pDialog;
-		DWORD dwFlags;
-		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
-		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_GlyphImagesFolder));
-		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_GLYPHIMAGES_SELECTFOLDER)).c_str()));
-		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
-		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM | FOS_PICKFOLDERS));
-		if (SuccessOrThrow(pDialog->Show(m_controls->Window), {HRESULT_FROM_WIN32(ERROR_CANCELLED)}) == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+		const auto picked = PickFolder(m_controls->Window, Guid_IFileDialog_GlyphImagesFolder, IDS_GLYPHIMAGES_SELECTFOLDER);
+		if (!picked)
 			return 0;
 
-		IShellItemPtr pResult;
-		PWSTR pszFileName;
-		SuccessOrThrow(pDialog->GetResult(&pResult));
-		SuccessOrThrow(pResult->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName));
-		if (!pszFileName)
-			throw std::runtime_error("DEBUG: The selected file does not have a filesystem path.");
-		std::unique_ptr<std::remove_pointer_t<PWSTR>, decltype(&CoTaskMemFree)> pszFileNamePtr(pszFileName, &CoTaskMemFree);
-
 		// Folders inside the folder of the configuration are kept relative, so that the two can be moved together.
-		auto folder = std::filesystem::path(pszFileName).lexically_normal();
-		if (const auto base = Structs::GetProjectDirectory(); !base.empty()) {
+		auto folder = picked->lexically_normal();
+		if (const auto base = ElementFonts::GetProjectDirectory(); !base.empty()) {
 			if (const auto relative = folder.lexically_relative(base.lexically_normal()); !relative.empty() && *relative.begin() != L"..")
 				folder = relative;
 		}
@@ -159,7 +131,7 @@ INT_PTR App::FaceElementEditorDialog::GlyphImagesBrowseButton_OnCommand(uint16_t
 
 INT_PTR App::FaceElementEditorDialog::GlyphImagesEmbedButton_OnCommand(uint16_t notiCode) {
 	return TryCatchShowError(m_controls->Window, IDS_ERROR_OPENFILEFAILURE_BODY, INT_PTR{0}, [&]() -> INT_PTR {
-		GlyphFiles::Embed(m_element.RendererSpecific.GlyphImages);
+		GlyphFileTools::Embed(m_element.RendererSpecific.GlyphImages);
 		OnBaseFontChanged();
 		RefreshGlyphImagesGroup();
 		return 0;

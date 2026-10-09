@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -56,7 +57,11 @@ internal static unsafe class ClientStructsCheck
         ("NamePlateObject.NeedsToBeBaked", [(typeof(AddonNamePlate.NamePlateObject), "NeedsToBeBaked")]),
     ];
 
-    /// <summary>Logs where the captured layouts and instances differ from FFXIVClientStructs'. Once; never throws.</summary>
+    /// <summary>
+    /// Logs where the captured layouts and instances differ from FFXIVClientStructs'. Once; never throws. A development
+    /// check: left out of release builds.
+    /// </summary>
+    [Conditional("DEBUG")]
     public static void Run()
     {
         if (done)
@@ -88,13 +93,13 @@ internal static unsafe class ClientStructsCheck
                 Instance("AtkModule", (nint)GameFontManager.Instance() - moduleFontManager, (nint)RaptureAtkModule.Instance());
 
             if (differences.Count == 0)
-                Plugin.Log.Information("The game's code agrees with FFXIVClientStructs on {Count} offsets and instances", checkedCount);
+                Host.Log.Information("The game's code agrees with FFXIVClientStructs on {Count} offsets and instances", checkedCount);
             else
-                Plugin.Log.Warning("The game's code disagrees with FFXIVClientStructs: {Differences}", string.Join("; ", differences));
+                Host.Log.Warning("The game's code disagrees with FFXIVClientStructs: {Differences}", string.Join("; ", differences));
         }
         catch (Exception ex)
         {
-            Plugin.Log.Warning(ex, "Comparing with FFXIVClientStructs failed");
+            Host.Log.Warning(ex, "Comparing with FFXIVClientStructs failed");
         }
     }
 

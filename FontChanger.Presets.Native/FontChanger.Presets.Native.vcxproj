@@ -19,25 +19,33 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\xivres\xivres.fontgen\xivres.fontgen.vcxproj">
+    <ProjectReference Include="..\FontChanger.FixedSizeFont\FontChanger.FixedSizeFont.vcxproj">
       <Project>{90e4b098-e528-44ee-b643-56a0ee1a4ffb}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\xivres\xivres\xivres.vcxproj">
+    <ProjectReference Include="$(FontChangerXivresDir)xivres\xivres.vcxproj">
       <Project>{58daddf6-5733-40e0-855c-cc3b4bf235eb}</Project>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="impl\CodepointRanges.cpp" />
+    <ClCompile Include="impl\DirectWriteUtil.cpp" />
+    <ClCompile Include="impl\ElementFonts.cpp" />
+    <ClCompile Include="impl\FaceFromFont.cpp" />
     <ClCompile Include="impl\GlyphFiles.cpp" />
+    <ClCompile Include="impl\GlyphMergingPresets.cpp" />
     <ClCompile Include="impl\HResult.cpp" />
     <ClCompile Include="impl\Structs.cpp" />
-    <ClCompile Include="impl\WicImage.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="impl\pch.h" />
+    <ClInclude Include="include\FontChanger.Presets\CodepointRanges.h" />
+    <ClInclude Include="include\FontChanger.Presets\DirectWriteUtil.h" />
+    <ClInclude Include="include\FontChanger.Presets\ElementFonts.h" />
+    <ClInclude Include="include\FontChanger.Presets\FaceFromFont.h" />
     <ClInclude Include="include\FontChanger.Presets\GlyphFiles.h" />
+    <ClInclude Include="include\FontChanger.Presets\GlyphMergingPresets.h" />
     <ClInclude Include="include\FontChanger.Presets\HResult.h" />
     <ClInclude Include="include\FontChanger.Presets\Structs.h" />
-    <ClInclude Include="include\FontChanger.Presets\WicImage.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json" />
@@ -93,25 +101,28 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Label="UserMacros">
+    <!-- Where xivres is; a solution that has FontChanger as a submodule and its own xivres sets it to that one. -->
+    <FontChangerXivresDir Condition="'$(FontChangerXivresDir)' == ''">$(MSBuildThisFileDirectory)..\xivres\</FontChangerXivresDir>
+  </PropertyGroup>
   <!-- Paths are relative to the project, so that other solutions can include it from a submodule of this repository. -->
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>$(ProjectDir)include;$(ProjectDir)..\xivres\xivres\include;$(ProjectDir)..\xivres\xivres.fontgen\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)include;$(FontChangerXivresDir)xivres\include;$(ProjectDir)..\FontChanger.FixedSizeFont\include;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\Temp_$(Platform)_$(ProjectName)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>$(ProjectDir)include;$(ProjectDir)..\xivres\xivres\include;$(ProjectDir)..\xivres\xivres.fontgen\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)include;$(FontChangerXivresDir)xivres\include;$(ProjectDir)..\FontChanger.FixedSizeFont\include;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\Temp_$(Platform)_$(ProjectName)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>$(ProjectDir)include;$(ProjectDir)..\xivres\xivres\include;$(ProjectDir)..\xivres\xivres.fontgen\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)include;$(FontChangerXivresDir)xivres\include;$(ProjectDir)..\FontChanger.FixedSizeFont\include;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\Temp_$(Platform)_$(ProjectName)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>$(ProjectDir)include;$(ProjectDir)..\xivres\xivres\include;$(ProjectDir)..\xivres\xivres.fontgen\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)include;$(FontChangerXivresDir)xivres\include;$(ProjectDir)..\FontChanger.FixedSizeFont\include;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\Temp_$(Platform)_$(ProjectName)\</IntDir>
   </PropertyGroup>

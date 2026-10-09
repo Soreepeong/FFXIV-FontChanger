@@ -31,7 +31,7 @@ asm_call_atkmodule_vf43_via_wndproc proc
 		dq 0
 	ppfnAtkTextNode_ToggleFontCache:
 		dq 0
-	offAtkModuleAtkStage:
+	ppAtkStage:
 		dq 0
 	offAtkModuleIsLobby:
 		dq 0
@@ -43,9 +43,15 @@ asm_call_atkmodule_vf43_via_wndproc proc
 		dq 0
 	offNamePlateObjectNameText:
 		dq 0
-	offTextNodeFlags2:
+	offTextNodeFontCacheFlags:
 		dq 0
 	nNamePlateObjectCount:
+		dq 0
+	offUiModuleGetRaptureAtkModule:
+		dq 0
+	ppfnAtkModule_LoadFonts:
+		dq 0
+	nUseFontCacheFlag:
 		dq 0
 	szNamePlate:
 		db "NamePlate", 0, 0, 0, 0, 0, 0, 0
@@ -91,7 +97,7 @@ asm_call_atkmodule_vf43_via_wndproc proc
 
 		mov rcx, rax
 		mov rax, qword ptr [rax]
-		add rax, 7 * 8
+		add rax, qword ptr [offUiModuleGetRaptureAtkModule]
 		mov rax, qword ptr [rax]
 		call rax  ; vf7 GetRaptureAtkModule(this)
 		; rax = pAtkModule
@@ -102,8 +108,8 @@ asm_call_atkmodule_vf43_via_wndproc proc
 		; They are not turned back on: building a cache while the fonts are still loading makes one with unfilled
 		; records, which crashes the game when drawn.
 		mov qword ptr [rsp + 30h], 0
-		mov rcx, qword ptr [offAtkModuleAtkStage]
-		mov rcx, qword ptr [rax + rcx]
+		mov rcx, qword ptr [ppAtkStage]
+		mov rcx, qword ptr [rcx]
 		test rcx, rcx
 		jz NoNamePlate
 		mov rdx, qword ptr [offAtkStageUnitManager]
@@ -130,8 +136,9 @@ asm_call_atkmodule_vf43_via_wndproc proc
 		mov rcx, qword ptr [rbx + rax]
 		test rcx, rcx
 		jz TurnOffSkip
-		mov rax, qword ptr [offTextNodeFlags2]
-		test byte ptr [rcx + rax], 40h
+		mov rax, qword ptr [offTextNodeFontCacheFlags]
+		mov dl, byte ptr [nUseFontCacheFlag]
+		test byte ptr [rcx + rax], dl
 		jz TurnOffSkip
 		xor edx, edx
 		call qword ptr [ppfnAtkTextNode_ToggleFontCache]
@@ -143,13 +150,10 @@ asm_call_atkmodule_vf43_via_wndproc proc
 
 	NoNamePlate:
 		mov rcx, qword ptr [rsp + 28h]
-		mov rax, qword ptr [rcx]
-		add rax, 43 * 8
-		mov rax, qword ptr [rax]
 		mov rdx, qword ptr [offAtkModuleIsLobby]
 		movzx edx, byte ptr [rcx + rdx]
 		mov r8, 1
-		call rax  ; vf43 LoadFonts(this, bIsLobby, bForceReload)
+		call qword ptr [ppfnAtkModule_LoadFonts]  ; vf43 LoadFonts(this, bIsLobby, bForceReload)
 
 		mov rax, qword ptr [rsp + 20h]
 		add rsp, 40h

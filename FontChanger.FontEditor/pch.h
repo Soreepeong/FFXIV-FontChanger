@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <ranges>
 #include <string>
@@ -23,25 +24,17 @@
 #include <ShlGuid.h>
 #include <wincrypt.h>
 
-#include <exprtk.hpp>
-
-#include <ft2build.h>
-#include FT_FREETYPE_H
-#include FT_BITMAP_H
-#include FT_OUTLINE_H
-#include FT_GLYPH_H
-
 #include <nlohmann/json.hpp>
 
-#include "xivres.fontgen/directwrite_fixed_size_font.h"
-#include "xivres.fontgen/fontdata_fixed_size_font.h"
-#include "xivres.fontgen/fontdata_packer.h"
-#include "xivres.fontgen/freetype_fixed_size_font.h"
-#include "xivres.fontgen/merged_fixed_size_font.h"
-#include "xivres.fontgen/text_measurer.h"
-#include "xivres.fontgen/glyph_merging_fixed_size_font.h"
-#include "xivres.fontgen/image_fixed_size_font.h"
-#include "xivres.fontgen/wrapping_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/directwrite_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/fontdata_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/fontdata_packer.h"
+#include "FontChanger.FixedSizeFont/freetype_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/merged_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/text_measurer.h"
+#include "FontChanger.FixedSizeFont/glyph_merging_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/image_fixed_size_font.h"
+#include "FontChanger.FixedSizeFont/wrapping_fixed_size_font.h"
 #include "xivres/fontdata.h"
 #include "xivres/installation.h"
 #include "xivres/packed_stream.standard.h"
@@ -57,13 +50,13 @@
 
 // The preset structures and the fonts made from them, from FontChanger.Presets.Native.
 namespace FontChanger::Structs {}
+namespace FontChanger::ElementFonts {}
 namespace FontChanger::GlyphFiles {}
-namespace FontChanger::WicImage {}
 
 namespace App {
 	namespace Structs = FontChanger::Structs;
+	namespace ElementFonts = FontChanger::ElementFonts;
 	namespace GlyphFiles = FontChanger::GlyphFiles;
-	namespace WicImage = FontChanger::WicImage;
 }
 
 using FontChanger::SuccessOrThrow;
@@ -75,6 +68,7 @@ extern struct FontGeneratorConfig g_config;
 extern WORD g_langId;
 extern std::wstring g_localeName;
 
+_COM_SMARTPTR_TYPEDEF(IFileDialog, __uuidof(IFileDialog));
 _COM_SMARTPTR_TYPEDEF(IFileSaveDialog, __uuidof(IFileSaveDialog));
 _COM_SMARTPTR_TYPEDEF(IFileOpenDialog, __uuidof(IFileOpenDialog));
 _COM_SMARTPTR_TYPEDEF(IShellItem, __uuidof(IShellItem));
@@ -112,8 +106,9 @@ inline void SetWindowNumber(HWND hwnd, T v) {
 		static_assert(!sizeof(T), "no match");
 }
 
-template<typename T, typename = std::enable_if_t<(sizeof(T) <= sizeof(LPARAM))>>
-inline void SetComboboxContent(HWND hCombo, T currentValue, std::initializer_list<std::pair<T, UINT>> args) {
+// Fills the combobox with the values and the names from their string resources, and selects the current value.
+template<typename T, typename TItems = std::initializer_list<std::pair<T, UINT>>, typename = std::enable_if_t<(sizeof(T) <= sizeof(LPARAM))>>
+inline void SetComboboxContent(HWND hCombo, T currentValue, const TItems& args) {
 	ComboBox_ResetContent(hCombo);
 	std::wstring text;
 	for (const auto& [val, resId] : args) {
@@ -129,14 +124,3 @@ template<typename T, typename = std::enable_if_t<(sizeof(T) <= sizeof(LPARAM))>>
 inline T GetComboboxSelData(HWND hCombo) {
 	return static_cast<T>(ComboBox_GetItemData(hCombo, ComboBox_GetCurSel(hCombo)));
 }
-
-class WException {
-	std::wstring m_msg;
-
-public:
-	WException(std::wstring msg) : m_msg(msg) {}
-
-	const std::wstring& what() const {
-		return m_msg;
-	}
-};

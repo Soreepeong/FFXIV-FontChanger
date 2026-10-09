@@ -21,6 +21,7 @@ namespace App {
 		ControlStruct* m_controls{};
 
 		std::vector<Installation> m_installations;
+		std::optional<FontGeneratorConfig> m_result;
 		int m_sortCol = 0;
 		bool m_sortAscending = true;
 

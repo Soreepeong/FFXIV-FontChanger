@@ -20,14 +20,20 @@ public sealed class Plugin : IDalamudPlugin
     {
         try
         {
-            // On the framework thread: the hooked functions run there, and the replacer's state isn't locked against them.
-            this.Replacer = Framework.RunOnFrameworkThread(() => new FontReplacer()).Result;
-            // Without these, text is still drawn with the replaced fonts: nameplates as the game bakes them, and words split
-            // by the game's rules.
-            this.NamePlates = Optional("Nameplate text", () => Framework.RunOnFrameworkThread(() => new NamePlateText(this.Replacer)).Result);
-            this.LineBreaker = Optional("Line breaking", () => Framework.RunOnFrameworkThread(() => new LineBreaker(this.Replacer)).Result);
+            Host.Current = new DalamudHost();
             this.Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new();
-            Framework.RunOnFrameworkThread(() => this.Replacer.SetEdge(this.Configuration.Edge)).Wait();
+
+            // On the framework thread: the hooked functions run there, and the replacer's state isn't locked against them.
+            // Without the nameplates and the line breaker, text is still drawn with the replaced fonts: nameplates as the
+            // game bakes them, and words split by the game's rules.
+            (this.Replacer, this.NamePlates, this.LineBreaker) = Framework.RunOnFrameworkThread(() =>
+            {
+                var replacer = new FontReplacer();
+                replacer.SetEdge(this.Configuration.Edge);
+                return (replacer,
+                        Optional("Nameplate text", () => new NamePlateText(replacer)),
+                        Optional("Line breaking", () => new LineBreaker(replacer)));
+            }).Result;
             this.Presets = new(this.Configuration, this.Replacer);
             this.MainWindow = new(this);
             this.windowSystem.AddWindow(this.MainWindow);
@@ -113,9 +119,12 @@ public sealed class Plugin : IDalamudPlugin
         TearDown("presets", () => this.Presets?.Dispose());
 
         // Between frames on the framework thread: Dalamud calls Dispose there, so this runs inline.
-        TearDown("line breaker", () => Framework.RunOnFrameworkThread(() => this.LineBreaker?.Dispose()).Wait());
-        TearDown("nameplate text", () => Framework.RunOnFrameworkThread(() => this.NamePlates?.Dispose()).Wait());
-        TearDown("font replacer", () => Framework.RunOnFrameworkThread(() => this.Replacer?.Dispose()).Wait());
+        TearDown("hooks", () => Framework.RunOnFrameworkThread(() =>
+        {
+            TearDown("line breaker", () => this.LineBreaker?.Dispose());
+            TearDown("nameplate text", () => this.NamePlates?.Dispose());
+            TearDown("font replacer", () => this.Replacer?.Dispose());
+        }).Wait());
     }
 
     /// <summary>Sets up a part the plugin works without; null, with why logged, if it can't be.</summary>

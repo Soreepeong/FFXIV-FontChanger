@@ -58,9 +58,6 @@
     <ClCompile Include="MainWindow.Menu.Edit.cpp">
       <Filter>Source\Windows</Filter>
     </ClCompile>
-    <ClCompile Include="FaceFromFont.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
     <ClCompile Include="MainWindow.Menu.Export.cpp">
       <Filter>Source\Windows</Filter>
     </ClCompile>
@@ -71,6 +68,12 @@
       <Filter>Source\Windows</Filter>
     </ClCompile>
     <ClCompile Include="GameFontReloader.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="GlyphFileTools.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="WicImage.cpp">
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="MainWindow.Menu.View.cpp">
@@ -122,9 +125,6 @@
     <ClInclude Include="MainWindow.h">
       <Filter>Source\Windows</Filter>
     </ClInclude>
-    <ClInclude Include="FaceFromFont.h">
-      <Filter>Source</Filter>
-    </ClInclude>
     <ClInclude Include="FaceElementEditorDialog.h">
       <Filter>Source\Dialogs</Filter>
     </ClInclude>
@@ -132,6 +132,12 @@
       <Filter>Source\Dialogs</Filter>
     </ClInclude>
     <ClInclude Include="GameFontReloader.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="GlyphFileTools.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="WicImage.h">
       <Filter>Source</Filter>
     </ClInclude>
     <ClInclude Include="ProgressDialog.h">

@@ -42,7 +42,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         {
             // FreeTypeSharp looks for freetype.dll from the application's directory (the game's): the plugin's copy is
             // loaded first, which the system then gives it by name.
-            var directory = Plugin.PluginInterface.AssemblyLocation.DirectoryName!;
+            var directory = Host.Current.AssemblyDirectory;
             NativeLibrary.TryLoad(Path.Combine(directory, "freetype.dll"), out _);
 
             FT_LibraryRec_* library;
@@ -51,7 +51,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         }
         catch (Exception ex)
         {
-            Plugin.Log.Warning(ex, "FreeType can't be used; its elements are drawn with DirectWrite");
+            Host.Log.Warning(ex, "FreeType can't be used; its elements are drawn with DirectWrite");
             return null;
         }
     }
@@ -119,7 +119,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         var face = (FT_FaceRec_*)facePtr;
         this.SetAxes(face, axes);
         var scale = this.SetSize(face, px);
-        var strength = (nint)MathF.Round(embolden * px * 64);
+        var strength = (nint)Rounding.Round(embolden * px * 64);
 
         // Emboldening needs outlines.
         var loadFlags = (FT_LOAD)(parameters.LoadFlags | ((parameters.RenderMode & 15) << LoadTargetShift) | (strength != 0 ? 0x8 : 0));
@@ -127,10 +127,10 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         // FreeType transforms column vectors with y growing upwards (16.16 fixed point).
         var matrix = new FT_Matrix_
         {
-            xx = (nint)MathF.Round(transform.M11 * 65536),
-            xy = (nint)MathF.Round(-transform.M12 * 65536),
-            yx = (nint)MathF.Round(-transform.M21 * 65536),
-            yy = (nint)MathF.Round(transform.M22 * 65536),
+            xx = (nint)Rounding.Round(transform.M11 * 65536),
+            xy = (nint)Rounding.Round(-transform.M12 * 65536),
+            yx = (nint)Rounding.Round(-transform.M21 * 65536),
+            yy = (nint)Rounding.Round(transform.M22 * 65536),
         };
 
         // The glyphs' coverage, placed relative to the pen, merged into one box.
@@ -156,7 +156,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
                 if (strength != 0)
                     FT.FT_Outline_EmboldenXY(&slot->outline, strength, strength);
                 FT.FT_Outline_Transform(&slot->outline, &matrix);
-                FT.FT_Outline_Translate(&slot->outline, (nint)MathF.Round((gx - MathF.Floor(gx)) * 64), (nint)MathF.Round(gy * 64));
+                FT.FT_Outline_Translate(&slot->outline, (nint)Rounding.Round((gx - MathF.Floor(gx)) * 64), (nint)Rounding.Round(gy * 64));
                 if (FT.FT_Render_Glyph(slot, (FT_Render_Mode_)parameters.RenderMode) != FT_Error.FT_Err_Ok)
                     continue;
             }
@@ -170,11 +170,11 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
             if (scale != 1)
                 piece = piece.Scaled(scale, fraction, -gy);
             else if (bitmapGlyph)
-                piece = piece with { Left = piece.Left + (int)MathF.Round(fraction), Top = piece.Top - (int)MathF.Round(gy) };
+                piece = piece with { Left = piece.Left + (int)Rounding.Round(fraction), Top = piece.Top - (int)Rounding.Round(gy) };
             pieces.Add(piece with { Left = piece.Left + (int)MathF.Floor(gx) });
         }
 
-        return Merge(pieces, advance);
+        return RasterGlyph.Merge(pieces, advance);
     }
 
     /// <summary>
@@ -190,7 +190,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
 
         var ftPoints = new FT_Vector_[points.Length];
         for (var i = 0; i < points.Length; i++)
-            ftPoints[i] = new() { x = (nint)MathF.Round(points[i].X * 64), y = (nint)MathF.Round((height - points[i].Y) * 64) };
+            ftPoints[i] = new() { x = (nint)Rounding.Round(points[i].X * 64), y = (nint)Rounding.Round((height - points[i].Y) * 64) };
         var ftTags = tags.ToArray();
         var ends = contourEnds.ToArray();
         fixed (FT_Vector_* p = ftPoints)
@@ -263,7 +263,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         for (var i = 0; i < axes.Length; i++)
         {
             var (tag, min, def, max) = axes[i];
-            coordinates[i] = values is not null && values.TryGetValue(tag, out var v) ? Math.Clamp((nint)MathF.Round(v * 65536), min, max) : def;
+            coordinates[i] = values is not null && values.TryGetValue(tag, out var v) ? Math.Clamp((nint)Rounding.Round(v * 65536), min, max) : def;
         }
 
         if (this.faceCoordinates.TryGetValue((nint)face, out var current) && current.AsSpan().SequenceEqual(coordinates))
@@ -282,35 +282,26 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
     /// <summary>Gets the file and face index of a DirectWrite font face, if it is a local file.</summary>
     private static (string? Path, uint Index) GetFile(IDWriteFontFace* fontFace)
     {
-        uint count = 1;
-        IDWriteFontFile* file;
-        if (fontFace->GetFiles(&count, &file).FAILED || count == 0)
+        using var file = FontFileKey.Of(fontFace);
+        IDWriteLocalFontFileLoader* local;
+        var iid = IID.IID_IDWriteLocalFontFileLoader;
+        if (file.Loader is null || ((IUnknown*)file.Loader)->QueryInterface(&iid, (void**)&local).FAILED)
             return (null, 0);
-        IDWriteFontFileLoader* loader = null;
-        IDWriteLocalFontFileLoader* local = null;
         try
         {
-            void* key;
-            uint keySize;
-            file->GetReferenceKey(&key, &keySize).ThrowOnError();
-            file->GetLoader(&loader).ThrowOnError();
-            var iid = IID.IID_IDWriteLocalFontFileLoader;
-            if (((IUnknown*)loader)->QueryInterface(&iid, (void**)&local).FAILED)
-                return (null, 0);
-            uint length;
-            local->GetFilePathLengthFromKey(key, keySize, &length).ThrowOnError();
-            var path = new char[length + 1];
-            fixed (char* p = path)
-                local->GetFilePathFromKey(key, keySize, p, length + 1).ThrowOnError();
-            return (new string(path, 0, (int)length), fontFace->GetIndex());
+            fixed (byte* key = file.Key)
+            {
+                uint length;
+                local->GetFilePathLengthFromKey(key, (uint)file.Key.Length, &length).ThrowOnError();
+                var path = new char[length + 1];
+                fixed (char* p = path)
+                    local->GetFilePathFromKey(key, (uint)file.Key.Length, p, length + 1).ThrowOnError();
+                return (new string(path, 0, (int)length), fontFace->GetIndex());
+            }
         }
         finally
         {
-            if (local is not null)
-                local->Release();
-            if (loader is not null)
-                loader->Release();
-            file->Release();
+            local->Release();
         }
     }
 
@@ -324,7 +315,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         {
             if (!this.faceSizes.TryGetValue((nint)face, out var current) || current != px)
             {
-                Check(FT.FT_Set_Char_Size(face, 0, (nint)MathF.Round(px * 64), 72, 72));
+                Check(FT.FT_Set_Char_Size(face, 0, (nint)Rounding.Round(px * 64), 72, 72));
                 this.faceSizes[(nint)face] = px;
             }
 
@@ -379,34 +370,6 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         }
 
         return new(0, slot->bitmap_left, -slot->bitmap_top, w, h, alpha);
-    }
-
-    /// <summary>Merges glyphs placed relative to one pen into one box, keeping the larger coverage where they overlap.</summary>
-    private static RasterGlyph Merge(List<RasterGlyph> pieces, int advance)
-    {
-        if (pieces.Count == 0)
-            return new(advance, 0, 0, 0, 0, []);
-        if (pieces.Count == 1)
-            return pieces[0] with { Advance = advance };
-
-        int left = int.MaxValue, top = int.MaxValue, right = int.MinValue, bottom = int.MinValue;
-        foreach (var p in pieces)
-            (left, top, right, bottom) = (Math.Min(left, p.Left), Math.Min(top, p.Top), Math.Max(right, p.Left + p.Width), Math.Max(bottom, p.Top + p.Height));
-        var w = right - left;
-        var alpha = new byte[w * (bottom - top)];
-        foreach (var p in pieces)
-        {
-            for (var y = 0; y < p.Height; y++)
-            {
-                for (var x = 0; x < p.Width; x++)
-                {
-                    ref var d = ref alpha[((p.Top - top + y) * w) + (p.Left - left + x)];
-                    d = Math.Max(d, p.Alpha[(y * p.Width) + x]);
-                }
-            }
-        }
-
-        return new(advance, left, top, w, bottom - top, alpha);
     }
 
     /// <summary>FT_MM_Var; FreeType's longs are 64-bit in the bundled library, as FreeTypeSharp declares them.</summary>

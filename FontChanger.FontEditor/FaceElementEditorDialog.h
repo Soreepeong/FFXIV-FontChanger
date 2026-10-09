@@ -1,6 +1,6 @@
 #pragma once
 
-#include "FontChanger.Presets/Structs.h"
+#include "FontChanger.Presets/ElementFonts.h"
 
 namespace App {
 	class FaceElementEditorDialog {
@@ -65,6 +65,15 @@ namespace App {
 		MonospacingMode m_monospacingMode = MonospacingMode::Off;
 		bool m_bRefreshingMonospacing = false;
 
+		// Limits of the value of an edit of a number, and the steps that Up and Down (and Ctrl with them) change it by.
+		struct SpinRange {
+			float Min;
+			float Max;
+			float Step;
+			float FineStep;
+		};
+		std::map<HWND, SpinRange> m_spinRanges;
+
 		ControlStruct* m_controls = nullptr;
 
 	public:
@@ -94,6 +103,10 @@ namespace App {
 		template<typename T>
 		bool TryGetOrEvaluateValueInto(HWND hwnd, T& res, const T& originalValue);
 
+		// Reads a number from an edit that may be left empty, which reads as nullopt; a text starting with = is evaluated.
+		// Returns false if the text is not a finite number, as while it is being typed; the last valid value is then kept.
+		bool TryReadOptionalNumber(HWND hwnd, std::optional<float>& value);
+
 		INT_PTR OkButton_OnCommand(uint16_t notiCode);
 
 		INT_PTR CancelButton_OnCommand(uint16_t notiCode);
@@ -110,13 +123,11 @@ namespace App {
 
 		INT_PTR FontCombo_OnCommand(uint16_t notiCode);
 
-		INT_PTR FontSizeEdit_OnCommand(uint16_t notiCode);
+		// Edits of numbers of the element: the size, the metrics of empty fonts, and the adjustments.
+		INT_PTR NumberEdit_OnCommand(uint16_t id, uint16_t notiCode);
 
-		INT_PTR FontWeightCombo_OnCommand(uint16_t notiCode);
-
-		INT_PTR FontStyleCombo_OnCommand(uint16_t notiCode);
-
-		INT_PTR FontStretchCombo_OnCommand(uint16_t notiCode);
+		// Comboboxes of settings of the element: the weight, style, and stretch, and the settings of the renderers.
+		INT_PTR SettingCombo_OnCommand(uint16_t id, uint16_t notiCode);
 
 		INT_PTR FontAllowSynthesisCheck_OnCommand(uint16_t notiCode);
 
@@ -139,27 +150,7 @@ namespace App {
 
 		INT_PTR FontVariationValueEdit_OnCommand(uint16_t notiCode);
 
-		INT_PTR EmptyAscentEdit_OnCommand(uint16_t notiCode);
-
-		INT_PTR EmptyLineHeightEdit_OnCommand(uint16_t notiCode);
-
 		INT_PTR FreeTypeHinting_OnCommand(uint16_t notiCode);
-
-		INT_PTR FreeTypeRenderModeCombo_OnCommand(uint16_t notiCode);
-
-		INT_PTR DirectWriteRenderModeCombo_OnCommand(uint16_t notiCode);
-
-		INT_PTR DirectWriteMeasureModeCombo_OnCommand(uint16_t notiCode);
-
-		INT_PTR DirectWriteGridFitModeCombo_OnCommand(uint16_t notiCode);
-
-		INT_PTR AdjustmentBaselineShiftEdit_OnCommand(uint16_t notiCode);
-
-		INT_PTR AdjustmentLetterSpacingEdit_OnCommand(uint16_t notiCode);
-
-		INT_PTR AdjustmentHorizontalOffsetEdit_OnCommand(uint16_t notiCode);
-
-		INT_PTR AdjustmentGammaEdit_OnCommand(uint16_t notiCode);
 
 		// index: 0 for scale x, 1 for scale y, 2 for skew, and 3 for rotation.
 		INT_PTR TransformEdit_OnCommand(int index, uint16_t notiCode);
@@ -243,9 +234,6 @@ namespace App {
 
 		std::vector<std::pair<char32_t, char32_t>> ParseCustomRangeString();
 
-		// Parses ranges such as "U+E08F-E094, U+E0AF", or the characters themselves.
-		static std::vector<std::pair<char32_t, char32_t>> ParseCodepointRanges(std::wstring_view text);
-
 		void InitializeGlyphMergingPage();
 		void RefreshGlyphMergingPlacement();
 		void RefreshGlyphMergingMappingsList(int selectIndex);
@@ -254,8 +242,8 @@ namespace App {
 		void RefreshGlyphMergingPresets();
 		void SetGlyphMergingControlsEnabled(bool enabled);
 		[[nodiscard]] int GetSelectedGlyphMergingMapping() const;
-		bool AddNewCodepointRange(char32_t c1, char32_t c2, const std::vector<char32_t>& charVec);
-		void AddCodepointRangeToListBox(int index, char32_t c1, char32_t c2, const std::vector<char32_t>& charVec);
+		bool AddNewCodepointRange(char32_t c1, char32_t c2);
+		void AddCodepointRangeToListBox(int index, char32_t c1, char32_t c2);
 		void RemoveCodepointRanges(const std::vector<std::pair<char32_t, char32_t>>& ranges);
 		void RefreshUnicodeBlockSearchResults();
 
@@ -274,6 +262,9 @@ namespace App {
 		[[nodiscard]] std::wstring GetFontFeatureChoiceText(int index, std::optional<uint32_t> value) const;
 		[[nodiscard]] std::optional<uint32_t> GetFontFeatureValue(int index) const;
 		void SetFontFeatureValue(int index, std::optional<uint32_t> value, bool refreshCombo = true);
+
+		// Sets the feature to the choice after its current one, or back to the first.
+		void CycleFontFeatureValue(int index);
 		void RefreshFontFeatureValueCombo();
 		void RepopulateFontLanguageCombobox();
 		void RepopulateFontVariationsList();

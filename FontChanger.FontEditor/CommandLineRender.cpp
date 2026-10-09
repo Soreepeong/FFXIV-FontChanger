@@ -1,9 +1,10 @@
 #include "pch.h"
+#include "GlyphFileTools.h"
+#include "WicImage.h"
 #include "CommandLineRender.h"
 
 #include "FontChanger.Presets/GlyphFiles.h"
-#include "FontChanger.Presets/Structs.h"
-#include "FontChanger.Presets/WicImage.h"
+#include "FontChanger.Presets/ElementFonts.h"
 
 namespace {
 	// The app has no console of its own; messages go to the console that started it, if any.
@@ -77,7 +78,7 @@ namespace {
 		std::ifstream in(configPath, std::ios::binary);
 		if (!in)
 			throw std::runtime_error(std::format("Failed to open {}.", xivres::util::unicode::convert<std::string>(args[1])));
-		App::Structs::SetProjectDirectory(configPath.parent_path());
+		App::ElementFonts::SetProjectDirectory(configPath.parent_path());
 		const auto multiFontSet = nlohmann::json::parse(in).get<App::Structs::MultiFontSet>();
 
 		const App::Structs::Face* face = nullptr;
@@ -100,12 +101,12 @@ namespace {
 					throw std::invalid_argument(std::format("The font has {} elements.", face->Elements.size()));
 				element = face->Elements[*elementIndex].get();
 			}
-			const auto font = element ? App::GlyphFiles::GetElementFontForExport(*element, withAdjustments) : face->GetMergedFont();
-			App::GlyphFiles::ExportGlyphs(*font, *exportFolder, {
+			const auto font = element ? App::GlyphFileTools::GetElementFontForExport(*element, withAdjustments) : face->GetMergedFont();
+			App::GlyphFileTools::ExportGlyphs(*font, *exportFolder, {
 				.Svg = exportSvg,
 				.Png = exportPng,
 				.WithAdjustments = withAdjustments || !element,
-				.Source = element ? App::GlyphFiles::DescribeSource(*element) : App::GlyphFiles::DescribeSource(*face),
+				.Source = element ? App::GlyphFileTools::DescribeSource(*element) : App::GlyphFileTools::DescribeSource(*face),
 			});
 			if (!output)
 				return 0;
@@ -114,7 +115,7 @@ namespace {
 			throw std::invalid_argument("--render-text is required.");
 
 		const auto& font = *face->GetMergedFont();
-		const auto measured = xivres::fontgen::text_measurer(font)
+		const auto measured = FontChanger::FixedSizeFont::text_measurer(font)
 			.max_width(maxWidth.value_or((std::numeric_limits<int>::max)()))
 			.use_kerning(true)
 			.measure(xivres::util::unicode::convert<std::string>(*text));
@@ -131,7 +132,7 @@ std::optional<int> App::RunCommandLineRender(const std::vector<std::wstring>& ar
 		return std::nullopt;
 
 	// Nobody may be there to dismiss a dialog; elements whose game installation is missing are drawn empty.
-	App::Structs::SetGameFontErrorHandler(nullptr);
+	App::ElementFonts::SetGameFontErrorHandler(nullptr);
 
 	try {
 		return Render(args);

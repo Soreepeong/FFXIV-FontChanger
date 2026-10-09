@@ -10,18 +10,8 @@ public sealed class Configuration : IPluginConfiguration
 {
     public int Version { get; set; }
 
-    /// <summary>Gets or sets the path of the FontChanger preset used before presets were chosen from a folder; migrated to
-    /// <see cref="PresetFolder"/> and <see cref="FamilyPresets"/>.</summary>
-    public string? PresetPath { get; set; }
-
     /// <summary>Gets or sets the folder presets are chosen from.</summary>
     public string PresetFolder { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the presets used for all families before they were chosen per family; migrated to
-    /// <see cref="FamilyPresets"/>.
-    /// </summary>
-    public List<string>? SelectedPresets { get; set; }
 
     /// <summary>
     /// Gets or sets the presets in use per game font family (<c>AXIS</c>, <c>JupiterN</c>, ...), as paths relative to
@@ -32,8 +22,8 @@ public sealed class Configuration : IPluginConfiguration
     public Dictionary<string, List<string>> FamilyPresets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Gets or sets the system font per game font family to draw its faces with, made as the font editor's Add from Font
-    /// makes them; over the family's presets.
+    /// Gets or sets the system font per game font family to draw its faces with, made as by
+    /// <see cref="FontChanger.Presets.FaceFromFont"/>; over the family's presets.
     /// </summary>
     public Dictionary<string, FamilyFont> FamilyFonts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

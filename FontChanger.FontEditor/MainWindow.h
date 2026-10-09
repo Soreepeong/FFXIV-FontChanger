@@ -1,12 +1,18 @@
 #pragma once
 
 #include "BaseWindow.h"
-#include "FontChanger.Presets/Structs.h"
+#include "FontChanger.Presets/ElementFonts.h"
 #include "MainWindow.Internal.h"
 
 namespace App {
 	class FaceElementEditorDialog;
 	class ProgressDialog;
+
+	// The font data of the faces of a font set, and the textures of their glyphs.
+	struct CompiledFontSet {
+		std::vector<std::shared_ptr<xivres::fontdata::stream>> Fdts;
+		std::vector<std::shared_ptr<xivres::texture::memory_mipmap_stream>> Mipmaps;
+	};
 
 	class FontEditorWindow : public BaseWindow {
 		static constexpr auto ClassName = L"FontEditorWindowClass";
@@ -34,11 +40,18 @@ namespace App {
 		const std::vector<std::wstring> m_args;
 
 		bool m_bChanged = false;
-		// std::filesystem::path m_path;
-		IShellItemPtr m_currentShellItem;
+		std::filesystem::path m_currentPath;
 		Structs::MultiFontSet m_multiFontSet;
-		Structs::FontSet* m_pFontSet = nullptr;
 		Structs::Face* m_pActiveFace = nullptr;
+
+		// Elements left out of the preview, such as for comparing a face without them; not saved.
+		std::set<const Structs::FaceElement*> m_deactivatedElements;
+
+		// The merged font of the active face without them, and what it was made of.
+		struct {
+			std::vector<const void*> Key;
+			std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> Font;
+		} m_previewFont;
 
 		std::shared_ptr<xivres::texture::memory_mipmap_stream> m_pMipmap;
 		std::map<Structs::FaceElement*, std::unique_ptr<FaceElementEditorDialog>> m_editors;
@@ -107,7 +120,6 @@ namespace App {
 		LRESULT Window_OnMouseLButtonUp(uint16_t states, int16_t x, int16_t y);
 		LRESULT Window_OnMouseWheel(int16_t delta, int16_t x, int16_t y);
 		LRESULT Window_OnSetCursor(HWND hContainer, int hittest, int wm);
-		LRESULT Window_OnCaptureChanged(HWND newCapture);
 		LRESULT Window_OnDestroy();
 		void Window_Redraw();
 
@@ -135,7 +147,7 @@ namespace App {
 		LRESULT Menu_Edit_Details();
 		LRESULT Menu_Edit_ChangeParams(int baselineShift, int horizontalOffset, int letterSpacing, float fontSize);
 		LRESULT Menu_Edit_ToggleMergeMode();
-		LRESULT Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment alignment);
+		LRESULT Menu_Edit_SetVerticalAlignment(FontChanger::FixedSizeFont::vertical_alignment alignment);
 		LRESULT Menu_Edit_MoveUpOrDown(int direction);
 		LRESULT Menu_Edit_CreateEmptyCopyFromSelection();
 
@@ -148,10 +160,7 @@ namespace App {
 		LRESULT Menu_Export_Preview();
 		LRESULT Menu_Export_Raw();
 		LRESULT Menu_Export_TTMP(CompressionMode compressionMode);
-		LRESULT Menu_Export_MapFontLobby();
-		LRESULT Menu_Export_MapFontChnAxis();
-		LRESULT Menu_Export_MapFontKrnAxis();
-		LRESULT Menu_Export_MapFontTCAxis();
+		LRESULT Menu_Export_ToggleMapping(const ExportMapping& mapping);
 		LRESULT Menu_Export_Glyphs(bool withAdjustments);
 		LRESULT Menu_Export_FaceGlyphs();
 
@@ -184,7 +193,6 @@ namespace App {
 		LRESULT FaceElementsListView_OnRightClick(NMITEMACTIVATE& nmia);
 		LRESULT FaceElementsListView_Clone();
 		LRESULT FaceElementsListView_ShowNegativeBearingCodepoints();
-		void FaceElementsListView_InsertItem(int pos, Structs::FaceElement& element);
 
 		[[nodiscard]] double GetZoom() const noexcept;
 
@@ -192,9 +200,18 @@ namespace App {
 		void UpdateSplitterDragPosition(int16_t y);
 		void EndSplitterDrag();
 
-		void SetCurrentMultiFontSet(IShellItemPtr path);
-		void SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, IShellItemPtr path, bool fakePath);
-		std::wstring GetCurrentFileName();
+		void OpenFile(std::filesystem::path path);
+		void SetCurrentMultiFontSet(Structs::MultiFontSet multiFontSet, std::filesystem::path path);
+		[[nodiscard]] std::wstring GetCurrentFileName() const;
+
+		// Finds the font set that has the face.
+		[[nodiscard]] Structs::FontSet* FindFontSet(const Structs::Face& face) const;
+
+		// Gets the indices of the selected elements of the active face, in ascending order.
+		[[nodiscard]] std::vector<int> GetSelectedElementIndices() const;
+
+		// Marks the changes and draws again after the elements of the active face changed.
+		void OnActiveFaceElementsChanged();
 
 		// Takes the folder of the current file as the one that relative paths in the configuration are resolved against.
 		void UpdateProjectDirectory();
@@ -211,11 +228,19 @@ namespace App {
 
 		void ShowEditor(Structs::FaceElement& element);
 
+		// The merged font of the active face for the preview: without the deactivated elements; exports use GetMergedFont.
+		std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> GetPreviewFont();
+
 		void UpdateFaceList();
+		// Makes the list of elements show those of the active face in their order, keeping the selection.
 		void UpdateFaceElementList();
+
+		// Selects the elements of the active face in the list, and only them.
+		void SelectFaceElements(const std::set<const Structs::FaceElement*>& elements);
 		void UpdateFaceElementListViewItem(const Structs::FaceElement& element);
 
-		std::pair<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<std::shared_ptr<xivres::texture::memory_mipmap_stream>>> CompileCurrentFontSet(ProgressDialog&, Structs::FontSet& fontSet);
+		// Compiles the font set, and takes the number of its textures as the expected one.
+		CompiledFontSet CompileCurrentFontSet(ProgressDialog&, Structs::FontSet& fontSet);
 
 		LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

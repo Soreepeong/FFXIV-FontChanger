@@ -17,161 +17,66 @@ LRESULT App::FontEditorWindow::Menu_File_New(xivres::font_type fontType) {
 		return 1;
 
 	Structs::MultiFontSet mfs;
+	auto& fontSet = *mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
+	fontSet.ExpectedTexCount = GetGameTextureCount(fontSet.TexFilenameFormat).value_or(7);
 
-	switch (fontType) {
-		case xivres::font_type::font:
-		default:
-			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
-			mfs.FontSets.back()->ExpectedTexCount = 7;
-			break;
-		case xivres::font_type::font_lobby:
-			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
-			mfs.FontSets.back()->ExpectedTexCount = 6;
-			break;
-		case xivres::font_type::chn_axis:
-			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
-			mfs.FontSets.back()->ExpectedTexCount = 20;
-			break;
-		case xivres::font_type::krn_axis:
-			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
-			mfs.FontSets.back()->ExpectedTexCount = 9;
-			break;
-		case xivres::font_type::tc_axis:
-			mfs.FontSets.emplace_back(std::make_unique<Structs::FontSet>(Structs::FontSet::NewFromTemplateFont(fontType)));
-			mfs.FontSets.back()->ExpectedTexCount = 20;
-			break;
-	}
-
-	SetCurrentMultiFontSet(std::move(mfs), nullptr, true);
+	SetCurrentMultiFontSet(std::move(mfs), {});
 	return 0;
 }
 
-LRESULT App::FontEditorWindow::Menu_File_Open() {
-	using namespace xivres::fontgen;
-
-	const auto presetJsonFilesName = std::wstring(GetStringResource(IDS_FILTERSPEC_PRESETJSONFILES));
-	const auto allFilesName = std::wstring(GetStringResource(IDS_FILTERSPEC_ALLFILES));
-	COMDLG_FILTERSPEC fileTypes[] = {
+// The file types of the dialogs that open and save configuration files.
+static std::array<COMDLG_FILTERSPEC, 2> GetJsonFileTypes() {
+	static const std::wstring presetJsonFilesName(GetStringResource(IDS_FILTERSPEC_PRESETJSONFILES));
+	static const std::wstring allFilesName(GetStringResource(IDS_FILTERSPEC_ALLFILES));
+	return {{
 		{presetJsonFilesName.c_str(), L"*.json"},
 		{allFilesName.c_str(), L"*"},
-	};
-	const auto fileTypesSpan = std::span(fileTypes);
+	}};
+}
 
+static void WriteTextFile(const std::filesystem::path& path, const std::string& text) {
+	std::ofstream out(path, std::ios::binary);
+	if (!out)
+		throw std::system_error(std::error_code(static_cast<int>(GetLastError()), std::system_category()));
+	out << text;
+	out.close();
+	if (!out)
+		throw std::system_error(std::error_code(ERROR_WRITE_FAULT, std::system_category()));
+}
+
+LRESULT App::FontEditorWindow::Menu_File_Open() {
 	if (Changes_ConfirmIfDirty())
 		return 1;
 
 	return TryCatchShowError(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
-		IFileOpenDialogPtr pDialog;
-		DWORD dwFlags;
-		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
-		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_Json));
-		SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(fileTypesSpan.size()), fileTypesSpan.data()));
-		SuccessOrThrow(pDialog->SetFileTypeIndex(0));
-		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_OPEN)).c_str()));
-		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
-		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
-		switch (SuccessOrThrow(pDialog->Show(m_hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
-			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
-				return 0;
-		}
-
-		IShellItemPtr pResult;
-		SuccessOrThrow(pDialog->GetResult(&pResult));
-		SetCurrentMultiFontSet(std::move(pResult));
+		if (const auto path = PickFile(m_hWnd, false, Guid_IFileDialog_Json, IDS_WINDOWTITLE_OPEN, GetJsonFileTypes()))
+			OpenFile(*path);
 		return 0;
 	});
 }
 
 LRESULT App::FontEditorWindow::Menu_File_Save() {
-	if (!m_currentShellItem)
+	if (m_currentPath.empty())
 		return Menu_File_SaveAs(true);
 
 	return TryCatchShowError(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
-		const auto dump = nlohmann::json(m_multiFontSet).dump(1, '\t');
-
-		IBindCtxPtr bindCtx;
-		SuccessOrThrow(CreateBindCtx(0, &bindCtx));
-
-		BIND_OPTS bindOpts{
-			.cbStruct = sizeof bindOpts,
-			.grfMode = STGM_WRITE | STGM_SHARE_EXCLUSIVE | STGM_CREATE,
-		};
-		SuccessOrThrow(bindCtx->SetBindOptions(&bindOpts));
-
-		IStreamPtr strm;
-		SuccessOrThrow(m_currentShellItem->BindToHandler(bindCtx, BHID_Stream, IID_IStream, reinterpret_cast<void**>(&strm)));
-
-		for (std::span remaining(dump); !remaining.empty();) {
-			ULONG written;
-			SuccessOrThrow(strm->Write(remaining.data(), static_cast<ULONG>((std::min<size_t>)(remaining.size(), 0x10000000)), &written));
-			remaining = remaining.subspan(written);
-		}
-
-		strm.Release();
-
+		WriteTextFile(m_currentPath, nlohmann::json(m_multiFontSet).dump(1, '\t'));
 		Changes_MarkFresh();
-		FileHistory::Add(m_currentShellItem.GetInterfacePtr());
+		FileHistory::Add(m_currentPath);
 		return 0;
 	});
 }
 
 LRESULT App::FontEditorWindow::Menu_File_SaveAs(bool changeCurrentFile) {
-	using namespace xivres::fontgen;
-	const auto presetJsonFilesName = std::wstring(GetStringResource(IDS_FILTERSPEC_PRESETJSONFILES));
-	const auto allFilesName = std::wstring(GetStringResource(IDS_FILTERSPEC_ALLFILES));
-	COMDLG_FILTERSPEC fileTypes[] = {
-		{presetJsonFilesName.c_str(), L"*.json"},
-		{allFilesName.c_str(), L"*"},
-	};
-	const auto fileTypesSpan = std::span(fileTypes);
-
 	return TryCatchShowError(m_hWnd, IDS_ERROR_SAVEFILEFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
-		const auto dump = nlohmann::json(m_multiFontSet).dump(1, '\t');
+		const auto path = PickFile(m_hWnd, true, Guid_IFileDialog_Json, IDS_WINDOWTITLE_SAVE, GetJsonFileTypes(), GetCurrentFileName(), L"json");
+		if (!path)
+			return 0;
 
-		IBindCtxPtr bindCtx;
-		SuccessOrThrow(CreateBindCtx(0, &bindCtx));
-
-		BIND_OPTS bindOpts{
-			.cbStruct = sizeof bindOpts,
-			.grfMode = STGM_WRITE | STGM_SHARE_EXCLUSIVE | STGM_CREATE,
-		};
-		SuccessOrThrow(bindCtx->SetBindOptions(&bindOpts));
-
-		IFileSaveDialogPtr pDialog;
-		DWORD dwFlags;
-		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER));
-		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_Json));
-		SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(fileTypesSpan.size()), fileTypesSpan.data()));
-		SuccessOrThrow(pDialog->SetFileTypeIndex(0));
-		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_SAVE)).c_str()));
-		SuccessOrThrow(pDialog->SetFileName(std::filesystem::path(GetCurrentFileName()).c_str()));
-		SuccessOrThrow(pDialog->SetDefaultExtension(L"json"));
-		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
-		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
-		switch (SuccessOrThrow(pDialog->Show(m_hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
-			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
-				return 0;
-		}
-
-		IShellItemPtr pResult;
-		SuccessOrThrow(pDialog->GetResult(&pResult));
-
-		IStreamPtr strm;
-		SuccessOrThrow(pResult->BindToHandler(bindCtx, BHID_Stream, IID_IStream, reinterpret_cast<void**>(&strm)));
-
-		for (std::span remaining(dump); !remaining.empty();) {
-			ULONG written;
-			SuccessOrThrow(strm->Write(remaining.data(), static_cast<ULONG>((std::min<size_t>)(remaining.size(), 0x10000000)), &written));
-			if (!written)
-				throw std::system_error(std::error_code(ERROR_HANDLE_EOF, std::system_category()));
-			remaining = remaining.subspan(written);
-		}
-
-		strm.Release();
-
-		FileHistory::Add(pResult.GetInterfacePtr());
+		WriteTextFile(*path, nlohmann::json(m_multiFontSet).dump(1, '\t'));
+		FileHistory::Add(*path);
 		if (changeCurrentFile) {
-			m_currentShellItem = std::move(pResult);
+			m_currentPath = *path;
 			UpdateProjectDirectory();
 			Changes_MarkFresh();
 		}
@@ -247,9 +152,7 @@ LRESULT App::FontEditorWindow::Menu_File_OpenRecent(size_t index) {
 		return 1;
 
 	return TryCatchShowError(m_hWnd, IDS_ERROR_OPENFILEFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
-		IShellItemPtr shellItem;
-		SuccessOrThrow(SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&shellItem)));
-		SetCurrentMultiFontSet(std::move(shellItem));
+		OpenFile(path);
 		return 0;
 	});
 }
@@ -264,7 +167,7 @@ LRESULT App::FontEditorWindow::Menu_File_Language(const char* language) {
 		g_config.Language = language;
 		g_config.Save();
 
-		WORD langId = *language ? LANGIDFROMLCID(LocaleNameToLCID(xivres::util::unicode::convert<std::wstring>(language).c_str(), LOCALE_ALLOW_NEUTRAL_NAMES)) : 0;
+		const auto langId = GetLanguageIdFromLocaleName(xivres::util::unicode::convert<std::wstring>(std::string_view(language)));
 		MessageBoxW(
 			nullptr,
 			std::wstring(GetStringResource(IDS_LANGUAGE_RESTARTREQUIRED, langId)).c_str(),
@@ -276,12 +179,9 @@ LRESULT App::FontEditorWindow::Menu_File_Language(const char* language) {
 
 LRESULT App::FontEditorWindow::Menu_File_GameInstallationManager() {
 	if (auto newConf = GameInstallationManagerDialog::Show(m_hWnd, g_config); newConf.has_value()) {
-		g_config.Global = std::move(newConf->Global);
-		g_config.China = std::move(newConf->China);
-		g_config.Korea = std::move(newConf->Korea);
-		g_config.TraditionalChinese = std::move(newConf->TraditionalChinese);
+		g_config.GamePaths = std::move(newConf->GamePaths);
 		g_config.Save();
-		Structs::FlushCachedFonts();
+		ElementFonts::FlushCachedFonts();
 		this->m_multiFontSet.FlushCache();
 		Window_Redraw();
 	}

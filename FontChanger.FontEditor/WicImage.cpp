@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "FontChanger.Presets/WicImage.h"
+#include "WicImage.h"
 
 #include <wincodec.h>
 
@@ -9,9 +9,6 @@ _COM_SMARTPTR_TYPEDEF(IWICImagingFactory, __uuidof(IWICImagingFactory));
 _COM_SMARTPTR_TYPEDEF(IWICStream, __uuidof(IWICStream));
 _COM_SMARTPTR_TYPEDEF(IWICBitmapEncoder, __uuidof(IWICBitmapEncoder));
 _COM_SMARTPTR_TYPEDEF(IWICBitmapFrameEncode, __uuidof(IWICBitmapFrameEncode));
-_COM_SMARTPTR_TYPEDEF(IWICBitmapDecoder, __uuidof(IWICBitmapDecoder));
-_COM_SMARTPTR_TYPEDEF(IWICBitmapFrameDecode, __uuidof(IWICBitmapFrameDecode));
-_COM_SMARTPTR_TYPEDEF(IWICFormatConverter, __uuidof(IWICFormatConverter));
 
 namespace {
 	void EncodePngInto(IWICImagingFactory* factory, IStream* stream, int width, int height, std::span<const xivres::util::b8g8r8a8> pixels) {
@@ -49,7 +46,7 @@ namespace {
 	}
 }
 
-std::vector<uint8_t> FontChanger::WicImage::EncodePng(int width, int height, std::span<const xivres::util::b8g8r8a8> pixels) {
+std::vector<uint8_t> App::WicImage::EncodePng(int width, int height, std::span<const xivres::util::b8g8r8a8> pixels) {
 	const auto factory = CreateFactory();
 
 	IStreamPtr stream;
@@ -66,7 +63,7 @@ std::vector<uint8_t> FontChanger::WicImage::EncodePng(int width, int height, std
 	return res;
 }
 
-void FontChanger::WicImage::SavePng(int width, int height, std::span<const xivres::util::b8g8r8a8> pixels, const std::filesystem::path& path) {
+void App::WicImage::SavePng(int width, int height, std::span<const xivres::util::b8g8r8a8> pixels, const std::filesystem::path& path) {
 	const auto factory = CreateFactory();
 
 	IWICStreamPtr stream;
@@ -75,44 +72,6 @@ void FontChanger::WicImage::SavePng(int width, int height, std::span<const xivre
 	EncodePngInto(factory, stream, width, height, pixels);
 }
 
-void FontChanger::WicImage::SavePng(const xivres::texture::memory_mipmap_stream& mipmap, const std::filesystem::path& path) {
+void App::WicImage::SavePng(const xivres::texture::memory_mipmap_stream& mipmap, const std::filesystem::path& path) {
 	SavePng(mipmap.Width, mipmap.Height, mipmap.as_span<xivres::util::b8g8r8a8>(), path);
-}
-
-std::vector<uint32_t> FontChanger::WicImage::DecodeBgra(std::span<const uint8_t> data, int& width, int& height) {
-	// Fonts may be made on threads that have not started COM.
-	const auto hrInit = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-	const auto uninit = xivres::util::on_dtor([hrInit] {
-		if (SUCCEEDED(hrInit))
-			CoUninitialize();
-	});
-
-	std::vector<uint32_t> pixels;
-	{
-		const auto factory = CreateFactory();
-
-		IWICStreamPtr stream;
-		SuccessOrThrow(factory->CreateStream(&stream));
-		SuccessOrThrow(stream->InitializeFromMemory(const_cast<BYTE*>(data.data()), static_cast<DWORD>(data.size())));
-
-		IWICBitmapDecoderPtr decoder;
-		SuccessOrThrow(factory->CreateDecoderFromStream(stream, nullptr, WICDecodeMetadataCacheOnDemand, &decoder));
-
-		IWICBitmapFrameDecodePtr frame;
-		SuccessOrThrow(decoder->GetFrame(0, &frame));
-
-		IWICFormatConverterPtr converter;
-		SuccessOrThrow(factory->CreateFormatConverter(&converter));
-		SuccessOrThrow(converter->Initialize(frame, GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom));
-
-		UINT w, h;
-		SuccessOrThrow(converter->GetSize(&w, &h));
-		if (!w || !h || w > 16384 || h > 16384)
-			throw std::runtime_error("Invalid image size");
-		pixels.resize(static_cast<size_t>(w) * h);
-		SuccessOrThrow(converter->CopyPixels(nullptr, w * 4, static_cast<UINT>(pixels.size() * 4), reinterpret_cast<BYTE*>(pixels.data())));
-		width = static_cast<int>(w);
-		height = static_cast<int>(h);
-	}
-	return pixels;
 }

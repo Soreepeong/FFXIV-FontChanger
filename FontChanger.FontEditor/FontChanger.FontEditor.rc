@@ -884,6 +884,7 @@ BEGIN
     IDS_GLYPHMERGING_SHAPE_RHOMBUS "菱形"
     IDS_GLYPHMERGING_SHAPE_BOZJA "博兹雅方框"
     IDS_GLYPHMERGING_SHAPE_TIME "时间方框"
+    IDS_GLYPHMERGING_SHAPE_STAR "星形方框"
     IDS_GLYPHMERGING_SHAPE_CUSTOM "自定义 (SVG)"
     IDS_GLYPHMERGING_TEXTMODE_SUBTRACT "减去"
     IDS_GLYPHMERGING_TEXTMODE_DIFFERENCE "差值"
@@ -1682,6 +1683,7 @@ BEGIN
     IDS_GLYPHMERGING_SHAPE_RHOMBUS "마름모"
     IDS_GLYPHMERGING_SHAPE_BOZJA "보즈야 상자"
     IDS_GLYPHMERGING_SHAPE_TIME "시간 상자"
+    IDS_GLYPHMERGING_SHAPE_STAR "별 상자"
     IDS_GLYPHMERGING_SHAPE_CUSTOM "사용자 지정 (SVG)"
     IDS_GLYPHMERGING_TEXTMODE_SUBTRACT "빼기"
     IDS_GLYPHMERGING_TEXTMODE_DIFFERENCE "차이"
@@ -2356,6 +2358,14 @@ END
 
 /////////////////////////////////////////////////////////////////////////////
 //
+// RCDATA
+//
+
+IDR_GAMEFONTSIGNATURES  RCDATA                  "..\\xivres\\data\\game_font_signatures.json"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
 // Version
 //
 
@@ -2755,6 +2765,7 @@ BEGIN
     IDS_GLYPHMERGING_SHAPE_RHOMBUS "Rhombus"
     IDS_GLYPHMERGING_SHAPE_BOZJA "Bozjan box"
     IDS_GLYPHMERGING_SHAPE_TIME "Time box"
+    IDS_GLYPHMERGING_SHAPE_STAR "Star box"
     IDS_GLYPHMERGING_SHAPE_CUSTOM "Custom (SVG)"
     IDS_GLYPHMERGING_TEXTMODE_SUBTRACT "Subtract"
     IDS_GLYPHMERGING_TEXTMODE_DIFFERENCE "Difference"

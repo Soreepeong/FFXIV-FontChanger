@@ -51,13 +51,13 @@ static std::wstring OemCpToWString(std::string_view sv) {
 	return buf;
 }
 
-void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const WException& e) {
+void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const std::wstring& details) {
 	MessageBoxW(
 		hParent,
 		std::format(
 			L"{}\n\n{}",
 			GetStringResource(preambleStringResID),
-			e.what()).c_str(),
+			details).c_str(),
 		hParent
 			? GetWindowString(hParent).c_str()
 			: std::wstring(GetStringResource(IDS_APP)).c_str(),
@@ -75,37 +75,99 @@ void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const std::syst
 			nullptr,
 			e.code().value(),
 			g_langId,
-			reinterpret_cast<LPWSTR>(&pErrorText), // output 
+			reinterpret_cast<LPWSTR>(&pErrorText), // output
 			0, // minimum size for output buffer
-			nullptr); // arguments - see note 
+			nullptr); // arguments - see note
 		if (nullptr != pErrorText) {
 			errorText = pErrorText;
 			LocalFree(pErrorText);
 		}
 	}
-	MessageBoxW(
-		hParent,
-		std::format(
-			L"{}\n\n{}",
-			GetStringResource(preambleStringResID),
-			errorText.empty() ? OemCpToWString(e.what()) : errorText).c_str(),
-		hParent
-			? GetWindowString(hParent).c_str()
-			: std::wstring(GetStringResource(IDS_APP)).c_str(),
-		MB_OK | MB_ICONERROR);
+	ShowErrorMessageBox(hParent, preambleStringResID, errorText.empty() ? OemCpToWString(e.what()) : errorText);
 }
 
 void ShowErrorMessageBox(HWND hParent, UINT preambleStringResID, const std::exception& e) {
-	MessageBoxW(
-		hParent,
-		std::format(
-			L"{}\n\n{}",
-			GetStringResource(preambleStringResID),
-			OemCpToWString(e.what())).c_str(),
-		hParent
-			? GetWindowString(hParent).c_str()
-			: std::wstring(GetStringResource(IDS_APP)).c_str(),
-		MB_OK | MB_ICONERROR);
+	ShowErrorMessageBox(hParent, preambleStringResID, OemCpToWString(e.what()));
+}
+
+void AddListViewColumn(HWND hListView, int columnIndex, int width, UINT nameResId) {
+	std::wstring name(GetStringResource(nameResId));
+	const LVCOLUMNW col{
+		.mask = LVCF_TEXT | LVCF_WIDTH,
+		.cx = static_cast<int>(width * GetZoomFromWindow(hListView)),
+		.pszText = name.data(),
+	};
+	ListView_InsertColumn(hListView, columnIndex, &col);
+}
+
+void CenterWindowOnParent(HWND hWnd, HWND hParent) {
+	RECT rc, rcParent;
+	GetWindowRect(hWnd, &rc);
+	GetWindowRect(hParent, &rcParent);
+	SetWindowPos(
+		hWnd,
+		nullptr,
+		(rcParent.left + rcParent.right - (rc.right - rc.left)) / 2,
+		(rcParent.top + rcParent.bottom - (rc.bottom - rc.top)) / 2,
+		0,
+		0,
+		SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
+}
+
+WORD GetLanguageIdFromLocaleName(const std::wstring& localeName) {
+	if (localeName.empty())
+		return 0;
+	return LANGIDFROMLCID(LocaleNameToLCID(localeName.c_str(), LOCALE_ALLOW_NEUTRAL_NAMES));
+}
+
+static std::filesystem::path GetFileDialogResult(IFileDialog& dialog) {
+	IShellItemPtr pResult;
+	PWSTR pszFileName;
+	SuccessOrThrow(dialog.GetResult(&pResult));
+	SuccessOrThrow(pResult->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName));
+	if (!pszFileName)
+		throw std::runtime_error("DEBUG: The selected file does not have a filesystem path.");
+	const std::unique_ptr<std::remove_pointer_t<PWSTR>, decltype(&CoTaskMemFree)> pszFileNamePtr(pszFileName, &CoTaskMemFree);
+	return pszFileName;
+}
+
+std::optional<std::filesystem::path> PickFolder(HWND hWnd, const GUID& clientGuid, UINT titleResId) {
+	IFileOpenDialogPtr pDialog;
+	DWORD dwFlags;
+	SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
+	SuccessOrThrow(pDialog->SetClientGuid(clientGuid));
+	SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(titleResId)).c_str()));
+	SuccessOrThrow(pDialog->GetOptions(&dwFlags));
+	SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM | FOS_PICKFOLDERS));
+	if (SuccessOrThrow(pDialog->Show(hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)}) == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+		return std::nullopt;
+	return GetFileDialogResult(*pDialog);
+}
+
+std::optional<std::filesystem::path> PickFile(
+	HWND hWnd,
+	bool save,
+	const GUID& clientGuid,
+	UINT titleResId,
+	std::span<const COMDLG_FILTERSPEC> fileTypes,
+	const std::wstring& fileName,
+	const wchar_t* defaultExtension) {
+	IFileDialogPtr pDialog;
+	DWORD dwFlags;
+	SuccessOrThrow(pDialog.CreateInstance(save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
+	SuccessOrThrow(pDialog->SetClientGuid(clientGuid));
+	SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(fileTypes.size()), fileTypes.data()));
+	SuccessOrThrow(pDialog->SetFileTypeIndex(0));
+	SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(titleResId)).c_str()));
+	if (!fileName.empty())
+		SuccessOrThrow(pDialog->SetFileName(fileName.c_str()));
+	if (defaultExtension)
+		SuccessOrThrow(pDialog->SetDefaultExtension(defaultExtension));
+	SuccessOrThrow(pDialog->GetOptions(&dwFlags));
+	SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
+	if (SuccessOrThrow(pDialog->Show(hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)}) == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+		return std::nullopt;
+	return GetFileDialogResult(*pDialog);
 }
 
 double GetZoomFromWindow(HWND hWnd) {

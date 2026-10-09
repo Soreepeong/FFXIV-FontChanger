@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "FontChanger.Presets/Structs.h"
 #include "ExportPreviewWindow.h"
 #include "MainWindow.h"
@@ -7,87 +7,177 @@
 #include "xivres/textools.h"
 #include "resource.h"
 
-// Number of texture files the game loads for a built-in texture filename format.
-// font and font_lobby are confirmed against the global client; the others follow the values used by File > New.
-static std::optional<size_t> GetGameTextureCountLimit(std::string_view texFilenameFormat) {
-	if (texFilenameFormat == "font{}.tex")
-		return 7;
-	if (texFilenameFormat == "font_lobby{}.tex")
-		return 6;
-	if (texFilenameFormat == "font_chn_{}.tex")
-		return 20;
-	if (texFilenameFormat == "font_krn_{}.tex")
-		return 9;
-	if (texFilenameFormat == "font_tc_{}.tex")
-		return 20;
-	return std::nullopt;
-}
+namespace {
+	// Compiles the faces of the font set into font data and textures.
+	App::CompiledFontSet CompileFontSet(App::ProgressDialog& progressDialog, App::Structs::FontSet& fontSet) {
+		progressDialog.UpdateStatusMessage(GetStringResource(IDS_EXPORTPROGRESS_LOADFONTS));
+		fontSet.ConsolidateFonts();
 
-// Glyphs placed in textures past the limit will be read from textures the game never loaded.
-static void ThrowIfTooManyTextures(const App::Structs::MultiFontSet& multiFontSet, const App::Structs::FontSet& fontSet, size_t textureCount) {
-	std::vector<std::string_view> targets{fontSet.TexFilenameFormat};
-	if (fontSet.TexFilenameFormat == "font{}.tex") {
-		if (multiFontSet.ExportMapFontLobbyToFont)
-			targets.emplace_back("font_lobby{}.tex");
-		if (multiFontSet.ExportMapChnAxisToFont)
-			targets.emplace_back("font_chn_{}.tex");
-		if (multiFontSet.ExportMapKrnAxisToFont)
-			targets.emplace_back("font_krn_{}.tex");
-		if (multiFontSet.ExportMapTcAxisToFont)
-			targets.emplace_back("font_tc_{}.tex");
+		progressDialog.UpdateStatusMessage(GetStringResource(IDS_EXPORTPROGRESS_KERNINGPAIRS));
+		std::vector<std::string> tooManyKernings;
+		for (const auto& pFace : fontSet.Faces) {
+			progressDialog.ThrowIfCancelled();
+			if (const auto nKerns = pFace->GetMergedFont()->all_kerning_pairs().size(); nKerns >= 65536)
+				tooManyKernings.emplace_back(std::format("\n{}: {}", pFace->Name, nKerns));
+		}
+		if (!tooManyKernings.empty()) {
+			std::ranges::sort(tooManyKernings);
+			std::wstring s(GetStringResource(IDS_ERROR_KERNINGTABLETOOLARGE));
+			for (const auto& s2 : tooManyKernings)
+				s += xivres::util::unicode::convert<std::wstring>(s2);
+			throw WException(s);
+		}
+
+		FontChanger::FixedSizeFont::fontdata_packer packer;
+		packer.set_discard_step(fontSet.DiscardStep);
+		packer.set_side_length(fontSet.SideLength);
+
+		for (auto& pFace : fontSet.Faces)
+			packer.add_font(pFace->GetMergedFont());
+
+		packer.compile();
+
+		while (!packer.wait(std::chrono::milliseconds(200))) {
+			progressDialog.ThrowIfCancelled();
+
+			switch (packer.progress_description()) {
+				case FontChanger::FixedSizeFont::fontdata_packer::progress_status::prepare_source_fonts:
+					progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_PREPARESOURCEFONTS));
+					break;
+				case FontChanger::FixedSizeFont::fontdata_packer::progress_status::prepare_target_fonts:
+					progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_PREPARETARGETFONTS));
+					break;
+				case FontChanger::FixedSizeFont::fontdata_packer::progress_status::discover_glyphs:
+					progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_DISCOVERGLYPHS));
+					break;
+				case FontChanger::FixedSizeFont::fontdata_packer::progress_status::measure_glyphs:
+					progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_MEASUREGLYPHS));
+					break;
+				case FontChanger::FixedSizeFont::fontdata_packer::progress_status::layout_and_draw:
+					progressDialog.UpdateStatusMessage(GetStringResource(IDS_COMPILESTATUS_LAYOUTANDDRAW));
+					break;
+			}
+			progressDialog.UpdateProgress(packer.progress_scaled());
+		}
+		if (const auto err = packer.get_error_if_failed(); !err.empty())
+			throw std::runtime_error(err);
+
+		App::CompiledFontSet res{packer.compiled_fontdatas(), packer.compiled_mipmap_streams()};
+		if (res.Mipmaps.empty())
+			throw std::runtime_error("DEBUG: No mipmap produced");
+		return res;
 	}
 
-	for (const auto target : targets) {
-		const auto limit = GetGameTextureCountLimit(target);
-		if (limit && textureCount > *limit) {
+	// Gets the file name of a path in the game's file system.
+	std::string_view GetFileName(std::string_view path) {
+		return path.substr(path.rfind('/') + 1);
+	}
+
+	// Gets the files that an export also writes the files of the font set as, as pairs of the file names: those of the
+	// game fonts of the enabled export mappings with the same family and size.
+	std::vector<std::pair<std::string, std::string>> GetExportAliases(const App::Structs::MultiFontSet& multiFontSet, const App::Structs::FontSet& fontSet, size_t textureCount) {
+		std::vector<std::pair<std::string, std::string>> res;
+		if (fontSet.TexFilenameFormat != "font{}.tex")
+			return res;
+
+		const auto sourceDefs = FontChanger::FixedSizeFont::get_fontdata_definition(xivres::font_type::font);
+		for (const auto& mapping : ExportMappings) {
+			if (!(multiFontSet.*mapping.Enabled))
+				continue;
+
+			// The fonts of the other releases replace only AXIS; the names (families) of their definitions differ.
+			for (const auto& target : FontChanger::FixedSizeFont::get_fontdata_definition(mapping.Target)) {
+				const auto it = std::ranges::find_if(sourceDefs, [&](const auto& source) {
+					return source.Size == target.Size && (mapping.Target == xivres::font_type::font_lobby
+						? source.Family == target.Family
+						: source.Family == "AXIS");
+				});
+				if (it == sourceDefs.end())
+					continue;
+
+				if (std::ranges::any_of(fontSet.Faces, [&](const auto& pFace) { return pFace->Name == it->Name; }))
+					res.emplace_back(it->Name + ".fdt", target.Name + ".fdt");
+			}
+
+			const auto targetFormat = GetFileName(FontChanger::FixedSizeFont::get_font_tex_filename_format(mapping.Target));
+			for (size_t i = 1; i <= textureCount; i++)
+				res.emplace_back(std::vformat(fontSet.TexFilenameFormat, std::make_format_args(i)), std::vformat(targetFormat, std::make_format_args(i)));
+		}
+		return res;
+	}
+
+	// Glyphs placed in textures past the limit will be read from textures the game never loaded.
+	void ThrowIfTooManyTextures(const App::Structs::MultiFontSet& multiFontSet, const App::Structs::FontSet& fontSet, size_t textureCount) {
+		std::vector<std::string> targets{fontSet.TexFilenameFormat};
+		if (fontSet.TexFilenameFormat == "font{}.tex") {
+			for (const auto& mapping : ExportMappings) {
+				if (multiFontSet.*mapping.Enabled)
+					targets.emplace_back(GetFileName(FontChanger::FixedSizeFont::get_font_tex_filename_format(mapping.Target)));
+			}
+		}
+
+		for (const auto& target : targets) {
+			const auto limit = GetGameTextureCount(target);
+			if (limit && textureCount > static_cast<size_t>(*limit)) {
+				throw std::runtime_error(std::format(
+					"{} texture files are required, but the game loads only up to {} texture files for \"{}\".\n"
+					"Reduce the number of glyphs or the font sizes, or increase the texture size.",
+					textureCount, *limit, target));
+			}
+		}
+	}
+
+	// When drawing AXIS_36, the game may use the glyph of AXIS_18 at the same position in the glyph table instead,
+	// so both must list the same characters in the same order.
+	void ThrowIfAxisGlyphTablesMismatch(const App::Structs::FontSet& fontSet, const std::vector<std::shared_ptr<xivres::fontdata::stream>>& fdts) {
+		for (const auto& [smallName, largeName] : FontChanger::FixedSizeFont::get_linked_fontdata_names()) {
+			const xivres::fontdata::stream* pSmall = nullptr;
+			const xivres::fontdata::stream* pLarge = nullptr;
+			for (size_t i = 0; i < fdts.size(); i++) {
+				if (fontSet.Faces[i]->Name == smallName)
+					pSmall = fdts[i].get();
+				else if (fontSet.Faces[i]->Name == largeName)
+					pLarge = fdts[i].get();
+			}
+			if (!pSmall || !pLarge)
+				continue;
+
+			const auto& smallGlyphs = pSmall->get_glyphs();
+			const auto& largeGlyphs = pLarge->get_glyphs();
+			const auto toUtf8Value = [](const xivres::fontdata::glyph_entry& e) { return *e.Utf8Value; };
+			const auto [itSmall, itLarge] = std::ranges::mismatch(smallGlyphs, largeGlyphs, {}, toUtf8Value, toUtf8Value);
+			if (itSmall == smallGlyphs.end() && itLarge == largeGlyphs.end())
+				continue;
+
+			const auto& [missingFrom, extraIn, codepoint] = itSmall == smallGlyphs.end() || (itLarge != largeGlyphs.end() && *itLarge->Utf8Value < *itSmall->Utf8Value)
+				? std::make_tuple(smallName, largeName, itLarge->codepoint())
+				: std::make_tuple(largeName, smallName, itSmall->codepoint());
 			throw std::runtime_error(std::format(
-				"{} texture files are required, but the game loads only up to {} texture files for \"{}\".\n"
-				"Reduce the number of glyphs or the font sizes, or increase the texture size.",
-				textureCount, *limit, target));
+				"{} and {} must contain the same characters, as the game substitutes glyphs of {} into {} by their position in the glyph table.\n"
+				"U+{:04X} is in {} but not in {}.",
+				smallName, largeName, smallName, largeName,
+				static_cast<uint32_t>(codepoint), extraIn, missingFrom));
 		}
+	}
+
+	// Throws if the game cannot use the compiled font set as it is.
+	void ThrowIfNotUsableByGame(const App::Structs::MultiFontSet& multiFontSet, const App::Structs::FontSet& fontSet, const App::CompiledFontSet& compiled) {
+		ThrowIfTooManyTextures(multiFontSet, fontSet, compiled.Mipmaps.size());
+		ThrowIfAxisGlyphTablesMismatch(fontSet, compiled.Fdts);
 	}
 }
 
-// When drawing AXIS_36, the game may use the glyph of AXIS_18 at the same position in the glyph table instead,
-// so both must list the same characters in the same order.
-static void ThrowIfAxisGlyphTablesMismatch(const App::Structs::FontSet& fontSet, const std::vector<std::shared_ptr<xivres::fontdata::stream>>& fdts) {
-	static constexpr std::pair<std::string_view, std::string_view> LinkedFonts[]{
-		{"AXIS_18", "AXIS_36"},
-		{"AXIS_18_lobby", "AXIS_36_lobby"},
-	};
-
-	for (const auto& [smallName, largeName] : LinkedFonts) {
-		const xivres::fontdata::stream* pSmall = nullptr;
-		const xivres::fontdata::stream* pLarge = nullptr;
-		for (size_t i = 0; i < fdts.size(); i++) {
-			if (fontSet.Faces[i]->Name == smallName)
-				pSmall = fdts[i].get();
-			else if (fontSet.Faces[i]->Name == largeName)
-				pLarge = fdts[i].get();
-		}
-		if (!pSmall || !pLarge)
-			continue;
-
-		const auto& smallGlyphs = pSmall->get_glyphs();
-		const auto& largeGlyphs = pLarge->get_glyphs();
-		const auto toUtf8Value = [](const xivres::fontdata::glyph_entry& e) { return *e.Utf8Value; };
-		const auto [itSmall, itLarge] = std::ranges::mismatch(smallGlyphs, largeGlyphs, {}, toUtf8Value, toUtf8Value);
-		if (itSmall == smallGlyphs.end() && itLarge == largeGlyphs.end())
-			continue;
-
-		const auto& [missingFrom, extraIn, codepoint] = itSmall == smallGlyphs.end() || (itLarge != largeGlyphs.end() && *itLarge->Utf8Value < *itSmall->Utf8Value)
-			? std::make_tuple(smallName, largeName, itLarge->codepoint())
-			: std::make_tuple(largeName, smallName, itSmall->codepoint());
-		throw std::runtime_error(std::format(
-			"{} and {} must contain the same characters, as the game substitutes glyphs of {} into {} by their position in the glyph table.\n"
-			"U+{:04X} is in {} but not in {}.",
-			smallName, largeName, smallName, largeName,
-			static_cast<uint32_t>(codepoint), extraIn, missingFrom));
+App::CompiledFontSet App::FontEditorWindow::CompileCurrentFontSet(ProgressDialog& progressDialog, Structs::FontSet& fontSet) {
+	auto res = CompileFontSet(progressDialog, fontSet);
+	if (fontSet.ExpectedTexCount != static_cast<int>(res.Mipmaps.size())) {
+		fontSet.ExpectedTexCount = static_cast<int>(res.Mipmaps.size());
+		Changes_MarkDirty();
 	}
+	return res;
 }
 
 LRESULT App::FontEditorWindow::Menu_Export_Preview() {
-	using namespace xivres::fontgen;
+	using namespace FontChanger::FixedSizeFont;
 
 	return TryCatchShowError<ProgressDialog::ProgressDialogCancelledError>(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
 		ProgressDialog progressDialog(m_hWnd, std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTRAW)));
@@ -114,330 +204,120 @@ LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 }
 
 LRESULT App::FontEditorWindow::Menu_Export_Raw() {
-	using namespace xivres::fontgen;
-
 	return TryCatchShowError<ProgressDialog::ProgressDialogCancelledError>(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
-		IFileOpenDialogPtr pDialog;
-		DWORD dwFlags;
-		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER));
-		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_Export));
-		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTRAW)).c_str()));
-		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
-		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM | FOS_PICKFOLDERS));
-		switch (SuccessOrThrow(pDialog->Show(m_hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
-			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
-				return 0;
-		}
-
-		IShellItemPtr pResult;
-		PWSTR pszFileName;
-		SuccessOrThrow(pDialog->GetResult(&pResult));
-		SuccessOrThrow(pResult->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName));
-		if (!pszFileName)
-			throw std::runtime_error("DEBUG: The selected file does not have a filesystem path.");
-
-		std::unique_ptr<std::remove_pointer_t<PWSTR>, decltype(&CoTaskMemFree)> pszFileNamePtr(pszFileName, &CoTaskMemFree);
-		const auto basePath = std::filesystem::path(pszFileName);
+		const auto basePath = PickFolder(m_hWnd, Guid_IFileDialog_Export, IDS_WINDOWTITLE_EXPORTRAW);
+		if (!basePath)
+			return 0;
 
 		ProgressDialog progressDialog(m_hWnd, std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTRAW)));
 		ShowWindow(m_hWnd, SW_HIDE);
 		const auto hideWhilePacking = xivres::util::on_dtor([this]() { ShowWindow(m_hWnd, SW_SHOW); });
 
+		std::vector<char> buf(32768);
+		const auto write = [&](const std::filesystem::path& path, xivres::stream& stream) {
+			std::ofstream out(path, std::ios::binary);
+			for (size_t read, pos = 0; (read = stream.read(pos, buf.data(), buf.size())); pos += read) {
+				progressDialog.ThrowIfCancelled();
+				out.write(buf.data(), read);
+			}
+		};
+
 		for (const auto& pFontSet : m_multiFontSet.FontSets) {
-			const auto [fdts, mips] = CompileCurrentFontSet(progressDialog, *pFontSet);
-			ThrowIfTooManyTextures(m_multiFontSet, *pFontSet, mips.size());
-			ThrowIfAxisGlyphTablesMismatch(*pFontSet, fdts);
+			const auto compiled = CompileCurrentFontSet(progressDialog, *pFontSet);
+			ThrowIfNotUsableByGame(m_multiFontSet, *pFontSet, compiled);
+			const auto& [fdts, mips] = compiled;
 
 			progressDialog.UpdateProgress(std::nanf(""));
 			progressDialog.UpdateStatusMessage(GetStringResource(IDS_EXPORTPROGRESS_WRITINGTOFILES));
 
-			std::vector<char> buf(32768);
 			xivres::texture::stream textureOne(mips[0]->Type, mips[0]->Width, mips[0]->Height, 1, 1, 1);
-
 			for (size_t i = 0; i < mips.size(); i++) {
 				progressDialog.ThrowIfCancelled();
 				textureOne.set_mipmap(0, 0, mips[i]);
-
 				const auto i1 = i + 1;
-				const auto path = basePath / std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i1));
-				std::ofstream out(path, std::ios::binary);
-
-				for (size_t read, pos = 0; (read = textureOne.read(pos, buf.data(), buf.size())); pos += read) {
-					progressDialog.ThrowIfCancelled();
-					out.write(buf.data(), read);
-				}
-
-				out.close();
-
-				if (pFontSet->TexFilenameFormat == "font{}.tex") {
-					if (m_multiFontSet.ExportMapFontLobbyToFont) {
-						copy(
-							path,
-							basePath / std::format("font_lobby{}.tex", i1),
-							std::filesystem::copy_options::overwrite_existing);
-					}
-					if (m_multiFontSet.ExportMapChnAxisToFont) {
-						copy(
-							path,
-							basePath / std::format("font_chn_{}.tex", i1),
-							std::filesystem::copy_options::overwrite_existing);
-					}
-					if (m_multiFontSet.ExportMapKrnAxisToFont) {
-						copy(
-							path,
-							basePath / std::format("font_krn_{}.tex", i1),
-							std::filesystem::copy_options::overwrite_existing);
-					}
-					if (m_multiFontSet.ExportMapTcAxisToFont) {
-						copy(
-							path,
-							basePath / std::format("font_tc_{}.tex", i1),
-							std::filesystem::copy_options::overwrite_existing);
-					}
-				}
+				write(*basePath / std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i1)), textureOne);
 			}
 
 			for (size_t i = 0; i < fdts.size(); i++) {
 				progressDialog.ThrowIfCancelled();
-				const auto path = basePath / std::format("{}.fdt", pFontSet->Faces[i]->Name);
-				std::ofstream out(path, std::ios::binary);
-
-				for (size_t read, pos = 0; (read = fdts[i]->read(pos, buf.data(), buf.size())); pos += read) {
-					progressDialog.ThrowIfCancelled();
-					out.write(buf.data(), read);
-				}
-
-				out.close();
-
-				if (pFontSet->TexFilenameFormat == "font{}.tex") {
-					if (m_multiFontSet.ExportMapFontLobbyToFont) {
-						copy(
-							path,
-							basePath / std::format("{}_lobby.fdt", pFontSet->Faces[i]->Name),
-							std::filesystem::copy_options::overwrite_existing);
-					}
-					if (m_multiFontSet.ExportMapChnAxisToFont) {
-						if (pFontSet->Faces[i]->Name == "AXIS_12")
-							copy(path, basePath / "ChnAXIS_120.fdt", std::filesystem::copy_options::overwrite_existing);
-						else if (pFontSet->Faces[i]->Name == "AXIS_14")
-							copy(path, basePath / "ChnAXIS_140.fdt", std::filesystem::copy_options::overwrite_existing);
-						else if (pFontSet->Faces[i]->Name == "AXIS_18")
-							copy(path, basePath / "ChnAXIS_180.fdt", std::filesystem::copy_options::overwrite_existing);
-						else if (pFontSet->Faces[i]->Name == "AXIS_36")
-							copy(path, basePath / "ChnAXIS_360.fdt", std::filesystem::copy_options::overwrite_existing);
-					}
-					if (m_multiFontSet.ExportMapKrnAxisToFont) {
-						if (pFontSet->Faces[i]->Name == "AXIS_12")
-							copy(path, basePath / "KrnAXIS_120.fdt", std::filesystem::copy_options::overwrite_existing);
-						else if (pFontSet->Faces[i]->Name == "AXIS_14")
-							copy(path, basePath / "KrnAXIS_140.fdt", std::filesystem::copy_options::overwrite_existing);
-						else if (pFontSet->Faces[i]->Name == "AXIS_18")
-							copy(path, basePath / "KrnAXIS_180.fdt", std::filesystem::copy_options::overwrite_existing);
-						else if (pFontSet->Faces[i]->Name == "AXIS_36")
-							copy(path, basePath / "KrnAXIS_360.fdt", std::filesystem::copy_options::overwrite_existing);
-					}
-					if (m_multiFontSet.ExportMapTcAxisToFont) {
-						if (pFontSet->Faces[i]->Name == "AXIS_12")
-							copy(path, basePath / "tcaxis_120.fdt", std::filesystem::copy_options::overwrite_existing);
-						else if (pFontSet->Faces[i]->Name == "AXIS_14")
-							copy(path, basePath / "tcaxis_140.fdt", std::filesystem::copy_options::overwrite_existing);
-						else if (pFontSet->Faces[i]->Name == "AXIS_18")
-							copy(path, basePath / "tcaxis_180.fdt", std::filesystem::copy_options::overwrite_existing);
-						else if (pFontSet->Faces[i]->Name == "AXIS_36")
-							copy(path, basePath / "tcaxis_360.fdt", std::filesystem::copy_options::overwrite_existing);
-					}
-				}
+				write(*basePath / std::format("{}.fdt", pFontSet->Faces[i]->Name), *fdts[i]);
 			}
+
+			for (const auto& [source, alias] : GetExportAliases(m_multiFontSet, *pFontSet, mips.size()))
+				copy(*basePath / source, *basePath / alias, std::filesystem::copy_options::overwrite_existing);
 		}
 		return 0;
 	});
 }
 
 LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode) {
-	using namespace xivres::fontgen;
 	static constexpr COMDLG_FILTERSPEC fileTypes[] = {
 		{L"TTMP2 file (*.ttmp2)", L"*.ttmp2"},
 		{L"ZIP file (*.zip)", L"*.zip"},
 		{L"All files (*.*)", L"*"},
 	};
-	const auto fileTypesSpan = std::span(fileTypes);
 
-	std::wstring finalPath;
 	return TryCatchShowError<ProgressDialog::ProgressDialogCancelledError>(m_hWnd, IDS_ERROR_EXPORTFAILURE_BODY, LRESULT{1}, [&]() -> LRESULT {
-		IFileSaveDialogPtr pDialog;
-		DWORD dwFlags;
-		SuccessOrThrow(pDialog.CreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER));
-		SuccessOrThrow(pDialog->SetClientGuid(Guid_IFileDialog_Export));
-		SuccessOrThrow(pDialog->SetFileTypes(static_cast<UINT>(fileTypesSpan.size()), fileTypesSpan.data()));
-		SuccessOrThrow(pDialog->SetFileTypeIndex(0));
-		SuccessOrThrow(pDialog->SetTitle(std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTTTMP)).c_str()));
-		SuccessOrThrow(pDialog->SetFileName(std::format(L"{}.ttmp2", std::filesystem::path(GetCurrentFileName()).replace_extension(L"").wstring()).c_str()));
-		SuccessOrThrow(pDialog->SetDefaultExtension(L"json"));
-		SuccessOrThrow(pDialog->GetOptions(&dwFlags));
-		SuccessOrThrow(pDialog->SetOptions(dwFlags | FOS_FORCEFILESYSTEM));
-		switch (SuccessOrThrow(pDialog->Show(m_hWnd), {HRESULT_FROM_WIN32(ERROR_CANCELLED)})) {
-			case HRESULT_FROM_WIN32(ERROR_CANCELLED):
-				return 0;
-		}
+		const auto finalPath = PickFile(
+			m_hWnd,
+			true,
+			Guid_IFileDialog_Export,
+			IDS_WINDOWTITLE_EXPORTTTMP,
+			fileTypes,
+			std::format(L"{}.ttmp2", std::filesystem::path(GetCurrentFileName()).replace_extension(L"").wstring()),
+			L"json");
+		if (!finalPath)
+			return 0;
 
-		{
-			IShellItemPtr pResult;
-			PWSTR pszFileName;
-			SuccessOrThrow(pDialog->GetResult(&pResult));
-			SuccessOrThrow(pResult->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName));
-			if (!pszFileName)
-				throw std::runtime_error("DEBUG: The selected file does not have a filesystem path.");
-
-			finalPath = pszFileName;
-			CoTaskMemFree(pszFileName);
-		}
-
-		xivres::textools::simple_ttmp2_writer writer(finalPath);
+		xivres::textools::simple_ttmp2_writer writer(*finalPath);
 
 		ProgressDialog progressDialog(m_hWnd, std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTTTMP)));
 		ShowWindow(m_hWnd, SW_HIDE);
 		const auto hideWhilePacking = xivres::util::on_dtor([this]() { ShowWindow(m_hWnd, SW_SHOW); });
 
-		std::vector<std::tuple<std::vector<std::shared_ptr<xivres::fontdata::stream>>, std::vector<std::shared_ptr<xivres::texture::memory_mipmap_stream>>, const Structs::FontSet&>> pairs;
-
+		const auto level = compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION;
 		writer.begin_packed(compressionMode == CompressionMode::CompressAfterPacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION);
 		for (auto& pFontSet : m_multiFontSet.FontSets) {
-			auto [fdts, mips] = CompileCurrentFontSet(progressDialog, *pFontSet);
-			ThrowIfTooManyTextures(m_multiFontSet, *pFontSet, mips.size());
-			ThrowIfAxisGlyphTablesMismatch(*pFontSet, fdts);
+			const auto compiled = CompileCurrentFontSet(progressDialog, *pFontSet);
+			ThrowIfNotUsableByGame(m_multiFontSet, *pFontSet, compiled);
+			const auto& [fdts, mips] = compiled;
+
+			const auto reportWriting = [&](const std::string& targetFileName) {
+				progressDialog.ThrowIfCancelled();
+				const auto targetFileNameW = xivres::util::unicode::convert<std::wstring>(targetFileName);
+				progressDialog.UpdateStatusMessage(std::vformat(GetStringResource(IDS_EXPORTPROGRESS_WRITINGFILE), std::make_wformat_args(targetFileNameW)));
+			};
 
 			auto& modsList = writer.ttmpl().SimpleModsList;
 			const auto beginIndex = modsList.size();
 
 			for (size_t i = 0; i < fdts.size(); i++) {
-				progressDialog.ThrowIfCancelled();
-
 				const auto targetFileName = std::format("common/font/{}.fdt", pFontSet->Faces[i]->Name);
-				const auto targetFileNameW = xivres::util::unicode::convert<std::wstring>(targetFileName);
-				progressDialog.UpdateStatusMessage(
-					std::vformat(
-						GetStringResource(IDS_EXPORTPROGRESS_WRITINGFILE),
-						std::make_wformat_args(targetFileNameW)));
-
-				writer.add_packed(xivres::compressing_packed_stream<xivres::standard_compressing_packer>(targetFileName, fdts[i], compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION));
+				reportWriting(targetFileName);
+				writer.add_packed(xivres::compressing_packed_stream<xivres::standard_compressing_packer>(targetFileName, fdts[i], level));
 			}
 
 			for (size_t i = 0; i < mips.size(); i++) {
-				progressDialog.ThrowIfCancelled();
-
 				const auto i1 = i + 1;
 				const auto targetFileName = std::format("common/font/{}", std::vformat(pFontSet->TexFilenameFormat, std::make_format_args(i1)));
-				const auto targetFileNameW = xivres::util::unicode::convert<std::wstring>(targetFileName);
-				progressDialog.UpdateStatusMessage(
-					std::vformat(
-						GetStringResource(IDS_EXPORTPROGRESS_WRITINGFILE),
-						std::make_wformat_args(targetFileNameW)));
+				reportWriting(targetFileName);
 
-				const auto& mip = mips[i];
-				auto textureOne = std::make_shared<xivres::texture::stream>(mip->Type, mip->Width, mip->Height, 1, 1, 1);
-				textureOne->set_mipmap(0, 0, mip);
-
-				writer.add_packed(xivres::compressing_packed_stream<xivres::texture_compressing_packer>(targetFileName, std::move(textureOne), compressionMode == CompressionMode::CompressWhilePacking ? Z_BEST_COMPRESSION : Z_NO_COMPRESSION));
+				auto textureOne = std::make_shared<xivres::texture::stream>(mips[i]->Type, mips[i]->Width, mips[i]->Height, 1, 1, 1);
+				textureOne->set_mipmap(0, 0, mips[i]);
+				writer.add_packed(xivres::compressing_packed_stream<xivres::texture_compressing_packer>(targetFileName, std::move(textureOne), level));
 			}
 
+			// The other files are the same packed data under other names.
 			const auto endIndex = modsList.size();
-
-			if (m_multiFontSet.ExportMapFontLobbyToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
-				modsList.reserve(modsList.size() + endIndex - beginIndex);
+			for (const auto& [source, alias] : GetExportAliases(m_multiFontSet, *pFontSet, mips.size())) {
 				for (size_t i = beginIndex; i < endIndex; i++) {
-					xivres::textools::mods_json tmp = modsList[i];
-					if (tmp.FullPath.ends_with(".fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 4, 4);
-						tmp.Name.append("_lobby.fdt");
-					} else if (tmp.FullPath.ends_with(".tex")) {
-						tmp.Name.insert(tmp.Name.size() - 5, "_lobby");
-					} else {
+					if (modsList[i].Name != std::format("common/font/{}", source))
 						continue;
-					}
 
+					auto tmp = modsList[i];
+					tmp.Name = std::format("common/font/{}", alias);
 					tmp.FullPath = xivres::util::unicode::convert<std::string>(tmp.Name, &xivres::util::unicode::lower);
-					modsList.push_back(tmp);
-				}
-			}
-
-			if (m_multiFontSet.ExportMapChnAxisToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
-				modsList.reserve(modsList.size() + endIndex - beginIndex);
-				for (size_t i = beginIndex; i < endIndex; i++) {
-					xivres::textools::mods_json tmp = modsList[i];
-					if (tmp.Name.ends_with("/AXIS_12.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("ChnAXIS_120.fdt");
-					} else if (tmp.Name.ends_with("/AXIS_14.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("ChnAXIS_140.fdt");
-					} else if (tmp.Name.ends_with("/AXIS_18.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("ChnAXIS_180.fdt");
-					} else if (tmp.Name.ends_with("/AXIS_36.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("ChnAXIS_360.fdt");
-					} else if (tmp.Name.ends_with(".tex")) {
-						tmp.Name.insert(tmp.Name.size() - 5, "_chn_");
-					} else {
-						continue;
-					}
-
-					tmp.FullPath = xivres::util::unicode::convert<std::string>(tmp.Name, &xivres::util::unicode::lower);
-					modsList.push_back(tmp);
-				}
-			}
-
-			if (m_multiFontSet.ExportMapKrnAxisToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
-				modsList.reserve(modsList.size() + endIndex - beginIndex);
-				for (size_t i = beginIndex; i < endIndex; i++) {
-					xivres::textools::mods_json tmp = modsList[i];
-					if (tmp.Name.ends_with("/AXIS_12.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("KrnAXIS_120.fdt");
-					} else if (tmp.Name.ends_with("/AXIS_14.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("KrnAXIS_140.fdt");
-					} else if (tmp.Name.ends_with("/AXIS_18.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("KrnAXIS_180.fdt");
-					} else if (tmp.Name.ends_with("/AXIS_36.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("KrnAXIS_360.fdt");
-					} else if (tmp.Name.ends_with(".tex")) {
-						tmp.Name.insert(tmp.Name.size() - 5, "_krn_");
-					} else {
-						continue;
-					}
-
-					tmp.FullPath = xivres::util::unicode::convert<std::string>(tmp.Name, &xivres::util::unicode::lower);
-					modsList.push_back(tmp);
-				}
-			}
-
-			if (m_multiFontSet.ExportMapTcAxisToFont && pFontSet->TexFilenameFormat == "font{}.tex") {
-				modsList.reserve(modsList.size() + endIndex - beginIndex);
-				for (size_t i = beginIndex; i < endIndex; i++) {
-					xivres::textools::mods_json tmp = modsList[i];
-					if (tmp.Name.ends_with("/AXIS_12.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("tcaxis_120.fdt");
-					} else if (tmp.Name.ends_with("/AXIS_14.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("tcaxis_140.fdt");
-					} else if (tmp.Name.ends_with("/AXIS_18.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("tcaxis_180.fdt");
-					} else if (tmp.Name.ends_with("/AXIS_36.fdt")) {
-						tmp.Name.erase(tmp.Name.size() - 11, 11);
-						tmp.Name.append("tcaxis_360.fdt");
-					} else if (tmp.Name.ends_with(".tex")) {
-						tmp.Name.insert(tmp.Name.size() - 5, "_tc_");
-					} else {
-						continue;
-					}
-
-					tmp.FullPath = xivres::util::unicode::convert<std::string>(tmp.Name, &xivres::util::unicode::lower);
-					modsList.push_back(tmp);
+					modsList.push_back(std::move(tmp));
 				}
 			}
 		}
@@ -446,26 +326,8 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 	});
 }
 
-LRESULT App::FontEditorWindow::Menu_Export_MapFontLobby() {
-	m_multiFontSet.ExportMapFontLobbyToFont = !m_multiFontSet.ExportMapFontLobbyToFont;
-	Changes_MarkDirty();
-	return 0;
-}
-
-LRESULT App::FontEditorWindow::Menu_Export_MapFontChnAxis() {
-	m_multiFontSet.ExportMapChnAxisToFont = !m_multiFontSet.ExportMapChnAxisToFont;
-	Changes_MarkDirty();
-	return 0;
-}
-
-LRESULT App::FontEditorWindow::Menu_Export_MapFontKrnAxis() {
-	m_multiFontSet.ExportMapKrnAxisToFont = !m_multiFontSet.ExportMapKrnAxisToFont;
-	Changes_MarkDirty();
-	return 0;
-}
-
-LRESULT App::FontEditorWindow::Menu_Export_MapFontTCAxis() {
-	m_multiFontSet.ExportMapTcAxisToFont = !m_multiFontSet.ExportMapTcAxisToFont;
+LRESULT App::FontEditorWindow::Menu_Export_ToggleMapping(const ExportMapping& mapping) {
+	m_multiFontSet.*mapping.Enabled = !(m_multiFontSet.*mapping.Enabled);
 	Changes_MarkDirty();
 	return 0;
 }

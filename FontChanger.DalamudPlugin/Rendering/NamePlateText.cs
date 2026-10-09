@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 
-using Dalamud.Hooking;
-
 namespace CustomFonts;
 
 /// <summary>How nameplate text is drawn.</summary>
@@ -47,10 +45,10 @@ internal sealed unsafe class NamePlateText : IDisposable
     private const float ScaleTolerance = 0.02f;
 
     private readonly FontReplacer replacer;
-    private readonly Hook<AllocateBakeDelegate> allocateBakeHook;
-    private readonly Hook<PrepareDelegate> prepareHook;
-    private readonly Hook<DrawBakedDelegate> drawBakedHook;
-    private readonly Hook<BakePlateDrawDelegate> bakePlateDrawHook;
+    private readonly IHostHook<AllocateBakeDelegate> allocateBakeHook;
+    private readonly IHostHook<PrepareDelegate> prepareHook;
+    private readonly IHostHook<DrawBakedDelegate> drawBakedHook;
+    private readonly IHostHook<BakePlateDrawDelegate> bakePlateDrawHook;
 
     // The scale each object's current region was baked at.
     private readonly Dictionary<nint, float> bakeScales = [];
@@ -137,11 +135,11 @@ internal sealed unsafe class NamePlateText : IDisposable
                 GameFontSet.Resolve();
             });
 
-            var interop = Plugin.GameInterop;
-            this.allocateBakeHook = interop.HookFromAddress<AllocateBakeDelegate>(allocateBake, this.AllocateBakeDetour);
-            this.prepareHook = interop.HookFromAddress<PrepareDelegate>(prepare, this.PrepareDetour);
-            this.drawBakedHook = interop.HookFromAddress<DrawBakedDelegate>(drawBaked, this.DrawBakedDetour);
-            this.bakePlateDrawHook = interop.HookFromAddress<BakePlateDrawDelegate>(bakePlateDraw, this.BakePlateDrawDetour);
+            var host = Host.Current;
+            this.allocateBakeHook = host.Hook<AllocateBakeDelegate>(allocateBake, this.AllocateBakeDetour);
+            this.prepareHook = host.Hook<PrepareDelegate>(prepare, this.PrepareDetour);
+            this.drawBakedHook = host.Hook<DrawBakedDelegate>(drawBaked, this.DrawBakedDetour);
+            this.bakePlateDrawHook = host.Hook<BakePlateDrawDelegate>(bakePlateDraw, this.BakePlateDrawDetour);
             this.allocateBakeHook.Enable();
             this.prepareHook.Enable();
             this.drawBakedHook.Enable();
@@ -194,7 +192,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         }
         catch (Exception ex)
         {
-            Plugin.Log.Error(ex, "Marking nameplates for baking failed");
+            Host.Log.Error(ex, "Marking nameplates for baking failed");
         }
 
         this.prepareHook?.Dispose();
@@ -333,9 +331,9 @@ internal sealed unsafe class NamePlateText : IDisposable
         for (var i = 0; i < 4; i++)
             this.Transform(node, i) = exact ? (i is 0 or 3 ? 1 : 0) : transform[i] / scale;
 
-        *widthField = (ushort)Math.Min(ushort.MaxValue, MathF.Round(width * scale));
-        *heightField = (ushort)Math.Min(ushort.MaxValue, MathF.Round(height * scale));
-        *textYOffsetField = (short)MathF.Round(textYOffset * scale);
+        *widthField = (ushort)Math.Min(ushort.MaxValue, Rounding.Round(width * scale));
+        *heightField = (ushort)Math.Min(ushort.MaxValue, Rounding.Round(height * scale));
+        *textYOffsetField = (short)Rounding.Round(textYOffset * scale);
         try
         {
             this.drawBakedHook.Original(renderer, node, bake);

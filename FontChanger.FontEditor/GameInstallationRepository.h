@@ -1,6 +1,7 @@
 #pragma once
 
 namespace App {
+	// Vendors of the releases of the game; those after None are in the order of FontGeneratorConfig::GameReleases.
 	enum class GameReleaseVendor {
 		None,
 		SquareEnix,
@@ -9,23 +10,11 @@ namespace App {
 		UserjoyGames,
 	};
 
-	class GameInstallationRepository {
-		struct Installation {
-			std::filesystem::path Path;
-			GameReleaseVendor Vendor;
-			bool Exists;
-		};
+	namespace GameInstallationRepository {
+		// Finds the release of the game installed at a path or a folder under it, and its game folder.
+		GameReleaseVendor DetermineGameRelease(std::filesystem::path path, std::filesystem::path& normalizedPath);
 
-		std::vector<Installation> m_paths;
-
-	public:
-		GameInstallationRepository();
-		~GameInstallationRepository();
-
-		static GameReleaseVendor DetermineGameRelease(std::filesystem::path path, std::filesystem::path& normalizedPath);
-		static std::vector<std::pair<GameReleaseVendor, std::filesystem::path>> AutoDetectInstalledGameReleases();
-
-		void LoadFrom(const FontGeneratorConfig& config);
-		void SaveTo(FontGeneratorConfig& config);
-	};
+		// Finds the releases of the game that the registry knows of.
+		std::vector<std::pair<GameReleaseVendor, std::filesystem::path>> AutoDetectInstalledGameReleases();
+	}
 }

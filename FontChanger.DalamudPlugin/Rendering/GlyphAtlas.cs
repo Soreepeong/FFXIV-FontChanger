@@ -2,12 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-using Dalamud.Interface.Textures;
-using Dalamud.Interface.Textures.TextureWraps;
-
-
 using TerraFX.Interop.DirectX;
-using TerraFX.Interop.Windows;
 
 namespace CustomFonts;
 
@@ -36,8 +31,11 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
     public string Name { get; }
 
-    /// <summary>The texture index of the first page in a replaced font: the game's fonts use 7 textures.</summary>
-    public const int FirstTextureIndex = 7;
+    /// <summary>
+    /// Gets the texture index of the first page in a replaced font: past the textures of every font of the game's tables
+    /// (7 in the global client). Set before the first atlas is made.
+    /// </summary>
+    public static int FirstTextureIndex { get; set; }
 
     public static int MaxPages => GameFont.MaxTextures - FirstTextureIndex;
 
@@ -276,7 +274,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
             }
         }
 
-        Plugin.Log.Information("Added {name} atlas page {n} ({size} x {size})", this.Name, this.pages.Count, this.Size);
+        Host.Log.Information("Added {name} atlas page {n} ({size} x {size})", this.Name, this.pages.Count, this.Size);
         this.PageAdded?.Invoke();
         return true;
     }
@@ -292,33 +290,23 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     private sealed class Page : IDisposable
     {
         private readonly int size;
+        private readonly IHostTexture texture;
 
         public Page(int size, string name)
         {
             this.size = size;
             this.DirtyLeft = this.DirtyTop = size;
             this.Shadow = (byte*)NativeMemory.AllocZeroed((nuint)(size * 4 * size));
-            this.Wrap = Plugin.TextureProvider.CreateEmpty(RawImageSpecification.Bgra32(size, size), false, false, name);
-            this.Kernel = Plugin.TextureProvider.ConvertToKernelTexture(this.Wrap, leaveWrapOpen: true);
-
-            ID3D11ShaderResourceView* srv;
-            var iid = IID.IID_ID3D11ShaderResourceView;
-            ((IUnknown*)this.Wrap.Handle.Handle)->QueryInterface(&iid, (void**)&srv).ThrowOnError();
-            ID3D11Resource* res;
-            srv->GetResource(&res);
-            srv->Release();
-            this.Resource = res;
+            this.texture = Host.Current.CreateTexture(size, size, name);
 
             // The texture's contents are undefined until written: upload the cleared copy once.
             this.MarkDirty(0, 0, size, size);
         }
 
-        public IDalamudTextureWrap Wrap { get; }
-
         /// <summary>Gets the page as a Kernel::Texture*.</summary>
-        public nint Kernel { get; }
+        public nint Kernel => this.texture.Kernel;
 
-        public ID3D11Resource* Resource { get; private set; }
+        public ID3D11Resource* Resource => this.texture.Resource;
 
         public byte* Shadow { get; private set; }
 
@@ -349,17 +337,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
         public void Dispose()
         {
-            // The game releases a kernel texture some frames after its last reference goes (it is a delayed-release
-            // resource), so the frames still in flight can keep sampling it. DecRef is ReferencedClassBase's vf3, as it
-            // has always been; no code site pins it down well enough for a signature.
-            ((delegate* unmanaged<nint, void>)(*(nint**)this.Kernel)[3])(this.Kernel);
-            if (this.Resource is not null)
-            {
-                this.Resource->Release();
-                this.Resource = null;
-            }
-
-            this.Wrap.Dispose();
+            this.texture.Dispose();
             if (this.Shadow is not null)
             {
                 NativeMemory.Free(this.Shadow);

@@ -2,7 +2,7 @@
 
 #include <commdlg.h>
 
-#include "FaceFromFont.h"
+#include "FontChanger.Presets/FaceFromFont.h"
 #include "FontChanger.Presets/Structs.h"
 #include "MainWindow.h"
 #include "NegativeBearingCodepointsDialog.h"
@@ -13,38 +13,33 @@ LRESULT App::FontEditorWindow::Menu_Edit_Add() {
 	if (!m_pActiveFace)
 		return 0;
 
-	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
-
-	std::set<int> indices;
-	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
-		indices.insert(i);
-
-	const auto count = ListView_GetItemCount(m_hFaceElementsListView);
-	if (indices.empty())
-		indices.insert(count);
-
-	ListView_SetItemState(m_hFaceElementsListView, -1, 0, LVIS_SELECTED);
-
 	auto& elements = m_pActiveFace->Elements;
+	auto indices = GetSelectedElementIndices();
+	if (indices.empty())
+		indices.push_back(static_cast<int>(elements.size()));
+
+	// Each new element copies the one before it, except for the characters.
+	std::set<const Structs::FaceElement*> added;
 	for (const auto pos : indices | std::views::reverse) {
 		auto& element = **elements.emplace(elements.begin() + pos, std::make_unique<Structs::FaceElement>());
 		if (pos > 0) {
 			element = *elements[static_cast<size_t>(pos) - 1];
 			element.WrapModifiers.Codepoints.clear();
 		}
-
-		FaceElementsListView_InsertItem(pos, element);
+		added.insert(&element);
 	}
 
-	Changes_MarkDirty();
-	m_pActiveFace->OnElementChange();
-	Window_Redraw();
+	UpdateFaceElementList();
+	SelectFaceElements(added);
+	OnActiveFaceElementsChanged();
 
 	if (indices.size() == 1)
-		ShowEditor(*elements[*indices.begin()]);
+		ShowEditor(*elements[indices.front()]);
 
 	return 0;
 }
+
+namespace FaceFromFont = FontChanger::FaceFromFont;
 
 LRESULT App::FontEditorWindow::Menu_Edit_AddFromFont() {
 	if (!m_pActiveFace)
@@ -73,47 +68,10 @@ LRESULT App::FontEditorWindow::Menu_Edit_AddFromFont() {
 	// The faces of the family in the font set of the active face, each with the elements that draw it with the font.
 	std::vector<std::pair<Structs::Face*, std::vector<std::unique_ptr<Structs::FaceElement>>>> additions;
 	try {
-		// GDI names some faces as families of their own ("Franklin Gothic Medium"); the lookup takes DirectWrite's family.
-		IDWriteFactoryPtr factory;
-		SuccessOrThrow(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(&factory)));
-		IDWriteGdiInteropPtr interop;
-		SuccessOrThrow(factory->GetGdiInterop(&interop));
-		IDWriteFontPtr font;
-		SuccessOrThrow(interop->CreateFontFromLOGFONT(&logFont, &font));
-		IDWriteFontFamilyPtr family;
-		SuccessOrThrow(font->GetFontFamily(&family));
-		IDWriteLocalizedStringsPtr names;
-		SuccessOrThrow(family->GetFamilyNames(&names));
-
-		UINT32 index;
-		if (BOOL exists; FAILED(names->FindLocaleName(L"en-us", &index, &exists)) || !exists) {
-			if (FAILED(names->FindLocaleName(L"en", &index, &exists)) || !exists)
-				index = 0;
-		}
-		UINT32 length;
-		SuccessOrThrow(names->GetStringLength(index, &length));
-		std::wstring familyName(length + 1, L'\0');
-		SuccessOrThrow(names->GetString(index, familyName.data(), length + 1));
-		familyName.resize(length);
-
-		const Structs::LookupStruct lookup{
-			.Name = xivres::util::unicode::convert<std::string>(familyName),
-			.Weight = font->GetWeight(),
-			.Stretch = font->GetStretch(),
-			.Style = font->GetStyle(),
-			.Synthesis = Structs::SynthesisStruct{},
-		};
-
+		const auto lookup = FaceFromFont::GetLookupFromLogFont(logFont);
 		for (const auto& pFontSet : m_multiFontSet.FontSets) {
-			if (std::ranges::none_of(pFontSet->Faces, [this](const auto& pFace) { return pFace.get() == m_pActiveFace; }))
-				continue;
-
-			for (const auto& pFace : pFontSet->Faces) {
-				const auto other = FaceFromFont::GetGameFontFamilyAndSize(pFace->Name);
-				const auto size = FaceFromFont::GetGameFontSize(*pFace);
-				if (other && size && other->first == familyAndSize->first)
-					additions.emplace_back(pFace.get(), FaceFromFont::MakeElements(lookup, other->first, *size));
-			}
+			if (std::ranges::any_of(pFontSet->Faces, [this](const auto& pFace) { return pFace.get() == m_pActiveFace; }))
+				additions = FaceFromFont::MakeFamilyElements(*pFontSet, familyAndSize->first, lookup);
 		}
 	} catch (const std::exception& e) {
 		const auto message = xivres::util::unicode::convert<std::wstring>(e.what());
@@ -148,7 +106,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_Copy() {
 		return 1;
 
 	auto objs = nlohmann::json::array();
-	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
+	for (const auto i : GetSelectedElementIndices())
 		objs.emplace_back(*m_pActiveFace->Elements[i]);
 
 	const auto wstr = xivres::util::unicode::convert<std::wstring>(objs.dump());
@@ -174,11 +132,12 @@ LRESULT App::FontEditorWindow::Menu_Edit_Copy() {
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_Paste() {
+	if (!m_pActiveFace)
+		return 0;
+
 	const auto clipboard = OpenClipboard(m_hWnd);
 	if (!clipboard)
 		return 0;
-
-	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
 
 	std::string data;
 	if (const auto pData = GetClipboardData(CF_UNICODETEXT))
@@ -200,28 +159,20 @@ LRESULT App::FontEditorWindow::Menu_Edit_Paste() {
 		return 0;
 	}
 
-	std::set<int> indices;
-	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
-		indices.insert(i);
-
-	const auto count = ListView_GetItemCount(m_hFaceElementsListView);
-	if (indices.empty())
-		indices.insert(count);
-
-	ListView_SetItemState(m_hFaceElementsListView, -1, 0, LVIS_SELECTED);
-
 	auto& elements = m_pActiveFace->Elements;
+	auto indices = GetSelectedElementIndices();
+	if (indices.empty())
+		indices.push_back(static_cast<int>(elements.size()));
+
+	std::set<const Structs::FaceElement*> added;
 	for (const auto pos : indices | std::views::reverse) {
-		for (const auto& templateElement : parsedTemplateElements | std::views::reverse) {
-			auto& element = **elements.emplace(elements.begin() + pos, std::make_unique<Structs::FaceElement>(templateElement));
-			FaceElementsListView_InsertItem(pos, element);
-		}
+		for (const auto& templateElement : parsedTemplateElements | std::views::reverse)
+			added.insert(elements.emplace(elements.begin() + pos, std::make_unique<Structs::FaceElement>(templateElement))->get());
 	}
 
-	Changes_MarkDirty();
-	m_pActiveFace->OnElementChange();
-	Window_Redraw();
-
+	UpdateFaceElementList();
+	SelectFaceElements(added);
+	OnActiveFaceElementsChanged();
 	return 0;
 }
 
@@ -229,23 +180,15 @@ LRESULT App::FontEditorWindow::Menu_Edit_Delete() {
 	if (!m_pActiveFace)
 		return 0;
 
-	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
-
-	std::set<int> indices;
-	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
-		indices.insert(i);
+	const auto indices = GetSelectedElementIndices();
 	if (indices.empty())
 		return 0;
 
-	for (const auto index : indices | std::views::reverse) {
-		ListView_DeleteItem(m_hFaceElementsListView, index);
+	for (const auto index : indices | std::views::reverse)
 		m_pActiveFace->Elements.erase(m_pActiveFace->Elements.begin() + index);
-	}
 
-	Changes_MarkDirty();
-	m_pActiveFace->OnElementChange();
-	Window_Redraw();
-
+	UpdateFaceElementList();
+	OnActiveFaceElementsChanged();
 	return 0;
 }
 
@@ -255,17 +198,18 @@ LRESULT App::FontEditorWindow::Menu_Edit_SelectAll() {
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_Details() {
-	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
+	for (const auto i : GetSelectedElementIndices())
 		ShowEditor(*m_pActiveFace->Elements[i]);
 	return 0;
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_ChangeParams(int baselineShift, int horizontalOffset, int letterSpacing, float fontSize) {
-	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
+	const auto indices = GetSelectedElementIndices();
+	if (indices.empty())
+		return 0;
 
-	auto any = false;
-	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));) {
-		any = true;
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
+	for (const auto i : indices) {
 		auto& e = *m_pActiveFace->Elements[i];
 		auto baseChanged = false;
 		if (e.Renderer == Structs::RendererEnum::Empty) {
@@ -288,38 +232,29 @@ LRESULT App::FontEditorWindow::Menu_Edit_ChangeParams(int baselineShift, int hor
 			e.OnFontWrappingParametersChange();
 		UpdateFaceElementListViewItem(e);
 	}
-	if (!any)
-		return 0;
 
-	Changes_MarkDirty();
-	m_pActiveFace->OnElementChange();
-	Window_Redraw();
-
+	OnActiveFaceElementsChanged();
 	return 0;
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_ToggleMergeMode() {
-	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
+	const auto indices = GetSelectedElementIndices();
+	if (indices.empty())
+		return 0;
 
-	auto any = false;
-	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));) {
-		any = true;
+	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
+	for (const auto i : indices) {
 		auto& e = *m_pActiveFace->Elements[i];
-		e.MergeMode = static_cast<xivres::fontgen::codepoint_merge_mode>((static_cast<int>(e.MergeMode) + 1) % static_cast<int>(xivres::fontgen::codepoint_merge_mode::Enum_Count_));
+		e.MergeMode = static_cast<FontChanger::FixedSizeFont::codepoint_merge_mode>((static_cast<int>(e.MergeMode) + 1) % static_cast<int>(FontChanger::FixedSizeFont::codepoint_merge_mode::Enum_Count_));
 		e.OnFontWrappingParametersChange();
 		UpdateFaceElementListViewItem(e);
 	}
-	if (!any)
-		return 0;
 
-	Changes_MarkDirty();
-	m_pActiveFace->OnElementChange();
-	Window_Redraw();
-
+	OnActiveFaceElementsChanged();
 	return 0;
 }
 
-LRESULT App::FontEditorWindow::Menu_Edit_SetVerticalAlignment(xivres::fontgen::vertical_alignment alignment) {
+LRESULT App::FontEditorWindow::Menu_Edit_SetVerticalAlignment(FontChanger::FixedSizeFont::vertical_alignment alignment) {
 	if (!m_pActiveFace || m_pActiveFace->VerticalAlignment == alignment)
 		return 0;
 
@@ -331,94 +266,54 @@ LRESULT App::FontEditorWindow::Menu_Edit_SetVerticalAlignment(xivres::fontgen::v
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_MoveUpOrDown(int direction) {
-	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
-
-	std::vector<size_t> ids;
-	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
-		ids.emplace_back(i);
-
-	if (ids.empty())
+	auto indices = GetSelectedElementIndices();
+	if (indices.empty())
 		return 0;
 
-	std::vector<size_t> allItems;
-	allItems.resize(m_pActiveFace->Elements.size());
-	for (size_t i = 0; i < allItems.size(); i++)
-		allItems[i] = i;
-
-	std::ranges::sort(ids);
+	// Each selected element swaps places with its neighbor, starting from the one nearest to where they move.
+	auto& elements = m_pActiveFace->Elements;
 	if (direction > 0)
-		std::ranges::reverse(ids);
+		std::ranges::reverse(indices);
 
 	auto any = false;
-	for (const auto& id : ids) {
-		if (id + direction < 0 || id + direction >= allItems.size())
+	for (const auto index : indices) {
+		const auto target = index + direction;
+		if (target < 0 || target >= static_cast<int>(elements.size()))
 			continue;
 
 		any = true;
-		std::swap(allItems[id], allItems[id + direction]);
+		std::swap(elements[index], elements[target]);
 	}
 	if (!any)
 		return 0;
 
-	std::map<LPARAM, size_t> newLocations;
-	for (int i = 0, i_ = static_cast<int>(m_pActiveFace->Elements.size()); i < i_; i++) {
-		const LVITEMW lvi{
-			.mask = LVIF_PARAM,
-			.iItem = i,
-		};
-		ListView_GetItem(m_hFaceElementsListView, &lvi);
-		newLocations[lvi.lParam] = allItems[i];
-	}
-
-	const auto listViewSortCallback = [](LPARAM lp1, LPARAM lp2, LPARAM ctx) -> int {
-		auto& newLocations = *reinterpret_cast<std::map<LPARAM, size_t>*>(ctx);
-		const auto nl = newLocations[lp1];
-		const auto nr = newLocations[lp2];
-		return nl == nr ? 0 : (nl > nr ? 1 : -1);
-	};
-	ListView_SortItems(m_hFaceElementsListView, listViewSortCallback, &newLocations);
-
-	std::ranges::sort(m_pActiveFace->Elements, [&newLocations](const auto& l, const auto& r) -> bool {
-		const auto nl = newLocations[reinterpret_cast<LPARAM>(l.get())];
-		const auto nr = newLocations[reinterpret_cast<LPARAM>(r.get())];
-		return nl < nr;
-	});
-
-	Changes_MarkDirty();
-	m_pActiveFace->OnElementChange();
-	Window_Redraw();
-
+	UpdateFaceElementList();
+	OnActiveFaceElementsChanged();
 	return 0;
 }
 
 LRESULT App::FontEditorWindow::FaceElementsListView_Clone() {
-	if (!m_pActiveFace) return 0;
+	if (!m_pActiveFace)
+		return 0;
 
-	std::vector<int> indices;
-	for (auto i = -1; -1 != (i = ListView_GetNextItem(m_hFaceElementsListView, i, LVNI_SELECTED));)
-		indices.push_back(i);
-	if (indices.empty()) return 0;
+	const auto indices = GetSelectedElementIndices();
+	if (indices.empty())
+		return 0;
 
-	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
-
+	// The copies go after the last selected element, in their order.
 	auto& elements = m_pActiveFace->Elements;
-	std::vector<Structs::FaceElement> clones;
-	clones.reserve(indices.size());
+	std::vector<std::unique_ptr<Structs::FaceElement>> clones;
 	for (const auto i : indices)
-		clones.emplace_back(*elements[i]);
+		clones.emplace_back(std::make_unique<Structs::FaceElement>(*elements[i]));
 
-	const auto insertPos = indices.back() + 1;
-	ListView_SetItemState(m_hFaceElementsListView, -1, 0, LVIS_SELECTED);
+	std::set<const Structs::FaceElement*> added;
+	for (const auto& pClone : clones)
+		added.insert(pClone.get());
+	elements.insert(elements.begin() + indices.back() + 1, std::make_move_iterator(clones.begin()), std::make_move_iterator(clones.end()));
 
-	for (auto i = 0, i_ = static_cast<int>(clones.size()); i < i_; ++i) {
-		const auto pos = insertPos + i;
-		auto& element = **elements.emplace(elements.begin() + pos, std::make_unique<Structs::FaceElement>(clones[i]));
-		FaceElementsListView_InsertItem(pos, element);
-	}
-
-	Changes_MarkDirty();
-	m_pActiveFace->OnElementChange();
-	Window_Redraw();
+	UpdateFaceElementList();
+	SelectFaceElements(added);
+	OnActiveFaceElementsChanged();
 	return 0;
 }
 
@@ -442,15 +337,13 @@ LRESULT App::FontEditorWindow::FaceElementsListView_ShowNegativeBearingCodepoint
 			MB_OK | MB_ICONINFORMATION);
 		return 0;
 	}
-	
+
 	SetCursor(hPrevCursor);
 	NegativeBearingCodepointsDialog::Show(m_hWnd, std::move(entries));
 	return 0;
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_CreateEmptyCopyFromSelection() {
-	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
-
 	if (!m_pActiveFace)
 		return 0;
 
@@ -458,24 +351,21 @@ LRESULT App::FontEditorWindow::Menu_Edit_CreateEmptyCopyFromSelection() {
 	if (refIndex == -1)
 		return 0;
 
-	ListView_SetItemState(m_hFaceElementsListView, -1, 0, LVIS_SELECTED);
-
+	// An empty element of the same metrics, first so that it decides the metrics of the face.
 	auto& elements = m_pActiveFace->Elements;
 	const auto& ref = *elements[refIndex];
-	auto& element = **elements.emplace(elements.begin(), std::make_unique<Structs::FaceElement>());
-	element.Size = ref.Size;
-	element.RendererSpecific = {
+	auto element = std::make_unique<Structs::FaceElement>();
+	element->Size = ref.Size;
+	element->RendererSpecific = {
 		.Empty = {
 			.Ascent = static_cast<float>(ref.GetWrappedFont()->ascent()) + ref.WrapModifiers.BaselineShift,
 			.LineHeight = static_cast<float>(ref.GetWrappedFont()->line_height()),
 		},
 	};
+	const auto& added = **elements.emplace(elements.begin(), std::move(element));
 
-	FaceElementsListView_InsertItem(0, element);
-
-	Changes_MarkDirty();
-	m_pActiveFace->OnElementChange();
-	Window_Redraw();
-
+	UpdateFaceElementList();
+	SelectFaceElements({&added});
+	OnActiveFaceElementsChanged();
 	return 0;
 }

@@ -13,7 +13,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FontChanger.FontEditor", "F
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xivres", "xivres\xivres\xivres.vcxproj", "{58DADDF6-5733-40E0-855C-CC3B4BF235EB}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xivres.fontgen", "xivres\xivres.fontgen\xivres.fontgen.vcxproj", "{90E4B098-E528-44EE-B643-56A0EE1A4FFB}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FontChanger.FixedSizeFont", "FontChanger.FixedSizeFont\FontChanger.FixedSizeFont.vcxproj", "{90E4B098-E528-44EE-B643-56A0EE1A4FFB}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FontChanger.DalamudPlugin", "FontChanger.DalamudPlugin\FontChanger.DalamudPlugin.csproj", "{0092E8C8-E34C-48B7-8670-6423BE455DA1}"
 EndProject
