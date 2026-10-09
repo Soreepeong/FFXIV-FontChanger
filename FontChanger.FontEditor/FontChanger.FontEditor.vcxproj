@@ -220,6 +220,7 @@
     <ClCompile Include="FaceElementEditorDialog.GlyphMerging.cpp" />
     <ClCompile Include="FaceElementEditorDialog.GlyphImages.cpp" />
     <ClCompile Include="FaceElementEditorDialog.Monospacing.cpp" />
+    <ClCompile Include="FaceFromFont.cpp" />
     <ClCompile Include="GameFontReloader.cpp" />
     <ClCompile Include="FontGeneratorConfig.cpp" />
     <ClCompile Include="GameInstallationManagerDialog.cpp" />
@@ -257,6 +258,7 @@
     <ClInclude Include="ExportPreviewWindow.h" />
     <ClInclude Include="FaceElementEditorDialog.h" />
     <ClInclude Include="FaceElementEditorDialog.Internal.h" />
+    <ClInclude Include="FaceFromFont.h" />
     <ClInclude Include="GameFontReloader.h" />
     <ClInclude Include="CommandLineRender.h" />
     <ClInclude Include="FileHistory.h" />

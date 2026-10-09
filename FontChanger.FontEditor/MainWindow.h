@@ -123,6 +123,10 @@ namespace App {
 		LRESULT Menu_File_Exit();
 
 		LRESULT Menu_Edit_Add();
+
+		// Adds the elements that draw the faces of the game font family of the active face with a font that the user
+		// chooses, to each face of the family in its font set; see FaceFromFont::MakeElements.
+		LRESULT Menu_Edit_AddFromFont();
 		LRESULT Menu_Edit_Cut();
 		LRESULT Menu_Edit_Copy();
 		LRESULT Menu_Edit_Paste();

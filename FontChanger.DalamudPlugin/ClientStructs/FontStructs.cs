@@ -1,18 +1,13 @@
-// Font structures of the game's UI text renderer, as of 7.56h (image base 0x140000000). FFXIVClientStructs has
-// AtkFontManager, but its Font is 0xF0 with TextureCount at +0xE8; in 7.56h the stride is 0xF8 and the count is at
-// +0xF0 (AtkFontManager setup, FUN_14064ecf0, and the texture binding loop, FUN_140655820, both read +0xF0).
-// RE write-up: private-scratch/ffxiv/ui/font_rendering_756h.md.
+// Font structures of the game's UI text renderer. Those whose fields moved over the patches (the font manager, font sets
+// and fonts) are read at the offsets the game's code says (GameLayout, from game_font_signatures.json); those that kept
+// their layout since 2020 are C# structures, checked against the code. Addresses in comments are of 7.56h (image base
+// 0x140000000). RE write-up: private-scratch/ffxiv/ui/font_rendering_756h.md.
 
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-
-using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
-using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
-using FFXIVClientStructs.FFXIV.Component.GUI;
-using FFXIVClientStructs.Interop;
 
 namespace CustomFonts;
 
@@ -27,161 +22,259 @@ public enum GameFontType
     JupiterLarge = 5,
 }
 
-/// <summary>What <see cref="AtkFontManager"/> lacks; use through a cast: <c>((AtkFontManagerExtras*)manager)</c>.</summary>
-[StructLayout(LayoutKind.Explicit)]
-public unsafe struct AtkFontManagerExtras
+/// <summary>
+/// The UI's font manager (AtkFontManager, embedded in AtkModule; AtkStage points to it): the fonts and the font sets
+/// made of them. Opaque: only used through pointers.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Size = 1)]
+public unsafe struct GameFontManager
 {
-    /// <summary>Number of font sets behind <see cref="FontSets"/>.</summary>
-    public const int FontSetCount = 6;
+    private static nint stageInstance;
+    private static int stageFontManager;
+    private static int fontSets;
+    private static int fonts;
+    private static int fontCount;
 
-    /// <summary>
-    /// The font sets, indexed by <see cref="GameFontType"/>: <c>AtkTextNodeRenderer.Draw</c> (0x1406C4690) takes
-    /// <c>FontSets + fontType * 0x278</c>. Filled by FUN_14064C140 once the fonts have loaded.
-    /// </summary>
-    [FieldOffset(0x00)] public GameFontSet* FontSets;
+    /// <summary>Gets the number of font sets: one per <see cref="GameFontType"/>.</summary>
+    public static int FontSetCount { get; private set; }
 
-    /// <summary>The fonts, <see cref="FontCount"/> (41) of them, 0xF8 apart.</summary>
-    [FieldOffset(0x08)] public GameFont* Fonts;
+    /// <summary>The font sets, indexed by <see cref="GameFontType"/>.</summary>
+    public GameFontSet* FontSets => *(GameFontSet**)this.At(fontSets);
 
-    /// <summary>Number of <see cref="Fonts"/>.</summary>
-    [FieldOffset(0x10)] public ushort FontCount;
+    /// <summary>The fonts, <see cref="FontCount"/> of them, <see cref="GameFont.StructSize"/> apart.</summary>
+    public GameFont* Fonts => *(GameFont**)this.At(fonts);
+
+    public ushort FontCount => *(ushort*)this.At(fontCount);
 
     /// <summary>Gets the font manager of the UI, or null before it is set up.</summary>
-    public static AtkFontManagerExtras* Instance()
+    public static GameFontManager* Instance()
     {
-        var stage = AtkStage.Instance();
-        return stage is null ? null : (AtkFontManagerExtras*)stage->AtkFontManager;
+        var stage = *(nint*)stageInstance;
+        return stage == 0 ? null : *(GameFontManager**)(stage + stageFontManager);
+    }
+
+    /// <summary>Gets a font set; null if there are none yet.</summary>
+    public GameFontSet* FontSet(int index) =>
+        this.FontSets is null ? null : (GameFontSet*)((byte*)this.FontSets + (index * GameFontSet.StructSize));
+
+    /// <summary>Gets a font of <see cref="Fonts"/>.</summary>
+    public GameFont* Font(int index) => (GameFont*)((byte*)this.Fonts + (index * GameFont.StructSize));
+
+    /// <summary>Gets the index of a font in <see cref="Fonts"/>; -1 if it isn't one of them.</summary>
+    public int IndexOf(GameFont* font)
+    {
+        var offset = (byte*)font - (byte*)this.Fonts;
+        return this.Fonts is null || offset < 0 || offset % GameFont.StructSize != 0 || offset / GameFont.StructSize >= this.FontCount
+                   ? -1
+                   : (int)(offset / GameFont.StructSize);
+    }
+
+    internal static void Resolve()
+    {
+        stageInstance = GameLayout.Target("AtkStage.Instance");
+        stageFontManager = GameLayout.Get("AtkStage.AtkFontManager");
+        fontSets = GameLayout.Get("AtkFontManager.FontSets", 0);
+        fonts = GameLayout.Get("AtkFontManager.Fonts");
+        fontCount = GameLayout.Get("AtkFontManager.FontCount");
+        FontSetCount = GameLayout.Get("AtkFontManager.FontSetCount");
+    }
+
+    private byte* At(int offset) => (byte*)Unsafe.AsPointer(ref this) + offset;
+}
+
+/// <summary>Resolves the font structures' layouts, within <see cref="GameLayout.Resolve"/>.</summary>
+internal static class GameFontStructs
+{
+    public static void Resolve()
+    {
+        GameFontManager.Resolve();
+        GameFontSet.Resolve();
+        GameFont.Resolve();
+        GameLayout.CheckFixed("GameGlyph", typeof(GameGlyph));
+        GameLayout.CheckFixed("GameKerningEntry", typeof(GameKerningEntry));
+        GameLayout.CheckFixed("GlyphMap", typeof(GameGlyphMap));
+        GameLayout.CheckFixed("GlyphMap.Node", typeof(GameGlyphMap.Node));
     }
 }
 
-/// <summary>One slot of a <see cref="GameFontSet"/>: a font and the size it stands for.</summary>
-[StructLayout(LayoutKind.Explicit, Size = 0x10)]
-public unsafe struct GameFontSetSlot
-{
-    [FieldOffset(0x00)] public GameFont* Font;
-
-    /// <summary>The size the slot is chosen for: the largest one not above the requested size + 0.5 wins.</summary>
-    [FieldOffset(0x08)] public float Size;
-
-    [FieldOffset(0x0C)] public float Scale;
-}
-
 /// <summary>
-/// The fonts of one <see cref="GameFontType"/>, and the per-draw state the text analyzers keep in it (0x278 bytes). The
-/// font is picked per run by FUN_140651DC0 from <see cref="Slots"/> 0..7, or 8..15 when <see cref="Flags"/> bit 3 is set.
+/// The fonts of one <see cref="GameFontType"/>, and the per-draw state the text analyzers keep in it. The font is picked
+/// per run by PickFont from its <see cref="GameFontSetSlot"/>s (at its start; the alternate ones when its flags' bit 3 is
+/// set). Opaque: only used through pointers.
 /// </summary>
-[StructLayout(LayoutKind.Explicit, Size = 0x278)]
+[StructLayout(LayoutKind.Sequential, Size = 1)]
 public unsafe struct GameFontSet
 {
-    /// <summary>Number of <see cref="Slots"/>.</summary>
-    public const int SlotCount = 16;
+    private static int scaledSizeY;
+    private static int nodeScaleX;
+    private static int nodeScaleY;
+    private static int currentFont;
+    private static int currentFontSize;
 
-    [FieldOffset(0x000)] public GameFontSetSlotArray16 Slots;
+    /// <summary>Gets the size of a font set, the stride of <see cref="GameFontManager.FontSets"/>.</summary>
+    public static int StructSize { get; private set; }
 
-    /// <summary>The font size requested for the current run, before and after the node's scale (+0x128/+0x12C).</summary>
-    [FieldOffset(0x120)] public float RequestedSizeX;
-
-    [FieldOffset(0x124)] public float RequestedSizeY;
-
-    [FieldOffset(0x128)] public float ScaledSizeX;
-
-    [FieldOffset(0x12C)] public float ScaledSizeY;
+    /// <summary>The font size requested for the current run after the node's scale.</summary>
+    public float ScaledSizeY => *(float*)this.At(scaledSizeY);
 
     /// <summary>The node's screen scale (lengths of its transform's rows; AtkTextNodeRenderer vf3).</summary>
-    [FieldOffset(0x130)] public float NodeScaleX;
+    public float NodeScaleX
+    {
+        get => *(float*)this.At(nodeScaleX);
+        set => *(float*)this.At(nodeScaleX) = value;
+    }
 
-    [FieldOffset(0x134)] public float NodeScaleY;
+    public float NodeScaleY
+    {
+        get => *(float*)this.At(nodeScaleY);
+        set => *(float*)this.At(nodeScaleY) = value;
+    }
 
-    /// <summary>
-    /// Bits 0..15: depth; bit 31: the node's fixed font resolution flag (AtkTextNode +0x171 bit 4), which makes the picker
-    /// use <see cref="RequestedSizeY"/> instead of <see cref="ScaledSizeY"/>. Built by AtkTextNodeRenderer vf3.
-    /// </summary>
-    [FieldOffset(0x158)] public uint DrawFlags;
+    /// <summary>The font picked last, and the size it was picked for (PickFont reuses it while the size is unchanged).</summary>
+    public GameFont* CurrentFont
+    {
+        get => *(GameFont**)this.At(currentFont);
+        set => *(GameFont**)this.At(currentFont) = value;
+    }
 
-    /// <summary>The node's +0x16C: when positive (and bit 31 of <see cref="DrawFlags"/> is clear), the picker uses this times <see cref="RequestedSizeY"/>.</summary>
-    [FieldOffset(0x15C)] public float PickScale;
+    public float CurrentFontSize
+    {
+        get => *(float*)this.At(currentFontSize);
+        set => *(float*)this.At(currentFontSize) = value;
+    }
 
-    /// <summary>The font picked last, and the size it was picked for (FUN_140651DC0 reuses it while the size is unchanged).</summary>
-    [FieldOffset(0x250)] public GameFont* CurrentFont;
+    internal static void Resolve()
+    {
+        StructSize = GameLayout.Get("GameFontSet");
+        scaledSizeY = GameLayout.Get("GameFontSet.ScaledSizeY");
+        nodeScaleX = GameLayout.Get("GameFontSet.NodeScaleX");
+        nodeScaleY = GameLayout.Get("GameFontSet.NodeScaleY");
+        currentFont = GameLayout.Get("GameFontSet.CurrentFont");
+        currentFontSize = GameLayout.Get("GameFontSet.CurrentFontSize");
+    }
 
-    [FieldOffset(0x258)] public float CurrentFontSize;
-
-    /// <summary>Bit 1: has fonts; bit 2: has alternate slots; bit 3: alternate slots in use.</summary>
-    [FieldOffset(0x268)] public byte Flags;
-}
-
-[InlineArray(GameFontSet.SlotCount)]
-public struct GameFontSetSlotArray16
-{
-    private GameFontSetSlot element;
+    private byte* At(int offset) => (byte*)Unsafe.AsPointer(ref this) + offset;
 }
 
 /// <summary>
-/// A font: an FDT's metrics, its glyphs converted to <see cref="GameGlyph"/>, and its atlas textures (0xF8 bytes).
-/// Built from the FDT by FUN_14064ECF0; the FDT resource handle is released afterwards.
+/// A font: an FDT's metrics, its glyphs converted to <see cref="GameGlyph"/>, and its atlas textures. Built from the FDT
+/// by BuildFont; the FDT resource handle is released afterwards. Opaque: only used through pointers; copied with
+/// <see cref="CopyFrom"/>.
 /// </summary>
-[StructLayout(LayoutKind.Explicit, Size = 0xF8)]
+[StructLayout(LayoutKind.Sequential, Size = 1)]
 public unsafe struct GameFont
 {
-    /// <summary>Most textures a font can have: the text renderer keeps vertex counts and buffers for 10 per font.</summary>
-    public const int MaxTextures = 10;
+    private static int textureResourceHandles;
+    private static int textures;
+    private static int kerningCount;
+    private static int textureWidth;
+    private static int size;
+    private static int ascent;
+    private static int glyphMap;
+    private static int secondary;
+    private static int secondaryRatio;
+    private static int textureCount;
+    private static int italicCorrection = -1;
 
-    [FieldOffset(0x00)] public TextureResourceHandlePointerArray10 TextureResourceHandles;
+    /// <summary>Gets the size of a font, the stride of <see cref="GameFontManager.Fonts"/>.</summary>
+    public static int StructSize { get; private set; }
 
-    [FieldOffset(0x50)] public ResourceHandle* FontdataResourceHandle;
+    /// <summary>Gets the most textures a font can have: the text renderer keeps vertex counts and buffers for that many.</summary>
+    public static int MaxTextures { get; private set; }
 
-    /// <summary>The atlas textures the renderer binds; glyphs refer to them by index.</summary>
-    [FieldOffset(0x58)] public TexturePointerArray10 Textures;
+    public uint KerningCount
+    {
+        get => *(uint*)this.At(kerningCount);
+        set => *(uint*)this.At(kerningCount) = value;
+    }
 
-    [FieldOffset(0xA8)] public uint GlyphCount;
+    /// <summary>Also written to every vertex: FontEdgeVS and FontGlareVS take 1 / this as the texel step on both axes.</summary>
+    public ushort TextureWidth
+    {
+        get => *(ushort*)this.At(textureWidth);
+        set => *(ushort*)this.At(textureWidth) = value;
+    }
 
-    [FieldOffset(0xAC)] public uint KerningCount;
-
-    /// <summary>Also written to every vertex (+0x16): FontEdgeVS and FontGlareVS take 1 / this as the texel step on both axes.</summary>
-    [FieldOffset(0xB4)] public ushort TextureWidth;
-
-    [FieldOffset(0xB6)] public ushort TextureHeight;
+    /// <summary>Follows <see cref="TextureWidth"/> (the FDT header's order).</summary>
+    public ushort TextureHeight
+    {
+        get => *(ushort*)this.At(textureWidth + 2);
+        set => *(ushort*)this.At(textureWidth + 2) = value;
+    }
 
     /// <summary>The size the glyphs are drawn at; the renderer scales them by the requested size / this.</summary>
-    [FieldOffset(0xB8)] public float Size;
+    public float Size
+    {
+        get => *(float*)this.At(size);
+        set => *(float*)this.At(size) = value;
+    }
 
-    [FieldOffset(0xBC)] public int LineHeight;
+    /// <summary>Follows <see cref="Size"/> (BuildFont copies both from the FDT header at once).</summary>
+    public int LineHeight
+    {
+        get => *(int*)this.At(size + 4);
+        set => *(int*)this.At(size + 4) = value;
+    }
 
-    [FieldOffset(0xC0)] public int Ascent;
-
-    [FieldOffset(0xC8)] public GameGlyph* Glyphs;
+    public int Ascent
+    {
+        get => *(int*)this.At(ascent);
+        set => *(int*)this.At(ascent) = value;
+    }
 
     /// <summary>
     /// <c>std::unordered_map&lt;uint, GameGlyph*&gt;*</c> keyed by <see cref="GameGlyph.Utf8Value"/>; see
     /// <see cref="GameGlyphMap"/>. The game looks up with <c>operator[]</c>, which inserts a null entry on a miss.
     /// </summary>
-    [FieldOffset(0xD0)] public GameGlyphMap* GlyphMap;
-
-    [FieldOffset(0xD8)] public GameKerningEntry* Kerning;
+    public GameGlyphMap* GlyphMap => *(GameGlyphMap**)this.At(glyphMap);
 
     /// <summary>A font whose glyph is used instead when it is narrower (times <see cref="SecondaryRatio"/>).</summary>
-    [FieldOffset(0xE0)] public GameFont* Secondary;
+    public GameFont* Secondary
+    {
+        get => *(GameFont**)this.At(secondary);
+        set => *(GameFont**)this.At(secondary) = value;
+    }
 
-    [FieldOffset(0xE8)] public float SecondaryRatio;
+    public float SecondaryRatio
+    {
+        get => *(float*)this.At(secondaryRatio);
+        set => *(float*)this.At(secondaryRatio) = value;
+    }
 
-    /// <summary>1 loading, 2 loaded, 3 failed.</summary>
-    [FieldOffset(0xEC)] public int LoadState;
+    public ushort TextureCount
+    {
+        get => *(ushort*)this.At(textureCount);
+        set => *(ushort*)this.At(textureCount) = value;
+    }
 
-    [FieldOffset(0xF0)] public ushort TextureCount;
+    /// <summary>
+    /// Gets or sets how far the glyph after italics moves right (2 to 6 per font, set with the font sets), for the overhang
+    /// of the sheared glyphs before it; does nothing if the game's code doesn't say where it is (XShift).
+    /// </summary>
+    public sbyte ItalicCorrection
+    {
+        get => italicCorrection < 0 ? (sbyte)0 : *(sbyte*)this.At(italicCorrection);
+        set
+        {
+            if (italicCorrection >= 0)
+                *(sbyte*)this.At(italicCorrection) = value;
+        }
+    }
 
-    /// <summary>Bit 0: built; bit 1: ready; bit 2: <see cref="DirectIndexFirst"/> and up index <see cref="Glyphs"/> directly.</summary>
-    [FieldOffset(0xF2)] public byte Flags;
+    /// <summary>Gets a texture resource handle (<see cref="MaxTextures"/> of them; the first is of texture 0).</summary>
+    public nint GetTextureResourceHandle(int index) => ((nint*)this.At(textureResourceHandles))[index];
 
-    /// <summary>The first codepoint of the run of glyphs below U+0100 that the fast path indexes directly.</summary>
-    [FieldOffset(0xF3)] public byte DirectIndexFirst;
+    /// <summary>Gets an atlas texture the renderer binds (a Kernel::Texture*); glyphs refer to them by index.</summary>
+    public nint GetTexture(int index) => ((nint*)this.At(textures))[index];
 
-    [FieldOffset(0xF4)] public sbyte XShift;
+    public void SetTexture(int index, nint texture) => ((nint*)this.At(textures))[index] = texture;
 
-    /// <summary>Extra spacing between consecutive Hangul or CJK glyphs.</summary>
-    [FieldOffset(0xF5)] public sbyte CjkSpacing;
+    /// <summary>Copies a whole font.</summary>
+    public void CopyFrom(GameFont* source) =>
+        Buffer.MemoryCopy(source, Unsafe.AsPointer(ref this), StructSize, StructSize);
 
     /// <summary>Gets the glyph of a codepoint, without adding a map entry as the game's lookup does; null if none.</summary>
-    public readonly GameGlyph* FindGlyph(int codepoint)
+    public GameGlyph* FindGlyph(int codepoint)
     {
         if (this.GlyphMap is null)
             return null;
@@ -189,19 +282,30 @@ public unsafe struct GameFont
         return node is null ? null : node->Value;
     }
 
-    public readonly bool HasGlyph(int codepoint) => this.FindGlyph(codepoint) is not null;
-}
+    public bool HasGlyph(int codepoint) => this.FindGlyph(codepoint) is not null;
 
-[InlineArray(GameFont.MaxTextures)]
-public struct TextureResourceHandlePointerArray10
-{
-    private Pointer<TextureResourceHandle> element;
-}
+    internal static void Resolve()
+    {
+        StructSize = GameLayout.Get("GameFont");
+        MaxTextures = GameLayout.Get("GameFont.MaxTextures");
+        textureResourceHandles = GameLayout.Get("GameFont.TextureResourceHandles", 0);
+        textures = GameLayout.Get("GameFont.Textures");
+        kerningCount = GameLayout.Get("GameFont.KerningCount");
+        textureWidth = GameLayout.Get("GameFont.TextureWidth");
+        size = GameLayout.Get("GameFont.Size");
+        ascent = GameLayout.Get("GameFont.Ascent");
 
-[InlineArray(GameFont.MaxTextures)]
-public struct TexturePointerArray10
-{
-    private Pointer<Texture> element;
+        // The glyph map replaced a sorted glyph array in 7.40; the plugin only looks glyphs up in the map.
+        glyphMap = GameLayout.Get("GameFont.GlyphMap");
+        secondary = GameLayout.Get("GameFont.Secondary");
+        secondaryRatio = GameLayout.Get("GameFont.SecondaryRatio");
+        textureCount = GameLayout.Get("GameFont.TextureCount");
+
+        // Optional: only changed in copies.
+        italicCorrection = GameLayout.TryGet("GameFont.XShift") ?? -1;
+    }
+
+    private byte* At(int offset) => (byte*)Unsafe.AsPointer(ref this) + offset;
 }
 
 /// <summary>
@@ -251,7 +355,7 @@ public struct GameKerningEntry
 
 /// <summary>
 /// MSVC <c>std::unordered_map&lt;uint, GameGlyph*&gt;</c> (0x40 bytes): a doubly linked list of all nodes, and per bucket
-/// the first and last node of its run. FNV-1a over the key's 4 bytes (FUN_1406E97C0).
+/// the first and last node of its run. FNV-1a over the key's 4 bytes (GlyphMapFind).
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = 0x40)]
 public unsafe struct GameGlyphMap
@@ -328,7 +432,7 @@ public static class GameUtf8
         return v;
     }
 
-    /// <summary>The length of a UTF-8 sequence by its first byte, as the game steps through text (FUN_1406EEC70).</summary>
+    /// <summary>The length of a UTF-8 sequence by its first byte, as the game steps through text (LayOutCharacter).</summary>
     public static int SequenceLength(byte b) => b < 0x80 ? 1 : b < 0xC0 ? 1 : b < 0xE0 ? 2 : b < 0xF0 ? 3 : b < 0xF8 ? 4 : 1;
 
     /// <summary>Packs a UTF-8 sequence's bytes big-endian, the way the game keys glyphs.</summary>

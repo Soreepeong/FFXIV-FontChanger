@@ -394,6 +394,48 @@ public sealed class Preset
         return new(faces);
     }
 
+    /// <summary>Makes a preset of faces made otherwise than read (such as by <see cref="FaceFromFont"/>); of a name in several, the last.</summary>
+    public static Preset FromFaces(IEnumerable<FaceDef> faces)
+    {
+        var res = new Dictionary<string, FaceDef>(StringComparer.OrdinalIgnoreCase);
+        foreach (var face in faces)
+            res[face.Name] = face;
+        return new(res);
+    }
+
+    /// <summary>Combines presets into one; of a face in several, the one of the last preset is used.</summary>
+    public static Preset Combine(IEnumerable<Preset> presets)
+    {
+        var faces = new Dictionary<string, FaceDef>(StringComparer.OrdinalIgnoreCase);
+        foreach (var preset in presets)
+        {
+            foreach (var (name, face) in preset.Faces)
+                faces[name] = face;
+        }
+
+        return new(faces);
+    }
+
+    /// <summary>
+    /// Gets the family of a face: its name before the size (<c>AXIS</c> of <c>AXIS_12</c>); <c>JupiterN</c> for
+    /// <c>Jupiter_45</c> and <c>Jupiter_90</c>, which are of JupiterN, a font of only digits, though the game names them so.
+    /// </summary>
+    public static string FamilyOf(string faceName)
+    {
+        var underscore = faceName.LastIndexOf('_');
+        if (underscore <= 0)
+            return faceName;
+        var family = faceName[..underscore];
+        if (family.Equals("Jupiter", StringComparison.OrdinalIgnoreCase) && faceName[(underscore + 1)..] is "45" or "90")
+            return "JupiterN";
+        return family;
+    }
+
+    /// <summary>Gets the preset with only the faces of a family.</summary>
+    public Preset OnlyFamily(string family) =>
+        new(this.Faces.Where(f => string.Equals(FamilyOf(f.Key), family, StringComparison.OrdinalIgnoreCase))
+                      .ToDictionary(f => f.Key, f => f.Value, StringComparer.OrdinalIgnoreCase));
+
     private static void ReadFontSet(JsonElement set, Dictionary<string, FaceDef> faces, string directory)
     {
         if (set.ValueKind != JsonValueKind.Object || !set.TryGetProperty("faces", out var list) || list.ValueKind != JsonValueKind.Array)

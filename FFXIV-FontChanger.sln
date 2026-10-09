@@ -19,6 +19,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FontChanger.DalamudPlugin",
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FontChanger.Presets", "FontChanger.Presets\FontChanger.Presets.csproj", "{580CBD08-54BD-48B4-8E86-FEA9AA816786}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FontChanger.ShaderGen", "FontChanger.ShaderGen\FontChanger.ShaderGen.csproj", "{451E9F37-5C58-41C8-92DC-E7ED598FF9B7}"
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FontChanger.Presets.Native", "FontChanger.Presets.Native\FontChanger.Presets.Native.vcxproj", "{FE56ED18-3140-423B-8100-D2FD1AC9164E}"
 EndProject
 Global
@@ -85,6 +87,15 @@ Global
 		{580CBD08-54BD-48B4-8E86-FEA9AA816786}.ReleaseWithoutAsm|Win32.ActiveCfg = Release|x64
 		{580CBD08-54BD-48B4-8E86-FEA9AA816786}.ReleaseWithoutAsm|x64.ActiveCfg = Release|x64
 		{580CBD08-54BD-48B4-8E86-FEA9AA816786}.ReleaseWithoutAsm|x64.Build.0 = Release|x64
+		{451E9F37-5C58-41C8-92DC-E7ED598FF9B7}.Debug|Win32.ActiveCfg = Debug|x64
+		{451E9F37-5C58-41C8-92DC-E7ED598FF9B7}.Debug|x64.ActiveCfg = Debug|x64
+		{451E9F37-5C58-41C8-92DC-E7ED598FF9B7}.Debug|x64.Build.0 = Debug|x64
+		{451E9F37-5C58-41C8-92DC-E7ED598FF9B7}.Release|Win32.ActiveCfg = Release|x64
+		{451E9F37-5C58-41C8-92DC-E7ED598FF9B7}.Release|x64.ActiveCfg = Release|x64
+		{451E9F37-5C58-41C8-92DC-E7ED598FF9B7}.Release|x64.Build.0 = Release|x64
+		{451E9F37-5C58-41C8-92DC-E7ED598FF9B7}.ReleaseWithoutAsm|Win32.ActiveCfg = Release|x64
+		{451E9F37-5C58-41C8-92DC-E7ED598FF9B7}.ReleaseWithoutAsm|x64.ActiveCfg = Release|x64
+		{451E9F37-5C58-41C8-92DC-E7ED598FF9B7}.ReleaseWithoutAsm|x64.Build.0 = Release|x64
 		{FE56ED18-3140-423B-8100-D2FD1AC9164E}.Debug|Win32.ActiveCfg = Debug|Win32
 		{FE56ED18-3140-423B-8100-D2FD1AC9164E}.Debug|Win32.Build.0 = Debug|Win32
 		{FE56ED18-3140-423B-8100-D2FD1AC9164E}.Debug|x64.ActiveCfg = Debug|x64

@@ -57,6 +57,7 @@ BEGIN
     POPUP "编辑(&E)"
     BEGIN
         MENUITEM "添加字体(&A)\tIns",               ID_EDIT_ADD
+        MENUITEM "从字体添加(&F)...",                ID_EDIT_ADDFROMFONT
         MENUITEM "剪切(&T)\tCtrl+X",              ID_EDIT_CUT
         MENUITEM "复制(&C)\tCtrl+C",              ID_EDIT_COPY
         MENUITEM "粘贴(&P)\tCtrl+V",              ID_EDIT_PASTE
@@ -899,6 +900,9 @@ BEGIN
     IDS_FACELIST_REPLACEOTHERSIZES "将 {0} 的其他尺寸替换为 {1} 的缩放副本"
     IDS_FACELIST_CONFIRMREPLACEOTHERSIZES
                             "是否将以下字体的字体元素替换为 {0} 的字体元素，并按各字体的尺寸缩放？\n\n{1}"
+    IDS_ADDFROMFONT_NOTGAMEFONT
+                            "从字体添加的字体元素是按游戏字体（例如 AXIS_12）的字族和尺寸生成的，但 {0} 不是游戏字体。"
+    IDS_ADDFROMFONT_FAILED  "无法从字体添加：{0}"
 END
 
 STRINGTABLE
@@ -965,6 +969,7 @@ BEGIN
     POPUP "편집(&E)"
     BEGIN
         MENUITEM "추가(&A)\tIns",                 ID_EDIT_ADD
+        MENUITEM "폰트에서 추가(&F)...",             ID_EDIT_ADDFROMFONT
         MENUITEM "잘라내기(&C)\tCtrl+X",            ID_EDIT_CUT
         MENUITEM "복사(&C)\tCtrl+C",              ID_EDIT_COPY
         MENUITEM "붙여넣기(&P)\tCtrl+V",            ID_EDIT_PASTE
@@ -1693,6 +1698,9 @@ BEGIN
     IDS_FACELIST_REPLACEOTHERSIZES "다른 크기의 {0}을(를) {1}의 크기 맞춤 사본으로 바꾸기"
     IDS_FACELIST_CONFIRMREPLACEOTHERSIZES
                             "다음 폰트의 구성 폰트를 {0}의 구성 폰트로, 각 폰트의 크기에 맞춰 바꿀까요?\n\n{1}"
+    IDS_ADDFROMFONT_NOTGAMEFONT
+                            "폰트에서 추가하는 구성 폰트는 게임 폰트(AXIS_12 등)의 종류와 크기에 맞춰 만들어지지만, {0}은(는) 게임 폰트가 아닙니다."
+    IDS_ADDFROMFONT_FAILED  "폰트에서 추가하지 못했습니다: {0}"
 END
 
 STRINGTABLE
@@ -1759,6 +1767,7 @@ BEGIN
     POPUP "&Edit"
     BEGIN
         MENUITEM "&Add\tIns",                   ID_EDIT_ADD
+        MENUITEM "Add from &Font...",           ID_EDIT_ADDFROMFONT
         MENUITEM "&Cut\tCtrl+X",                ID_EDIT_CUT
         MENUITEM "&Copy\tCtrl+C",               ID_EDIT_COPY
         MENUITEM "&Paste\tCtrl+V",              ID_EDIT_PASTE
@@ -2762,6 +2771,9 @@ BEGIN
     IDS_FACELIST_REPLACEOTHERSIZES "Replace Other Sizes of {0} with Scaled Copies of {1}"
     IDS_FACELIST_CONFIRMREPLACEOTHERSIZES
                             "Replace the face elements of the following fonts with those of {0}, scaled to the size of each font?\n\n{1}"
+    IDS_ADDFROMFONT_NOTGAMEFONT
+                            "Face elements added from a font are made for the family and the size of a game font, such as AXIS_12, but {0} is not one."
+    IDS_ADDFROMFONT_FAILED  "Failed to add from the font: {0}"
 END
 
 STRINGTABLE

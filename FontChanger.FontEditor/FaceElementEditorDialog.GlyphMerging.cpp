@@ -41,20 +41,9 @@ namespace {
 		}
 	}
 
-	struct GlyphMergingPreset {
-		std::vector<glyph_merge_mapping> Mappings;
+}
 
-		// Codepoints of all the mappings.
-		std::u32string Codepoints;
-
-		explicit GlyphMergingPreset(std::vector<glyph_merge_mapping> mappings)
-			: Mappings(std::move(mappings)) {
-			for (const auto& mapping : Mappings)
-				Codepoints += mapping.Codepoints;
-		}
-	};
-
-	// Presets in the order of the checkboxes, drawing the private use area glyphs of the game fonts.
+namespace App::FaceElementEditorDialogInternal {
 	const std::array<GlyphMergingPreset, GlyphMergingPresetCount>& GetGlyphMergingPresets() {
 		static const auto presets = [] {
 			using items = std::vector<std::pair<char32_t, std::u32string>>;
@@ -131,7 +120,9 @@ namespace {
 		}();
 		return presets;
 	}
+}
 
+namespace {
 	// Formats runs of consecutive codepoints as ranges, in a way that ParseCodepointRanges reads back.
 	std::wstring FormatCodepoints(const std::u32string& codepoints) {
 		std::wstring res;

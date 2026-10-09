@@ -614,6 +614,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_FILE_GAMEINSTALLATIONMANAGER: return Menu_File_GameInstallationManager();
 				case ID_FILE_EXIT: return Menu_File_Exit();
 				case ID_EDIT_ADD: return Menu_Edit_Add();
+				case ID_EDIT_ADDFROMFONT: return Menu_Edit_AddFromFont();
 				case ID_EDIT_CUT: return Menu_Edit_Cut();
 				case ID_EDIT_COPY: return Menu_Edit_Copy();
 				case ID_EDIT_PASTE: return Menu_Edit_Paste();

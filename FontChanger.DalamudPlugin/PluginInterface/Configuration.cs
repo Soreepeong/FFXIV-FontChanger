@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 using Dalamud.Configuration;
 
@@ -9,13 +10,61 @@ public sealed class Configuration : IPluginConfiguration
 {
     public int Version { get; set; }
 
-    /// <summary>Gets or sets the path of the FontChanger preset to use; empty for the built-in face.</summary>
-    public string PresetPath { get; set; } = string.Empty;
+    /// <summary>Gets or sets the path of the FontChanger preset used before presets were chosen from a folder; migrated to
+    /// <see cref="PresetFolder"/> and <see cref="FamilyPresets"/>.</summary>
+    public string? PresetPath { get; set; }
+
+    /// <summary>Gets or sets the folder presets are chosen from.</summary>
+    public string PresetFolder { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the presets used for all families before they were chosen per family; migrated to
+    /// <see cref="FamilyPresets"/>.
+    /// </summary>
+    public List<string>? SelectedPresets { get; set; }
+
+    /// <summary>
+    /// Gets or sets the presets in use per game font family (<c>AXIS</c>, <c>JupiterN</c>, ...), as paths relative to
+    /// <see cref="PresetFolder"/>, in the order they were selected: of the family's faces, only those are used, and of a
+    /// face in several, the last one's. A family without any (and a face its presets lack) uses the game's glyphs, with
+    /// <see cref="SystemFallback"/> for the characters they lack.
+    /// </summary>
+    public Dictionary<string, List<string>> FamilyPresets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets or sets the system font per game font family to draw its faces with, made as the font editor's Add from Font
+    /// makes them; over the family's presets.
+    /// </summary>
+    public Dictionary<string, FamilyFont> FamilyFonts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets or sets whether a system font's digits are made monospaced: with its tabular figures (tnum) if it has them, else
+    /// by putting each in a cell as wide as its 0.
+    /// </summary>
+    public bool MonospacedDigits { get; set; } = true;
 
     /// <summary>Gets or sets whether characters the preset lacks are drawn with Windows' fallback fonts, instead of the game's.</summary>
     public bool SystemFallback { get; set; } = true;
 
     public EdgeSettings Edge { get; set; } = new();
+
+    /// <summary>Gets or sets whether the main window was open, to open it again when the plugin loads.</summary>
+    public bool MainWindowOpen { get; set; }
+}
+
+/// <summary>A system font: its family's name (English) and the face's weight, stretch and style (DWRITE_* values).</summary>
+[Serializable]
+public sealed record FamilyFont
+{
+    public string Name { get; init; } = string.Empty;
+
+    public int Weight { get; init; } = 400;
+
+    public int Stretch { get; init; } = 5;
+
+    public int Style { get; init; }
+
+    public LookupDef ToLookup() => LookupDef.Of(this.Name) with { Weight = this.Weight, Stretch = this.Stretch, Style = this.Style };
 }
 
 /// <summary>

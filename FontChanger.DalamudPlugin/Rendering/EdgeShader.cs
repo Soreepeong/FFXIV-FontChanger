@@ -1,15 +1,8 @@
 using System;
 using System.IO;
-using System.Text;
-
-using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
-using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
-using FFXIVClientStructs.FFXIV.Client.UI;
 
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
-
-using static TerraFX.Interop.DirectX.DirectX;
 
 namespace CustomFonts;
 
@@ -18,19 +11,24 @@ namespace CustomFonts;
 /// any width, set per font by the texture width it claims.
 /// </summary>
 /// <remarks>
-/// The UI's font shaders are nine vertex/pixel shader pairs (FUN_14063A760) in an object at AtkModule +0x130: shader file
-/// resource handles at +0x10 (VS) and +0x58 (PS), and the Kernel shaders made from them at +0xE8 and +0x130, indexed by a
-/// draw command's pass (4 text, 5 edge, 6 glare, 7 highlight, 8 emboss). A Kernel::PixelShader binds its
-/// ID3D11PixelShader at +0x60 (ImmediateContextDX11.SetPixelShader), which is swapped here; the replacement has the same
-/// input signature and bindings (t0, s0), so the shader's binding list stays valid.
+/// The UI's font shaders are nine vertex/pixel shader pairs (AtkServer.LoadShaders) in the AtkServer of AtkModule: shader
+/// file resource handles (VS, PS), and the Kernel shaders made from them, indexed by a draw command's pass (4 text, 5
+/// edge, 6 glare, 7 highlight, 8 emboss). A Kernel::PixelShader binds its ID3D11PixelShader (ImmediateContextDX11.
+/// SetPixelShader), which is swapped here; the replacement has the same input signature and bindings (t0, s0), so the
+/// shader's binding list stays valid. AtkModule embeds the font manager AtkStage points to.
 /// </remarks>
 internal sealed unsafe class EdgeShader : IDisposable
 {
-    private const int ShadersOffset = 0x130;
-    private const int PixelShaderFilesOffset = 0x58;
-    private const int PixelShadersOffset = 0x130;
     private const int EdgePass = 5;
-    private const int D3DShaderOffset = 0x60;
+
+    // AtkModule: its font manager (embedded) and AtkServer*; AtkServer: its PS file resource handles and Kernel pixel
+    // shaders; Kernel::PixelShader: its ID3D11PixelShader. Resolved at the first use.
+    private bool resolved;
+    private int moduleFontManager;
+    private int moduleServer;
+    private int pixelShaderFiles;
+    private int pixelShaders;
+    private int d3dShader;
 
     private ID3D11PixelShader* shader;
 
@@ -50,8 +48,30 @@ internal sealed unsafe class EdgeShader : IDisposable
             return;
         }
 
+        if (!this.resolved)
+        {
+            GameLayout.Resolve("The edge shader", () =>
+            {
+                GameFontManager.Resolve();
+                GameUi.ResolveResourceHandles();
+                this.moduleFontManager = GameLayout.Get("AtkModule.AtkFontManager");
+                this.moduleServer = GameLayout.Get("AtkModule.AtkServer");
+                this.pixelShaderFiles = GameLayout.Get("AtkServer.PixelShaderFiles");
+                this.pixelShaders = GameLayout.Get("AtkServer.PixelShaders");
+                this.d3dShader = GameLayout.Get("Kernel.PixelShader.D3DShader");
+            });
+            this.resolved = true;
+        }
+
         if (this.shader is null)
-            this.shader = Compile();
+        {
+            // Made on the device of the game's shader.
+            var target = this.GetEdgeShaderObject(true);
+            if (target == 0)
+                throw new InvalidOperationException("The game's edge shader isn't there.");
+            this.shader = Create(*(ID3D11PixelShader**)(target + this.d3dShader));
+        }
+
         this.EnsureInstalled();
     }
 
@@ -62,18 +82,18 @@ internal sealed unsafe class EdgeShader : IDisposable
             return;
 
         // The file name is only checked when the object changes.
-        var target = GetEdgeShaderObject(false);
-        if (target != 0 && target == this.patchedObject && *(ID3D11PixelShader**)(target + D3DShaderOffset) == this.shader)
+        var target = this.GetEdgeShaderObject(false);
+        if (target != 0 && target == this.patchedObject && *(ID3D11PixelShader**)(target + this.d3dShader) == this.shader)
             return;
-        target = GetEdgeShaderObject(true);
+        target = this.GetEdgeShaderObject(true);
         if (target == 0)
             return;
 
         // The game's object owns a reference to what it binds: it gets one of the plugin's shader.
         this.patchedObject = target;
-        this.original = *(ID3D11PixelShader**)(target + D3DShaderOffset);
+        this.original = *(ID3D11PixelShader**)(target + this.d3dShader);
         this.shader->AddRef();
-        *(ID3D11PixelShader**)(target + D3DShaderOffset) = this.shader;
+        *(ID3D11PixelShader**)(target + this.d3dShader) = this.shader;
     }
 
     public void Dispose()
@@ -90,52 +110,38 @@ internal sealed unsafe class EdgeShader : IDisposable
     /// Gets the Kernel::PixelShader of the edge pass, if <paramref name="check"/> only if it is made from FontEdgePS; 0
     /// if it isn't there.
     /// </summary>
-    private static nint GetEdgeShaderObject(bool check)
+    private nint GetEdgeShaderObject(bool check)
     {
-        var module = RaptureAtkModule.Instance();
-        var shaders = module is null ? 0 : *(nint*)((nint)module + ShadersOffset);
-        if (shaders == 0)
+        var fontManager = GameFontManager.Instance();
+        var server = fontManager is null ? 0 : *(nint*)((nint)fontManager - this.moduleFontManager + this.moduleServer);
+        if (server == 0)
             return 0;
-        var file = *(ResourceHandle**)(shaders + PixelShaderFilesOffset + (EdgePass * 8));
-        if (check && (file is null || !file->FileName.ToString().EndsWith("FontEdgePS.shcd", StringComparison.OrdinalIgnoreCase)))
+        var file = *(nint*)(server + this.pixelShaderFiles + (EdgePass * 8));
+        if (check && (file == 0 || !GameUi.GetFileName(file).EndsWith("FontEdgePS.shcd", StringComparison.OrdinalIgnoreCase)))
             return 0;
-        return *(nint*)(shaders + PixelShadersOffset + (EdgePass * 8));
+        return *(nint*)(server + this.pixelShaders + (EdgePass * 8));
     }
 
-    private static ID3D11PixelShader* Compile()
+    /// <summary>Makes the plugin's shader on the device of the game's; its bytecode is compiled at build time.</summary>
+    private static ID3D11PixelShader* Create(ID3D11PixelShader* game)
     {
-        using var stream = typeof(EdgeShader).Assembly.GetManifestResourceStream("CustomFonts.Rendering.FontEdgePS.hlsl")
-            ?? throw new FileNotFoundException("FontEdgePS.hlsl isn't embedded.");
-        using var reader = new StreamReader(stream);
-        var source = Encoding.UTF8.GetBytes(reader.ReadToEnd());
+        using var stream = typeof(EdgeShader).Assembly.GetManifestResourceStream("CustomFonts.Rendering.FontEdgePS.cso")
+            ?? throw new FileNotFoundException("FontEdgePS.cso isn't embedded.");
+        var code = new byte[stream.Length];
+        stream.ReadExactly(code);
 
-        ID3DBlob* code = null;
-        ID3DBlob* errors = null;
+        ID3D11Device* device;
+        game->GetDevice(&device);
         try
         {
-            fixed (byte* src = source)
-            fixed (byte* entry = "main\0"u8)
-            fixed (byte* target = "ps_5_0\0"u8)
-            {
-                var hr = D3DCompile(src, (nuint)source.Length, null, null, null, (sbyte*)entry, (sbyte*)target, D3DCOMPILE.D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &code, &errors);
-                if (hr.FAILED)
-                {
-                    var message = errors is null ? string.Empty : new string((sbyte*)errors->GetBufferPointer(), 0, (int)errors->GetBufferSize());
-                    throw new InvalidOperationException($"Compiling the edge shader failed ({hr.Value:X8}): {message}");
-                }
-            }
-
-            var device = (ID3D11Device*)Device.Instance()->D3D11Forwarder;
             ID3D11PixelShader* shader;
-            device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), null, &shader).ThrowOnError();
+            fixed (byte* bytes = code)
+                device->CreatePixelShader(bytes, (nuint)code.Length, null, &shader).ThrowOnError();
             return shader;
         }
         finally
         {
-            if (code is not null)
-                code->Release();
-            if (errors is not null)
-                errors->Release();
+            device->Release();
         }
     }
 
@@ -144,8 +150,8 @@ internal sealed unsafe class EdgeShader : IDisposable
     {
         if (this.patchedObject == 0)
             return;
-        var slot = (ID3D11PixelShader**)(this.patchedObject + D3DShaderOffset);
-        if (GetEdgeShaderObject(false) == this.patchedObject && *slot == this.shader)
+        var slot = (ID3D11PixelShader**)(this.patchedObject + this.d3dShader);
+        if (this.GetEdgeShaderObject(false) == this.patchedObject && *slot == this.shader)
         {
             *slot = this.original;
             this.shader->Release();

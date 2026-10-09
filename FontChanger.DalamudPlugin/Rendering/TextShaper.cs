@@ -9,6 +9,26 @@ using TerraFX.Interop.Windows;
 
 namespace CustomFonts;
 
+/// <summary>How a run of text the game draws in italics is shaped.</summary>
+internal enum ItalicMode
+{
+    /// <summary>Not in italics.</summary>
+    Upright,
+
+    /// <summary>
+    /// In italics by an italic macro, which the game also sees when it measures: shaped in the faces' italics, which are
+    /// drawn as they are; the game shears the glyphs of faces without (synthesized obliques are drawn upright for it).
+    /// </summary>
+    Real,
+
+    /// <summary>
+    /// In italics by the text node, which the game only sees when it draws, measuring the text upright: shaped in italics
+    /// as <see cref="Real"/>, spaced out evenly to the upright run's width. Where the two shapings differ, shaped upright
+    /// instead, each single-character cluster drawn with the italic of its font, where there is one.
+    /// </summary>
+    Images,
+}
+
 /// <summary>
 /// Shapes the game's text with DirectWrite (ligatures, contextual alternates, kerning, marks, fallback per script), and
 /// answers the game's per-character glyph lookups from the result.
@@ -25,12 +45,17 @@ namespace CustomFonts;
 /// glyph of no width. Right-to-left runs and glyphs a font lacks are left to the per-character path.</para>
 /// <para>Text is laid out every frame (several times: measuring, counting, drawing), so shaped runs are kept by content
 /// and size, and the last few runs by address, used while the text at the address is unchanged.</para>
+/// <para>A run ends at an italic macro, and is shaped as the italics it is in says (<see cref="ItalicMode"/>). The cells
+/// of real italic glyphs are told to the replacer, which keeps the game from shearing them.</para>
 /// </remarks>
 internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 {
     // The game's icon font: private-use characters go to it before the system fallback, which would pick an icon font
     // of Windows' own (Segoe Fluent Icons) for them.
     internal const string IconFamily = "XIV AXIS Std ATK";
+
+    // The macro that sets italics (<italic>): runs end before it.
+    private const byte ItalicMacro = 0x1A;
 
     private const int MaxRunBytes = 4096;
     private const int MaxActiveRuns = 8;
@@ -43,7 +68,11 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     private readonly FontReplacer replacer;
     private readonly GlyphRunCollector collector = new();
     private readonly Dictionary<(ReplacementFace? Face, int HalfPx), nint> formats = [];
-    private readonly Dictionary<(ulong Hash, int Length, FontReplacer.SizedFont Sized), nint[]> runs = [];
+    private readonly Dictionary<(ulong Hash, int Length, FontReplacer.SizedFont Sized, ItalicMode Italic), ShapedRun> runs = [];
+
+    // Faces without their synthesized oblique, by face; and the italic face of a face's family (0 for none), by face.
+    private readonly Dictionary<nint, nint> uprightFaces = [];
+    private readonly Dictionary<nint, nint> italicFaces = [];
     private readonly Dictionary<string, nint> cells = [];
     private readonly HashSet<nint> keptFaces = [];
     private readonly List<ActiveRun> active = [];
@@ -60,13 +89,15 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     private IDWriteFontFallback* fallback;
     private nint emptyGlyph;
 
-    // While shaping a run: its text, and each code unit's byte offset and element.
+    // While shaping a run: its text, and each code unit's byte offset, element and whether it is in italics.
     private char[] text = new char[256];
     private int[] textToByte = new int[256];
     private int[] textElement = new int[256];
-    private byte* shapingBytes;
+    private bool[] textItalic = new bool[256];
+    private readonly bool[] byteItalic = new bool[MaxRunBytes];    private byte* shapingBytes;
     private nint[]? shapingGlyphs;
     private FontReplacer.SizedFont? shapingSized;
+    private ItalicMode shapingItalic;
 
     // How far the pen has moved from where the layout put it: by elements' letter spacing, transformations and
     // monospacing, which DirectWrite doesn't know of.
@@ -88,21 +119,22 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     }
 
     /// <summary>
-    /// Gets the glyph for the character at <paramref name="p"/> as shaped in its run, or 0 to look it up per character.
-    /// <paramref name="emptyGlyph"/> is the glyph of no width given to a cluster's characters after the first.
+    /// Gets the glyph for the character at <paramref name="p"/> as shaped in its run, in the italics it is in, or 0 to
+    /// look it up per character. <paramref name="emptyGlyph"/> is the glyph of no width given to a cluster's characters
+    /// after the first.
     /// </summary>
-    public nint TryGetGlyph(FontReplacer.SizedFont sized, byte* p, nint emptyGlyph)
+    public nint TryGetGlyph(FontReplacer.SizedFont sized, byte* p, nint emptyGlyph, ItalicMode italic)
     {
         this.emptyGlyph = emptyGlyph;
         for (var i = this.active.Count - 1; i >= 0; i--)
         {
             var run = this.active[i];
-            if (run.Sized == sized && p >= run.Start && p < run.End && run.Matches(p))
+            if (run.Sized == sized && p >= run.Start && p < run.End && run.ItalicAt(p) == italic && run.Matches(p))
                 return run.Glyphs[p - run.Start];
         }
 
         var reused = this.active.Count == MaxActiveRuns ? this.active[0] : null;
-        if (!this.ShapeFrom(sized, p, ref reused))
+        if (!this.ShapeFrom(sized, p, italic, ref reused))
             return 0;
         if (this.active.Count == MaxActiveRuns)
             this.active.RemoveAt(0);
@@ -123,6 +155,8 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     {
         this.Clear();
         this.ClearFormats();
+        this.uprightFaces.Clear();
+        this.italicFaces.Clear();
         foreach (var face in this.keptFaces)
             ((IUnknown*)face)->Release();
         this.keptFaces.Clear();
@@ -180,6 +214,36 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
                 missing |= run->glyphIndices[g] == 0;
             }
 
+            // Italics. Shaped in italic: a face's real italic stays, a synthesized oblique is drawn upright for the game to
+            // shear. Shaped upright for a node's italics: a single character is drawn with its font's italic, if it has
+            // one, at the upright advance; ligatures and the rest stay upright, sheared.
+            var glyphs = new ReadOnlySpan<ushort>(run->glyphIndices + glyphStart, count).ToArray();
+            var offsets = run->glyphOffsets is null ? null : new ReadOnlySpan<DWRITE_GLYPH_OFFSET>(run->glyphOffsets + glyphStart, count).ToArray();
+            var realItalic = false;
+            if (!missing && this.shapingItalic == ItalicMode.Real && this.textItalic[start + k])
+            {
+                realItalic = IsRealItalic(face);
+                if (!realItalic)
+                    face = this.GetUprightFace(face);
+            }
+            else if (!missing && this.shapingItalic == ItalicMode.Images && count == 1 &&
+                     Rune.DecodeFromUtf16(this.text.AsSpan(start + k, k2 - k), out var rune, out var used) == System.Buffers.OperationStatus.Done &&
+                     used == k2 - k)
+            {
+                var italic = this.GetItalicFace(face);
+                var codepoint = (uint)rune.Value;
+                ushort index = 0;
+                if (italic is not null)
+                    italic->GetGlyphIndices(&codepoint, 1, &index).ThrowOnError();
+                if (index != 0)
+                {
+                    face = italic;
+                    glyphs = [index];
+                    offsets = null;
+                    realItalic = true;
+                }
+            }
+
             // An element's transformation scales its advances, its monospacing puts them in cells, and its letter spacing
             // widens them; everything after moves along.
             var x0 = MathF.Round(pen);
@@ -189,9 +253,10 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             {
                 Face = (nint)face,
                 EmSize = run->fontEmSize,
-                Glyphs = new ReadOnlySpan<ushort>(run->glyphIndices + glyphStart, count).ToArray(),
+                Glyphs = glyphs,
                 Advances = advances,
-                Offsets = run->glyphOffsets is null ? null : new ReadOnlySpan<DWRITE_GLYPH_OFFSET>(run->glyphOffsets + glyphStart, count).ToArray(),
+                Offsets = offsets,
+                RealItalic = realItalic,
                 Origin = MathF.Round((pen - x0) * SubpixelSteps) / SubpixelSteps,
                 X0 = (int)x0,
                 TextStart = start + k,
@@ -220,6 +285,116 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             pen = end + spacing;
             k = k2;
         }
+    }
+
+    /// <summary>Gets whether a face is a real italic (or oblique) style of its family, not one synthesized.</summary>
+    private static bool IsRealItalic(IDWriteFontFace* face)
+    {
+        if ((face->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) != 0)
+            return false;
+        IDWriteFontFace3* face3;
+        var iid = IID.IID_IDWriteFontFace3;
+        if (((IUnknown*)face)->QueryInterface(&iid, (void**)&face3).FAILED)
+            return false;
+        var style = face3->GetStyle();
+        face3->Release();
+        return style != DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_NORMAL;
+    }
+
+    /// <summary>Gets a face without its synthesized oblique (the same glyphs, upright), or the face if it has none.</summary>
+    private IDWriteFontFace* GetUprightFace(IDWriteFontFace* face)
+    {
+        var simulations = face->GetSimulations();
+        if ((simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0)
+            return face;
+        if (this.uprightFaces.TryGetValue((nint)face, out var known))
+            return (IDWriteFontFace*)known;
+
+        var upright = face;
+        IDWriteFontFace3* face3;
+        var iid = IID.IID_IDWriteFontFace3;
+        if (((IUnknown*)face)->QueryInterface(&iid, (void**)&face3).SUCCEEDED)
+        {
+            IDWriteFontFaceReference* reference;
+            if (face3->GetFontFaceReference(&reference).SUCCEEDED)
+            {
+                IDWriteFontFace3* made;
+                if (reference->CreateFontFaceWithSimulations(simulations & ~DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE, &made).SUCCEEDED)
+                    upright = this.Keep((IDWriteFontFace*)made);
+                reference->Release();
+            }
+
+            face3->Release();
+        }
+
+        this.uprightFaces.Add((nint)face, (nint)upright);
+        return upright;
+    }
+
+    /// <summary>
+    /// Gets the italic face of a face's family among the system's fonts (by its family name, weight and stretch, as faces
+    /// may be made from their files, with simulations or axis values), or null if the family has none of its own.
+    /// </summary>
+    private IDWriteFontFace* GetItalicFace(IDWriteFontFace* face)
+    {
+        if (this.italicFaces.TryGetValue((nint)face, out var known))
+            return (IDWriteFontFace*)known;
+
+        IDWriteFontFace* italic = null;
+        IDWriteFontFace3* face3;
+        var iid = IID.IID_IDWriteFontFace3;
+        if (((IUnknown*)face)->QueryInterface(&iid, (void**)&face3).SUCCEEDED)
+        {
+            IDWriteFontFamily* family = null;
+            IDWriteLocalizedStrings* names;
+            if (face3->GetFamilyNames(&names).SUCCEEDED)
+            {
+                uint length;
+                if (names->GetCount() != 0 && names->GetStringLength(0, &length).SUCCEEDED)
+                {
+                    var name = stackalloc char[(int)length + 1];
+                    uint index;
+                    BOOL exists;
+                    if (names->GetString(0, name, length + 1).SUCCEEDED &&
+                        this.rasterizer.SystemFonts->FindFamilyName(name, &index, &exists).SUCCEEDED && exists)
+                    {
+                        this.rasterizer.SystemFonts->GetFontFamily(index, &family);
+                    }
+                }
+
+                names->Release();
+            }
+
+            IDWriteFont* match;
+            if (family is not null &&
+                family->GetFirstMatchingFont(face3->GetWeight(), face3->GetStretch(), DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_ITALIC, &match).SUCCEEDED)
+            {
+                IDWriteFontFace* made;
+                if (match->GetStyle() != DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_NORMAL &&
+                    (match->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0 &&
+                    match->CreateFontFace(&made).SUCCEEDED)
+                {
+                    italic = this.Keep(made);
+                }
+
+                match->Release();
+            }
+
+            if (family is not null)
+                family->Release();
+            face3->Release();
+        }
+
+        this.italicFaces.Add((nint)face, (nint)italic);
+        return italic;
+    }
+
+    /// <summary>Keeps a face made here (its reference becomes the shaper's) for as long as the shaper.</summary>
+    private IDWriteFontFace* Keep(IDWriteFontFace* face)
+    {
+        if (!this.keptFaces.Add((nint)face))
+            face->Release();
+        return face;
     }
 
     /// <summary>
@@ -382,12 +557,16 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     /// Shapes (or finds shaped) the run starting at <paramref name="p"/> into <paramref name="run"/>, which is reused if
     /// given; false if there is nothing to shape.
     /// </summary>
-    private bool ShapeFrom(FontReplacer.SizedFont sized, byte* p, ref ActiveRun? run)
+    private bool ShapeFrom(FontReplacer.SizedFont sized, byte* p, ItalicMode italic, ref ActiveRun? run)
     {
-        // The run: to the end of the line, as UTF-16, each code unit's byte offset kept (-1 for a low surrogate).
+        // The run: to the end of the line, as UTF-16, each code unit's byte offset kept (-1 for a low surrogate), and each
+        // character's byte whether it is in italics. Italic macros change that within the run, as they do the game's state,
+        // so that a line is laid out whole across them (an italic word's overhangs and spacing next to upright text); a run
+        // in a node's italics, spaced to its upright width, ends at one instead.
         var count = 0;
         var i = 0;
         var hash = 0xCBF29CE484222325ul;
+        var inItalic = italic != ItalicMode.Upright;
         Span<char> units = stackalloc char[2];
         while (i < MaxRunBytes)
         {
@@ -398,17 +577,28 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             if (b == 0x02)
             {
                 // A macro: skipped whole; a line break macro ends the run.
-                if (p[i + 1] == 0x10 || p[i + 1] == 0)
+                if (p[i + 1] == 0x10 || p[i + 1] == 0 || (p[i + 1] == ItalicMacro && italic == ItalicMode.Images))
                     break;
                 var n = ReadInteger(p + i + 2, out var payload);
                 var total = 2 + n + payload + 1;
                 if (n == 0 || payload < 0 || i + total > MaxRunBytes || p[i + total - 1] != 0x03)
                     break;
+
+                // <italic>: its argument is a plain integer (1 on, 0 off); anything else ends the run.
+                if (p[i + 1] == ItalicMacro)
+                {
+                    if (payload == 0 || ReadInteger(p + i + 2 + n, out var on) != payload)
+                        break;
+                    inItalic = on != 0;
+                }
+
                 for (var j = 0; j < total; j++)
                     hash = (hash ^ p[i + j]) * 0x100000001B3ul;
                 i += total;
                 continue;
             }
+
+            this.byteItalic[i] = inItalic;
 
             // Stepped by the first byte alone, as the game does, valid or not; the run ends before a sequence that would
             // run into the end of the text.
@@ -454,19 +644,19 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         // with it too, as what follows the last character could join its cluster. A run cut at its maximum length has
         // none.
         var ended = i < MaxRunBytes;
-        var key = (hash, i, sized);
-        if (!this.runs.TryGetValue(key, out var glyphs))
+        var key = (hash, i, sized, italic);
+        if (!this.runs.TryGetValue(key, out var shaped))
         {
-            glyphs = new nint[i];
+            shaped = new(new nint[i], italic == ItalicMode.Images ? null : this.byteItalic.AsSpan(0, i).ToArray());
             if (count != 0)
-                this.Shape(sized, p, count, glyphs);
+                this.Shape(sized, p, count, shaped.Glyphs, italic);
             if (this.runs.Count >= MaxCachedRuns)
                 this.runs.Clear();
-            this.runs.Add(key, glyphs);
+            this.runs.Add(key, shaped);
         }
 
         run ??= new ActiveRun();
-        run.Set(p, i, ended ? 1 : 0, sized, glyphs);
+        run.Set(p, i, ended ? 1 : 0, sized, italic, shaped);
         return true;
     }
 
@@ -477,14 +667,54 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         Array.Resize(ref this.text, Math.Max(n, this.text.Length * 2));
         Array.Resize(ref this.textToByte, this.text.Length);
         Array.Resize(ref this.textElement, this.text.Length);
+        Array.Resize(ref this.textItalic, this.text.Length);
     }
 
-    private void Shape(FontReplacer.SizedFont sized, byte* p, int count, nint[] glyphs)
+    private void Shape(FontReplacer.SizedFont sized, byte* p, int count, nint[] glyphs, ItalicMode italic)
     {
         this.absorbed.Clear();
         count = this.ComposeHangul(count);
         this.AssignElements(sized, count);
 
+        // Each code unit is in italics as its character's byte is (a low surrogate or control character as the one before).
+        for (var t = 0; t < count; t++)
+        {
+            var b = this.textToByte[t];
+            this.textItalic[t] = b >= 0 ? this.byteItalic[b] : t > 0 ? this.textItalic[t - 1] : italic != ItalicMode.Upright;
+        }
+
+        this.shapingBytes = p;
+        this.shapingGlyphs = glyphs;
+        this.shapingSized = sized;
+        try
+        {
+            // A run in a node's italics is spaced to its upright width (or drawn per character at its upright places);
+            // the others are laid out whole, in italics where their italic macros say.
+            if (italic != ItalicMode.Images)
+                this.Collect(sized, count, ItalicMode.Real);
+            else if (!this.CollectSpreadItalics(sized, count))
+                this.Collect(sized, count, ItalicMode.Images);
+            this.PlaceClusters();
+        }
+        finally
+        {
+            this.shapingBytes = null;
+            this.shapingGlyphs = null;
+            this.shapingSized = null;
+        }
+
+        // A jamo composed into its syllable is part of the syllable's cluster.
+        foreach (var (b, owner) in this.absorbed)
+            glyphs[b] = glyphs[owner] == 0 ? 0 : this.emptyGlyph;
+    }
+
+    /// <summary>
+    /// Lays the text being shaped out, and collects its clusters as <paramref name="italic"/> says (OnGlyphRun). With
+    /// <see cref="ItalicMode.Real"/>, the code units in italics (<see cref="textItalic"/>) are laid out in the faces'
+    /// italics, which the system's fallback picks too.
+    /// </summary>
+    private void Collect(FontReplacer.SizedFont sized, int count, ItalicMode italic)
+    {
         // A face measuring as GDI does (hinted, whole-pixel advances) is laid out so; its glyphs are drawn to match.
         var measureMode = sized.Face.MeasureMode;
         var format = this.GetFormat(sized.Face, sized.Px);
@@ -505,26 +735,58 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         try
         {
             this.ApplyElements(layout, sized, count);
-            this.shapingBytes = p;
-            this.shapingGlyphs = glyphs;
-            this.shapingSized = sized;
+            for (var start = 0; italic == ItalicMode.Real && start < count;)
+            {
+                var end = start + 1;
+                while (end < count && this.textItalic[end] == this.textItalic[start])
+                    end++;
+                if (this.textItalic[start])
+                    layout->SetFontStyle(DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_ITALIC, new() { startPosition = (uint)start, length = (uint)(end - start) }).ThrowOnError();
+                start = end;
+            }
+
+            this.shapingItalic = italic;
             this.penShift = 0;
             this.clusters.Clear();
             this.clusterGap = false;
             this.collector.Collect(layout, this);
-            this.PlaceClusters();
         }
         finally
         {
-            this.shapingBytes = null;
-            this.shapingGlyphs = null;
-            this.shapingSized = null;
             layout->Release();
         }
+    }
 
-        // A jamo composed into its syllable is part of the syllable's cluster.
-        foreach (var (b, owner) in this.absorbed)
-            glyphs[b] = glyphs[owner] == 0 ? 0 : this.emptyGlyph;
+    /// <summary>
+    /// Collects a run in a text node's italics: shaped in italics, at the italics' own positions, but spaced out evenly to
+    /// end where the run shaped upright does (the game measures it upright, as it doesn't see the node's italics then).
+    /// False, with nothing collected, if the two shapings don't make the same clusters (a ligature only one has), or a
+    /// cluster is left to the game: then each character is drawn in italics at its upright place instead.
+    /// </summary>
+    private bool CollectSpreadItalics(FontReplacer.SizedFont sized, int count)
+    {
+        this.Collect(sized, count, ItalicMode.Upright);
+        var upright = this.clusters.ToArray();
+        this.textItalic.AsSpan(0, count).Fill(true);
+        this.Collect(sized, count, ItalicMode.Real);
+        var italic = this.clusters.ToArray();
+        this.clusters.Clear();
+
+        var n = italic.Length;
+        if (n == 0 || n != upright.Length)
+            return false;
+        for (var i = 0; i < n; i++)
+        {
+            var (u, it) = (upright[i], italic[i]);
+            if (u.TextStart != it.TextStart || u.TextEnd != it.TextEnd || u.Missing || it.Missing || u.AfterGap != it.AfterGap)
+                return false;
+        }
+
+        // The difference is shared out after each cluster, the last ending where the upright run ends.
+        var share = (float)(upright[n - 1].X1 - italic[n - 1].X1) / n;
+        for (var i = 0; i < n; i++)
+            this.clusters.Add(italic[i].MovedBy(share * i, share * (i + 1)));
+        return true;
     }
 
     /// <summary>
@@ -761,6 +1023,8 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         var b = this.textToByte[c.TextStart];
         var utf8 = b < 0 ? 0u : GameUtf8.PackSequence(this.shapingBytes + b, SequenceLength(this.shapingBytes[b]));
         cell = (nint)this.replacer.PlaceCell(sized, raster, utf8);
+        if (c.RealItalic)
+            this.replacer.MarkRealItalic(cell);
         this.cells.Add(key, cell);
         return cell;
     }
@@ -804,6 +1068,34 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
         /// <summary>Whether something not shaped here (a right-to-left run) comes right before it.</summary>
         public bool AfterGap { get; init; }
+
+        /// <summary>Whether its glyphs are a face's real italics, which the game must not shear.</summary>
+        public bool RealItalic { get; init; }
+
+        /// <summary>Gets the cluster moved right: its start by <paramref name="start"/> pixels, its end by <paramref name="end"/>.</summary>
+        public Cluster MovedBy(float start, float end)
+        {
+            var pen = this.X0 + this.Origin + start;
+            var x0 = MathF.Round(pen);
+            return new()
+            {
+                Face = this.Face,
+                EmSize = this.EmSize,
+                Glyphs = this.Glyphs,
+                Advances = this.Advances,
+                Offsets = this.Offsets,
+                Origin = MathF.Round((pen - x0) * SubpixelSteps) / SubpixelSteps,
+                X0 = (int)x0,
+                X1 = (int)MathF.Round(this.X1 + end),
+                Monospaced = this.Monospaced,
+                TextStart = this.TextStart,
+                TextEnd = this.TextEnd,
+                Element = this.Element,
+                Missing = this.Missing,
+                AfterGap = this.AfterGap,
+                RealItalic = this.RealItalic,
+            };
+        }
     }
 
     /// <summary>
@@ -811,6 +1103,12 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     /// in another), so an address says nothing about the text there now: the run keeps a copy of its bytes, and a
     /// lookup in it only uses it while the text from the looked-up character to the run's end is still the same.
     /// </summary>
+    /// <summary>
+    /// A shaped run: the glyph for each byte, and whether each character's byte is in italics (null for a run in a node's
+    /// italics, all of it in them).
+    /// </summary>
+    private sealed record ShapedRun(nint[] Glyphs, bool[]? ItalicBytes);
+
     private sealed class ActiveRun
     {
         private byte[] bytes = new byte[64];
@@ -822,19 +1120,32 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
         public FontReplacer.SizedFont? Sized { get; private set; }
 
+        public ItalicMode Italic { get; private set; }
+
         public nint[] Glyphs { get; private set; } = [];
 
-        public void Set(byte* start, int length, int endBytes, FontReplacer.SizedFont sized, nint[] glyphs)
+        private bool[]? italicBytes;
+
+        public void Set(byte* start, int length, int endBytes, FontReplacer.SizedFont sized, ItalicMode italic, ShapedRun shaped)
         {
             this.Start = start;
             this.End = start + length;
             this.Sized = sized;
-            this.Glyphs = glyphs;
+            this.Italic = italic;
+            this.Glyphs = shaped.Glyphs;
+            this.italicBytes = shaped.ItalicBytes;
             this.compareLength = length + endBytes;
             if (this.bytes.Length < this.compareLength)
                 this.bytes = new byte[Math.Max(this.compareLength, this.bytes.Length * 2)];
             new ReadOnlySpan<byte>(start, this.compareLength).CopyTo(this.bytes);
         }
+
+        /// <summary>
+        /// Gets the italics the character at <paramref name="p"/> (inside the run) was shaped in: as the run's italic macros
+        /// left them, or the node's italics of a run spaced to its upright width.
+        /// </summary>
+        public ItalicMode ItalicAt(byte* p) =>
+            this.italicBytes is null ? this.Italic : this.italicBytes[p - this.Start] ? ItalicMode.Real : ItalicMode.Upright;
 
         /// <summary>
         /// Gets whether the text from <paramref name="p"/> (inside the run) to its end is what was shaped. Compared byte

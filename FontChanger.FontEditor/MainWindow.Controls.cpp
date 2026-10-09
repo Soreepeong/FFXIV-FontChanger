@@ -1,26 +1,14 @@
 ﻿#include "pch.h"
 #include "FaceElementEditorDialog.h"
+#include "FaceFromFont.h"
 #include "resource.h"
 #include "FontChanger.Presets/Structs.h"
 #include "MainWindow.h"
 #include "xivres/textools.h"
 
-namespace {
-	// Returns the family and the size of a face of the game fonts by its name, as in the definitions of the game fonts;
-	// Jupiter_45 and Jupiter_90, which only have digits and a few symbols, are of the family JupiterN.
-	std::optional<std::pair<std::string_view, float>> GetGameFontFamilyAndSize(std::string_view faceName) {
-		for (const auto fontType : {xivres::font_type::font, xivres::font_type::font_lobby, xivres::font_type::chn_axis, xivres::font_type::krn_axis, xivres::font_type::tc_axis}) {
-			for (const auto& def : xivres::fontgen::get_fontdata_definition(fontType)) {
-				std::string_view filename(def.Path);
-				filename = filename.substr(filename.rfind('/') + 1);
-				filename = filename.substr(0, filename.find('.'));
-				if (filename == faceName)
-					return std::make_pair(std::string_view(def.Name), def.Size);
-			}
-		}
-		return std::nullopt;
-	}
+using App::FaceFromFont::GetGameFontFamilyAndSize;
 
+namespace {
 	// Returns the size that the face is drawn at: that of its first element, which the merged font takes its size from,
 	// or if it has no elements, the size of the game font by its name.
 	std::optional<float> GetFaceSize(const App::Structs::Face& face) {

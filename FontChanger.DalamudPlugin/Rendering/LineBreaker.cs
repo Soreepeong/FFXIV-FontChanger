@@ -26,20 +26,6 @@ namespace CustomFonts;
 /// </remarks>
 internal sealed unsafe class LineBreaker : IDisposable
 {
-    // uint SplitWord(Wrapper* this, int width, int unused, byte* word, byte* measuredWord, bool lineStart)
-    // (FUN_14065B090), with its call to int FitUnits(Wrapper* this, byte* measuredWord, int width, int maxUnits,
-    // int* bytes) (FUN_14065AE60) at +0x31. Unique in 7.56h.
-    private const string SplitWordSignature =
-        "48 89 5C 24 20 56 57 41 57 48 83 EC 30 49 8B F1 44 8B C2 44 8B 89 50 01 00 00 45 33 FF 44 2B 89 54 01 00 00 " +
-        "48 8B D9 48 8B 54 24 70 4C 89 7C 24 20 E8 ?? ?? ?? ?? 8B F8 85 C0";
-
-    private const int FitUnitsCallOffset = 0x31;
-
-    // Wrapper: the units of the current word already put on earlier lines (0 on its first split), and the unit limit.
-    private const int ConsumedUnitsOffset = 0x1578;
-    private const int MaxUnitsOffset = 0x150;
-    private const int UsedUnitsOffset = 0x154;
-
     // Macros that the game counts as characters (icons).
     private const byte IconMacro = 0x12;
     private const byte Icon2Macro = 0x1E;
@@ -51,6 +37,11 @@ internal sealed unsafe class LineBreaker : IDisposable
     private readonly FontReplacer replacer;
     private readonly Hook<SplitWordDelegate> splitWordHook;
     private readonly delegate* unmanaged<nint, byte*, int, int, int*, int> fitUnits;
+
+    // Wrapper: the units of the current word already put on earlier lines (0 on its first split), and the unit limit.
+    private readonly int consumedUnitsOffset;
+    private readonly int maxUnitsOffset;
+    private readonly int usedUnitsOffset;
 
     private readonly StringBuilder text = new();
     private readonly List<Unit> units = [];
@@ -65,10 +56,14 @@ internal sealed unsafe class LineBreaker : IDisposable
         this.replacer = replacer;
         try
         {
-            var address = Plugin.SigScanner.ScanText(SplitWordSignature);
-            this.fitUnits = (delegate* unmanaged<nint, byte*, int, int, int*, int>)(
-                address + FitUnitsCallOffset + 5 + *(int*)(address + FitUnitsCallOffset + 1));
-            this.splitWordHook = Plugin.GameInterop.HookFromAddress<SplitWordDelegate>(address, this.SplitWordDetour);
+            // uint SplitWord(Wrapper* this, int width, int unused, byte* word, byte* measuredWord, bool lineStart), with
+            // its call to int FitUnits(Wrapper* this, byte* measuredWord, int width, int maxUnits, int* bytes).
+            var m = CodeSignature.Find("SplitWord");
+            this.fitUnits = (delegate* unmanaged<nint, byte*, int, int, int*, int>)m.Target("FitUnits");
+            this.consumedUnitsOffset = m.Int("Wrapper.ConsumedUnits");
+            this.maxUnitsOffset = m.Int("Wrapper.MaxUnits");
+            this.usedUnitsOffset = m.Int("Wrapper.UsedUnits");
+            this.splitWordHook = Plugin.GameInterop.HookFromAddress<SplitWordDelegate>(m.Address, this.SplitWordDetour);
             this.splitWordHook.Enable();
         }
         catch
@@ -158,7 +153,7 @@ internal sealed unsafe class LineBreaker : IDisposable
 
     private uint SplitWordDetour(nint wrapper, int width, int unused, byte* word, byte* measuredWord, byte lineStart)
     {
-        var first = *(int*)(wrapper + ConsumedUnitsOffset) == 0;
+        var first = *(int*)(wrapper + this.consumedUnitsOffset) == 0;
         try
         {
             if (first)
@@ -174,7 +169,7 @@ internal sealed unsafe class LineBreaker : IDisposable
             // built at the first. Past that, a forced split at the fit keeps the line filled.
             if (!first)
             {
-                var fit = this.fitUnits(wrapper, measuredWord, width, *(int*)(wrapper + MaxUnitsOffset) - *(int*)(wrapper + UsedUnitsOffset), null);
+                var fit = this.fitUnits(wrapper, measuredWord, width, *(int*)(wrapper + this.maxUnitsOffset) - *(int*)(wrapper + this.usedUnitsOffset), null);
                 return fit <= 0 ? lineStart != 0 ? 1u : 0u : (uint)fit;
             }
 
@@ -186,7 +181,7 @@ internal sealed unsafe class LineBreaker : IDisposable
 
     private uint Split(nint wrapper, int width, byte* word, byte* measuredWord, bool lineStart)
     {
-        var fit = this.fitUnits(wrapper, measuredWord, width, *(int*)(wrapper + MaxUnitsOffset) - *(int*)(wrapper + UsedUnitsOffset), null);
+        var fit = this.fitUnits(wrapper, measuredWord, width, *(int*)(wrapper + this.maxUnitsOffset) - *(int*)(wrapper + this.usedUnitsOffset), null);
         if (fit < 0)
             return 0;
 

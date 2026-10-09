@@ -81,6 +81,7 @@ _COM_SMARTPTR_TYPEDEF(IShellItem, __uuidof(IShellItem));
 _COM_SMARTPTR_TYPEDEF(IShellItemArray, __uuidof(IShellItemArray));
 _COM_SMARTPTR_TYPEDEF(IDWriteFont, __uuidof(IDWriteFont));
 _COM_SMARTPTR_TYPEDEF(IDWriteFactory, __uuidof(IDWriteFactory));
+_COM_SMARTPTR_TYPEDEF(IDWriteGdiInterop, __uuidof(IDWriteGdiInterop));
 
 inline std::wstring GetWindowString(HWND hwnd, bool trim = false) {
 	std::wstring buf(GetWindowTextLengthW(hwnd) + static_cast<size_t>(1), L'\0');

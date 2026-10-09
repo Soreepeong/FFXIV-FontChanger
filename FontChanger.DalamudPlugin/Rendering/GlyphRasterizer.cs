@@ -168,6 +168,9 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     /// <summary>Gets the DirectWrite factory (shared; owned by this object).</summary>
     public IDWriteFactory2* Factory => this.factory;
 
+    /// <summary>Gets the system's font collection (owned by this object).</summary>
+    public IDWriteFontCollection* SystemFonts => this.systemFonts;
+
     /// <summary>Gets FreeType, or null if its native library can't be loaded.</summary>
     public FreeTypeFonts? FreeType { get; }
 

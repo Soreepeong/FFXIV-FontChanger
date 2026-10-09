@@ -1,4 +1,8 @@
 ﻿#include "pch.h"
+
+#include <commdlg.h>
+
+#include "FaceFromFont.h"
 #include "FontChanger.Presets/Structs.h"
 #include "MainWindow.h"
 #include "NegativeBearingCodepointsDialog.h"
@@ -39,6 +43,95 @@ LRESULT App::FontEditorWindow::Menu_Edit_Add() {
 	if (indices.size() == 1)
 		ShowEditor(*elements[*indices.begin()]);
 
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::Menu_Edit_AddFromFont() {
+	if (!m_pActiveFace)
+		return 0;
+
+	const auto familyAndSize = FaceFromFont::GetGameFontFamilyAndSize(m_pActiveFace->Name);
+	if (!familyAndSize) {
+		const auto name = xivres::util::unicode::convert<std::wstring>(m_pActiveFace->Name);
+		MessageBoxW(m_hWnd,
+			std::vformat(GetStringResource(IDS_ADDFROMFONT_NOTGAMEFONT), std::make_wformat_args(name)).c_str(),
+			std::wstring(GetStringResource(IDS_APP)).c_str(),
+			MB_OK | MB_ICONWARNING);
+		return 0;
+	}
+
+	LOGFONTW logFont{};
+	CHOOSEFONTW chooseFont{
+		.lStructSize = sizeof chooseFont,
+		.hwndOwner = m_hWnd,
+		.lpLogFont = &logFont,
+		.Flags = CF_SCREENFONTS | CF_SCALABLEONLY | CF_NOVERTFONTS | CF_NOSIZESEL | CF_NOSCRIPTSEL | CF_FORCEFONTEXIST,
+	};
+	if (!ChooseFontW(&chooseFont))
+		return 0;
+
+	// The faces of the family in the font set of the active face, each with the elements that draw it with the font.
+	std::vector<std::pair<Structs::Face*, std::vector<std::unique_ptr<Structs::FaceElement>>>> additions;
+	try {
+		// GDI names some faces as families of their own ("Franklin Gothic Medium"); the lookup takes DirectWrite's family.
+		IDWriteFactoryPtr factory;
+		SuccessOrThrow(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(&factory)));
+		IDWriteGdiInteropPtr interop;
+		SuccessOrThrow(factory->GetGdiInterop(&interop));
+		IDWriteFontPtr font;
+		SuccessOrThrow(interop->CreateFontFromLOGFONT(&logFont, &font));
+		IDWriteFontFamilyPtr family;
+		SuccessOrThrow(font->GetFontFamily(&family));
+		IDWriteLocalizedStringsPtr names;
+		SuccessOrThrow(family->GetFamilyNames(&names));
+
+		UINT32 index;
+		if (BOOL exists; FAILED(names->FindLocaleName(L"en-us", &index, &exists)) || !exists) {
+			if (FAILED(names->FindLocaleName(L"en", &index, &exists)) || !exists)
+				index = 0;
+		}
+		UINT32 length;
+		SuccessOrThrow(names->GetStringLength(index, &length));
+		std::wstring familyName(length + 1, L'\0');
+		SuccessOrThrow(names->GetString(index, familyName.data(), length + 1));
+		familyName.resize(length);
+
+		const Structs::LookupStruct lookup{
+			.Name = xivres::util::unicode::convert<std::string>(familyName),
+			.Weight = font->GetWeight(),
+			.Stretch = font->GetStretch(),
+			.Style = font->GetStyle(),
+			.Synthesis = Structs::SynthesisStruct{},
+		};
+
+		for (const auto& pFontSet : m_multiFontSet.FontSets) {
+			if (std::ranges::none_of(pFontSet->Faces, [this](const auto& pFace) { return pFace.get() == m_pActiveFace; }))
+				continue;
+
+			for (const auto& pFace : pFontSet->Faces) {
+				const auto other = FaceFromFont::GetGameFontFamilyAndSize(pFace->Name);
+				const auto size = FaceFromFont::GetGameFontSize(*pFace);
+				if (other && size && other->first == familyAndSize->first)
+					additions.emplace_back(pFace.get(), FaceFromFont::MakeElements(lookup, other->first, *size));
+			}
+		}
+	} catch (const std::exception& e) {
+		const auto message = xivres::util::unicode::convert<std::wstring>(e.what());
+		MessageBoxW(m_hWnd,
+			std::vformat(GetStringResource(IDS_ADDFROMFONT_FAILED), std::make_wformat_args(message)).c_str(),
+			std::wstring(GetStringResource(IDS_APP)).c_str(),
+			MB_OK | MB_ICONERROR);
+		return 0;
+	}
+
+	for (auto& [pFace, elements] : additions) {
+		std::ranges::move(elements, std::back_inserter(pFace->Elements));
+		pFace->OnElementChange();
+	}
+
+	UpdateFaceElementList();
+	Changes_MarkDirty();
+	Window_Redraw();
 	return 0;
 }
 

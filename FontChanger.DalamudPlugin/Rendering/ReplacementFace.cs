@@ -99,6 +99,16 @@ internal sealed unsafe class ReplacementFace : IDisposable
         return new(rasterizer, new() { Name = "(built-in)", Elements = elements }, true, null);
     }
 
+    /// <summary>
+    /// Makes the face of game fonts no preset gives one: the game's glyphs, and for characters the game font lacks, with
+    /// <paramref name="systemFallback"/>, system fonts (<paramref name="fallback"/>'s glyph by glyph).
+    /// </summary>
+    public static ReplacementFace CreateGame(GlyphRasterizer rasterizer, bool systemFallback, ReplacementFace fallback)
+    {
+        var element = new ElementDef { Size = 1, Renderer = ElementRenderer.Game, Ranges = [(0, 0x10FFFF)] };
+        return new(rasterizer, new() { Name = "(game)", Elements = [element] }, systemFallback, fallback);
+    }
+
     public void Dispose()
     {
         foreach (var e in this.elements)
@@ -249,7 +259,53 @@ internal sealed unsafe class ReplacementFace : IDisposable
         if (element < 0 || this.elements[element].Font is not { } font)
             return runFace;
         var own = font.GetFace(emSize);
-        return own->GetIndex() == runFace->GetIndex() && own->GetGlyphCount() == runFace->GetGlyphCount() ? own : runFace;
+        return SameFont(own, runFace) ? own : runFace;
+    }
+
+    /// <summary>
+    /// Gets whether two faces are of the same font (the same file and index, so the same glyphs), whatever their
+    /// simulations and axis values. A family's styles often have the same glyph count, so the files are compared.
+    /// </summary>
+    private static bool SameFont(IDWriteFontFace* a, IDWriteFontFace* b)
+    {
+        if (a == b)
+            return true;
+        if (a->GetIndex() != b->GetIndex() || a->GetGlyphCount() != b->GetGlyphCount())
+            return false;
+
+        IDWriteFontFile* fileA = null;
+        IDWriteFontFile* fileB = null;
+        IDWriteFontFileLoader* loaderA = null;
+        IDWriteFontFileLoader* loaderB = null;
+        try
+        {
+            uint count = 1;
+            if (a->GetFiles(&count, &fileA).FAILED || fileA is null)
+                return false;
+            count = 1;
+            if (b->GetFiles(&count, &fileB).FAILED || fileB is null)
+                return false;
+            if (fileA->GetLoader(&loaderA).FAILED || fileB->GetLoader(&loaderB).FAILED || loaderA != loaderB)
+                return false;
+
+            void* keyA;
+            void* keyB;
+            uint sizeA, sizeB;
+            if (fileA->GetReferenceKey(&keyA, &sizeA).FAILED || fileB->GetReferenceKey(&keyB, &sizeB).FAILED)
+                return false;
+            return new ReadOnlySpan<byte>(keyA, (int)sizeA).SequenceEqual(new ReadOnlySpan<byte>(keyB, (int)sizeB));
+        }
+        finally
+        {
+            if (loaderA is not null)
+                loaderA->Release();
+            if (loaderB is not null)
+                loaderB->Release();
+            if (fileA is not null)
+                fileA->Release();
+            if (fileB is not null)
+                fileB->Release();
+        }
     }
 
     /// <summary>Gets how much further an element's glyphs advance than DirectWrite lays them out: FreeType's emboldening.</summary>
@@ -350,7 +406,9 @@ internal sealed unsafe class ReplacementFace : IDisposable
     {
         var e = element >= 0 ? this.elements[element] : null;
         var t = (transform ?? e?.Transform ?? GlyphTransform.Identity).ScaledX(squeezeX);
-        if (e is { FreeTypeFace: not 0, Font: { } font })
+
+        // FreeType draws the element's own font; another face's glyphs (its family's italic) are DirectWrite's.
+        if (e is { FreeTypeFace: not 0, Font: { } font } && SameFont(font.GetFace(size), face))
         {
             return this.rasterizer.FreeType!.RasterizeRun(
                 e.FreeTypeFace, size, glyphs, advances, offsets, count, originX, advance, e.Def.FreeType, t, font.GetAxisValues(size), font.Embolden);
