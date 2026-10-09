@@ -92,7 +92,7 @@ void App::FontEditorWindow::StopWatchingGlyphFolders() {
 }
 
 UINT App::FontEditorWindow::GetGlyphFoldersChangedMessage() {
-	static const auto s_message = RegisterWindowMessageW(L"XivRes.FontGenerator.GlyphFoldersChanged");
+	static const auto s_message = RegisterWindowMessageW(L"FontEditorNativeApp.GlyphFoldersChanged");
 	return s_message;
 }
 

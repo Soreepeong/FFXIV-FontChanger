@@ -183,7 +183,7 @@
     </MASM>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="XivRes.FontGenerator.rc">
+    <ResourceCompile Include="FontEditorNativeApp.rc">
       <Filter>Project Items</Filter>
     </ResourceCompile>
   </ItemGroup>

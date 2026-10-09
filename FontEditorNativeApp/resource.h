@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
-// Used by XivRes.FontGenerator.rc
+// Used by FontEditorNativeApp.rc
 //
 #define IDD_FACEELEMENTEDITOR           101
 #define IDD_FACEELEMENTEDITOR_FONT         190

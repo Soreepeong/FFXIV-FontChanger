@@ -1,0 +1,7 @@
+{
+  "Author": "Soreepeong",
+  "Name": "Custom Fonts",
+  "Punchline": "Game UI text from DirectWrite instead of prebaked font atlases.",
+  "Description": "Prototype: rasterizes the glyphs of the game's UI text with DirectWrite as they are needed, at the exact pixel size they are drawn at, into atlases the game's own text renderer samples.",
+  "Tags": ["ui", "font", "prototype"]
+}

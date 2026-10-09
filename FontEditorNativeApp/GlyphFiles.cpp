@@ -678,7 +678,7 @@ void App::GlyphFiles::ExportGlyphs(
 	}
 
 	nlohmann::json metadata{
-		{"generator", "XivRes.FontGenerator"},
+		{"generator", "FontEditorNativeApp"},
 		{"unitsPerEm", DefaultUnitsPerEm},
 		{"baselineY", DefaultBaselineY},
 		{"ascent", std::stod(FormatNumber(font.ascent() * m.Scale))},

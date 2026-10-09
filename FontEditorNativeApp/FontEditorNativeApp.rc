@@ -2370,9 +2370,9 @@ BEGIN
             VALUE "CompanyName", "Soreepeong"
             VALUE "FileDescription", "FFXIV Font Mod Generator"
             VALUE "FileVersion", "0.0.0.13"
-            VALUE "InternalName", "XivRes.FontGenerator.exe"
+            VALUE "InternalName", "FontEditorNativeApp.exe"
             VALUE "LegalCopyright", "Copyright (C) 2025"
-            VALUE "OriginalFilename", "XivRes.FontGenerator.exe"
+            VALUE "OriginalFilename", "FontEditorNativeApp.exe"
             VALUE "ProductName", "FFXIV Font Mod Generator"
             VALUE "ProductVersion", "0.0.0.13"
         END

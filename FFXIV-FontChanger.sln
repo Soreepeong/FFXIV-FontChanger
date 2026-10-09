@@ -9,11 +9,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Files", "Solution 
 		README.md = README.md
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "XivRes.FontGenerator", "XivRes.FontGenerator\XivRes.FontGenerator.vcxproj", "{C53D1DF1-A5ED-4F17-BC96-2A8C5462D3D9}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FontEditorNativeApp", "FontEditorNativeApp\FontEditorNativeApp.vcxproj", "{C53D1DF1-A5ED-4F17-BC96-2A8C5462D3D9}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xivres", "xivres\xivres\xivres.vcxproj", "{58DADDF6-5733-40E0-855C-CC3B4BF235EB}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xivres.fontgen", "xivres\xivres.fontgen\xivres.fontgen.vcxproj", "{90E4B098-E528-44EE-B643-56A0EE1A4FFB}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CustomFontsDalamudPlugin", "CustomFontsDalamudPlugin\CustomFontsDalamudPlugin.csproj", "{0092E8C8-E34C-48B7-8670-6423BE455DA1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -61,6 +63,15 @@ Global
 		{90E4B098-E528-44EE-B643-56A0EE1A4FFB}.ReleaseWithoutAsm|Win32.Build.0 = Release|Win32
 		{90E4B098-E528-44EE-B643-56A0EE1A4FFB}.ReleaseWithoutAsm|x64.ActiveCfg = Release|x64
 		{90E4B098-E528-44EE-B643-56A0EE1A4FFB}.ReleaseWithoutAsm|x64.Build.0 = Release|x64
+		{0092E8C8-E34C-48B7-8670-6423BE455DA1}.Debug|Win32.ActiveCfg = Debug|x64
+		{0092E8C8-E34C-48B7-8670-6423BE455DA1}.Debug|x64.ActiveCfg = Debug|x64
+		{0092E8C8-E34C-48B7-8670-6423BE455DA1}.Debug|x64.Build.0 = Debug|x64
+		{0092E8C8-E34C-48B7-8670-6423BE455DA1}.Release|Win32.ActiveCfg = Release|x64
+		{0092E8C8-E34C-48B7-8670-6423BE455DA1}.Release|x64.ActiveCfg = Release|x64
+		{0092E8C8-E34C-48B7-8670-6423BE455DA1}.Release|x64.Build.0 = Release|x64
+		{0092E8C8-E34C-48B7-8670-6423BE455DA1}.ReleaseWithoutAsm|Win32.ActiveCfg = Release|x64
+		{0092E8C8-E34C-48B7-8670-6423BE455DA1}.ReleaseWithoutAsm|x64.ActiveCfg = Release|x64
+		{0092E8C8-E34C-48B7-8670-6423BE455DA1}.ReleaseWithoutAsm|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
