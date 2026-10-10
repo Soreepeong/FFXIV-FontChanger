@@ -271,6 +271,8 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 
 		xivres::textools::simple_ttmp2_writer writer(*finalPath);
 
+		writer.ttmpl().Name = xivres::util::unicode::convert<std::string>(std::filesystem::path(GetCurrentFileName()).stem().wstring());
+
 		ProgressDialog progressDialog(m_hWnd, std::wstring(GetStringResource(IDS_WINDOWTITLE_EXPORTTTMP)));
 		ShowWindow(m_hWnd, SW_HIDE);
 		const auto hideWhilePacking = xivres::util::on_dtor([this]() { ShowWindow(m_hWnd, SW_SHOW); });
