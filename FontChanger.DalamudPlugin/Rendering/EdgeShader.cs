@@ -34,6 +34,7 @@ internal sealed unsafe class EdgeShader : IDisposable
 
     private IHostHook<LoadShadersDelegate>? loadShadersHook;
     private ID3D11PixelShader* shader;
+    private float softness;
     private bool used;
 
     // The Kernel::PixelShader patched, and the game's ID3D11PixelShader it had.
@@ -43,10 +44,10 @@ internal sealed unsafe class EdgeShader : IDisposable
     private delegate byte LoadShadersDelegate(nint server);
 
     /// <summary>
-    /// Uses the plugin's shader (its radius comes from each font's claimed texture width), or the game's. Framework
-    /// thread. Throws if the shader can't be made.
+    /// Uses the plugin's shader (its radius comes from each font's claimed texture width) with an edge softness, or the
+    /// game's. Framework thread. Throws if the shader can't be made; a new softness makes it again.
     /// </summary>
-    public void Set(bool use)
+    public void Set(bool use, float softness = 0)
     {
         this.used = use;
         if (!use)
@@ -76,16 +77,30 @@ internal sealed unsafe class EdgeShader : IDisposable
             this.resolved = true;
         }
 
-        if (this.shader is null)
+        if (this.shader is not null && softness != this.softness)
         {
-            // Made on the device of the game's shader.
-            var target = this.GetEdgeShaderObject(true);
-            if (target == 0)
-                throw new InvalidOperationException("The game's edge shader isn't there.");
-            this.shader = Create(*(ID3D11PixelShader**)(target + this.d3dShader));
+            this.Restore();
+            this.shader->Release();
+            this.shader = null;
         }
 
+        this.softness = softness;
+
+        // Before the game has loaded its shaders, LoadShadersDetour installs it once it does.
+        if (this.shader is null && !this.CreateFromGame())
+            return;
+
         this.Install();
+    }
+
+    /// <summary>Makes the shader on the device of the game's; false while the game hasn't loaded its edge shader.</summary>
+    private bool CreateFromGame()
+    {
+        var target = this.GetEdgeShaderObject(true);
+        if (target == 0)
+            return false;
+        this.shader = Create(*(ID3D11PixelShader**)(target + this.d3dShader), this.softness);
+        return true;
     }
 
     /// <summary>Puts the shader in place, if it isn't.</summary>
@@ -146,7 +161,7 @@ internal sealed unsafe class EdgeShader : IDisposable
                 this.original = null;
             }
 
-            if (this.used && this.shader is not null)
+            if (this.used && (this.shader is not null || this.CreateFromGame()))
                 this.Install();
         }
         catch (Exception ex)
@@ -157,13 +172,18 @@ internal sealed unsafe class EdgeShader : IDisposable
         return result;
     }
 
-    /// <summary>Makes the plugin's shader on the device of the game's; its bytecode is compiled at build time.</summary>
-    private static ID3D11PixelShader* Create(ID3D11PixelShader* game)
+    /// <summary>
+    /// Makes the plugin's shader on the device of the game's; its bytecode is compiled at build time, and the softness
+    /// patched in (<see cref="EdgeShaderCode"/>).
+    /// </summary>
+    private static ID3D11PixelShader* Create(ID3D11PixelShader* game, float softness)
     {
         using var stream = typeof(EdgeShader).Assembly.GetManifestResourceStream("CustomFonts.Rendering.FontEdgePS.cso")
             ?? throw new FileNotFoundException("FontEdgePS.cso isn't embedded.");
         var code = new byte[stream.Length];
         stream.ReadExactly(code);
+        if (EdgeShaderCode.Patch(code, softness) == 0)
+            Host.Log.Error(null, "FontEdgePS.cso has no Softness to set; the edge is drawn with the value it was compiled with");
 
         ID3D11Device* device;
         game->GetDevice(&device);

@@ -4,7 +4,8 @@
 // (Step.y), which the plugin sets per font to radius / (atlas width); the atlas's own texel comes from the texture.
 //
 // alpha is the most of Coverage(Uv + o) * Weight(o) over the whole-texel offsets o up to MAX_REACH on each axis, leaving
-// out samples outside the glyph's rectangle. For a one-hot Channel (every glyph the game draws) the samples are blended
+// out samples outside the glyph's rectangle. Weight falls linearly with |o| as Softness sets (Rim); Softness is patched
+// into the bytecode at run time. For a one-hot Channel (every glyph the game draws) the samples are blended
 // from Gather: a gather of the channel at a texel corner holds a sample's bilinear footprint, and neighbouring samples'
 // footprints share texels. The blend's weights are exact, where the sampler's are rounded (to 8 fractional bits on
 // common hardware), so alpha may differ from SampleLevel's by about 1/255; the sampler must filter linearly, as the
@@ -40,10 +41,28 @@ struct PSInput
     float4 Step : TEXCOORD3;
 };
 
-// The weight of the sample at offset o (whole texels): the disc's, antialiased at its rim (rim = radius + 0.5).
-float Weight(float rim, float2 o)
+// The edge's softness k, a distinctive value that the plugin and XivAlexander replace in the bytecode: every use of it
+// is with a value known only at run time, so that it stays an immediate operand of its own.
+static const float Softness = 0.123456789f;
+
+// The weight of the sample at offset o (whole texels): saturate(rim.x - |o| * rim.y), which is 0 from |o| = rim.z on.
+float Weight(float3 rim, float2 o)
 {
-    return saturate(rim - length(o));
+    return saturate(rim.x - length(o) * rim.y);
+}
+
+// The weight's terms for softness k: 1 to (1 - k) * radius, falling linearly over k * radius (at least 1 px, centred
+// there) to 0 at radius (k <= 1) or k * radius (k > 1, as far as MAX_REACH takes it). k = 0 is a disc antialiased at
+// its rim: rim = (radius + 0.5, 1, radius + 0.5).
+float3 Rim(float radius, float k)
+{
+    k = k > 1 ? min(k, max((MAX_REACH + 0.5) / radius, 1)) : k;
+    float inner = max(1 - k, 0) * radius;
+    float outer = max(k, 1) * radius;
+    float fade = max(outer - inner, 1);
+    float middle = (inner + outer) * 0.5;
+    float slope = fade > 1 ? 1 / fade : 1;
+    return float3(0.5 + middle * slope, slope, middle + 0.5 * fade);
 }
 
 // The sample's coverage, for any Channel.
@@ -77,7 +96,7 @@ int LastInside(float uv, float texel, float size, float max, int reach)
 
 // Any Channel: rows from the centre out (0, -1, 1, -2, 2, ...), each within the disc and the rectangle's columns. Rows
 // further out weigh no more, so once alpha reaches the most a row can give, the loop ends.
-float Dilate(PSInput input, float2 texel, float2 size, float rim, int reach)
+float Dilate(PSInput input, float2 texel, float2 size, float3 rim, int reach)
 {
     int x0 = FirstInside(input.Uv.x, texel.x, size.x, input.RectMin.x, reach);
     int x1 = LastInside(input.Uv.x, texel.x, size.x, input.RectMax.x, reach);
@@ -95,13 +114,13 @@ float Dilate(PSInput input, float2 texel, float2 size, float rim, int reach)
         float fy = y;
 
         // The most any sample of this row or the rows after it weighs (the margin covers the rounding of length()).
-        if (alpha >= most * saturate(rim - abs(fy) + 1.0 / 256))
+        if (alpha >= most * saturate(rim.x - abs(fy) * rim.y + 1.0 / 256))
             break;
         if (y < y0 || y > y1)
             continue;
 
         // The row's columns weighing more than 0 are |x| <= h: estimated, then corrected by one either way.
-        int h = (int)sqrt(max(rim * rim - fy * fy, 0));
+        int h = (int)sqrt(max(rim.z * rim.z - fy * fy, 0));
         if (Weight(rim, float2(h + 1, fy)) > 0)
             h++;
         else if (Weight(rim, float2(h, fy)) <= 0)
@@ -121,7 +140,7 @@ float Dilate(PSInput input, float2 texel, float2 size, float rim, int reach)
 
 // Any Channel, a reach of R (a literal, 0 or 1), unrolled, with the rectangle test per sample. zero is a 0 the compilers
 // can't see through, so that positions and weights are computed at run time, as in the loop.
-float DilateSquare(PSInput input, int R, float2 texel, float rim, float zero)
+float DilateSquare(PSInput input, int R, float2 texel, float3 rim, float zero)
 {
     float alpha = 0;
     [unroll]
@@ -167,7 +186,7 @@ void Footprint(PSInput input, float2 texel, float2 size, out float2 corner, out 
 }
 
 // Row y's samples x0 .. x1 of channel c (a literal), blended from gathers along the row.
-float RowGathered(int c, float alpha, float2 corner, float2 f, float2 texel, float rim, float y, float x0, float x1)
+float RowGathered(int c, float alpha, float2 corner, float2 f, float2 texel, float3 rim, float y, float x0, float x1)
 {
     // The first gather holds sample x0's footprint; each further one, two columns on, the next two samples'.
     float2 at = corner + float2(x0, y) * texel;
@@ -184,7 +203,7 @@ float RowGathered(int c, float alpha, float2 corner, float2 f, float2 texel, flo
         at.x += 4 * texel.x;
         float4 columns = lerp(float4(g1.w, g1.z, g2.w, g2.z), float4(g1.x, g1.y, g2.x, g2.y), f.y);
         float4 o = x + float4(0, 1, 2, 3);
-        float4 s = lerp(float4(right, columns.xyz), columns, f.x) * saturate(rim - sqrt(o * o + y * y));
+        float4 s = lerp(float4(right, columns.xyz), columns, f.x) * saturate(rim.x - sqrt(o * o + y * y) * rim.y);
         alpha = max(alpha, max(max(s.x, s.y), max(s.z, s.w)));
         right = columns.w;
     }
@@ -210,7 +229,7 @@ float RowGathered(int c, float alpha, float2 corner, float2 f, float2 texel, flo
 
 // Channel c (a literal), from gathers: rows from the centre out, until no row left can raise alpha (coverage is at most
 // 1). Rows -k and k share their setup; |x| <= outer is a superset of the columns weighing more than 0.
-float DilateGathered(PSInput input, int c, float2 texel, float2 size, float rim, int reach)
+float DilateGathered(PSInput input, int c, float2 texel, float2 size, float3 rim, int reach)
 {
     float x0 = FirstInside(input.Uv.x, texel.x, size.x, input.RectMin.x, reach);
     float x1 = LastInside(input.Uv.x, texel.x, size.x, input.RectMax.x, reach);
@@ -223,9 +242,9 @@ float DilateGathered(PSInput input, int c, float2 texel, float2 size, float rim,
     [loop]
     for (float k = 0; k <= reach; k++)
     {
-        if (alpha >= saturate(rim - k + 1.0 / 256))
+        if (alpha >= saturate(rim.x - k * rim.y + 1.0 / 256))
             break;
-        float outer = min(floor(sqrt(max(rim * rim - k * k, 0)) + 1.0 / 256), reach);
+        float outer = min(floor(sqrt(max(rim.z * rim.z - k * k, 0)) + 1.0 / 256), reach);
         float xa = max(x0, -outer), xb = min(x1, outer);
         if (xa > xb)
             continue;
@@ -246,12 +265,13 @@ float4 main(PSInput input) : SV_TARGET
     float2 size = float2(width, height);
     float2 texel = 1 / size;
     float radius = input.Step.y * width;
-    int reach = min((int)ceil(radius), MAX_REACH);
-    float rim = radius + 0.5;
+    float zero = min(input.Step.y, 0);
+    // zero's bits are 0, which the compiler can't tell: Softness doesn't fold into other constants.
+    float3 rim = Rim(radius, asfloat(asuint(Softness) + asuint(zero)));
+    int reach = min((int)ceil(max(radius, rim.z - 0.5)), MAX_REACH);
 
     // The furthest whole offset weighing more than 0, from the weight itself.
-    float zero = min(input.Step.y, 0);
-    int r = min((int)ceil(rim) - 1, reach);
+    int r = min((int)ceil(rim.z) - 1, reach);
     if (r < reach && Weight(rim, float2(r + 1 + zero, zero)) > 0)
         r++;
 

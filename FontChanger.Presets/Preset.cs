@@ -352,6 +352,45 @@ public sealed class ElementDef
 
         return false;
     }
+
+    /// <summary>
+    /// Gets a copy merged by <paramref name="mergeMode"/>, for a face whose sizes are <paramref name="factor"/> times
+    /// those of its own (FontChanger's FaceElement::Scale): its size and pixel values scaled, unrounded.
+    /// </summary>
+    public ElementDef With(MergeMode mergeMode, float factor) => new()
+    {
+        Size = this.Size * factor,
+        Gamma = this.Gamma,
+        MergeMode = mergeMode,
+        Renderer = this.Renderer,
+        Lookup = this.Lookup,
+        Ranges = this.Ranges,
+        Replacements = this.Replacements,
+        LetterSpacing = this.LetterSpacing * factor,
+        HorizontalOffset = this.HorizontalOffset * factor,
+        BaselineShift = this.BaselineShift * factor,
+        Monospacing = this.Monospacing is { Unit: MonospacingUnit.Pixels } m ? m with { Min = m.Min * factor, Max = m.Max * factor } : this.Monospacing,
+        Transform = this.Transform,
+        EmptyAscent = this.EmptyAscent * factor,
+        EmptyLineHeight = this.EmptyLineHeight * factor,
+        DirectWrite = this.DirectWrite,
+        FreeType = this.FreeType,
+        GlyphMerging = this.GlyphMerging is { } g
+                           ? new()
+                           {
+                               TextSize = g.TextSize * factor,
+                               FitMode = g.FitMode,
+                               TextOffsetX = g.TextOffsetX * factor,
+                               TextOffsetY = g.TextOffsetY * factor,
+                               LetterSpacing = g.LetterSpacing * factor,
+                               LineSpacing = g.LineSpacing * factor,
+                               LineAlignment = g.LineAlignment,
+                               TextTransform = g.TextTransform,
+                               Glyphs = g.Glyphs,
+                           }
+                           : null,
+        GlyphImages = this.GlyphImages,
+    };
 }
 
 /// <summary>A face of a preset: the elements that make up one game font (such as <c>AXIS_12</c>).</summary>
@@ -418,6 +457,55 @@ public sealed class Preset
         {
             foreach (var (name, face) in preset.Faces)
                 faces[name] = face;
+        }
+
+        return new(faces);
+    }
+
+    /// <summary>
+    /// Combines presets into one, each drawn over those before it glyph by glyph: a face in several gets the later one's
+    /// elements after the earlier one's, sized relative to the earlier one's first element (which keeps the line metrics).
+    /// </summary>
+    public static Preset Overlay(IEnumerable<Preset> presets)
+    {
+        var faces = new Dictionary<string, FaceDef>(StringComparer.OrdinalIgnoreCase);
+        foreach (var preset in presets)
+        {
+            foreach (var (name, top) in preset.Faces)
+            {
+                if (!faces.TryGetValue(name, out var bottom) || bottom.Elements.Count == 0)
+                {
+                    faces[name] = top;
+                    continue;
+                }
+
+                if (top.Elements.Count == 0)
+                    continue;
+
+                var bottomSize = bottom.Elements[0].Size;
+                var topSize = top.Elements[0].Size;
+                var factor = bottomSize > 0 && topSize > 0 ? bottomSize / topSize : 1;
+                var elements = bottom.Elements.ToList();
+
+                // Leading AddNew fonts would only fill the gaps below; as AddAll in reverse, they take what they have and
+                // the first still wins.
+                var leading = top.Elements.TakeWhile(e => e.Renderer != ElementRenderer.Game).Count();
+                for (var i = leading - 1; i >= 0; i--)
+                {
+                    if (top.Elements[i].MergeMode == MergeMode.AddNew)
+                        elements.Add(top.Elements[i].With(MergeMode.AddAll, factor));
+                }
+
+                // A system font face's game element (AddNew) then fills only gaps, and its Replace elements draw over where
+                // their font has the glyph.
+                for (var i = 0; i < top.Elements.Count; i++)
+                {
+                    if (i >= leading || top.Elements[i].MergeMode != MergeMode.AddNew)
+                        elements.Add(top.Elements[i].With(top.Elements[i].MergeMode, factor));
+                }
+
+                faces[name] = new() { Name = bottom.Name, Elements = elements, Alignment = bottom.Alignment };
+            }
         }
 
         return new(faces);

@@ -2558,7 +2558,7 @@
 							"gamma": 1.399999976158142,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -2570,7 +2570,7 @@
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
-									"measureMode": 1,
+									"measureMode": 2,
 									"renderMode": 5
 								},
 								"empty": {
@@ -2775,7 +2775,7 @@
 							"gamma": 1.399999976158142,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -2787,7 +2787,7 @@
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
-									"measureMode": 1,
+									"measureMode": 2,
 									"renderMode": 5
 								},
 								"empty": {
@@ -2992,7 +2992,7 @@
 							"gamma": 1.399999976158142,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -3004,7 +3004,7 @@
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
-									"measureMode": 1,
+									"measureMode": 2,
 									"renderMode": 5
 								},
 								"empty": {
@@ -3359,7 +3359,7 @@
 							"gamma": 1.399999976158142,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -3371,7 +3371,7 @@
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
-									"measureMode": 1,
+									"measureMode": 2,
 									"renderMode": 5
 								},
 								"empty": {
@@ -4139,10 +4139,10 @@
 							}
 						},
 						{
-							"gamma": 1.399999976158142,
+							"gamma": 1.7000000476837158,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -4155,7 +4155,7 @@
 								"directwrite": {
 									"gridFitMode": 2,
 									"measureMode": 1,
-									"renderMode": 4
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -4194,7 +4194,7 @@
 										55215
 									]
 								],
-								"horizontalOffset": 2,
+								"horizontalOffset": 1,
 								"letterSpacing": 0
 							}
 						},
@@ -4305,10 +4305,10 @@
 							}
 						},
 						{
-							"gamma": 1.399999976158142,
+							"gamma": 1.7000000476837158,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -4321,7 +4321,7 @@
 								"directwrite": {
 									"gridFitMode": 2,
 									"measureMode": 1,
-									"renderMode": 4
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -4360,7 +4360,7 @@
 										55215
 									]
 								],
-								"horizontalOffset": 2,
+								"horizontalOffset": 1,
 								"letterSpacing": 0
 							}
 						},
@@ -4471,10 +4471,10 @@
 							}
 						},
 						{
-							"gamma": 1.399999976158142,
+							"gamma": 1.7000000476837158,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -4486,8 +4486,8 @@
 							"renderSpecific": {
 								"directwrite": {
 									"gridFitMode": 2,
-									"measureMode": 1,
-									"renderMode": 4
+									"measureMode": 2,
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -4526,7 +4526,7 @@
 										55215
 									]
 								],
-								"horizontalOffset": 2,
+								"horizontalOffset": 1,
 								"letterSpacing": 0
 							}
 						},
@@ -4640,7 +4640,7 @@
 							"gamma": 1.399999976158142,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -4653,7 +4653,7 @@
 								"directwrite": {
 									"gridFitMode": 2,
 									"measureMode": 1,
-									"renderMode": 4
+									"renderMode": 5
 								},
 								"empty": {
 									"ascent": 0,
@@ -4692,7 +4692,7 @@
 										55215
 									]
 								],
-								"horizontalOffset": 2,
+								"horizontalOffset": 1,
 								"letterSpacing": 0
 							}
 						},
@@ -4867,7 +4867,7 @@
 							"gamma": 1.399999976158142,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -5082,7 +5082,7 @@
 							"gamma": 1.399999976158142,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -5113,12 +5113,12 @@
 							"size": 96.0,
 							"transform": {
 								"rotation": 0.0,
-								"scaleX": 1.0,
+								"scaleX": 0.6666669845581055,
 								"scaleY": 1.0,
 								"skew": 0.0
 							},
 							"wrapModifiers": {
-								"baselineShift": -3,
+								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
@@ -5134,8 +5134,8 @@
 										55215
 									]
 								],
-								"horizontalOffset": 5,
-								"letterSpacing": 0
+								"horizontalOffset": 3,
+								"letterSpacing": -1
 							}
 						},
 						{
@@ -5297,7 +5297,7 @@
 							"gamma": 1.399999976158142,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -5328,12 +5328,12 @@
 							"size": 96.0,
 							"transform": {
 								"rotation": 0.0,
-								"scaleX": 1.0,
+								"scaleX": 0.6666669845581055,
 								"scaleY": 1.0,
 								"skew": 0.0
 							},
 							"wrapModifiers": {
-								"baselineShift": -3,
+								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
@@ -5349,8 +5349,8 @@
 										55215
 									]
 								],
-								"horizontalOffset": 5,
-								"letterSpacing": 0
+								"horizontalOffset": 3,
+								"letterSpacing": -1
 							}
 						},
 						{
@@ -5512,7 +5512,7 @@
 							"gamma": 1.399999976158142,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -5543,12 +5543,12 @@
 							"size": 96.0,
 							"transform": {
 								"rotation": 0.0,
-								"scaleX": 1.0,
+								"scaleX": 0.6666669845581055,
 								"scaleY": 1.0,
 								"skew": 0.0
 							},
 							"wrapModifiers": {
-								"baselineShift": -3,
+								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
@@ -5564,8 +5564,8 @@
 										55215
 									]
 								],
-								"horizontalOffset": 5,
-								"letterSpacing": 0
+								"horizontalOffset": 3,
+								"letterSpacing": -1
 							}
 						},
 						{
@@ -5727,7 +5727,7 @@
 							"gamma": 1.399999976158142,
 							"lookup": {
 								"features": [],
-								"name": "Noto Sans KR",
+								"name": "Source Han Sans K",
 								"stretch": 5,
 								"style": 0,
 								"synthesis": {
@@ -5758,12 +5758,12 @@
 							"size": 96.0,
 							"transform": {
 								"rotation": 0.0,
-								"scaleX": 1.0,
+								"scaleX": 0.6666669845581055,
 								"scaleY": 1.0,
 								"skew": 0.0
 							},
 							"wrapModifiers": {
-								"baselineShift": -3,
+								"baselineShift": 0,
 								"codepointReplacements": {},
 								"codepoints": [
 									[
@@ -5779,8 +5779,8 @@
 										55215
 									]
 								],
-								"horizontalOffset": 5,
-								"letterSpacing": 0
+								"horizontalOffset": 3,
+								"letterSpacing": -1
 							}
 						},
 						{

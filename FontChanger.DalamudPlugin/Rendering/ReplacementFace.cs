@@ -59,6 +59,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
     private readonly ReplacementFace? fallback;
     private readonly Dictionary<(nint Game, int Codepoint), FaceElement?> elementCache = [];
     private readonly Dictionary<(FaceElement Element, float Px), float> referenceAdvances = [];
+    private int? ownGlyphCount;
 
     /// <summary>
     /// Sets a face up. With <paramref name="systemFallback"/>, characters no element has are drawn with system fonts:
@@ -163,6 +164,30 @@ internal sealed unsafe class ReplacementFace : IDisposable
             assigned = this.gameElement;
         this.elementCache[((nint)game, codepoint)] = assigned;
         return assigned;
+    }
+
+    /// <summary>Gets how many codepoints the face's elements draw themselves (not with the game's glyphs); kept once counted.</summary>
+    public int OwnGlyphCount
+    {
+        get
+        {
+            if (this.ownGlyphCount is { } known)
+                return known;
+            var drawn = new HashSet<int>();
+            foreach (var e in this.elements)
+            {
+                if (e.DrawsGame || e.Font.Codepoints is not { } codepoints)
+                    continue;
+                foreach (var c in codepoints)
+                {
+                    if (e.Def.Contains(c))
+                        drawn.Add(c);
+                }
+            }
+
+            this.ownGlyphCount = drawn.Count;
+            return drawn.Count;
+        }
     }
 
     /// <summary>Gets the codepoint whose glyph an element draws for a codepoint (its replacements).</summary>

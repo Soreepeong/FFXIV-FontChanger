@@ -72,7 +72,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// </summary>
     public void EnsurePage()
     {
-        if (this.pages.Count == 0 && !this.TryAddPage())
+        if (!this.TryEnsurePages(1))
             throw new InvalidOperationException("Could not add an atlas page.");
     }
 
@@ -138,31 +138,42 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         if (w > Size || h > Size)
             return false;
 
-        if (this.pages.Count == 0 && !this.TryAddPage())
+        if (!this.TryEnsurePages(1))
             return false;
 
         while (true)
         {
-            page = this.current / PlanesPerPage;
-            plane = this.current % PlanesPerPage;
-            ref var s = ref this.pages[page].Shelves[plane];
-            if (s.X + w > Size)
-                s = new() { Y = s.Y + s.Height };
-            if (s.Y + h <= Size)
+            int needed;
+            lock (this.sync)
             {
-                x = s.X + Padding;
-                y = s.Y + Padding;
-                s.X += w;
-                s.Height = Math.Max(s.Height, h);
-                return true;
+                page = this.current / PlanesPerPage;
+                plane = this.current % PlanesPerPage;
+                ref var s = ref this.pages[page].Shelves[plane];
+                if (s.X + w > Size)
+                    s = new() { Y = s.Y + s.Height };
+                if (s.Y + h <= Size)
+                {
+                    x = s.X + Padding;
+                    y = s.Y + Padding;
+                    s.X += w;
+                    s.Height = Math.Max(s.Height, h);
+                    return true;
+                }
+
+                // The current plane is full: on to one not used yet.
+                if (this.frontier >= MaxPlanes)
+                    return false;
+                needed = (this.frontier / PlanesPerPage) + 1;
+                if (needed <= this.pages.Count)
+                {
+                    this.current = this.frontier++;
+                    continue;
+                }
             }
 
-            // The current plane is full: on to one not used yet.
-            if (this.frontier >= MaxPlanes)
+            // Added outside the lock, as adding a page raises PageAdded.
+            if (!this.TryEnsurePages(needed))
                 return false;
-            if (this.frontier / PlanesPerPage >= this.pages.Count && !this.TryAddPage())
-                return false;
-            this.current = this.frontier++;
         }
     }
 
@@ -172,10 +183,10 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// </summary>
     public void Write(int page, int plane, int x, int y, int width, int height, ReadOnlySpan<byte> alpha, int alphaStride, int alphaX)
     {
-        var p = this.pages[page];
         var columns = Math.Min(alphaStride, width - alphaX);
         lock (this.sync)
         {
+            var p = this.pages[page];
             var dst = p.Shadow + (y * Pitch) + (x * 4) + ChannelOffsets[plane];
             for (var row = 0; row < height; row++)
             {
@@ -210,10 +221,10 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// <summary>Copies the changed rectangle of each page to its texture. On the thread that calls Present.</summary>
     public void Upload()
     {
-        if (this.context is null)
-            return;
         lock (this.sync)
         {
+            if (this.context is null)
+                return;
             foreach (var p in this.pages)
             {
                 if (p.DirtyRight <= p.DirtyLeft)
@@ -254,29 +265,45 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         }
     }
 
-    private bool TryAddPage()
+    /// <summary>Adds pages until there are at least <paramref name="count"/>; false if there can't be that many.</summary>
+    private bool TryEnsurePages(int count)
     {
-        if (this.pages.Count >= MaxPages)
+        if (count > MaxPages)
             return false;
 
-        var page = new Page(this.Size, $"CustomFonts {this.Name} page {this.pages.Count}");
-        lock (this.sync)
+        while (true)
         {
-            this.pages.Add(page);
-            if (this.context is null)
-            {
-                ID3D11Device* device;
-                page.Resource->GetDevice(&device);
-                ID3D11DeviceContext* ctx;
-                device->GetImmediateContext(&ctx);
-                device->Release();
-                this.context = ctx;
-            }
-        }
+            int added;
+            lock (this.sync)
+                added = this.pages.Count;
+            if (added >= count)
+                return true;
 
-        Host.Log.Information("Added {name} atlas page {n} ({size} x {size})", this.Name, this.pages.Count, this.Size);
-        this.PageAdded?.Invoke();
-        return true;
+            var page = new Page(this.Size, $"CustomFonts {this.Name} page {added}");
+            lock (this.sync)
+            {
+                // Another thread added one meanwhile.
+                if (this.pages.Count != added)
+                {
+                    page.Dispose();
+                    continue;
+                }
+
+                this.pages.Add(page);
+                if (this.context is null)
+                {
+                    ID3D11Device* device;
+                    page.Resource->GetDevice(&device);
+                    ID3D11DeviceContext* ctx;
+                    device->GetImmediateContext(&ctx);
+                    device->Release();
+                    this.context = ctx;
+                }
+            }
+
+            Host.Log.Information("Added {name} atlas page {n} ({size} x {size})", this.Name, added + 1, this.Size);
+            this.PageAdded?.Invoke();
+        }
     }
 
     /// <summary>A plane's shelf: glyphs go left to right from (X, Y), and the next shelf starts below the tallest.</summary>

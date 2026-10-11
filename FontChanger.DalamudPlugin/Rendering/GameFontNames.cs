@@ -67,9 +67,33 @@ internal static unsafe class GameFontNames
         var count = Math.Min((int)manager->FontCount, entryCount);
         if (index < 0 || index >= count)
             return null;
-        if (!IsLobby(font))
-            return gameNames[index];
+        return IsLobby(font) ? LobbyNames(manager, count)[index] : gameNames[index];
+    }
 
+    /// <summary>Gets the font of the font manager of a face name; null if none is loaded.</summary>
+    public static GameFont* FindFont(string faceName)
+    {
+        var manager = GameFontManager.Instance();
+        if (gameNames is null || manager is null || manager->Fonts is null)
+            return null;
+        var count = Math.Min((int)manager->FontCount, entryCount);
+        string[]? lobbyNames = null;
+        for (var i = 0; i < count; i++)
+        {
+            var font = manager->Font(i);
+            var lobby = IsLobby(font);
+            if (lobby)
+                lobbyNames ??= LobbyNames(manager, count);
+            if (string.Equals((lobby ? lobbyNames! : gameNames)[i], faceName, StringComparison.OrdinalIgnoreCase))
+                return font;
+        }
+
+        return null;
+    }
+
+    /// <summary>Gets the lobby table whose sizes match the loaded lobby fonts.</summary>
+    private static string[] LobbyNames(GameFontManager* manager, int count)
+    {
         var a = 0;
         var b = 0;
         for (var i = 0; i < count; i++)
@@ -81,7 +105,7 @@ internal static unsafe class GameFontNames
             b += SizeOf(lobbyNamesB![i]) == f->Size ? 1 : 0;
         }
 
-        return (b > a ? lobbyNamesB! : lobbyNamesA!)[index];
+        return b > a ? lobbyNamesB! : lobbyNamesA!;
     }
 
     private static bool IsLobby(GameFont* font)

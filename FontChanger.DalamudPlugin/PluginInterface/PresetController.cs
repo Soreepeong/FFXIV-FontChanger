@@ -29,9 +29,10 @@ internal sealed class PresetTreeNode
 
 /// <summary>
 /// Loads the presets selected from the preset folder into the replacer, and again whenever their files or their glyph
-/// images change. Presets are selected per game font family: a family's faces come from its presets only (the last one's
-/// of a face in several), so a preset of every family can be used for one. Reading and loading happen on a background
-/// thread, one at a time: right after the settings change, and once changed files have been quiet for a while.
+/// images change. Presets are selected per game font family: a family's faces come from its presets only (each drawn over
+/// those selected before it, glyph by glyph), so a preset of every family can be used for one. Reading and loading happen
+/// on a background thread, one at a time: right after the settings change, and once changed files have been quiet for a
+/// while.
 /// </summary>
 internal sealed class PresetController : IDisposable
 {
@@ -466,7 +467,10 @@ internal sealed class PresetController : IDisposable
             }
         }
 
-        var perFamily = families.Select(f => Preset.Combine(f.Selected.Select(Read).OfType<Preset>()).OnlyFamily(f.Family)).ToList();
+        var perFamily = families.ToDictionary(
+            f => f.Family,
+            f => f.Selected.Select(Read).OfType<Preset>().Select(p => p.OnlyFamily(f.Family)).ToList(),
+            StringComparer.OrdinalIgnoreCase);
 
         // The families' system fonts, over their presets.
         var fontFamilies = 0;
@@ -474,7 +478,9 @@ internal sealed class PresetController : IDisposable
         {
             if (this.MakeFaces(family, font, failures) is { } generated)
             {
-                perFamily.Add(generated);
+                if (!perFamily.TryGetValue(family, out var sources))
+                    perFamily[family] = sources = [];
+                sources.Add(generated);
                 fontFamilies++;
             }
         }
@@ -485,7 +491,7 @@ internal sealed class PresetController : IDisposable
             return;
         }
 
-        var preset = Preset.Combine(perFamily);
+        var preset = Preset.Combine(perFamily.Values.Select(Preset.Overlay));
         if (preset.Faces.Count == 0)
             preset = null;
         var familyCount = preset?.Faces.Keys.Select(Preset.FamilyOf).Distinct(StringComparer.OrdinalIgnoreCase).Count() ?? 0;

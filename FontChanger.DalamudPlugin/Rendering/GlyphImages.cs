@@ -153,6 +153,8 @@ internal sealed class GlyphImages
 
     public bool Has(int codepoint) => this.glyphs.ContainsKey(codepoint);
 
+    public IEnumerable<int> Codepoints => this.glyphs.Keys;
+
     /// <summary>Gets the kerning between two codepoints in pixels at a size, as the transformation scales advances.</summary>
     public int GetKerning(int left, int right, float px, GlyphTransform transform) =>
         this.kerning.TryGetValue((left, right), out var k) ? (int)Rounding.Round(k * px / this.unitsPerEm * transform.M11) : 0;

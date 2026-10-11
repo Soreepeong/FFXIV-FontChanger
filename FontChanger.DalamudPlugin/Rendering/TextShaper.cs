@@ -89,10 +89,10 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     private IDWriteFontFallback* fallback;
     private nint emptyGlyph;
 
-    // While shaping a run: its text, and each code unit's byte offset, element and whether it is in italics.
+    // While shaping a run: its text, and each code unit's byte offset, glyph source and whether it is in italics.
     private char[] text = new char[256];
     private int[] textToByte = new int[256];
-    private FaceElement?[] textElement = new FaceElement?[256];
+    private FontReplacer.GlyphSource[] textSource = new FontReplacer.GlyphSource[256];
     private bool[] textItalic = new bool[256];
     private readonly bool[] byteItalic = new bool[MaxRunBytes];
     private byte* shapingBytes;
@@ -199,7 +199,8 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             // drawn from their fonts (merged glyphs, glyph images), stay per character. Others are an element's whose
             // glyphs are shaped, or the system fonts' (no element).
             var sized = this.shapingSized;
-            var element = this.textElement[start + k];
+            var source = this.textSource[start + k];
+            var element = source.Element;
             var font = element?.Shaped;
             var missing = element is not null && font is null;
 
@@ -254,7 +255,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             // monospacing and letter spacing; everything after moves along.
             var x0 = Rounding.Round(pen);
             var width = advance * (font?.Transform.M11 ?? 1);
-            var spacing = sized.Face.GetLetterSpacing(element is { DrawsGame: false } ? element : null, sized.Px);
+            var spacing = source.Face.GetLetterSpacing(element is { DrawsGame: false } ? element : null, sized.Px);
             var cluster = new Cluster
             {
                 Face = (nint)face,
@@ -267,6 +268,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
                 X0 = (int)x0,
                 TextStart = start + k,
                 TextEnd = start + k2,
+                Source = source,
                 Element = element,
                 Missing = missing,
                 AfterGap = this.clusterGap,
@@ -278,8 +280,8 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             if (!missing && font is not null && element!.Def.Monospacing is not null)
             {
                 var rawAdvance = (int)Rounding.Round(width);
-                cluster.Cell = sized.Face.Wrap(
-                    element, this.RasterizeCluster(cluster, rawAdvance, 1), sized.Px, (GameFont*)sized.GameFont, s => this.RasterizeCluster(cluster, rawAdvance, s));
+                cluster.Cell = source.Face.Wrap(
+                    element, this.RasterizeCluster(cluster, rawAdvance, 1), sized.Px, (GameFont*)source.Game, s => this.RasterizeCluster(cluster, rawAdvance, s));
                 cluster.X1 = cluster.X0 + cluster.Cell.Value.Advance;
                 next = cluster.X1;
             }
@@ -635,7 +637,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             return;
         Array.Resize(ref this.text, Math.Max(n, this.text.Length * 2));
         Array.Resize(ref this.textToByte, this.text.Length);
-        Array.Resize(ref this.textElement, this.text.Length);
+        Array.Resize(ref this.textSource, this.text.Length);
         Array.Resize(ref this.textItalic, this.text.Length);
     }
 
@@ -838,18 +840,17 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     }
 
     /// <summary>
-    /// Finds the face element of each code unit of the text (a low surrogate gets its high one's), and puts in the
+    /// Finds the glyph source of each code unit of the text (a low surrogate gets its high one's), and puts in the
     /// characters an element draws with another's glyph (its codepoint replacements), where the UTF-16 length allows.
     /// </summary>
     private void AssignElements(FontReplacer.SizedFont sized, int count)
     {
-        var face = sized.Face;
-        var game = (GameFont*)sized.GameFont;
         for (var i = 0; i < count;)
         {
             var n = char.IsHighSurrogate(this.text[i]) && i + 1 < count && char.IsLowSurrogate(this.text[i + 1]) ? 2 : 1;
             var codepoint = n == 2 ? char.ConvertToUtf32(this.text[i], this.text[i + 1]) : this.text[i];
-            var element = face.GetElement(codepoint, game);
+            var source = sized.Pick(codepoint);
+            var element = source.Element;
             if (element is { DrawsGame: false })
             {
                 var drawn = ReplacementFace.GetDrawnCodepoint(element, codepoint);
@@ -858,7 +859,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             }
 
             for (var j = 0; j < n; j++)
-                this.textElement[i + j] = element;
+                this.textSource[i + j] = source;
             i += n;
         }
     }
@@ -869,19 +870,19 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     /// </summary>
     private void ApplyElements(IDWriteTextLayout* layout, FontReplacer.SizedFont sized, int count)
     {
-        var face = sized.Face;
         for (var start = 0; start < count;)
         {
-            var element = this.textElement[start];
+            var source = this.textSource[start];
+            var element = source.Element;
             var end = start + 1;
-            while (end < count && this.textElement[end] == element)
+            while (end < count && this.textSource[end].Element == element)
                 end++;
 
             // Elements not drawn from their fonts are left per character anyway.
             if (element?.Shaped is { } font)
             {
                 var range = new DWRITE_TEXT_RANGE { startPosition = (uint)start, length = (uint)(end - start) };
-                font.ApplyTo(layout, range, face.GetElementPx(element, sized.Px));
+                font.ApplyTo(layout, range, source.Face.GetElementPx(element, sized.Px));
             }
 
             start = end;
@@ -924,7 +925,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         var sized = this.shapingSized!;
         raster = c.Cell ?? this.RasterizeCluster(c, 0, 1);
         if (c.Cell is null && c.Element is { } element)
-            raster = sized.Face.Wrap(element, raster, sized.Px, (GameFont*)sized.GameFont, s => this.RasterizeCluster(c, 0, s));
+            raster = c.Source!.Face.Wrap(element, raster, sized.Px, (GameFont*)c.Source.Game, s => this.RasterizeCluster(c, 0, s));
 
         // An edge margin makes ink left of the pen: the cell then starts earlier (PlaceClusters), keeping the spacing.
         raster = this.replacer.FinishGlyph(sized, raster);
@@ -997,6 +998,9 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
         public int TextEnd { get; init; }
 
+        /// <summary>Where the cluster's first character's glyph comes from.</summary>
+        public FontReplacer.GlyphSource? Source { get; init; }
+
         /// <summary>The face element of the cluster's first character, or null for the system's fonts.</summary>
         public FaceElement? Element { get; init; }
 
@@ -1027,6 +1031,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
                 Cell = this.Cell,
                 TextStart = this.TextStart,
                 TextEnd = this.TextEnd,
+                Source = this.Source,
                 Element = this.Element,
                 Missing = this.Missing,
                 AfterGap = this.AfterGap,

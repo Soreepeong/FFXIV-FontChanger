@@ -463,6 +463,16 @@ FontChanger::FixedSizeFont::directwrite_fixed_size_font::dwrite_interfaces FontC
 	if (IDWriteTextFormat3Ptr format3; !axisValues.empty() && SUCCEEDED(res.Format.QueryInterface(decltype(format3)::GetIID(), &format3)))
 		success_or_throw(format3->SetFontAxisValues(axisValues.data(), static_cast<UINT32>(axisValues.size())));
 	success_or_throw(res.Factory->CreateTypography(&res.Typography));
+	// A typography replaces the features that are on by default instead of adding to them; those stay on unless the params say otherwise.
+	for (const auto tag : {
+		     DWRITE_FONT_FEATURE_TAG_STANDARD_LIGATURES,
+		     DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_LIGATURES,
+		     DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_ALTERNATES,
+		     DWRITE_FONT_FEATURE_TAG_KERNING,
+	     }) {
+		if (std::ranges::none_of(info.Params.Features, [tag](const DWRITE_FONT_FEATURE& f) { return f.nameTag == tag; }))
+			success_or_throw(res.Typography->AddFontFeature({tag, 1}));
+	}
 	for (const auto& feature : info.Params.Features)
 		success_or_throw(res.Typography->AddFontFeature(feature));
 	return res;

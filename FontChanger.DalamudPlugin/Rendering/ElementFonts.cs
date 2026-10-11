@@ -37,6 +37,9 @@ internal unsafe interface IElementFont : IDisposable
 
     /// <summary>Gets a codepoint's advance on screen at a size, unrounded (monospacing's reference glyph); 0 if none.</summary>
     float GetAdvance(int codepoint, float px);
+
+    /// <summary>Gets the codepoints it has glyphs of; null if they can't be listed (the game's, which depend on the font).</summary>
+    IEnumerable<int>? Codepoints => null;
 }
 
 /// <summary>The game's own glyphs (xivres fontdata_fixed_size_font), which the game draws.</summary>
@@ -97,6 +100,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     private readonly byte[]? gamma;
     private readonly Dictionary<(nint A, nint B), bool> sameFonts = [];
     private Dictionary<uint, int>? baselines;
+    private HashSet<int>? codepoints;
     private nint typography;
     private bool typographyMade;
 
@@ -154,6 +158,40 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     {
         BOOL exists;
         return this.Font.Font->HasCharacter((uint)codepoint, &exists).SUCCEEDED && exists;
+    }
+
+    public IEnumerable<int> Codepoints => this.codepoints ??= this.ReadCodepoints();
+
+    private HashSet<int> ReadCodepoints()
+    {
+        var res = new HashSet<int>();
+        IDWriteFontFace1* face1;
+        var iid = IID.IID_IDWriteFontFace1;
+        if (((IUnknown*)this.Font.Face)->QueryInterface(&iid, (void**)&face1).FAILED)
+            return res;
+        try
+        {
+            uint count;
+            face1->GetUnicodeRanges(0, null, &count);
+            var ranges = new DWRITE_UNICODE_RANGE[count];
+            fixed (DWRITE_UNICODE_RANGE* p = ranges)
+            {
+                if (face1->GetUnicodeRanges(count, p, &count).FAILED)
+                    return res;
+            }
+
+            foreach (var r in ranges.AsSpan(0, (int)count))
+            {
+                for (var c = r.first; c <= r.last; c++)
+                    res.Add((int)c);
+            }
+        }
+        finally
+        {
+            face1->Release();
+        }
+
+        return res;
     }
 
     public (int Ascent, int LineHeight) GetLineMetrics(float px, GameFont* game) => this.GetLineMetrics(px, this.Transform);
@@ -453,6 +491,15 @@ internal sealed unsafe class OutlineElementFont : IElementFont
         return true;
     }
 
+    /// <summary>The OpenType features DirectWrite turns on by default for horizontal text.</summary>
+    private static readonly DWRITE_FONT_FEATURE_TAG[] DefaultOnFeatures =
+    [
+        DWRITE_FONT_FEATURE_TAG.DWRITE_FONT_FEATURE_TAG_STANDARD_LIGATURES,
+        DWRITE_FONT_FEATURE_TAG.DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_LIGATURES,
+        DWRITE_FONT_FEATURE_TAG.DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_ALTERNATES,
+        DWRITE_FONT_FEATURE_TAG.DWRITE_FONT_FEATURE_TAG_KERNING,
+    ];
+
     /// <summary>Gets the font's OpenType features as a typography; null if it sets none.</summary>
     private IDWriteTypography* GetTypography()
     {
@@ -466,6 +513,15 @@ internal sealed unsafe class OutlineElementFont : IElementFont
         IDWriteTypography* t;
         this.rasterizer.Factory->CreateTypography(&t).ThrowOnError();
         this.typography = (nint)t;
+
+        // A typography replaces the features that are on by default instead of adding to them; those stay on unless
+        // the font's features say otherwise.
+        foreach (var tag in DefaultOnFeatures)
+        {
+            if (!features.ContainsKey((uint)tag))
+                t->AddFontFeature(new DWRITE_FONT_FEATURE { nameTag = tag, parameter = 1 }).ThrowOnError();
+        }
+
         foreach (var (tag, value) in features)
             t->AddFontFeature(new DWRITE_FONT_FEATURE { nameTag = (DWRITE_FONT_FEATURE_TAG)tag, parameter = value }).ThrowOnError();
         return t;
@@ -504,6 +560,8 @@ internal sealed unsafe class ImageElementFont(GlyphImages? images, ImageRenderer
     public bool CanDraw => images is not null && renderer is not null;
 
     public bool Has(int codepoint, GameFont* game) => images?.Has(codepoint) ?? false;
+
+    public IEnumerable<int> Codepoints => images?.Codepoints ?? [];
 
     public (int Ascent, int LineHeight) GetLineMetrics(float px, GameFont* game) => this.GetLineMetrics(px, transform);
 
@@ -548,6 +606,8 @@ internal sealed unsafe class MergingElementFont(
     public IEnumerable<OutlineElementFont> OutlineFonts => new[] { baseFont as OutlineElementFont, textOutline }.OfType<OutlineElementFont>();
 
     public bool Has(int codepoint, GameFont* game) => merging.Glyphs.ContainsKey(codepoint);
+
+    public IEnumerable<int> Codepoints => merging.Glyphs.Keys;
 
     public (int Ascent, int LineHeight) GetLineMetrics(float px, GameFont* game) => baseFont.GetLineMetrics(px, game);
 

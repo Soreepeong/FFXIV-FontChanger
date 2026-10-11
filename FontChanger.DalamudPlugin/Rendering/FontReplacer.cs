@@ -259,22 +259,81 @@ internal sealed unsafe class FontReplacer : IDisposable
     }
 
     /// <summary>
-    /// Gets the glyphs of a face at a size, made with the metrics they have for a game font. They are shared by the fonts
-    /// of one name (a font and its lobby version), and go to the atlas of its family.
+    /// Gets the glyphs of a game font's family at a size, shared by the fonts of one name (a font and its lobby version),
+    /// going to the atlas of the family. At the size of one of the family's faces, that face's glyphs with the metrics they
+    /// have for its game font; at another, each glyph comes from the largest face that draws it itself (<see
+    /// cref="SizedFont.Pick"/>), with the metrics of the face that draws the most glyphs itself.
     /// </summary>
     private SizedFont GetSized(GameFont* original, int halfPx)
     {
-        var face = this.GetFace(original);
-        var fontName = GameFontNames.GetFaceName(original) ?? $"0x{(nint)original:X}";
+        var px = halfPx / 2f;
+        var originalName = GameFontNames.GetFaceName(original);
+        var names = new List<(string Name, float Size)>();
+        var faces = new List<(ReplacementFace Face, nint Game)>();
+        if (originalName is not null)
+        {
+            foreach (var (name, size) in GameFontNames.FacesOf(Preset.FamilyOf(originalName)).OrderByDescending(f => f.Size))
+            {
+                var font = string.Equals(name, originalName, StringComparison.OrdinalIgnoreCase) ? original : GameFontNames.FindFont(name);
+                if (font is null || !font->IsReady || font->Size <= 0)
+                    continue;
+                faces.Add((this.FaceOf(name), (nint)font));
+                names.Add((name, size));
+            }
+        }
+
+        string fontName;
+        ReplacementFace face;
+        nint game;
+        if (faces.Count == 0)
+        {
+            fontName = originalName ?? $"0x{(nint)original:X}";
+            face = this.GetFace(original);
+            game = (nint)original;
+            faces = [(face, game)];
+        }
+        else if (GetExactFace(names, px) is { } exact)
+        {
+            fontName = names[exact].Name;
+            (face, game) = faces[exact];
+            faces = [(face, game)];
+        }
+        else
+        {
+            var best = 0;
+            for (var i = 1; i < faces.Count; i++)
+            {
+                if (faces[i].Face.OwnGlyphCount > faces[best].Face.OwnGlyphCount)
+                    best = i;
+            }
+
+            fontName = names[best].Name;
+            (face, game) = faces[best];
+        }
+
         if (!this.sizedFonts.TryGetValue((face, halfPx, fontName), out var sized))
         {
-            var px = halfPx / 2f;
-            var (ascent, lineHeight) = face.GetLineMetrics(px, original);
-            sized = new(face, px, ascent, lineHeight, (nint)original, this.GetAtlas(Preset.FamilyOf(fontName)));
+            var (ascent, lineHeight) = face.GetLineMetrics(px, (GameFont*)game);
+            sized = new(face, px, ascent, lineHeight, game, this.GetAtlas(Preset.FamilyOf(fontName)), faces);
             this.sizedFonts.Add((face, halfPx, fontName), sized);
         }
 
         return sized;
+    }
+
+    /// <summary>Gets the face of a game font name: the preset's, or the game's.</summary>
+    private ReplacementFace FaceOf(string faceName) => this.presetFaces.GetValueOrDefault(faceName) ?? this.gameFace;
+
+    /// <summary>Gets the index of the face of a size among faces with their sizes; null if none is of it.</summary>
+    internal static int? GetExactFace(IReadOnlyList<(string Name, float Size)> faces, float px)
+    {
+        for (var i = 0; i < faces.Count; i++)
+        {
+            if (MathF.Abs(faces[i].Size - px) < 0.01f)
+                return i;
+        }
+
+        return null;
     }
 
     /// <summary>Gets the atlas of a game font family, made on its first use.</summary>
@@ -313,7 +372,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         // claiming a narrower texture (blocky past about 1.5 px): the fallback if the plugin's can't be used.
         try
         {
-            this.edgeShader.Set(edge != new EdgeSettings());
+            this.edgeShader.Set(edge != new EdgeSettings(), edge.Softness);
         }
         catch (Exception ex)
         {
@@ -335,7 +394,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     internal RasterGlyph FinishGlyph(SizedFont sized, RasterGlyph r)
     {
-        var m = Math.Max(0, (int)MathF.Ceiling(this.Edge.GetWidth(sized.Px)) - 1);
+        var m = Math.Max(0, (int)MathF.Ceiling(this.Edge.GetReach(sized.Px)) - 1);
         if (m == 0 || r.Width == 0)
             return r;
         var w = r.Width + (2 * m);
@@ -355,10 +414,11 @@ internal sealed unsafe class FontReplacer : IDisposable
         this.shaper.Clear();
         this.fullAtlases.Clear();
         this.gameReads.Clear();
-        foreach (var info in this.copies.Values)
-            info.GameGlyphs.Clear();
         foreach (var sized in this.sizedFonts.Values)
+        {
             sized.Glyphs.Clear();
+            sized.GameGlyphs.Clear();
+        }
         this.FreeGlyphs();
         foreach (var atlas in this.atlases.Values)
             atlas.Clear();
@@ -513,12 +573,20 @@ internal sealed unsafe class FontReplacer : IDisposable
     {
         this.faceByFont.Remove((nint)font);
         var any = false;
+        foreach (var sized in this.sizedFonts.Values)
+        {
+            if (!sized.Sources.Contains((nint)font))
+                continue;
+            sized.GameGlyphs.Clear();
+            sized.Picks.Clear();
+            any = true;
+        }
+
         foreach (var (copy, info) in this.copies)
         {
             if (info.Original != (nint)font)
                 continue;
             info.Sized = this.GetSized(font, info.HalfPx);
-            info.GameGlyphs.Clear();
             this.Sync((GameFont*)copy, info);
             any = true;
         }
@@ -683,49 +751,58 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (glyph != 0)
             return this.WithPixels((GameGlyph*)glyph);
 
-        // The game's glyph, looked up in the game font, whose glyph map the copy borrows.
-        var game = this.getGlyphHook.Original(set, utf8Value, (GameFont*)info.Original);
-        if (game is null)
-            return current.Character != 0 ? this.GetMissingGlyph(set, utf8Value, font) : null;
-
         try
         {
-            var own = this.GetGameGlyph(info, game, utf8Value);
-            return own is null ? game : this.WithPixels(own);
+            var own = this.GetGameGlyph(sized, utf8Value);
+            if (own is not null)
+                return this.WithPixels(own);
         }
         catch (Exception ex)
         {
             Host.Log.Error(ex, "Copying the game's glyph 0x{value:X} failed", utf8Value);
-            return game;
         }
+
+        // The game's glyph, looked up in the game font, whose glyph map the copy borrows.
+        var game = this.getGlyphHook.Original(set, utf8Value, (GameFont*)info.Original);
+        if (game is null)
+            return current.Character != 0 ? this.GetMissingGlyph(set, utf8Value, font) : null;
+        return game;
     }
 
     /// <summary>
-    /// Gets a glyph of the atlas made from a game glyph, scaled to the copy's size: drawn from the game's texture, the edge
-    /// would step by texels of the atlas's width (all of a font's textures share one), not the game texture's. Its pixels
-    /// are read from the game's texture at the next upload. Null to draw the game's glyph as it is.
+    /// Gets a glyph of the atlas made from a game glyph of the largest of the sized font's game fonts that has it, scaled
+    /// to its size: drawn from the game's texture, the edge would step by texels of the atlas's width (all of a font's
+    /// textures share one), not the game texture's. Its pixels are read from the game's texture at the next upload. Null
+    /// to draw the game's glyph as it is.
     /// </summary>
-    private GameGlyph* GetGameGlyph(CopyInfo info, GameGlyph* game, uint utf8Value)
+    private GameGlyph* GetGameGlyph(SizedFont sized, uint utf8Value)
     {
-        if (info.GameGlyphs.TryGetValue(utf8Value, out var made))
+        if (sized.GameGlyphs.TryGetValue(utf8Value, out var made))
             return (GameGlyph*)made;
 
-        var original = (GameFont*)info.Original;
-        var textureIndex = game->TextureIndex;
-        var texture = textureIndex < GlyphAtlas.FirstTextureIndex ? original->GetTexture(textureIndex) : 0;
         GameGlyph* glyph = null;
-        if (texture != 0 && GameTextureReader.CanRead(texture))
+        var codepoint = GameUtf8.Unpack(utf8Value);
+        IReadOnlyList<nint> sources = codepoint < 0 ? [] : sized.Sources;
+        foreach (var source in sources)
         {
-            var sized = info.Sized;
-            var scale = sized.Px / original->Size;
-            var top = game->OffsetY - original->Ascent;
+            var font = (GameFont*)source;
+            var game = font->IsReady ? font->FindGlyph(codepoint) : null;
+            if (game is null)
+                continue;
+            var textureIndex = game->TextureIndex;
+            var texture = textureIndex < GlyphAtlas.FirstTextureIndex ? font->GetTexture(textureIndex) : 0;
+            if (texture == 0 || !GameTextureReader.CanRead(texture))
+                continue;
+            var scale = sized.Px / font->Size;
+            var top = game->OffsetY - font->Ascent;
             var (left, t, w, h) = RasterGlyph.ScaledBounds(0, top, game->Width, game->Height, scale, 0, 0);
             var r = new RasterGlyph((int)Rounding.Round((game->Width + game->OffsetX) * scale), left, t, w, h, new byte[w * h]);
-            var source = new GameTextureSource(texture, game->X, game->Y, game->Width, game->Height, game->Channel, 0, top, scale);
-            glyph = this.PlaceCell(sized, this.FinishGlyph(sized, r), utf8Value, source);
+            var pixels = new GameTextureSource(texture, game->X, game->Y, game->Width, game->Height, game->Channel, 0, top, scale);
+            glyph = this.PlaceCell(sized, this.FinishGlyph(sized, r), utf8Value, pixels);
+            break;
         }
 
-        info.GameGlyphs[utf8Value] = (nint)glyph;
+        sized.GameGlyphs[utf8Value] = (nint)glyph;
         return glyph;
     }
 
@@ -858,7 +935,10 @@ internal sealed unsafe class FontReplacer : IDisposable
         // A broken sequence, or a codepoint the face leaves to the game, stays the game's.
         if (codepoint < 0)
             return null;
-        return sized.Face.TryRasterize(codepoint, sized.Px, (GameFont*)sized.GameFont, out var r)
+        var pick = sized.Pick(codepoint);
+        if (pick.Element is { DrawsGame: true })
+            return null;
+        return pick.Face.TryRasterize(codepoint, sized.Px, (GameFont*)pick.Game, out var r)
             ? this.PlaceCell(sized, this.FinishGlyph(sized, r), utf8Value)
             : null;
     }
@@ -1180,10 +1260,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     internal sealed record GameTextureSource(nint Texture, int X, int Y, int Width, int Height, int Plane, int Left, int Top, float Scale);
 
-    /// <summary>
-    /// A copy of a game font at a size in half pixels: its game font, the glyphs of its face at its size, and the glyphs
-    /// made from the game font's glyphs, by packed UTF-8 value (0 for one drawn as it is).
-    /// </summary>
+    /// <summary>A copy of a game font at a size in half pixels: its game font, and the glyphs of its family at its size.</summary>
     private sealed class CopyInfo(nint original, int halfPx, SizedFont sized)
     {
         public nint Original { get; } = original;
@@ -1191,8 +1268,6 @@ internal sealed unsafe class FontReplacer : IDisposable
         public int HalfPx { get; } = halfPx;
 
         public SizedFont Sized { get; set; } = sized;
-
-        public Dictionary<uint, nint> GameGlyphs { get; } = [];
     }
 
     /// <summary>
@@ -1209,10 +1284,23 @@ internal sealed unsafe class FontReplacer : IDisposable
     }
 
     /// <summary>
-    /// The glyphs of a face at one pixel size, shared by the copies of the game fonts of that face at that size (a font
-    /// and its lobby version). <see cref="GameFont"/> is the first of them, for the game's glyphs and metrics.
+    /// Where a sized font's glyph of a codepoint comes from: <see cref="Face"/>'s <see cref="Element"/> (null for the
+    /// system's fonts), with <see cref="Game"/> for the face's game glyphs.
     /// </summary>
-    internal sealed class SizedFont(ReplacementFace face, float px, int ascent, int lineHeight, nint gameFont, GlyphAtlas atlas)
+    internal sealed record GlyphSource(ReplacementFace Face, nint Game, FaceElement? Element);
+
+    /// <summary>
+    /// A family's glyphs at one pixel size, shared by the copies of its fonts of that size (a font and its lobby version).
+    /// <see cref="Face"/>, with <see cref="GameFont"/> (its game font), gives the line metrics and how text is laid out.
+    /// </summary>
+    internal sealed class SizedFont(
+        ReplacementFace face,
+        float px,
+        int ascent,
+        int lineHeight,
+        nint gameFont,
+        GlyphAtlas atlas,
+        IReadOnlyList<(ReplacementFace Face, nint Game)> faces)
     {
         public ReplacementFace Face { get; } = face;
 
@@ -1227,7 +1315,56 @@ internal sealed unsafe class FontReplacer : IDisposable
 
         public int LineHeight { get; } = lineHeight;
 
+        /// <summary>
+        /// Gets the faces glyphs may come from with their game fonts, largest first: only <see cref="Face"/> at the size of
+        /// one of the family's faces.
+        /// </summary>
+        public IReadOnlyList<(ReplacementFace Face, nint Game)> Faces { get; } = faces;
+
+        /// <summary>Gets the game fonts the game's glyphs are copied from, largest first.</summary>
+        public IReadOnlyList<nint> Sources { get; } = faces.Select(f => f.Game).ToList();
+
         /// <summary>By packed UTF-8 value; 0 for a glyph left to the game.</summary>
         public Dictionary<uint, nint> Glyphs { get; } = [];
+
+        /// <summary>Copied from <see cref="Sources"/>, by packed UTF-8 value; 0 if none could be.</summary>
+        public Dictionary<uint, nint> GameGlyphs { get; } = [];
+
+        /// <summary><see cref="Pick"/>'s, by codepoint.</summary>
+        public Dictionary<int, GlyphSource> Picks { get; } = [];
+
+        /// <summary>
+        /// Gets where a codepoint's glyph comes from: of several faces, the largest whose element other than the game's
+        /// has it, else one leaving it to the system's fonts, else the game's.
+        /// </summary>
+        public GlyphSource Pick(int codepoint)
+        {
+            if (this.Picks.TryGetValue(codepoint, out var known))
+                return known;
+            var pick = new GlyphSource(this.Face, this.GameFont, this.Face.GetElement(codepoint, (GameFont*)this.GameFont));
+            if (this.Faces.Count > 1)
+            {
+                GlyphSource? system = null, game = null, own = null;
+                foreach (var (face, font) in this.Faces)
+                {
+                    var element = face.GetElement(codepoint, (GameFont*)font);
+                    if (element is { DrawsGame: false })
+                    {
+                        own = new(face, font, element);
+                        break;
+                    }
+
+                    if (element is null)
+                        system ??= new(face, font, null);
+                    else
+                        game ??= new(face, font, element);
+                }
+
+                pick = own ?? system ?? game ?? pick;
+            }
+
+            this.Picks.Add(codepoint, pick);
+            return pick;
+        }
     }
 }

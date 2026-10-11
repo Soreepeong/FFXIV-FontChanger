@@ -74,12 +74,27 @@ public readonly record struct EdgeSettings
 
     public float Max { get; init; } = 1;
 
+    /// <summary>
+    /// Gets the softness k: 0 is solid with a 1 px antialiased rim; up to 1, solid to <c>(1 - k) * width</c>, then
+    /// linear to 0 at the width; above 1, linear from the glyph to 0 at <c>k * width</c> (8 px at most), a glow.
+    /// </summary>
+    public float Softness { get; init; }
+
     public float GetWidth(float px) => Math.Clamp(this.Scale * px, this.Min, this.Max);
 
-    /// <summary>Gets the settings within what the edge can do: 0.25 to 8 px.</summary>
+    /// <summary>Gets how far the edge reaches past the glyph, as the edge shader keeps it.</summary>
+    public float GetReach(float px) => Math.Min(this.GetWidth(px) * Math.Max(this.Softness, 1), 8);
+
+    /// <summary>Gets the settings within what the edge can do: 0.25 to 8 px, softness 0 to 8.</summary>
     public EdgeSettings Clamped()
     {
         var min = Math.Clamp(this.Min, 0.25f, 8);
-        return new() { Scale = Math.Clamp(this.Scale, 0, 1), Min = min, Max = Math.Clamp(this.Max, min, 8) };
+        return new()
+        {
+            Scale = Math.Clamp(this.Scale, 0, 1),
+            Min = min,
+            Max = Math.Clamp(this.Max, min, 8),
+            Softness = Math.Clamp(this.Softness, 0, EdgeShaderCode.MaxSoftness),
+        };
     }
 }

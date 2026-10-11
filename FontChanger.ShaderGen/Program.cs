@@ -11,7 +11,8 @@ namespace FontChanger.ShaderGen;
 /// Writes FontEdgeSquares.hlsli, or compiles FontEdgePS.hlsl: puts the generated functions in place of its include line,
 /// compiles the result as the plugin used to at run time (ps_5_0, main, optimization level 3), and writes the bytecode,
 /// the completed source and its listing. The include is kept in the repository, so that a build can compile
-/// FontEdgePS.hlsl with fxc alone; compiling fails if it differs from what would be written now.
+/// FontEdgePS.hlsl with fxc alone; compiling fails if it differs from what would be written now, or if patching the
+/// softness into the bytecode (EdgeShaderCode) doesn't give what compiling with it does.
 /// </summary>
 /// <remarks>
 /// Usage: FontChanger.ShaderGen &lt;FontEdgePS.hlsl&gt; &lt;output .cso&gt;, or FontChanger.ShaderGen --write-include
@@ -75,9 +76,43 @@ internal static class Program
 
         if (messages.Length > 0)
             Console.WriteLine(messages);
+        if (CheckSoftnessPatch(source, sourcePath, code) is { } error)
+        {
+            Console.Error.WriteLine($"{templatePath}: error: {error}");
+            return 1;
+        }
+
         File.WriteAllBytes(outputPath, code);
         File.WriteAllText(Path.ChangeExtension(outputPath, ".asm"), D3DCompiler.Disassemble(code));
         return 0;
+    }
+
+    /// <summary>
+    /// Checks that the plugin's patching (EdgeShaderCode) works on this bytecode: the checksum is computed as the
+    /// compiler does, and patching a softness gives what compiling with it written in gives, byte for byte.
+    /// </summary>
+    private static string? CheckSoftnessPatch(string source, string sourcePath, byte[] code)
+    {
+        const string declaration = "static const float Softness = 0.123456789f;";
+        const float test = 1.75f;
+
+        var checksum = new byte[16];
+        CustomFonts.EdgeShaderCode.ComputeChecksum(code, checksum);
+        if (!checksum.AsSpan().SequenceEqual(code.AsSpan(4, 16)))
+            return "the computed DXBC checksum differs from the compiler's.";
+
+        if (!source.Contains(declaration, StringComparison.Ordinal))
+            return $"the line {declaration} is missing.";
+        var patched = (byte[])code.Clone();
+        if (CustomFonts.EdgeShaderCode.Patch(patched, test) == 0)
+            return "Softness isn't an immediate operand in the bytecode.";
+
+        var withTest = source.Replace(declaration, $"static const float Softness = {test.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal);
+        if (!D3DCompiler.Compile(Encoding.UTF8.GetBytes(withTest), sourcePath, "main", "ps_5_0", out var expected, out var messages))
+            return $"compiling with Softness = {test} failed: {messages}";
+        return patched.AsSpan().SequenceEqual(expected)
+            ? null
+            : $"patching Softness to {test} differs from compiling with it ({patched.Length} and {expected.Length} bytes).";
     }
 }
 
@@ -102,7 +137,7 @@ internal static class FontEdgeSquares
             sb.Append(Square(r)).Append('\n');
 
         sb.Append($"// Channel c (0 to 3), reach r (1 to {SquareReach}).\n");
-        sb.Append("float DilateGatheredSquare(PSInput input, int c, int r, float2 texel, float2 size, float rim)\n{\n");
+        sb.Append("float DilateGatheredSquare(PSInput input, int c, int r, float2 texel, float2 size, float3 rim)\n{\n");
         sb.Append("    [branch]\n    switch (c * 8 + r)\n    {\n");
         for (var c = 0; c < ChannelCount; c++)
         {
@@ -124,7 +159,7 @@ internal static class FontEdgeSquares
         var sb = new StringBuilder();
         void Emit(string line) => sb.Append(line).Append('\n');
 
-        Emit($"float DilateGathered{r}(PSInput input, int c, float2 texel, float2 size, float rim)");
+        Emit($"float DilateGathered{r}(PSInput input, int c, float2 texel, float2 size, float3 rim)");
         Emit("{");
         Emit("    float2 corner, f;");
         Emit("    Footprint(input, texel, size, corner, f);");
@@ -152,8 +187,8 @@ internal static class FontEdgeSquares
             return $"g{b + r}_{a + r}.{component}";
         }
 
-        // Offsets r + 1 or further away weigh 0 (r is the furthest weighing more), those nearer than r - 1 exactly 1
-        // (rim > r); the rest weigh rim - their distance.
+        // Offsets r + 1 or further away weigh 0 (r is the furthest weighing more); with any softness, every other one is
+        // weighed (by exactly 1 when solid there, which keeps the product exact).
         var weights = new HashSet<int>();
         Emit("    float alpha = 0;");
         for (var y = -r; y <= r; y++)
@@ -165,16 +200,15 @@ internal static class FontEdgeSquares
                 var d2 = (x * x) + (y * y);
                 if (d2 >= (r + 1) * (r + 1))
                     continue;
-                var sample = $"lerp(k{y + r}_{x + r}, k{y + r}_{x + r + 1}, f.x)";
-                if (d2 >= (r - 1) * (r - 1))
+                if (weights.Add(d2))
                 {
-                    if (weights.Add(d2))
-                        Emit($"    float w{d2} = saturate(rim - {Math.Sqrt(d2).ToString("F9", CultureInfo.InvariantCulture)});");
-                    sample += $" * w{d2}";
+                    Emit(d2 == 0
+                        ? "    float w0 = saturate(rim.x);"
+                        : $"    float w{d2} = saturate(rim.x - {Math.Sqrt(d2).ToString("F9", CultureInfo.InvariantCulture)} * rim.y);");
                 }
 
                 Emit($"    if (row{y + r} && column{x + r})");
-                Emit($"        alpha = max(alpha, {sample});");
+                Emit($"        alpha = max(alpha, lerp(k{y + r}_{x + r}, k{y + r}_{x + r + 1}, f.x) * w{d2});");
             }
         }
 

@@ -5,7 +5,7 @@
 
 // Reaches 1 to 4 for a one-hot Channel c (a literal), one function per reach: the (2R + 1)^2 samples
 // around Uv from the (R + 1)^2 gathers at the texel corners around them, every texel gathered once.
-float DilateGathered1(PSInput input, int c, float2 texel, float2 size, float rim)
+float DilateGathered1(PSInput input, int c, float2 texel, float2 size, float3 rim)
 {
     float2 corner, f;
     Footprint(input, texel, size, corner, f);
@@ -27,10 +27,10 @@ float DilateGathered1(PSInput input, int c, float2 texel, float2 size, float rim
     float k0_1 = lerp(g0_0.z, g0_0.y, f.y);
     float k0_2 = lerp(g0_2.w, g0_2.x, f.y);
     float k0_3 = lerp(g0_2.z, g0_2.y, f.y);
-    float w2 = saturate(rim - 1.414213562);
+    float w2 = saturate(rim.x - 1.414213562 * rim.y);
     if (row0 && column0)
         alpha = max(alpha, lerp(k0_0, k0_1, f.x) * w2);
-    float w1 = saturate(rim - 1.000000000);
+    float w1 = saturate(rim.x - 1.000000000 * rim.y);
     if (row0 && column1)
         alpha = max(alpha, lerp(k0_1, k0_2, f.x) * w1);
     if (row0 && column2)
@@ -41,7 +41,7 @@ float DilateGathered1(PSInput input, int c, float2 texel, float2 size, float rim
     float k1_3 = lerp(g0_2.y, g2_2.z, f.y);
     if (row1 && column0)
         alpha = max(alpha, lerp(k1_0, k1_1, f.x) * w1);
-    float w0 = saturate(rim - 0.000000000);
+    float w0 = saturate(rim.x);
     if (row1 && column1)
         alpha = max(alpha, lerp(k1_1, k1_2, f.x) * w0);
     if (row1 && column2)
@@ -59,7 +59,7 @@ float DilateGathered1(PSInput input, int c, float2 texel, float2 size, float rim
     return alpha;
 }
 
-float DilateGathered2(PSInput input, int c, float2 texel, float2 size, float rim)
+float DilateGathered2(PSInput input, int c, float2 texel, float2 size, float3 rim)
 {
     float2 corner, f;
     Footprint(input, texel, size, corner, f);
@@ -94,13 +94,13 @@ float DilateGathered2(PSInput input, int c, float2 texel, float2 size, float rim
     float k0_3 = lerp(g0_2.z, g0_2.y, f.y);
     float k0_4 = lerp(g0_4.w, g0_4.x, f.y);
     float k0_5 = lerp(g0_4.z, g0_4.y, f.y);
-    float w8 = saturate(rim - 2.828427125);
+    float w8 = saturate(rim.x - 2.828427125 * rim.y);
     if (row0 && column0)
         alpha = max(alpha, lerp(k0_0, k0_1, f.x) * w8);
-    float w5 = saturate(rim - 2.236067977);
+    float w5 = saturate(rim.x - 2.236067977 * rim.y);
     if (row0 && column1)
         alpha = max(alpha, lerp(k0_1, k0_2, f.x) * w5);
-    float w4 = saturate(rim - 2.000000000);
+    float w4 = saturate(rim.x - 2.000000000 * rim.y);
     if (row0 && column2)
         alpha = max(alpha, lerp(k0_2, k0_3, f.x) * w4);
     if (row0 && column3)
@@ -115,10 +115,10 @@ float DilateGathered2(PSInput input, int c, float2 texel, float2 size, float rim
     float k1_5 = lerp(g0_4.y, g2_4.z, f.y);
     if (row1 && column0)
         alpha = max(alpha, lerp(k1_0, k1_1, f.x) * w5);
-    float w2 = saturate(rim - 1.414213562);
+    float w2 = saturate(rim.x - 1.414213562 * rim.y);
     if (row1 && column1)
         alpha = max(alpha, lerp(k1_1, k1_2, f.x) * w2);
-    float w1 = saturate(rim - 1.000000000);
+    float w1 = saturate(rim.x - 1.000000000 * rim.y);
     if (row1 && column2)
         alpha = max(alpha, lerp(k1_2, k1_3, f.x) * w1);
     if (row1 && column3)
@@ -135,8 +135,9 @@ float DilateGathered2(PSInput input, int c, float2 texel, float2 size, float rim
         alpha = max(alpha, lerp(k2_0, k2_1, f.x) * w4);
     if (row2 && column1)
         alpha = max(alpha, lerp(k2_1, k2_2, f.x) * w1);
+    float w0 = saturate(rim.x);
     if (row2 && column2)
-        alpha = max(alpha, lerp(k2_2, k2_3, f.x));
+        alpha = max(alpha, lerp(k2_2, k2_3, f.x) * w0);
     if (row2 && column3)
         alpha = max(alpha, lerp(k2_3, k2_4, f.x) * w1);
     if (row2 && column4)
@@ -176,7 +177,7 @@ float DilateGathered2(PSInput input, int c, float2 texel, float2 size, float rim
     return alpha;
 }
 
-float DilateGathered3(PSInput input, int c, float2 texel, float2 size, float rim)
+float DilateGathered3(PSInput input, int c, float2 texel, float2 size, float3 rim)
 {
     float2 corner, f;
     Footprint(input, texel, size, corner, f);
@@ -226,13 +227,13 @@ float DilateGathered3(PSInput input, int c, float2 texel, float2 size, float rim
     float k0_5 = lerp(g0_4.z, g0_4.y, f.y);
     float k0_6 = lerp(g0_6.w, g0_6.x, f.y);
     float k0_7 = lerp(g0_6.z, g0_6.y, f.y);
-    float w13 = saturate(rim - 3.605551275);
+    float w13 = saturate(rim.x - 3.605551275 * rim.y);
     if (row0 && column1)
         alpha = max(alpha, lerp(k0_1, k0_2, f.x) * w13);
-    float w10 = saturate(rim - 3.162277660);
+    float w10 = saturate(rim.x - 3.162277660 * rim.y);
     if (row0 && column2)
         alpha = max(alpha, lerp(k0_2, k0_3, f.x) * w10);
-    float w9 = saturate(rim - 3.000000000);
+    float w9 = saturate(rim.x - 3.000000000 * rim.y);
     if (row0 && column3)
         alpha = max(alpha, lerp(k0_3, k0_4, f.x) * w9);
     if (row0 && column4)
@@ -249,13 +250,13 @@ float DilateGathered3(PSInput input, int c, float2 texel, float2 size, float rim
     float k1_7 = lerp(g0_6.y, g2_6.z, f.y);
     if (row1 && column0)
         alpha = max(alpha, lerp(k1_0, k1_1, f.x) * w13);
-    float w8 = saturate(rim - 2.828427125);
+    float w8 = saturate(rim.x - 2.828427125 * rim.y);
     if (row1 && column1)
         alpha = max(alpha, lerp(k1_1, k1_2, f.x) * w8);
-    float w5 = saturate(rim - 2.236067977);
+    float w5 = saturate(rim.x - 2.236067977 * rim.y);
     if (row1 && column2)
         alpha = max(alpha, lerp(k1_2, k1_3, f.x) * w5);
-    float w4 = saturate(rim - 2.000000000);
+    float w4 = saturate(rim.x - 2.000000000 * rim.y);
     if (row1 && column3)
         alpha = max(alpha, lerp(k1_3, k1_4, f.x) * w4);
     if (row1 && column4)
@@ -276,12 +277,14 @@ float DilateGathered3(PSInput input, int c, float2 texel, float2 size, float rim
         alpha = max(alpha, lerp(k2_0, k2_1, f.x) * w10);
     if (row2 && column1)
         alpha = max(alpha, lerp(k2_1, k2_2, f.x) * w5);
+    float w2 = saturate(rim.x - 1.414213562 * rim.y);
     if (row2 && column2)
-        alpha = max(alpha, lerp(k2_2, k2_3, f.x));
+        alpha = max(alpha, lerp(k2_2, k2_3, f.x) * w2);
+    float w1 = saturate(rim.x - 1.000000000 * rim.y);
     if (row2 && column3)
-        alpha = max(alpha, lerp(k2_3, k2_4, f.x));
+        alpha = max(alpha, lerp(k2_3, k2_4, f.x) * w1);
     if (row2 && column4)
-        alpha = max(alpha, lerp(k2_4, k2_5, f.x));
+        alpha = max(alpha, lerp(k2_4, k2_5, f.x) * w2);
     if (row2 && column5)
         alpha = max(alpha, lerp(k2_5, k2_6, f.x) * w5);
     if (row2 && column6)
@@ -299,11 +302,12 @@ float DilateGathered3(PSInput input, int c, float2 texel, float2 size, float rim
     if (row3 && column1)
         alpha = max(alpha, lerp(k3_1, k3_2, f.x) * w4);
     if (row3 && column2)
-        alpha = max(alpha, lerp(k3_2, k3_3, f.x));
+        alpha = max(alpha, lerp(k3_2, k3_3, f.x) * w1);
+    float w0 = saturate(rim.x);
     if (row3 && column3)
-        alpha = max(alpha, lerp(k3_3, k3_4, f.x));
+        alpha = max(alpha, lerp(k3_3, k3_4, f.x) * w0);
     if (row3 && column4)
-        alpha = max(alpha, lerp(k3_4, k3_5, f.x));
+        alpha = max(alpha, lerp(k3_4, k3_5, f.x) * w1);
     if (row3 && column5)
         alpha = max(alpha, lerp(k3_5, k3_6, f.x) * w4);
     if (row3 && column6)
@@ -321,11 +325,11 @@ float DilateGathered3(PSInput input, int c, float2 texel, float2 size, float rim
     if (row4 && column1)
         alpha = max(alpha, lerp(k4_1, k4_2, f.x) * w5);
     if (row4 && column2)
-        alpha = max(alpha, lerp(k4_2, k4_3, f.x));
+        alpha = max(alpha, lerp(k4_2, k4_3, f.x) * w2);
     if (row4 && column3)
-        alpha = max(alpha, lerp(k4_3, k4_4, f.x));
+        alpha = max(alpha, lerp(k4_3, k4_4, f.x) * w1);
     if (row4 && column4)
-        alpha = max(alpha, lerp(k4_4, k4_5, f.x));
+        alpha = max(alpha, lerp(k4_4, k4_5, f.x) * w2);
     if (row4 && column5)
         alpha = max(alpha, lerp(k4_5, k4_6, f.x) * w5);
     if (row4 && column6)
@@ -373,7 +377,7 @@ float DilateGathered3(PSInput input, int c, float2 texel, float2 size, float rim
     return alpha;
 }
 
-float DilateGathered4(PSInput input, int c, float2 texel, float2 size, float rim)
+float DilateGathered4(PSInput input, int c, float2 texel, float2 size, float3 rim)
 {
     float2 corner, f;
     Footprint(input, texel, size, corner, f);
@@ -440,13 +444,13 @@ float DilateGathered4(PSInput input, int c, float2 texel, float2 size, float rim
     float k0_7 = lerp(g0_6.z, g0_6.y, f.y);
     float k0_8 = lerp(g0_8.w, g0_8.x, f.y);
     float k0_9 = lerp(g0_8.z, g0_8.y, f.y);
-    float w20 = saturate(rim - 4.472135955);
+    float w20 = saturate(rim.x - 4.472135955 * rim.y);
     if (row0 && column2)
         alpha = max(alpha, lerp(k0_2, k0_3, f.x) * w20);
-    float w17 = saturate(rim - 4.123105626);
+    float w17 = saturate(rim.x - 4.123105626 * rim.y);
     if (row0 && column3)
         alpha = max(alpha, lerp(k0_3, k0_4, f.x) * w17);
-    float w16 = saturate(rim - 4.000000000);
+    float w16 = saturate(rim.x - 4.000000000 * rim.y);
     if (row0 && column4)
         alpha = max(alpha, lerp(k0_4, k0_5, f.x) * w16);
     if (row0 && column5)
@@ -463,16 +467,16 @@ float DilateGathered4(PSInput input, int c, float2 texel, float2 size, float rim
     float k1_7 = lerp(g0_6.y, g2_6.z, f.y);
     float k1_8 = lerp(g0_8.x, g2_8.w, f.y);
     float k1_9 = lerp(g0_8.y, g2_8.z, f.y);
-    float w18 = saturate(rim - 4.242640687);
+    float w18 = saturate(rim.x - 4.242640687 * rim.y);
     if (row1 && column1)
         alpha = max(alpha, lerp(k1_1, k1_2, f.x) * w18);
-    float w13 = saturate(rim - 3.605551275);
+    float w13 = saturate(rim.x - 3.605551275 * rim.y);
     if (row1 && column2)
         alpha = max(alpha, lerp(k1_2, k1_3, f.x) * w13);
-    float w10 = saturate(rim - 3.162277660);
+    float w10 = saturate(rim.x - 3.162277660 * rim.y);
     if (row1 && column3)
         alpha = max(alpha, lerp(k1_3, k1_4, f.x) * w10);
-    float w9 = saturate(rim - 3.000000000);
+    float w9 = saturate(rim.x - 3.000000000 * rim.y);
     if (row1 && column4)
         alpha = max(alpha, lerp(k1_4, k1_5, f.x) * w9);
     if (row1 && column5)
@@ -495,16 +499,19 @@ float DilateGathered4(PSInput input, int c, float2 texel, float2 size, float rim
         alpha = max(alpha, lerp(k2_0, k2_1, f.x) * w20);
     if (row2 && column1)
         alpha = max(alpha, lerp(k2_1, k2_2, f.x) * w13);
+    float w8 = saturate(rim.x - 2.828427125 * rim.y);
     if (row2 && column2)
-        alpha = max(alpha, lerp(k2_2, k2_3, f.x));
+        alpha = max(alpha, lerp(k2_2, k2_3, f.x) * w8);
+    float w5 = saturate(rim.x - 2.236067977 * rim.y);
     if (row2 && column3)
-        alpha = max(alpha, lerp(k2_3, k2_4, f.x));
+        alpha = max(alpha, lerp(k2_3, k2_4, f.x) * w5);
+    float w4 = saturate(rim.x - 2.000000000 * rim.y);
     if (row2 && column4)
-        alpha = max(alpha, lerp(k2_4, k2_5, f.x));
+        alpha = max(alpha, lerp(k2_4, k2_5, f.x) * w4);
     if (row2 && column5)
-        alpha = max(alpha, lerp(k2_5, k2_6, f.x));
+        alpha = max(alpha, lerp(k2_5, k2_6, f.x) * w5);
     if (row2 && column6)
-        alpha = max(alpha, lerp(k2_6, k2_7, f.x));
+        alpha = max(alpha, lerp(k2_6, k2_7, f.x) * w8);
     if (row2 && column7)
         alpha = max(alpha, lerp(k2_7, k2_8, f.x) * w13);
     if (row2 && column8)
@@ -524,15 +531,17 @@ float DilateGathered4(PSInput input, int c, float2 texel, float2 size, float rim
     if (row3 && column1)
         alpha = max(alpha, lerp(k3_1, k3_2, f.x) * w10);
     if (row3 && column2)
-        alpha = max(alpha, lerp(k3_2, k3_3, f.x));
+        alpha = max(alpha, lerp(k3_2, k3_3, f.x) * w5);
+    float w2 = saturate(rim.x - 1.414213562 * rim.y);
     if (row3 && column3)
-        alpha = max(alpha, lerp(k3_3, k3_4, f.x));
+        alpha = max(alpha, lerp(k3_3, k3_4, f.x) * w2);
+    float w1 = saturate(rim.x - 1.000000000 * rim.y);
     if (row3 && column4)
-        alpha = max(alpha, lerp(k3_4, k3_5, f.x));
+        alpha = max(alpha, lerp(k3_4, k3_5, f.x) * w1);
     if (row3 && column5)
-        alpha = max(alpha, lerp(k3_5, k3_6, f.x));
+        alpha = max(alpha, lerp(k3_5, k3_6, f.x) * w2);
     if (row3 && column6)
-        alpha = max(alpha, lerp(k3_6, k3_7, f.x));
+        alpha = max(alpha, lerp(k3_6, k3_7, f.x) * w5);
     if (row3 && column7)
         alpha = max(alpha, lerp(k3_7, k3_8, f.x) * w10);
     if (row3 && column8)
@@ -552,15 +561,16 @@ float DilateGathered4(PSInput input, int c, float2 texel, float2 size, float rim
     if (row4 && column1)
         alpha = max(alpha, lerp(k4_1, k4_2, f.x) * w9);
     if (row4 && column2)
-        alpha = max(alpha, lerp(k4_2, k4_3, f.x));
+        alpha = max(alpha, lerp(k4_2, k4_3, f.x) * w4);
     if (row4 && column3)
-        alpha = max(alpha, lerp(k4_3, k4_4, f.x));
+        alpha = max(alpha, lerp(k4_3, k4_4, f.x) * w1);
+    float w0 = saturate(rim.x);
     if (row4 && column4)
-        alpha = max(alpha, lerp(k4_4, k4_5, f.x));
+        alpha = max(alpha, lerp(k4_4, k4_5, f.x) * w0);
     if (row4 && column5)
-        alpha = max(alpha, lerp(k4_5, k4_6, f.x));
+        alpha = max(alpha, lerp(k4_5, k4_6, f.x) * w1);
     if (row4 && column6)
-        alpha = max(alpha, lerp(k4_6, k4_7, f.x));
+        alpha = max(alpha, lerp(k4_6, k4_7, f.x) * w4);
     if (row4 && column7)
         alpha = max(alpha, lerp(k4_7, k4_8, f.x) * w9);
     if (row4 && column8)
@@ -580,15 +590,15 @@ float DilateGathered4(PSInput input, int c, float2 texel, float2 size, float rim
     if (row5 && column1)
         alpha = max(alpha, lerp(k5_1, k5_2, f.x) * w10);
     if (row5 && column2)
-        alpha = max(alpha, lerp(k5_2, k5_3, f.x));
+        alpha = max(alpha, lerp(k5_2, k5_3, f.x) * w5);
     if (row5 && column3)
-        alpha = max(alpha, lerp(k5_3, k5_4, f.x));
+        alpha = max(alpha, lerp(k5_3, k5_4, f.x) * w2);
     if (row5 && column4)
-        alpha = max(alpha, lerp(k5_4, k5_5, f.x));
+        alpha = max(alpha, lerp(k5_4, k5_5, f.x) * w1);
     if (row5 && column5)
-        alpha = max(alpha, lerp(k5_5, k5_6, f.x));
+        alpha = max(alpha, lerp(k5_5, k5_6, f.x) * w2);
     if (row5 && column6)
-        alpha = max(alpha, lerp(k5_6, k5_7, f.x));
+        alpha = max(alpha, lerp(k5_6, k5_7, f.x) * w5);
     if (row5 && column7)
         alpha = max(alpha, lerp(k5_7, k5_8, f.x) * w10);
     if (row5 && column8)
@@ -608,15 +618,15 @@ float DilateGathered4(PSInput input, int c, float2 texel, float2 size, float rim
     if (row6 && column1)
         alpha = max(alpha, lerp(k6_1, k6_2, f.x) * w13);
     if (row6 && column2)
-        alpha = max(alpha, lerp(k6_2, k6_3, f.x));
+        alpha = max(alpha, lerp(k6_2, k6_3, f.x) * w8);
     if (row6 && column3)
-        alpha = max(alpha, lerp(k6_3, k6_4, f.x));
+        alpha = max(alpha, lerp(k6_3, k6_4, f.x) * w5);
     if (row6 && column4)
-        alpha = max(alpha, lerp(k6_4, k6_5, f.x));
+        alpha = max(alpha, lerp(k6_4, k6_5, f.x) * w4);
     if (row6 && column5)
-        alpha = max(alpha, lerp(k6_5, k6_6, f.x));
+        alpha = max(alpha, lerp(k6_5, k6_6, f.x) * w5);
     if (row6 && column6)
-        alpha = max(alpha, lerp(k6_6, k6_7, f.x));
+        alpha = max(alpha, lerp(k6_6, k6_7, f.x) * w8);
     if (row6 && column7)
         alpha = max(alpha, lerp(k6_7, k6_8, f.x) * w13);
     if (row6 && column8)
@@ -669,7 +679,7 @@ float DilateGathered4(PSInput input, int c, float2 texel, float2 size, float rim
 }
 
 // Channel c (0 to 3), reach r (1 to 4).
-float DilateGatheredSquare(PSInput input, int c, int r, float2 texel, float2 size, float rim)
+float DilateGatheredSquare(PSInput input, int c, int r, float2 texel, float2 size, float3 rim)
 {
     [branch]
     switch (c * 8 + r)

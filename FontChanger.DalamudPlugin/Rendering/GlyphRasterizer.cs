@@ -31,8 +31,8 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
     }
 
     /// <summary>
-    /// Gets the glyph scaled by <paramref name="scale"/> about the pen, moved right and down by a fraction of a pixel: each
-    /// output pixel averages 4 x 4 bilinear samples, so it both enlarges and shrinks.
+    /// Gets the glyph scaled by <paramref name="scale"/> about the pen, moved right and down by a fraction of a pixel: shrunk,
+    /// each output pixel averages the source area it covers; enlarged, 4 x 4 bilinear samples.
     /// </summary>
     public RasterGlyph Scaled(float scale, float shiftX, float shiftY)
     {
@@ -40,6 +40,38 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
         var left = (this.Left * scale) + shiftX;
         var top = (this.Top * scale) + shiftY;
         var alpha = new byte[w * h];
+        if (scale < 1)
+        {
+            var columns = AreaWeights(x0, w, left, scale, this.Width);
+            var rows = AreaWeights(y0, h, top, scale, this.Height);
+            var horizontal = new float[w * this.Height];
+            for (var y = 0; y < this.Height; y++)
+            {
+                var src = this.Alpha.AsSpan(y * this.Width, this.Width);
+                for (var x = 0; x < w; x++)
+                {
+                    var sum = 0f;
+                    foreach (var (i, weight) in columns[x])
+                        sum += weight * src[i];
+                    horizontal[(y * w) + x] = sum;
+                }
+            }
+
+            var norm = scale * scale;
+            for (var y = 0; y < h; y++)
+            {
+                for (var x = 0; x < w; x++)
+                {
+                    var sum = 0f;
+                    foreach (var (j, weight) in rows[y])
+                        sum += weight * horizontal[(j * w) + x];
+                    alpha[(y * w) + x] = (byte)Math.Clamp(Rounding.Round(sum * norm), 0, 255);
+                }
+            }
+
+            return this with { Left = x0, Top = y0, Width = w, Height = h, Alpha = alpha };
+        }
+
         const int Samples = 4;
         for (var y = 0; y < h; y++)
         {
@@ -62,6 +94,28 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
         }
 
         return this with { Left = x0, Top = y0, Width = w, Height = h, Alpha = alpha };
+    }
+
+    /// <summary>Gets, per output pixel from <paramref name="first"/>, the source pixels it covers and by how much (summing to 1 / scale).</summary>
+    private static List<(int Index, float Weight)>[] AreaWeights(int first, int count, float origin, float scale, int sourceSize)
+    {
+        var res = new List<(int, float)>[count];
+        for (var d = 0; d < count; d++)
+        {
+            res[d] = [];
+            var u0 = (first + d - origin) / scale;
+            var u1 = (first + d + 1 - origin) / scale;
+            var i0 = Math.Max(0, (int)MathF.Floor(u0));
+            var i1 = Math.Min(sourceSize, (int)MathF.Ceiling(u1));
+            for (var i = i0; i < i1; i++)
+            {
+                var weight = MathF.Min(u1, i + 1) - MathF.Max(u0, i);
+                if (weight > 0)
+                    res[d].Add((i, weight));
+            }
+        }
+
+        return res;
     }
 
     private float Bilinear(float u, float v)

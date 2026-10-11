@@ -319,15 +319,24 @@ internal sealed class MainWindow : Window
         var edge = this.pendingEdge ?? replacer.Edge;
         ImGui.TextUnformatted("Edge outline: width = clamp(scale x text size, min, max)");
 
-        var (scale, min, max) = (edge.Scale, edge.Min, edge.Max);
+        var (scale, min, max, softness) = (edge.Scale, edge.Min, edge.Max, edge.Softness);
         var changed = ImGui.SliderFloat("Scale (px per px of text)", ref scale, 0, 0.25f, "%.3f");
         var active = ImGui.IsItemActive();
         changed |= ImGui.SliderFloat("Minimum (px)", ref min, 0.25f, 8f, "%.2f");
         active |= ImGui.IsItemActive();
         changed |= ImGui.SliderFloat("Maximum (px)", ref max, 0.25f, 8f, "%.2f");
         active |= ImGui.IsItemActive();
+        changed |= ImGui.SliderFloat("Softness", ref softness, 0, EdgeShaderCode.MaxSoftness, "%.2f");
+        active |= ImGui.IsItemActive();
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(
+                "0: a solid edge. Up to 1: fades out toward its outer side over this fraction of its width.\n"
+                + "Above 1: fades from the glyph out to this many times its width (8 px at most), like a glow.");
+        }
+
         if (changed)
-            this.pendingEdge = new EdgeSettings { Scale = scale, Min = min, Max = max }.Clamped();
+            this.pendingEdge = new EdgeSettings { Scale = scale, Min = min, Max = max, Softness = softness }.Clamped();
 
         if (this.pendingEdge is { } pending && !active)
         {

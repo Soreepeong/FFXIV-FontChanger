@@ -13,4 +13,8 @@
     <!-- The solution builds it as x64; the output stays in bin\$(Configuration). -->
     <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The plugin's patching of the edge shader's softness, checked against the compiler on every build. -->
+    <Compile Include="..\FontChanger.DalamudPlugin\Rendering\EdgeShaderCode.cs" Link="EdgeShaderCode.cs" />
+  </ItemGroup>
 </Project>
