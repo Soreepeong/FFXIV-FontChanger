@@ -11,12 +11,8 @@ namespace CustomFonts;
 /// any width, set per font by the texture width it claims.
 /// </summary>
 /// <remarks>
-/// The UI's font shaders are nine vertex/pixel shader pairs (AtkServer.LoadShaders) in the AtkServer of AtkModule: shader
-/// file resource handles (VS, PS), and the Kernel shaders made from them, indexed by a draw command's pass (4 text, 5
-/// edge, 6 glare, 7 highlight, 8 emboss). A Kernel::PixelShader binds its ID3D11PixelShader (ImmediateContextDX11.
-/// SetPixelShader), which is swapped here; the replacement has the same input signature and bindings (t0, s0), so the
-/// shader's binding list stays valid. AtkModule embeds the font manager AtkStage points to. The game makes its shaders
-/// again only in LoadShaders, which puts the plugin's in place again.
+/// The UI's font shaders are indexed by a draw command's pass (5 is the edge); the ID3D11PixelShader inside the edge's is
+/// swapped, with the same input signature and bindings (t0, s0). The game makes them again only in LoadShaders, which puts the plugin's back.
 /// </remarks>
 internal sealed unsafe class EdgeShader : IDisposable
 {

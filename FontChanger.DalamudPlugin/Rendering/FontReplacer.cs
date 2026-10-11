@@ -11,11 +11,11 @@ namespace CustomFonts;
 /// <remarks>
 /// <para>Two hooks, both on the framework thread:</para>
 /// <list type="number">
-/// <item>The font picker (FUN_140651DC0) chooses the game font for the requested size, which already includes the text
+/// <item>The font picker (PickFont) chooses the game font for the requested size, which already includes the text
 /// node's screen scale. The detour swaps it for a copy whose size is exactly that size (in half pixels), so the
 /// renderer's scale (requested size / font size) is 1. The copy keeps the game font's glyph map and textures, with the
 /// atlas pages added after them.</item>
-/// <item>The glyph lookup (FUN_14064FC50) is answered for a copy from its own glyphs, rasterized on first use. A
+/// <item>The glyph lookup (GetGlyph) is answered for a copy from its own glyphs, rasterized on first use. A
 /// codepoint no family has, and the private-use icons, fall through to the game's glyph, which the copy can still draw
 /// from the game's textures (at the game font's own size).</item>
 /// </list>
@@ -44,7 +44,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     private readonly IHostHook<BuildFontDelegate> buildFontHook;
     private readonly TextShaper shaper;
 
-    // The character the game is laying out on this thread (FUN_1406EEC70).
+    // The character the game is laying out on this thread (LayOutCharacter).
     [ThreadStatic]
     private static LayoutContext current;
 
@@ -55,7 +55,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     private int stateFlagsOffset = -1;
     private int setFlagsOffset = -1;
 
-    // What FUN_1406EEC70 lays out a character a font has no glyph of as, in order of preference (packed UTF-8 values).
+    // What LayOutCharacter lays out a character a font has no glyph of as, in order of preference (packed UTF-8 values).
     private int[] missingGlyphSubstitutes = [];
 
     // A glyph of no width: the characters of a shaped cluster after its first.
@@ -492,7 +492,7 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     /// <summary>
     /// A font cache keeps the glyph pointers of the text as laid out when it was built, at the node's unscaled size
-    /// (FUN_140665600(node, false)), and draws use them while picking the font for the on-screen size. Glyphs of a copy
+    /// (the cache build), and draws use them while picking the font for the on-screen size. Glyphs of a copy
     /// only fit the copy of their size, and a copy's glyphs must not outlive the plugin, so while the replacement is on
     /// nodes get no cache: their text is laid out at each draw, as for nodes that never asked for one.
     /// </summary>
@@ -680,7 +680,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     internal void MarkRealItalic(nint cell) => this.CellOf((GameGlyph*)cell).RealItalic = true;
 
     /// <summary>
-    /// Gets what a character a copy has no glyph for is laid out as. FUN_1406EEC70 takes the geta mark (U+3013), else
+    /// Gets what a character a copy has no glyph for is laid out as. LayOutCharacter takes the geta mark (U+3013), else
     /// '-', else U+3400, from the font's glyph map itself rather than through GetGlyph, which would give the game font's
     /// glyph, at its size and with the edge of its texture. The copy's own glyphs of them are given instead.
     /// </summary>
@@ -705,7 +705,7 @@ internal sealed unsafe class FontReplacer : IDisposable
 
         var sized = info.Sized;
 
-        // Laid out by FUN_1406EEC70 at a known place in the text: the glyph of its shaped cluster. The character there must
+        // Laid out by LayOutCharacter at a known place in the text: the glyph of its shaped cluster. The character there must
         // be the one asked for (the lookups of the game's fallback characters, if any, are not).
         var p = (byte*)current.Character;
         if (p is not null && GameUtf8.PackSequence(p, GameUtf8.SequenceLength(*p)) == utf8Value)

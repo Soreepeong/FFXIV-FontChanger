@@ -9,7 +9,7 @@ namespace FontChanger.ShaderGen;
 
 /// <summary>
 /// Writes FontEdgeSquares.hlsli, or compiles FontEdgePS.hlsl: puts the generated functions in place of its include line,
-/// compiles the result as the plugin used to at run time (ps_5_0, main, optimization level 3), and writes the bytecode,
+/// compiles the result (ps_5_0, main, optimization level 3), and writes the bytecode,
 /// the completed source and its listing. The include is kept in the repository, so that a build can compile
 /// FontEdgePS.hlsl with fxc alone; compiling fails if it differs from what would be written now, or if patching the
 /// softness into the bytecode (EdgeShaderCode) doesn't give what compiling with it does.

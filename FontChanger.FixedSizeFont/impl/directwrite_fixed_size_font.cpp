@@ -887,8 +887,7 @@ std::optional<FontChanger::FixedSizeFont::shaped_line> FontChanger::FixedSizeFon
 		success_or_throw(m_dwrite.Factory->CreateTextLayout(text16.data(), static_cast<UINT32>(text16.size()), m_dwrite.Format, 9999999, 9999999, &layout));
 		success_or_throw(layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
 
-		// A typography replaces the features that are on by default, instead of adding to them; keep those on, unless
-		// the features of the font say otherwise.
+		// A typography replaces the features on by default instead of adding to them; those stay on unless the font's say otherwise.
 		IDWriteTypographyPtr typography;
 		success_or_throw(m_dwrite.Factory->CreateTypography(&typography));
 		for (const auto tag : {
@@ -1229,7 +1228,6 @@ HRESULT __stdcall stream_based_dwrite_font_file_loader::stream_based_dwrite_font
 					return S_OK;
 				}
 			} catch (...) {
-				// pass
 			}
 			delete pVec;
 			return E_FAIL;

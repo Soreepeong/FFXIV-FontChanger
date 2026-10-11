@@ -1,7 +1,7 @@
 // Font structures of the game's UI text renderer. Those whose fields moved over the patches (the font manager, font sets
 // and fonts) are read at the offsets the game's code says (GameLayout, from game_font_signatures.json); those that kept
-// their layout since 2020 are C# structures, checked against the code. Addresses in comments are of 7.56h (image base
-// 0x140000000). RE write-up: private-scratch/ffxiv/ui/font_rendering_756h.md.
+// their layout since 2020 are C# structures, checked against the code.
+// RE write-up: private-scratch/ffxiv/ui/font_rendering_756h.md.
 
 using System;
 using System.Runtime.CompilerServices;
@@ -342,7 +342,6 @@ public unsafe struct GameFont
         lineHeight = GameLayout.Get("GameFont.LineHeight");
         ascent = GameLayout.Get("GameFont.Ascent");
 
-        // The glyph map replaced a sorted glyph array in 7.40; the plugin only looks glyphs up in the map.
         glyphMap = GameLayout.Get("GameFont.GlyphMap");
         secondary = GameLayout.Get("GameFont.Secondary");
         secondaryRatio = GameLayout.Get("GameFont.SecondaryRatio");
@@ -391,7 +390,7 @@ public struct GameGlyph
         (uint)(x & 0xFFF) | ((uint)(y & 0xFFF) << 12) | ((uint)(channel & 3) << 24) | ((uint)textureIndex << 26);
 }
 
-/// <summary>A kerning pair (12 bytes), sorted by (<see cref="Left"/>, <see cref="Right"/>); binary searched by FUN_14064FD10.</summary>
+/// <summary>A kerning pair (12 bytes), sorted by (<see cref="Left"/>, <see cref="Right"/>); binary searched by the game.</summary>
 [StructLayout(LayoutKind.Explicit, Size = 0x0C)]
 public struct GameKerningEntry
 {

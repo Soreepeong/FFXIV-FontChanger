@@ -9,8 +9,7 @@ namespace CustomFonts;
 /// Names the game's fonts as presets do (<c>AXIS_12</c>, <c>TrumpGothic_184</c>).
 /// </summary>
 /// <remarks>
-/// The fonts load from fixed tables of 41 entries { u64 texture count, char* texture name format, char* FDT name }
-/// (the FontTables signature): one for the game, and two for the lobby, picked by a module setting that isn't kept.
+/// The fonts load from fixed tables: one for the game, and two for the lobby, picked by a module setting that isn't kept.
 /// Lobby fonts (their textures are <c>font_lobby%d.tex</c>) map to the faces of the game's (FontChanger's
 /// exportMapFontLobbyToFont); the lobby table is the one whose sizes match the fonts.
 /// </remarks>
@@ -33,7 +32,6 @@ internal static unsafe class GameFontNames
         {
             entryCount = GameLayout.Get("FontTable.Count");
 
-            // Before 6.30, entries are indexed as i * 3 * 8.
             entrySize = GameLayout.Get("FontTableEntry");
             fdtName = GameLayout.Get("FontTableEntry.FdtName");
             lobbyA = GameLayout.Address("FontTables", "LobbyTableA");

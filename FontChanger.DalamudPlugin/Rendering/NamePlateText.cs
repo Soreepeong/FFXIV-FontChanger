@@ -27,8 +27,8 @@ internal enum NamePlateMode
 /// node's unscaled size, so the plate is resampled at every distance.</para>
 /// <para>Baking at full size: the bake scale S is the text node's on-screen scale at 100 percent: its current scale (the
 /// product of its and its ancestors' scales) divided by the current <c>max(percent / 100, 0.05)</c>, the percent taken
-/// back from the alpha. The region is allocated S times larger (FUN_141326FF0 with TextW/TextH scaled), the text is baked
-/// with the font set's node scale S instead of 1 (BakePlateRenderer vf3), and the cached draw (FUN_141327640) is given the
+/// back from the alpha. The region is allocated S times larger (AllocateBake with TextW/TextH scaled), the text is baked
+/// with the font set's node scale S instead of 1 (the per-node text setup), and the cached draw (DrawBaked) is given the
 /// node's size and the text offset times S and its transform divided by S (exactly 1 when shown at S), so it draws the
 /// region at the plate's size. A plate shown larger than its bake is baked again at that size.</para>
 /// </remarks>

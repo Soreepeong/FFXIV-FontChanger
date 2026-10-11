@@ -34,8 +34,8 @@ internal enum ItalicMode
 /// answers the game's per-character glyph lookups from the result.
 /// </summary>
 /// <remarks>
-/// <para>The game lays text out one character at a time: its text walkers (FUN_140652BE0, FUN_140653030, and
-/// AtkFontAnalyzerBase vf4 for text inserted by macros) call FUN_1406EEC70 for each character, which looks the glyph up
+/// <para>The game lays text out one character at a time: its text walkers (including the one for text
+/// inserted by macros) call LayOutCharacter for each character, which looks the glyph up
 /// and advances the pen by its width. With the character's address known, the run it starts or continues is shaped
 /// once: from there to the end of the line, macro payloads skipped (a colour change doesn't break a ligature), as
 /// UTF-16 for DirectWrite.</para>

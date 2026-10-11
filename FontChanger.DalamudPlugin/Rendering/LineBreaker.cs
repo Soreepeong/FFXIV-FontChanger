@@ -9,10 +9,10 @@ namespace CustomFonts;
 /// Splits words that don't fit on a line where DirectWrite allows a line break, never inside a cluster.
 /// </summary>
 /// <remarks>
-/// <para>The game wraps text once, when it is set (FUN_1406581A0: the chat log, word-wrapped text nodes,
+/// <para>The game wraps text once, when it is set (the text wrapper: the chat log, word-wrapped text nodes,
 /// HandleFormatText). It cuts the text into words at separator bytes and puts each on the current line if it fits; a word
-/// that doesn't goes to FUN_14065B090, which returns how many of its units (characters and macros) stay on the line. That
-/// takes as many as fit (FUN_14065AE60), then backs up to a break: anywhere between characters from U+2100 on (with the
+/// that doesn't goes to SplitWord, which returns how many of its units (characters and macros) stay on the line. That
+/// takes as many as fit (FitUnits), then backs up to a break: anywhere between characters from U+2100 on (with the
 /// game's own rules for CJK punctuation), after listed punctuation, or else, at the start of a line only, right at the
 /// fit. Such a forced break can fall inside a cluster (a letter and its accent, a Thai consonant and its vowel, an Indic
 /// conjunct), and Thai, written without spaces, has no breaks at all.</para>
