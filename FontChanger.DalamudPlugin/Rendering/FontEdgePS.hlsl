@@ -1,19 +1,10 @@
 // Replacement for the game's FontEdgePS (shader/sm5/shcd/FontEdgePS.shcd): the same inputs and bindings, but the edge
 // is the glyph's coverage dilated by a disc, antialiased at its rim, instead of the game's fixed pattern of about one
-// texel. The disc's radius comes from the vertex data: FontEdgeVS passes one texel of the font's claimed texture width
-// (Step.y), which the plugin sets per font to radius / (atlas width); the atlas's own texel comes from the texture.
+// texel. The radius comes from the vertex data (Step.y, one texel of the font's claimed texture width).
 //
-// alpha is the most of Coverage(Uv + o) * Weight(o) over the whole-texel offsets o up to MAX_REACH on each axis, leaving
-// out samples outside the glyph's rectangle. Weight falls linearly with |o| as Softness sets (Rim); Softness is patched
-// into the bytecode at run time. For a one-hot Channel (every glyph the game draws) the samples are blended
-// from Gather: a gather of the channel at a texel corner holds a sample's bilinear footprint, and neighbouring samples'
-// footprints share texels. The blend's weights are exact, where the sampler's are rounded (to 8 fractional bits on
-// common hardware), so alpha may differ from SampleLevel's by about 1/255; the sampler must filter linearly, as the
-// game's font sampler does. Reaches up to SQUARE_REACH gather every texel of the square once (functions that
-// FontChanger.ShaderGen writes into FontEdgeSquares.hlsli); larger ones take rows from the centre out, until no row
-// left can raise alpha. Any other Channel takes SampleLevel as a plain loop over all offsets would, bit for bit.
-//
-// The plugin's build compiles this with FontChanger.ShaderGen, and embeds the bytecode; fxc compiles it as is too.
+// alpha is the most of Coverage(Uv + o) * Weight(o) over the whole-texel offsets o up to MAX_REACH, within the glyph's
+// rectangle; Weight falls linearly with |o| as Softness sets. One-hot channels are blended from Gather, within 1/255 of SampleLevel.
+// The plugin's build compiles this with FontChanger.ShaderGen, and embeds the bytecode.
 
 // Most whole texels sampled on each side of the pixel.
 #define MAX_REACH 8

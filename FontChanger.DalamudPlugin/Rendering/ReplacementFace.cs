@@ -152,7 +152,6 @@ internal sealed unsafe class ReplacementFace : IDisposable
         FaceElement? assigned = null;
         foreach (var e in this.elements)
         {
-            // Asked only of elements that would take it.
             var mode = e.Def.MergeMode;
             if ((mode == MergeMode.AddNew && assigned is not null) || (mode == MergeMode.Replace && assigned is null))
                 continue;
@@ -217,7 +216,6 @@ internal sealed unsafe class ReplacementFace : IDisposable
         var element = this.GetElement(codepoint, game);
         if (element is null)
         {
-            // At the size the face's text is laid out in.
             var size = this.Primary is { } primary ? this.GetElementPx(primary, px) : px;
             return this.fallback is not null && this.fallback.TryRasterize(codepoint, size, null, out glyph);
         }
@@ -280,7 +278,6 @@ internal sealed unsafe class ReplacementFace : IDisposable
     /// </summary>
     private static IElementFont CreateFont(ElementDef def, GlyphRasterizer rasterizer, string faceName)
     {
-        // FontChanger's gamma: coverage to the power of 1 / gamma.
         var gamma = def.Gamma != 1 && def.Gamma > 0 ? RasterGlyph.CoverageTable(1 / def.Gamma) : null;
         IElementFont font;
         switch (def.Renderer)

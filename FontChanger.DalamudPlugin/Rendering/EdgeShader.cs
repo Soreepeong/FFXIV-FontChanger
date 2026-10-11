@@ -16,9 +16,7 @@ namespace CustomFonts;
 /// </remarks>
 internal sealed unsafe class EdgeShader : IDisposable
 {
-    // The edge pass, and the file name of its pixel shader; AtkModule: its font manager (embedded) and AtkServer*;
-    // AtkServer: its PS file resource handles and Kernel pixel shaders; Kernel::PixelShader: its ID3D11PixelShader.
-    // Resolved at the first use.
+    // The edge pass and its pixel shader, reached through AtkModule, AtkServer and Kernel::PixelShader; resolved at the first use.
     private bool resolved;
     private int edgePass;
     private string shaderFile = string.Empty;

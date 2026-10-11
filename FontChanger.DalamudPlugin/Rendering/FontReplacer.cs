@@ -9,31 +9,18 @@ namespace CustomFonts;
 /// Makes the game's text renderer draw glyphs rasterized at the size they are drawn at.
 /// </summary>
 /// <remarks>
-/// <para>Two hooks, both on the framework thread:</para>
-/// <list type="number">
-/// <item>The font picker (PickFont) chooses the game font for the requested size, which already includes the text
-/// node's screen scale. The detour swaps it for a copy whose size is exactly that size (in half pixels), so the
-/// renderer's scale (requested size / font size) is 1. The copy keeps the game font's glyph map and textures, with the
-/// atlas pages added after them.</item>
-/// <item>The glyph lookup (GetGlyph) is answered for a copy from its own glyphs, rasterized on first use. A
-/// codepoint no family has, and the private-use icons, fall through to the game's glyph, which the copy can still draw
-/// from the game's textures (at the game font's own size).</item>
-/// </list>
-/// <para>Text is laid out again every frame, so nothing keeps glyph pointers between frames. What a copy borrows from its
-/// game font is taken again when the game builds that font again (BuildFont, the only place it does).</para>
+/// PickFont is swapped for a copy sized exactly as requested, so the renderer's scale is 1; GetGlyph is answered for a copy
+/// from its own glyphs, rasterized on first use. Nothing keeps glyph pointers between frames.
 /// </remarks>
 internal sealed unsafe class FontReplacer : IDisposable
 {
-    // Sizes in half pixels: below 4 px nothing is legible. Up to 255 px, glyphs are drawn at the size asked for, those
-    // larger than the game's byte-sized glyph fields cut off (PlaceCell); a larger request uses the 255 px copy, scaled
-    // up by the renderer.
+    // Sizes in half pixels: below 4 px nothing is legible; a request over 255 px uses the 255 px copy, scaled up by the renderer.
     private const int MinHalfPx = 8;
     private const int MaxHalfPx = 2 * byte.MaxValue;
 
     private const int SlotBlockSize = 1024;
 
-    // When the atlas is full, a plane is emptied of glyphs not drawn this recently; at most this often, as text that needs
-    // more than fits would otherwise empty one every frame (what doesn't fit draws nothing until the next).
+    // When the atlas is full, a plane is emptied of glyphs not drawn this recently, at most this often.
     private const long KeepDrawnMs = 2000;
     private const long EvictIntervalMs = 1000;
 
@@ -622,10 +609,8 @@ internal sealed unsafe class FontReplacer : IDisposable
             var halfPx = Math.Clamp((int)Rounding.Round(size * 2), MinHalfPx, MaxHalfPx);
             var copy = this.GetOrCreateCopy(font, halfPx);
 
-            // The glyphs are rasterized at the size rounded to half pixels, but the copy claims the exact size: the
-            // renderer scales by the requested size over this, and anything but exactly 1 resamples every glyph
-            // bilinearly (soft text). The glyphs are then up to a quarter pixel off in size, which doesn't show. Past
-            // the largest size the renderer has to scale up anyway.
+            // Rasterized at half-pixel sizes, but the copy claims the exact size: any renderer scale but exactly 1 resamples
+            // bilinearly (soft text), while a quarter pixel of size error doesn't show.
             if (halfPx < MaxHalfPx && halfPx > MinHalfPx)
                 copy->Size = size;
             set->CurrentFont = copy;
@@ -950,15 +935,11 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     internal GameGlyph* PlaceCell(SizedFont sized, RasterGlyph r, uint utf8Value, GameTextureSource? source = null)
     {
-        // The game has no left bearing: the glyph's box starts at the pen. Ink left of the pen (an overhang) moves right
-        // into the box instead. A box wider than the game's byte-sized field cuts the ink off on the right.
+        // The game has no left bearing: overhanging ink moves right into the box; past 255 wide it is cut on the right.
         var boxLeft = Math.Min(r.Left, 0);
         var width = r.Width == 0 ? 0 : Math.Min(r.Left + r.Width - boxLeft, byte.MaxValue);
 
-        // A box is a full line high, as the game's are: italics shear each quad by moving its top edge by an amount based
-        // on the line height, which only slants the glyphs of a line alike if all their quads span the same rows. Ink
-        // above or below the line (stacked marks, a fallback font's taller script) grows the box instead of being cut
-        // off; only such a glyph slants a little less. Measuring uses the line height, not the box.
+        // A box is a full line high, as the game's are, so that italics slant alike; ink beyond the line grows the box.
         var inkTop = sized.Ascent + r.Top;
         var top = 0;
         var height = sized.LineHeight;

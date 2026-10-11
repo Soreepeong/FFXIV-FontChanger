@@ -214,7 +214,7 @@ internal sealed class PresetController : IDisposable
         }
     });
 
-    /// <summary>Sets whether characters the presets lack are drawn with Windows' fallback fonts, instead of the game's.</summary>
+    /// <summary>Sets <see cref="Configuration.SystemFallback"/>.</summary>
     public void SetSystemFallback(bool systemFallback) => this.Change(c => c.SystemFallback = systemFallback);
 
     /// <summary>Reads the folder and the selected presets again.</summary>

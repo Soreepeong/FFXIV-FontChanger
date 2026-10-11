@@ -641,7 +641,6 @@ public sealed class Preset
         var renderer = (ElementRenderer)(int)GetFloat(json, "renderer", 0);
         var transform = ReadTransform(json, renderer);
 
-        // Glyph merging is in use when it has any mapping.
         GlyphMergingDef? merging = null;
         if (json.TryGetProperty("glyphMerging", out var m) && m.ValueKind == JsonValueKind.Object &&
             m.TryGetProperty("mappings", out var mappings) && mappings.ValueKind == JsonValueKind.Array && mappings.GetArrayLength() != 0)

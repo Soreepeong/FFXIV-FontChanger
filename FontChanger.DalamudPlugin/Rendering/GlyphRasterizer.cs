@@ -520,7 +520,6 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         if (renderingMode == DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_DEFAULT)
             face->GetRecommendedRenderingMode(px, 1, measuringMode, null, &renderingMode);
 
-        // Outlines can't be rasterized.
         if (renderingMode is DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_OUTLINE or DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_DEFAULT)
             renderingMode = DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC;
 

@@ -34,19 +34,9 @@ internal enum ItalicMode
 /// answers the game's per-character glyph lookups from the result.
 /// </summary>
 /// <remarks>
-/// <para>The game lays text out one character at a time: its text walkers (including the one for text
-/// inserted by macros) call LayOutCharacter for each character, which looks the glyph up
-/// and advances the pen by its width. With the character's address known, the run it starts or continues is shaped
-/// once: from there to the end of the line, macro payloads skipped (a colour change doesn't break a ligature), as
-/// UTF-16 for DirectWrite.</para>
-/// <para>Each shaped cluster (a ligature, a base and its marks, a conjunct) becomes one cell: its glyphs rasterized
-/// together at the fraction of a pixel shaping put it at, advancing by the whole-pixel difference of its rounded start
-/// and end, so a line of clusters ends where shaping ends it. The first character of a cluster gets the cell, the others a
-/// glyph of no width. Right-to-left runs and glyphs a font lacks are left to the per-character path.</para>
-/// <para>Text is laid out every frame (several times: measuring, counting, drawing), so shaped runs are kept by content
-/// and size, and the last few runs by address, used while the text at the address is unchanged.</para>
-/// <para>A run ends at an italic macro, and is shaped as the italics it is in says (<see cref="ItalicMode"/>). The cells
-/// of real italic glyphs are told to the replacer, which keeps the game from shearing them.</para>
+/// The game lays text out one character at a time (LayOutCharacter); the run a character starts is shaped once, to the end
+/// of the line. Each shaped cluster becomes one cell, advancing by the whole-pixel difference of its rounded start and end;
+/// right-to-left runs and glyphs a font lacks are left to the per-character path. A run ends at an italic macro (<see cref="ItalicMode"/>).
 /// </remarks>
 internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 {
@@ -221,9 +211,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
                 missing |= run->glyphIndices[g] == 0;
             }
 
-            // Italics. Shaped in italic: a face's real italic stays, a synthesized oblique is drawn upright for the game to
-            // shear. Shaped upright for a node's italics: a single character is drawn with its font's italic, if it has
-            // one, at the upright advance; ligatures and the rest stay upright, sheared.
+            // Italics: a real italic stays, a synthesized oblique is drawn upright for the game to shear.
             var glyphs = new ReadOnlySpan<ushort>(run->glyphIndices + glyphStart, count).ToArray();
             var offsets = run->glyphOffsets is null ? null : new ReadOnlySpan<DWRITE_GLYPH_OFFSET>(run->glyphOffsets + glyphStart, count).ToArray();
             var realItalic = false;
@@ -251,8 +239,6 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
                 }
             }
 
-            // An element's transformation scales its advances, and its cell (ReplacementFace.Wrap) widens them by
-            // monospacing and letter spacing; everything after moves along.
             var x0 = Rounding.Round(pen);
             var width = advance * (font?.Transform.M11 ?? 1);
             var spacing = source.Face.GetLetterSpacing(element is { DrawsGame: false } ? element : null, sized.Px);
@@ -274,8 +260,6 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
                 AfterGap = this.clusterGap,
             };
 
-            // The cell ends where the layout ends the cluster, plus letter spacing; a monospaced cell is made now, as it
-            // gives the advance (from the whole pixels it starts at).
             float next;
             if (!missing && font is not null && element!.Def.Monospacing is not null)
             {
@@ -294,7 +278,6 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             this.clusters.Add(cluster);
             this.clusterGap = false;
 
-            // DirectWrite moves the pen by its advances; the difference moves everything after along.
             this.penShift += next - pen - layoutAdvance;
             pen = next;
             k = k2;
@@ -535,9 +518,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     private bool ShapeFrom(FontReplacer.SizedFont sized, byte* p, ItalicMode italic, ref ActiveRun? run)
     {
         // The run: to the end of the line, as UTF-16, each code unit's byte offset kept (-1 for a low surrogate), and each
-        // character's byte whether it is in italics. Italic macros change that within the run, as they do the game's state,
-        // so that a line is laid out whole across them (an italic word's overhangs and spacing next to upright text); a run
-        // in a node's italics, spaced to its upright width, ends at one instead.
+        // character's byte whether it is in italics; a run in a node's italics ends at an italic macro instead.
         var count = 0;
         var i = 0;
         var hash = 0xCBF29CE484222325ul;
@@ -611,9 +592,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         if (i == 0)
             return false;
 
-        // The byte that ended the run (read above: a terminator, a line break, a sequence that doesn't fit) is compared
-        // with it too, as what follows the last character could join its cluster. A run cut at its maximum length has
-        // none.
+        // The byte that ended the run is compared too, as what follows the last character could join its cluster.
         var ended = i < MaxRunBytes;
         var key = (hash, i, sized, italic);
         if (!this.runs.TryGetValue(key, out var shaped))
