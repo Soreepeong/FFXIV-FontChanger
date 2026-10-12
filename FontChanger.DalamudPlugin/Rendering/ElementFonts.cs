@@ -5,6 +5,8 @@ using System.Linq;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
+using static CustomFonts.CustomClientStructExtensions;
+
 namespace CustomFonts;
 
 /// <summary>
@@ -18,10 +20,10 @@ namespace CustomFonts;
 internal unsafe interface IElementFont : IDisposable
 {
     /// <summary>Gets whether a codepoint has a glyph; the game's glyphs are those of <paramref name="game"/>.</summary>
-    bool Has(int codepoint, GameFont* game);
+    bool Has(int codepoint, Font* game);
 
     /// <summary>Gets the line metrics at a size, in whole pixels.</summary>
-    (int Ascent, int LineHeight) GetLineMetrics(float px, GameFont* game);
+    (int Ascent, int LineHeight) GetLineMetrics(float px, Font* game);
 
     /// <summary>Gets a baseline of the BASE table (by tag, as DWRITE_FONT_FEATURE_TAG) in pixels above the glyphs' origin; null if none.</summary>
     float? GetBaseline(uint tag, float px);
@@ -45,9 +47,9 @@ internal unsafe interface IElementFont : IDisposable
 /// <summary>The game's own glyphs (xivres fontdata_fixed_size_font), which the game draws.</summary>
 internal sealed unsafe class GameElementFont : IElementFont
 {
-    public bool Has(int codepoint, GameFont* game) => game is not null && game->HasGlyph(codepoint);
+    public bool Has(int codepoint, Font* game) => game is not null && game->FindGlyph(GameUtf8.Pack(codepoint)) is not null;
 
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, GameFont* game)
+    public (int Ascent, int LineHeight) GetLineMetrics(float px, Font* game)
     {
         if (game is null || game->Size <= 0)
             return (0, 0);
@@ -69,9 +71,9 @@ internal sealed unsafe class GameElementFont : IElementFont
 /// <summary>No glyphs, only line metrics (xivres empty_fixed_size_font), given in pixels at the element's size.</summary>
 internal sealed unsafe class EmptyElementFont(float size, float ascent, float lineHeight) : IElementFont
 {
-    public bool Has(int codepoint, GameFont* game) => false;
+    public bool Has(int codepoint, Font* game) => false;
 
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, GameFont* game) =>
+    public (int Ascent, int LineHeight) GetLineMetrics(float px, Font* game) =>
         size > 0 ? ((int)Rounding.Round(ascent * px / size), (int)Rounding.Round(lineHeight * px / size)) : (0, 0);
 
     public float? GetBaseline(uint tag, float px) => null;
@@ -154,7 +156,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
         return new(rasterizer, def, font, ftFace, gamma);
     }
 
-    public bool Has(int codepoint, GameFont* game)
+    public bool Has(int codepoint, Font* game)
     {
         BOOL exists;
         return this.Font.Font->HasCharacter((uint)codepoint, &exists).SUCCEEDED && exists;
@@ -194,7 +196,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
         return res;
     }
 
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, GameFont* game) => this.GetLineMetrics(px, this.Transform);
+    public (int Ascent, int LineHeight) GetLineMetrics(float px, Font* game) => this.GetLineMetrics(px, this.Transform);
 
     /// <summary>Gets the line metrics at a size, scaled vertically as glyphs transformed by <paramref name="transform"/> are.</summary>
     public (int Ascent, int LineHeight) GetLineMetrics(float px, GlyphTransform transform)
@@ -559,11 +561,11 @@ internal sealed unsafe class ImageElementFont(GlyphImages? images, ImageRenderer
     /// <summary>Gets whether glyphs can be drawn (Direct2D can be used).</summary>
     public bool CanDraw => images is not null && renderer is not null;
 
-    public bool Has(int codepoint, GameFont* game) => images?.Has(codepoint) ?? false;
+    public bool Has(int codepoint, Font* game) => images?.Has(codepoint) ?? false;
 
     public IEnumerable<int> Codepoints => images?.Codepoints ?? [];
 
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, GameFont* game) => this.GetLineMetrics(px, transform);
+    public (int Ascent, int LineHeight) GetLineMetrics(float px, Font* game) => this.GetLineMetrics(px, transform);
 
     /// <summary>Gets the line metrics at a size, scaled vertically as glyphs transformed by <paramref name="t"/> are.</summary>
     public (int Ascent, int LineHeight) GetLineMetrics(float px, GlyphTransform t) => images?.GetLineMetrics(px, t) ?? (0, 0);
@@ -605,11 +607,11 @@ internal sealed unsafe class MergingElementFont(
     /// <summary>Gets the fonts of DirectWrite and FreeType it draws with: its own, and its texts'.</summary>
     public IEnumerable<OutlineElementFont> OutlineFonts => new[] { baseFont as OutlineElementFont, textOutline }.OfType<OutlineElementFont>();
 
-    public bool Has(int codepoint, GameFont* game) => merging.Glyphs.ContainsKey(codepoint);
+    public bool Has(int codepoint, Font* game) => merging.Glyphs.ContainsKey(codepoint);
 
     public IEnumerable<int> Codepoints => merging.Glyphs.Keys;
 
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, GameFont* game) => baseFont.GetLineMetrics(px, game);
+    public (int Ascent, int LineHeight) GetLineMetrics(float px, Font* game) => baseFont.GetLineMetrics(px, game);
 
     public float? GetBaseline(uint tag, float px) => baseFont.GetBaseline(tag, px);
 

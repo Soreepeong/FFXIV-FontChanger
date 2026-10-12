@@ -509,7 +509,6 @@
 #define ID_EXPORT_GLYPHSWITHADJUSTMENTS 40231
 #define ID_EXPORT_FACEGLYPHS            40232
 #define ID_EDIT_ADDFROMFONT             40233
-#define IDR_GAMEFONTSIGNATURES          195
 
 // Next default values for new objects
 //

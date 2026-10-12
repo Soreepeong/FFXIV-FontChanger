@@ -5,6 +5,8 @@ using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Plugin.Services;
 
+using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
@@ -16,22 +18,21 @@ internal sealed class DalamudHost : IHost
     public DalamudHost()
     {
         this.Log = new LogAdapter(Plugin.Log);
-        this.GameFileName = Plugin.SigScanner.Module.FileName!;
-        this.GameBaseAddress = Plugin.SigScanner.Module.BaseAddress;
         this.AssemblyDirectory = Plugin.PluginInterface.AssemblyLocation.DirectoryName!;
     }
 
     public IHostLog Log { get; }
 
-    public string GameFileName { get; }
-
-    public nint GameBaseAddress { get; }
-
     public string AssemblyDirectory { get; }
 
     public IHostHook<T> Hook<T>(nint address, T detour)
-        where T : Delegate =>
-        new HookAdapter<T>(Plugin.GameInterop.HookFromAddress(address, detour));
+        where T : Delegate
+    {
+        // A signature FFXIVClientStructs didn't resolve leaves a null address; hooking that would fault.
+        if (address == 0)
+            throw new InvalidOperationException("A signature of FFXIVClientStructs isn't in this version of the game.");
+        return new HookAdapter<T>(Plugin.GameInterop.HookFromAddress(address, detour));
+    }
 
     public IHostTexture CreateTexture(int width, int height, string name) => new Texture(width, height, name);
 
@@ -62,13 +63,9 @@ internal sealed class DalamudHost : IHost
     private sealed unsafe class Texture : IHostTexture
     {
         private readonly IDalamudTextureWrap wrap;
-        private readonly int decRef;
 
         public Texture(int width, int height, string name)
         {
-            // Released with ReferencedClassBase's DecRef, which no code site pins down well enough for a signature.
-            this.decRef = GameLayout.TryGet("ReferencedClassBase.DecRef.VtableOffset")
-                          ?? throw new InvalidOperationException("Where DecRef is in the vtable isn't known.");
             this.wrap = Plugin.TextureProvider.CreateEmpty(RawImageSpecification.Bgra32(width, height), false, false, name);
             this.Kernel = Plugin.TextureProvider.ConvertToKernelTexture(this.wrap, leaveWrapOpen: true);
 
@@ -89,7 +86,7 @@ internal sealed class DalamudHost : IHost
         {
             // The game releases a kernel texture some frames after its last reference goes (it is a delayed-release
             // resource), so the frames still in flight can keep sampling it.
-            ((delegate* unmanaged<nint, void>)*(nint*)(*(nint*)this.Kernel + this.decRef))(this.Kernel);
+            ((KernelTexture*)this.Kernel)->DecRef();
             if (this.Resource is not null)
             {
                 this.Resource->Release();

@@ -25,6 +25,8 @@
     <None Include="vcpkg.json">
       <Filter>Project Items</Filter>
     </None>
+    <None Include="data\game_fonts.json" />
+    <None Include="data\glyph_merge_shapes.json" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\FontChanger.FixedSizeFont\fontdata_packer.h">

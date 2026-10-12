@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
@@ -32,7 +34,7 @@ internal sealed unsafe class GameTextureReader : IDisposable
     /// <summary>Gets whether a texture's pixels can be read: it has a format game font textures use.</summary>
     public static bool CanRead(nint texture)
     {
-        var resource = (ID3D11Texture2D*)GameUi.GetD3D11Texture(texture);
+        var resource = (ID3D11Texture2D*)((KernelTexture*)texture)->D3D11Texture2D;
         if (resource is null)
             return false;
         D3D11_TEXTURE2D_DESC desc;
@@ -45,7 +47,7 @@ internal sealed unsafe class GameTextureReader : IDisposable
     {
         var alpha = new byte[width * height];
         var stride = width;
-        var resource = (ID3D11Texture2D*)GameUi.GetD3D11Texture(texture);
+        var resource = (ID3D11Texture2D*)((KernelTexture*)texture)->D3D11Texture2D;
         D3D11_TEXTURE2D_DESC desc;
         resource->GetDesc(&desc);
         width = Math.Min(width, (int)desc.Width - x);

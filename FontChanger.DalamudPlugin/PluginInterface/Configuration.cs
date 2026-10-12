@@ -38,8 +38,19 @@ public sealed class Configuration : IPluginConfiguration
 
     public EdgeSettings Edge { get; set; } = new();
 
+    public SubpixelMode Subpixel { get; set; } = SubpixelMode.System;
+
     /// <summary>Gets or sets whether the main window was open, to open it again when the plugin loads.</summary>
     public bool MainWindowOpen { get; set; }
+}
+
+/// <summary>Subpixel text: off, Windows' ClearType setting for the game's monitor, or a stripe order with Windows' tuning.</summary>
+public enum SubpixelMode
+{
+    Off,
+    System,
+    Rgb,
+    Bgr,
 }
 
 /// <summary>A system font: its family's name (English) and the face's weight, stretch and style (DWRITE_* values).</summary>

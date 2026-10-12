@@ -265,7 +265,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             {
                 var rawAdvance = (int)Rounding.Round(width);
                 cluster.Cell = source.Face.Wrap(
-                    element, this.RasterizeCluster(cluster, rawAdvance, 1), sized.Px, (GameFont*)source.Game, s => this.RasterizeCluster(cluster, rawAdvance, s));
+                    element, this.RasterizeCluster(cluster, rawAdvance, 1), sized.Px, (Font*)source.Game, s => this.RasterizeCluster(cluster, rawAdvance, s));
                 cluster.X1 = cluster.X0 + cluster.Cell.Value.Advance;
                 next = cluster.X1;
             }
@@ -904,7 +904,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         var sized = this.shapingSized!;
         raster = c.Cell ?? this.RasterizeCluster(c, 0, 1);
         if (c.Cell is null && c.Element is { } element)
-            raster = c.Source!.Face.Wrap(element, raster, sized.Px, (GameFont*)c.Source.Game, s => this.RasterizeCluster(c, 0, s));
+            raster = c.Source!.Face.Wrap(element, raster, sized.Px, (Font*)c.Source.Game, s => this.RasterizeCluster(c, 0, s));
 
         // An edge margin makes ink left of the pen: the cell then starts earlier (PlaceClusters), keeping the spacing.
         raster = this.replacer.FinishGlyph(sized, raster);

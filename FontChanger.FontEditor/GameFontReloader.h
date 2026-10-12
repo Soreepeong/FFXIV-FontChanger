@@ -26,7 +26,7 @@ namespace GameFontReloader {
 	};
 
 	// A running game: its font tables (the game's and the two of the lobby), read from its executable, and what
-	// reloading its fonts calls, found by the signatures of xivres's data/game_font_signatures.json.
+	// reloading its fonts calls, found by signatures in its code.
 	class GameProcess {
 		struct Table {
 			void* Address;

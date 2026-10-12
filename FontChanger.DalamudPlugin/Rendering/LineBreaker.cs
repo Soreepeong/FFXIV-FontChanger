@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
+using FFXIVClientStructs.FFXIV.Component.GUI;
+
 namespace CustomFonts;
 
 /// <summary>
@@ -34,12 +36,6 @@ internal sealed unsafe class LineBreaker : IDisposable
 
     private readonly FontReplacer replacer;
     private readonly IHostHook<SplitWordDelegate> splitWordHook;
-    private readonly delegate* unmanaged<nint, byte*, int, int, int*, int> fitUnits;
-
-    // Wrapper: the units of the current word already put on earlier lines (0 on its first split), and the unit limit.
-    private readonly int consumedUnitsOffset;
-    private readonly int maxUnitsOffset;
-    private readonly int usedUnitsOffset;
 
     private readonly StringBuilder text = new();
     private readonly List<Unit> units = [];
@@ -54,22 +50,7 @@ internal sealed unsafe class LineBreaker : IDisposable
         this.replacer = replacer;
         try
         {
-            // uint SplitWord(Wrapper* this, int width, int unused, byte* word, byte* measuredWord, bool lineStart), with
-            // its call to int FitUnits(Wrapper* this, byte* measuredWord, int width, int maxUnits, int* bytes).
-            nint splitWord = 0, fitUnits = 0;
-            int consumedUnits = 0, maxUnits = 0, usedUnits = 0;
-            GameLayout.Resolve("Line breaking", () =>
-            {
-                splitWord = GameLayout.Address("SplitWord");
-                fitUnits = GameLayout.Address("SplitWord", "FitUnits");
-                consumedUnits = GameLayout.Get("Wrapper.ConsumedUnits");
-                maxUnits = GameLayout.Get("Wrapper.MaxUnits");
-                usedUnits = GameLayout.Get("Wrapper.UsedUnits");
-            });
-            this.fitUnits = (delegate* unmanaged<nint, byte*, int, int, int*, int>)fitUnits;
-            this.consumedUnitsOffset = consumedUnits;
-            this.maxUnitsOffset = maxUnits;
-            this.usedUnitsOffset = usedUnits;
+            var splitWord = AtkFontCodeModule.Addresses.SplitWord.Value;
             this.splitWordHook = Host.Current.Hook<SplitWordDelegate>(splitWord, this.SplitWordDetour);
             this.splitWordHook.Enable();
         }
@@ -80,7 +61,7 @@ internal sealed unsafe class LineBreaker : IDisposable
         }
     }
 
-    private delegate uint SplitWordDelegate(nint wrapper, int width, int unused, byte* word, byte* measuredWord, byte lineStart);
+    private delegate uint SplitWordDelegate(AtkFontCodeModule* wrapper, int width, int unused, byte* word, byte* measuredWord, byte lineStart);
 
     public void Dispose() => this.splitWordHook?.Dispose();
 
@@ -127,9 +108,9 @@ internal sealed unsafe class LineBreaker : IDisposable
         return false;
     }
 
-    private uint SplitWordDetour(nint wrapper, int width, int unused, byte* word, byte* measuredWord, byte lineStart)
+    private uint SplitWordDetour(AtkFontCodeModule* wrapper, int width, int unused, byte* word, byte* measuredWord, byte lineStart)
     {
-        var first = *(int*)(wrapper + this.consumedUnitsOffset) == 0;
+        var first = wrapper->ConsumedUnits == 0;
         try
         {
             if (first)
@@ -145,7 +126,7 @@ internal sealed unsafe class LineBreaker : IDisposable
             // built at the first. Past that, a forced split at the fit keeps the line filled.
             if (!first)
             {
-                var fit = this.fitUnits(wrapper, measuredWord, width, *(int*)(wrapper + this.maxUnitsOffset) - *(int*)(wrapper + this.usedUnitsOffset), null);
+                var fit = wrapper->FitUnits(measuredWord, width, wrapper->MaxUnits - wrapper->UsedUnits, null);
                 return fit <= 0 ? lineStart != 0 ? 1u : 0u : (uint)fit;
             }
 
@@ -155,9 +136,9 @@ internal sealed unsafe class LineBreaker : IDisposable
         return this.splitWordHook.Original(wrapper, width, unused, word, measuredWord, lineStart);
     }
 
-    private uint Split(nint wrapper, int width, byte* word, byte* measuredWord, bool lineStart)
+    private uint Split(AtkFontCodeModule* wrapper, int width, byte* word, byte* measuredWord, bool lineStart)
     {
-        var fit = this.fitUnits(wrapper, measuredWord, width, *(int*)(wrapper + this.maxUnitsOffset) - *(int*)(wrapper + this.usedUnitsOffset), null);
+        var fit = wrapper->FitUnits(measuredWord, width, wrapper->MaxUnits - wrapper->UsedUnits, null);
         if (fit < 0)
             return 0;
 

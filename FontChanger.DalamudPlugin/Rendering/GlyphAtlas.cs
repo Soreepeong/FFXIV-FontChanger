@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
+using FFXIVClientStructs.FFXIV.Component.GUI;
+
 using TerraFX.Interop.DirectX;
 
 namespace CustomFonts;
@@ -16,14 +18,19 @@ namespace CustomFonts;
 /// only the edge and glare shaders' texel step comes from the font's claimed texture width, which a replaced font sets
 /// from its atlas's size. Pages take texture indices <see cref="FirstTextureIndex"/> and up in every replaced font; the
 /// game's own textures stay below, for the glyphs left to the game (the private-use icons).
+/// Subpixel atlases have odd sizes (how FontSubpixelPS tells them apart); glyphs take R, G, B for subpixel coverage and A
+/// (<see cref="SubpixelPlane"/>) for grayscale.
 /// </remarks>
 internal sealed unsafe class GlyphAtlas : IDisposable
 {
-    /// <summary>Makes an atlas of square pages of a side length (up to 4096: glyph positions take 12 bits).</summary>
-    public GlyphAtlas(int size, string name)
+    /// <summary>Makes an atlas of square pages of a side length (up to 4096: glyph positions take 12 bits; odd for a subpixel atlas).</summary>
+    public GlyphAtlas(int size, string name, bool subpixel = false)
     {
         this.Size = size;
         this.Name = name;
+        this.Subpixel = subpixel;
+        this.current = this.FirstPlane;
+        this.frontier = this.FirstPlane + this.PlaneStep;
     }
 
     /// <summary>Gets the pages' side length.</summary>
@@ -31,13 +38,35 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
     public string Name { get; }
 
+    public bool Subpixel { get; }
+
     /// <summary>
     /// Gets the texture index of the first page in a replaced font: past the textures of every font of the game's tables
-    /// (7 in the global client). Set before the first atlas is made.
+    /// (7 in the global client), so that the textures of the game's own fonts keep their places.
     /// </summary>
-    public static int FirstTextureIndex { get; set; }
+    public static int FirstTextureIndex { get; } = FirstFreeTexture();
 
-    public static int MaxPages => GameFont.MaxTextures - FirstTextureIndex;
+    public static int MaxPages => Font.MaxTextures - FirstTextureIndex;
+
+    // A font of the global client's texture count, of a table the game doesn't have.
+    private const int GlobalTextureCount = 7;
+
+    private static int FirstFreeTexture()
+    {
+        var count = GlobalTextureCount;
+        count = Math.Max(count, MostTextures(AtkFontManager.StaticAddressPointers.pGameFontTable));
+        count = Math.Max(count, MostTextures(AtkFontManager.StaticAddressPointers.pLobbyFontTableStandardResolution));
+        count = Math.Max(count, MostTextures(AtkFontManager.StaticAddressPointers.pLobbyFontTableHighResolution));
+        return count;
+    }
+
+    private static int MostTextures(FontTableEntry* table)
+    {
+        var count = 0;
+        for (var i = 0; table is not null && i < FontTableEntry.Count; i++)
+            count = Math.Max(count, (int)table[i].TextureCount);
+        return count;
+    }
 
     private int Pitch => this.Size * 4;
 
@@ -50,6 +79,12 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// <summary>The planes of a page: one per channel.</summary>
     public const int PlanesPerPage = 4;
 
+    public const int SubpixelPlane = 3;
+
+    private int FirstPlane => this.Subpixel ? SubpixelPlane : 0;
+
+    private int PlaneStep => this.Subpixel ? PlanesPerPage : 1;
+
     private readonly List<Page> pages = [];
     private readonly object sync = new();
     private ID3D11DeviceContext* context;
@@ -57,7 +92,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     // Planes are numbered page * PlanesPerPage + plane. Glyphs are allocated in the current one; those from the frontier
     // on haven't been used yet (since Clear), the others before it are full.
     private int current;
-    private int frontier = 1;
+    private int frontier;
 
     /// <summary>Raised on the thread that allocates, after a page was added.</summary>
     public event Action? PageAdded;
@@ -97,8 +132,8 @@ internal sealed unsafe class GlyphAtlas : IDisposable
                 p.MarkDirty(0, 0, Size, Size);
             }
 
-            this.current = 0;
-            this.frontier = 1;
+            this.current = this.FirstPlane;
+            this.frontier = this.FirstPlane + this.PlaneStep;
         }
     }
 
@@ -111,12 +146,19 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         lock (this.sync)
         {
             var p = this.pages[page];
-            var channel = ChannelOffsets[plane];
-            for (var row = 0; row < Size; row++)
+            if (this.Subpixel)
             {
-                var d = p.Shadow + (row * Pitch) + channel;
-                for (var col = 0; col < Size; col++)
-                    d[col * 4] = 0;
+                NativeMemory.Clear(p.Shadow, (nuint)(Pitch * Size));
+            }
+            else
+            {
+                var channel = ChannelOffsets[plane];
+                for (var row = 0; row < Size; row++)
+                {
+                    var d = p.Shadow + (row * Pitch) + channel;
+                    for (var col = 0; col < Size; col++)
+                        d[col * 4] = 0;
+                }
             }
 
             p.Shelves[plane] = default;
@@ -166,7 +208,8 @@ internal sealed unsafe class GlyphAtlas : IDisposable
                 needed = (this.frontier / PlanesPerPage) + 1;
                 if (needed <= this.pages.Count)
                 {
-                    this.current = this.frontier++;
+                    this.current = this.frontier;
+                    this.frontier += this.PlaneStep;
                     continue;
                 }
             }
@@ -180,20 +223,41 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// <summary>
     /// Writes 8-bit coverage into a plane of a page, at <paramref name="alphaX"/> in the <paramref name="width"/> by
     /// <paramref name="height"/> box at (x, y); coverage past the box's right edge is cut off. Marks the box for upload.
+    /// In a subpixel atlas, <paramref name="lcd"/> (3 bytes a pixel, same layout) fills R, G and B; without it they get alpha.
     /// </summary>
-    public void Write(int page, int plane, int x, int y, int width, int height, ReadOnlySpan<byte> alpha, int alphaStride, int alphaX)
+    public void Write(int page, int plane, int x, int y, int width, int height, ReadOnlySpan<byte> alpha, int alphaStride, int alphaX, ReadOnlySpan<byte> lcd = default)
     {
         var columns = Math.Min(alphaStride, width - alphaX);
         lock (this.sync)
         {
             var p = this.pages[page];
-            var dst = p.Shadow + (y * Pitch) + (x * 4) + ChannelOffsets[plane];
-            for (var row = 0; row < height; row++)
+            if (this.Subpixel)
             {
-                var src = alpha.Slice(row * alphaStride, alphaStride);
-                var d = dst + (row * Pitch) + (alphaX * 4);
-                for (var col = 0; col < columns; col++)
-                    d[col * 4] = src[col];
+                var hasLcd = !lcd.IsEmpty && lcd.Length >= alpha.Length * 3;
+                var dst = p.Shadow + (y * Pitch) + (x * 4);
+                for (var row = 0; row < height; row++)
+                {
+                    var d = dst + (row * Pitch) + (alphaX * 4);
+                    for (var col = 0; col < columns; col++)
+                    {
+                        var i = (row * alphaStride) + col;
+                        var texel = d + (col * 4);
+                        texel[ChannelOffsets[SubpixelPlane]] = alpha[i];
+                        for (var c = 0; c < 3; c++)
+                            texel[ChannelOffsets[c]] = hasLcd ? lcd[(i * 3) + c] : alpha[i];
+                    }
+                }
+            }
+            else
+            {
+                var dst = p.Shadow + (y * Pitch) + (x * 4) + ChannelOffsets[plane];
+                for (var row = 0; row < height; row++)
+                {
+                    var src = alpha.Slice(row * alphaStride, alphaStride);
+                    var d = dst + (row * Pitch) + (alphaX * 4);
+                    for (var col = 0; col < columns; col++)
+                        d[col * 4] = src[col];
+                }
             }
 
             p.MarkDirty(x, y, x + width, y + height);
@@ -216,6 +280,27 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         }
 
         return alpha;
+    }
+
+    /// <summary>Reads back R, G, B (3 bytes a pixel) of a box of a subpixel atlas.</summary>
+    public byte[] ReadLcd(int page, int x, int y, int width, int height)
+    {
+        var lcd = new byte[width * height * 3];
+        lock (this.sync)
+        {
+            var src = this.pages[page].Shadow + (y * Pitch) + (x * 4);
+            for (var row = 0; row < height; row++)
+            {
+                var s = src + (row * Pitch);
+                for (var col = 0; col < width; col++)
+                {
+                    for (var c = 0; c < 3; c++)
+                        lcd[(((row * width) + col) * 3) + c] = s[(col * 4) + ChannelOffsets[c]];
+                }
+            }
+        }
+
+        return lcd;
     }
 
     /// <summary>Copies the changed rectangle of each page to its texture. On the thread that calls Present.</summary>

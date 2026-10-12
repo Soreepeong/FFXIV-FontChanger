@@ -277,11 +277,7 @@
       <Output TaskParameter="Lines" ItemName="GlyphMergeShapesLine" />
     </ReadLinesFromFile>
     <MakeDir Directories="$(IntDir)generated" />
-    <WriteLinesToFile
-      File="$(IntDir)generated\glyph_merge_shapes.json.h"
-      Lines="// Generated from data\glyph_merge_shapes.json.;static constexpr char GlyphMergeShapesJson[] = R&quot;json(;@(GlyphMergeShapesLine);)json&quot;%3B"
-      Overwrite="true"
-      WriteOnlyWhenDifferent="true" />
+    <WriteLinesToFile File="$(IntDir)generated\glyph_merge_shapes.json.h" Lines="// Generated from data\glyph_merge_shapes.json.;static constexpr char GlyphMergeShapesJson[] = R&quot;json(;@(GlyphMergeShapesLine);)json&quot;%3B" Overwrite="true" WriteOnlyWhenDifferent="true" />
   </Target>
   <!--
     The game's fonts (data\game_fonts.json, which FontChanger.Presets reads too), compiled in the same way.
@@ -291,10 +287,6 @@
       <Output TaskParameter="Lines" ItemName="GameFontsLine" />
     </ReadLinesFromFile>
     <MakeDir Directories="$(IntDir)generated" />
-    <WriteLinesToFile
-      File="$(IntDir)generated\game_fonts.json.h"
-      Lines="// Generated from data\game_fonts.json.;static constexpr char GameFontsJson[] = R&quot;json(;@(GameFontsLine);)json&quot;%3B"
-      Overwrite="true"
-      WriteOnlyWhenDifferent="true" />
+    <WriteLinesToFile File="$(IntDir)generated\game_fonts.json.h" Lines="// Generated from data\game_fonts.json.;static constexpr char GameFontsJson[] = R&quot;json(;@(GameFontsLine);)json&quot;%3B" Overwrite="true" WriteOnlyWhenDifferent="true" />
   </Target>
 </Project>

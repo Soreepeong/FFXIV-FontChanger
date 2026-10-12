@@ -1,3 +1,7 @@
 [submodule "xivres"]
 	path = xivres
 	url = git@github.com:Soreepeong/xivres.git
+[submodule "FontChanger.DalamudPlugin/FFXIVClientStructs"]
+	path = FontChanger.DalamudPlugin/FFXIVClientStructs
+	url = git@github.com:Soreepeong/FFXIVClientStructs.git
+	branch = font-replacement

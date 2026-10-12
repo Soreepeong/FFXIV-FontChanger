@@ -1,9 +1,13 @@
 #include "pch.h"
 #include "GameFontReloader.h"
-#include "resource.h"
+
+#include <cstring>
+#include <format>
+#include <optional>
+#include <span>
+#include <vector>
 
 #include "FontChanger.Presets/Structs.h"
-#include "xivres/game_layout.h"
 
 template<typename T>
 inline T NotNull(T v) {
@@ -14,11 +18,135 @@ inline T NotNull(T v) {
 
 extern "C" void asm_call_atkmodule_vf43_via_wndproc();
 
-// The signatures of the game's code (xivres's data/game_font_signatures.json), compiled in as a resource.
-static std::string_view GetGameFontSignatures() {
-	const auto hRes = NotNull(FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_GAMEFONTSIGNATURES), RT_RCDATA));
-	const auto hGlob = NotNull(LoadResource(nullptr, hRes));
-	return {static_cast<const char*>(LockResource(hGlob)), SizeofResource(nullptr, hRes)};
+namespace {
+
+// What the hot reload uses of the game, in FFXIVClientStructs' form: the same signatures as FontChanger.DalamudPlugin's
+// (ClientStructs) where it has them, and FFXIVClientStructs' own for the rest.
+namespace GameCode {
+	// Framework: [StaticAddress] of Instance() (a pointer), and [MemberFunction] GetUIModule.
+	constexpr std::string_view FrameworkInstanceSignature = "48 8B 1D ?? ?? ?? ?? 8B 7C 24";
+	constexpr size_t FrameworkInstanceOffset = 3;
+	constexpr std::string_view FrameworkGetUIModuleSignature = "E8 ?? ?? ?? ?? 80 7B 1D 01";
+
+	// UIModule: [VirtualFunction(7)] GetRaptureAtkModule.
+	constexpr size_t UIModuleGetRaptureAtkModuleVtableOffset = 7 * 8;
+
+	// AtkModule: [MemberFunction] of vf43, void LoadFonts(bool lobby, bool forceReload); and whether the lobby's fonts are
+	// loaded.
+	constexpr std::string_view AtkModuleLoadFontsSignature = "48 89 5C 24 18 48 89 74 24 20 55 57 41 55 41 56 41 57 48 8D AC 24 B0 FB FF FF 48 81 EC 50 05 00 00";
+	constexpr size_t AtkModuleIsLobby = 0x8190;
+
+	// AtkStage: [StaticAddress] of Instance() (a pointer), and its RaptureAtkUnitManager*.
+	constexpr std::string_view AtkStageInstanceSignature = "48 8B 05 ?? ?? ?? ?? 4C 8B 40 18 45 8B 40 18";
+	constexpr size_t AtkStageInstanceOffset = 3;
+	constexpr size_t AtkStageRaptureAtkUnitManager = 0x20;
+
+	// AtkUnitManager: [MemberFunction] GetAddonByName.
+	constexpr std::string_view AtkUnitManagerGetAddonByNameSignature = "E8 ?? ?? ?? ?? 48 8B F8 41 B0 01";
+
+	// AddonNamePlate: its NamePlateObjects, and their NameText (AtkTextNode*).
+	constexpr size_t AddonNamePlateNamePlateObjectArray = 0x480;
+	constexpr size_t NamePlateObjectSize = 0x78;
+	constexpr size_t NamePlateObjectNameText = 0x20;
+	constexpr size_t NamePlateObjectCount = 50;
+
+	// AtkTextNode: [MemberFunction] void ToggleFontCache(bool use), and the byte of its TextFlags with FontCache.
+	constexpr std::string_view AtkTextNodeToggleFontCacheSignature = "48 85 C9 74 ?? 48 89 5C 24 08 57 48 83 EC 20 44 0F B6 81 71 01 00 00";
+	constexpr size_t AtkTextNodeFontCacheFlags = 0x171;
+	constexpr size_t UseFontCacheFlag = 0x40;
+
+	// [StaticAddress] of the font tables: the lobby's two and the game's.
+	constexpr std::string_view FontTablesSignature = "48 8D 1D ?? ?? ?? ?? 48 8D 05 ?? ?? ?? ?? 48 0F 45 D8 EB 07 48 8D 1D ?? ?? ?? ??";
+	constexpr size_t LobbyTableAOffset = 3;
+	constexpr size_t LobbyTableBOffset = 10;
+	constexpr size_t GameTableOffset = 23;
+	constexpr size_t FontTableEntrySize = 0x18;
+}
+
+// The .text section of the game's executable, to find signatures in FFXIVClientStructs' form (hex bytes, ?? for any)
+// at their addresses in the running game.
+class GameText {
+	std::span<const uint8_t> m_text;
+	uint64_t m_address{};
+
+public:
+	GameText(std::span<const uint8_t> exe, uint64_t realBase) {
+		const auto& dosHeader = *reinterpret_cast<const IMAGE_DOS_HEADER*>(exe.data());
+		const auto& ntHeader64 = *reinterpret_cast<const IMAGE_NT_HEADERS64*>(&exe[dosHeader.e_lfanew]);
+		for (const auto& s : std::span(IMAGE_FIRST_SECTION(&ntHeader64), ntHeader64.FileHeader.NumberOfSections)) {
+			if (memcmp(s.Name, ".text", 6) == 0) {
+				m_text = exe.subspan(s.PointerToRawData, std::min<size_t>(s.SizeOfRawData, s.Misc.VirtualSize));
+				m_address = realBase + s.VirtualAddress;
+				return;
+			}
+		}
+		throw std::runtime_error("The game's executable has no .text section.");
+	}
+
+	// Gets the address of the signature's match; a call's or jump's target if it starts with E8 or E9.
+	uint64_t Scan(std::string_view signature) const {
+		const auto offset = Find(signature);
+		if (signature.starts_with("E8") || signature.starts_with("E9"))
+			return m_address + offset + 5 + Rel32(offset + 1);
+		return m_address + offset;
+	}
+
+	// Gets the target of the rel32 at an offset in the signature's match, as [StaticAddress] does.
+	uint64_t GetStaticAddress(std::string_view signature, size_t offset) const {
+		const auto rel32 = Find(signature) + offset;
+		return m_address + rel32 + 4 + Rel32(rel32);
+	}
+
+private:
+	int64_t Rel32(size_t offset) const {
+		if (offset + 4 > m_text.size())
+			throw std::runtime_error("A rel32 is past the game's code.");
+		int32_t value;
+		memcpy(&value, &m_text[offset], sizeof value);
+		return value;
+	}
+
+	// Finds the signature's only match; throws if there is none, or more than one.
+	size_t Find(std::string_view signature) const {
+		std::vector<int> pattern;  // -1 for any byte
+		for (size_t i = 0; i < signature.size(); i++) {
+			if (signature[i] == ' ')
+				continue;
+			const auto token = std::string(signature.substr(i, 2));
+			pattern.push_back(token == "??" ? -1 : std::stoi(token, nullptr, 16));
+			i++;
+		}
+
+		if (pattern.empty() || pattern[0] < 0 || pattern.size() > m_text.size())
+			throw std::invalid_argument(std::format("The signature {} can't be looked for.", signature));
+
+		const auto matches = [&](size_t at) {
+			for (size_t j = 1; j < pattern.size(); j++) {
+				if (pattern[j] >= 0 && m_text[at + j] != pattern[j])
+					return false;
+			}
+			return true;
+		};
+
+		std::optional<size_t> found;
+		const auto end = m_text.size() - pattern.size() + 1;
+		for (size_t i = 0; i < end; i++) {
+			const auto next = static_cast<const uint8_t*>(memchr(&m_text[i], pattern[0], end - i));
+			if (!next)
+				break;
+			i = static_cast<size_t>(next - m_text.data());
+			if (!matches(i))
+				continue;
+			if (found)
+				throw std::runtime_error(std::format("The signature {} is in the game's code more than once.", signature));
+			found = i;
+		}
+		if (!found)
+			throw std::runtime_error(std::format("The signature {} isn't in this version of the game.", signature));
+		return *found;
+	}
+};
+
 }
 
 static std::vector<std::span<uint8_t>> Segmentize(void* pfn) {
@@ -72,31 +200,28 @@ GameFontReloader::GameProcess::GameProcess(DWORD pid)
 		throw std::runtime_error("Failed to read the game's executable.");
 
 	const auto realBase = reinterpret_cast<uint64_t>(m_hModule);
-	xivres::game_layout layout(GetGameFontSignatures(), exe, realBase);
-	std::vector<uint64_t> tableAddresses;
-	int32_t tableEntrySize{}, tableCount{};
-	layout.resolve("Hot reload", [&] {
-		m_game.ppFramework = reinterpret_cast<void*>(layout.target("Framework.Instance"));
-		m_game.pfnFrameworkGetUiModule = reinterpret_cast<void*>(layout.target("Framework.GetUIModule"));
-		m_game.UIModule_GetRaptureAtkModule_VtableOffset = layout.get("UIModule.GetRaptureAtkModule.VtableOffset");
-		m_game.pfnAtkModuleLoadFonts = reinterpret_cast<void*>(layout.address("AtkModuleLoadFonts"));
-		m_game.AtkModule_IsLobby = layout.get("AtkModule.IsLobby");
-		m_game.ppAtkStage = reinterpret_cast<void*>(layout.target("AtkStage.Instance"));
-		m_game.AtkStage_RaptureAtkUnitManager = layout.get("AtkStage.RaptureAtkUnitManager");
-		m_game.pfnAtkUnitManagerGetAddonByName = reinterpret_cast<void*>(layout.target("AtkUnitManager.GetAddonByName"));
-		m_game.AddonNamePlate_NamePlateObjects = layout.get("AddonNamePlate.NamePlateObjectArray");
-		m_game.NamePlateObject_Size = layout.get("NamePlateObject");
-		m_game.NamePlateObject_NameText = layout.get("NamePlateObject.NameText");
-		m_game.NamePlateObjectCount = layout.get("NamePlateObjectArray") / std::max(1, layout.get("NamePlateObject"));
-		m_game.pfnAtkTextNodeToggleFontCache = reinterpret_cast<void*>(layout.address("ToggleFontCache"));
-		m_game.AtkTextNode_FontCacheFlags = layout.get("AtkTextNode.FontCacheFlags");
-		m_game.UseFontCacheFlag = layout.get("AtkTextNode.FontCacheFlags.UseFontCache");
-		tableAddresses = {layout.target("GameTable"), layout.target("LobbyTableA"), layout.target("LobbyTableB")};
-		tableEntrySize = layout.get("FontTableEntry");
-		tableCount = layout.get("FontTable.Count");
-	});
-	if (tableEntrySize != sizeof(FontSetInGame::Face) || tableCount != FaceCount)
-		throw std::runtime_error("The game's font tables changed.");
+	const GameText text(exe, realBase);
+	m_game.ppFramework = reinterpret_cast<void*>(text.GetStaticAddress(GameCode::FrameworkInstanceSignature, GameCode::FrameworkInstanceOffset));
+	m_game.pfnFrameworkGetUiModule = reinterpret_cast<void*>(text.Scan(GameCode::FrameworkGetUIModuleSignature));
+	m_game.UIModule_GetRaptureAtkModule_VtableOffset = GameCode::UIModuleGetRaptureAtkModuleVtableOffset;
+	m_game.pfnAtkModuleLoadFonts = reinterpret_cast<void*>(text.Scan(GameCode::AtkModuleLoadFontsSignature));
+	m_game.AtkModule_IsLobby = GameCode::AtkModuleIsLobby;
+	m_game.ppAtkStage = reinterpret_cast<void*>(text.GetStaticAddress(GameCode::AtkStageInstanceSignature, GameCode::AtkStageInstanceOffset));
+	m_game.AtkStage_RaptureAtkUnitManager = GameCode::AtkStageRaptureAtkUnitManager;
+	m_game.pfnAtkUnitManagerGetAddonByName = reinterpret_cast<void*>(text.Scan(GameCode::AtkUnitManagerGetAddonByNameSignature));
+	m_game.AddonNamePlate_NamePlateObjects = GameCode::AddonNamePlateNamePlateObjectArray;
+	m_game.NamePlateObject_Size = GameCode::NamePlateObjectSize;
+	m_game.NamePlateObject_NameText = GameCode::NamePlateObjectNameText;
+	m_game.NamePlateObjectCount = GameCode::NamePlateObjectCount;
+	m_game.pfnAtkTextNodeToggleFontCache = reinterpret_cast<void*>(text.Scan(GameCode::AtkTextNodeToggleFontCacheSignature));
+	m_game.AtkTextNode_FontCacheFlags = GameCode::AtkTextNodeFontCacheFlags;
+	m_game.UseFontCacheFlag = GameCode::UseFontCacheFlag;
+	const std::vector<uint64_t> tableAddresses{
+		text.GetStaticAddress(GameCode::FontTablesSignature, GameCode::GameTableOffset),
+		text.GetStaticAddress(GameCode::FontTablesSignature, GameCode::LobbyTableAOffset),
+		text.GetStaticAddress(GameCode::FontTablesSignature, GameCode::LobbyTableBOffset),
+	};
+	static_assert(sizeof(FontSetInGame::Face) == GameCode::FontTableEntrySize);
 
 	// The tables as the executable has them; their pointers are of the executable's preferred base.
 	const auto& dosHeader = *reinterpret_cast<const IMAGE_DOS_HEADER*>(exe.data());

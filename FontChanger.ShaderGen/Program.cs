@@ -18,6 +18,8 @@ namespace FontChanger.ShaderGen;
 /// Usage: FontChanger.ShaderGen &lt;FontEdgePS.hlsl&gt; &lt;output .cso&gt;, or FontChanger.ShaderGen --write-include
 /// &lt;FontEdgeSquares.hlsli&gt;. The completed source and listing go next to the output (.hlsl, .asm). Compile errors go
 /// to stderr in the "file(line,col): error" form, and the exit code is 1.
+/// FontChanger.ShaderGen --subpixel &lt;FontSubpixelPS.hlsl&gt; &lt;output .cso&gt; [--highlight] compiles the subpixel
+/// text shader (with HIGHLIGHT defined), checking its settings' patching (SubpixelShaderCode) the same way.
 /// </remarks>
 internal static class Program
 {
@@ -37,10 +39,14 @@ internal static class Program
             return 0;
         }
 
+        if (args.Length is 3 or 4 && args[0] == "--subpixel" && (args.Length == 3 || args[3] == "--highlight"))
+            return CompileSubpixel(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), args.Length == 4);
+
         if (args.Length != 2)
         {
             Console.Error.WriteLine("usage: FontChanger.ShaderGen <FontEdgePS.hlsl> <output .cso>");
             Console.Error.WriteLine("       FontChanger.ShaderGen --write-include <FontEdgeSquares.hlsli>");
+            Console.Error.WriteLine("       FontChanger.ShaderGen --subpixel <FontSubpixelPS.hlsl> <output .cso> [--highlight]");
             return 2;
         }
 
@@ -82,6 +88,59 @@ internal static class Program
             return 1;
         }
 
+        File.WriteAllBytes(outputPath, code);
+        File.WriteAllText(Path.ChangeExtension(outputPath, ".asm"), D3DCompiler.Disassemble(code));
+        return 0;
+    }
+
+    /// <summary>Compiles FontSubpixelPS.hlsl, and checks that patching its ClearTypeLevel and Contrast gives what compiling with them does.</summary>
+    private static int CompileSubpixel(string sourcePath, string outputPath, bool highlight)
+    {
+        const string levelDeclaration = "static const float ClearTypeLevel = 0.234567891f;";
+        const string contrastDeclaration = "static const float Contrast = 0.345678912f;";
+        const float testLevel = 0.75f;
+        const float testContrast = 1.25f;
+
+        var source = File.ReadAllText(sourcePath).Replace("\r\n", "\n");
+        if (highlight)
+            source = "#define HIGHLIGHT\n#line 1\n" + source;
+        if (!D3DCompiler.Compile(Encoding.UTF8.GetBytes(source), sourcePath, "main", "ps_5_0", out var code, out var messages))
+        {
+            Console.Error.WriteLine(messages);
+            return 1;
+        }
+
+        if (messages.Length > 0)
+            Console.WriteLine(messages);
+        if (!source.Contains(levelDeclaration, StringComparison.Ordinal) || !source.Contains(contrastDeclaration, StringComparison.Ordinal))
+        {
+            Console.Error.WriteLine($"{sourcePath}: error: the lines {levelDeclaration} and {contrastDeclaration} are needed.");
+            return 1;
+        }
+
+        var patched = (byte[])code.Clone();
+        if (CustomFonts.EdgeShaderCode.PatchConstants(patched, [(CustomFonts.SubpixelShaderCode.ClearTypeLevelSentinel, testLevel), (CustomFonts.SubpixelShaderCode.ContrastSentinel, testContrast)]) < 2)
+        {
+            Console.Error.WriteLine($"{sourcePath}: error: ClearTypeLevel and Contrast aren't both immediate operands in the bytecode.");
+            return 1;
+        }
+
+        var withTest = source
+                       .Replace(levelDeclaration, $"static const float ClearTypeLevel = {testLevel.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal)
+                       .Replace(contrastDeclaration, $"static const float Contrast = {testContrast.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal);
+        if (!D3DCompiler.Compile(Encoding.UTF8.GetBytes(withTest), sourcePath, "main", "ps_5_0", out var expected, out messages))
+        {
+            Console.Error.WriteLine($"{sourcePath}: error: compiling with the test values failed: {messages}");
+            return 1;
+        }
+
+        if (!patched.AsSpan().SequenceEqual(expected))
+        {
+            Console.Error.WriteLine($"{sourcePath}: error: patching the settings differs from compiling with them ({patched.Length} and {expected.Length} bytes).");
+            return 1;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         File.WriteAllBytes(outputPath, code);
         File.WriteAllText(Path.ChangeExtension(outputPath, ".asm"), D3DCompiler.Disassemble(code));
         return 0;
