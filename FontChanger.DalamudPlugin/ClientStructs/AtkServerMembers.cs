@@ -1,4 +1,4 @@
-// What subpixel text needs of the game that FFXIVClientStructs doesn't have, written as it would be there, to be contributed:
+// What the plugin needs of AtkServer that FFXIVClientStructs doesn't have, written as it would be there, to be contributed:
 // AtkServer members (FFXIV/Component/GUI/AtkServer.cs) and the state AtkServer.SetDrawState takes.
 
 using System.Runtime.CompilerServices;
@@ -24,6 +24,12 @@ internal unsafe struct AtkServerMembers
     /// shader and its pixel shader, or PrimitiveUIMaskPS if <c>alternate</c> (a masked draw).
     /// </summary>
     public const string BindShadersSignature = "48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 57 48 83 EC 20 65 48 8B 04 25 58 00 00 00 41 0F B6 F0 44 8B 0D ?? ?? ?? ?? 48 8B D9 8B EA";
+
+    /// <summary>
+    /// <c>[MemberFunction]</c> of <c>bool LoadShaders()</c>: loads the UI's shaders, making their Kernel shaders anew (at
+    /// startup, and when the UI's shaders and fonts are reloaded).
+    /// </summary>
+    public const string LoadShadersSignature = "48 89 5C 24 18 48 89 7C 24 20 55 48 8B EC 48 83 EC 30 45 33 C0 48 8B D9 48 8D 4D 18";
 
     /// <summary>Set while drawing into a render texture (nameplate bakes) instead of the back buffer.</summary>
     [FieldOffset(0x8670)] public bool IsRenderingToTexture;

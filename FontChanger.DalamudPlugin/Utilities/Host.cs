@@ -5,19 +5,13 @@ using TerraFX.Interop.DirectX;
 namespace CustomFonts;
 
 /// <summary>
-/// What the font replacement needs from what loads it into the game (Dalamud here; XivAlexander for a port): the game's
-/// executable, hooks, textures the game can bind, the folder of its own files, and a log. Nothing else of the host is
-/// used outside the plugin's UI.
+/// What the font replacement needs from what loads it into the game (Dalamud here; XivAlexander for a port): a signature
+/// scanner over the game's code, hooks, textures the game can bind, the folder of its own files, and a log. Nothing else
+/// of the host is used outside the plugin's UI.
 /// </summary>
 internal interface IHost
 {
     IHostLog Log { get; }
-
-    /// <summary>Gets the path of the game's executable.</summary>
-    string GameFileName { get; }
-
-    /// <summary>Gets where the game's executable is loaded.</summary>
-    nint GameBaseAddress { get; }
 
     /// <summary>Gets the folder of the plugin's own files (native libraries).</summary>
     string AssemblyDirectory { get; }
@@ -27,6 +21,12 @@ internal interface IHost
     /// if it starts with E8 or E9. Throws if it isn't found.
     /// </summary>
     nint ScanText(string signature);
+
+    /// <summary>
+    /// Finds a static address as FFXIVClientStructs' <c>[StaticAddress]</c> and <c>[VirtualTable]</c> do: the target of
+    /// the rel32 at <paramref name="offset"/> in the signature's match. Throws if it isn't found.
+    /// </summary>
+    nint GetStaticAddress(string signature, int offset);
 
     /// <summary>Makes a hook of a game function, disabled until <see cref="IHostHook{T}.Enable"/>.</summary>
     IHostHook<T> Hook<T>(nint address, T detour)

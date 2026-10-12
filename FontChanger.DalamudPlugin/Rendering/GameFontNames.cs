@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 
+using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
+
 namespace CustomFonts;
 
 /// <summary>
@@ -15,7 +17,6 @@ namespace CustomFonts;
 /// </remarks>
 internal static unsafe class GameFontNames
 {
-    private static int entryCount;
     private static string[]? gameNames;
     private static string[]? lobbyNamesA;
     private static string[]? lobbyNamesB;
@@ -26,23 +27,9 @@ internal static unsafe class GameFontNames
     /// <summary>Reads the tables. Throws if they can't be found.</summary>
     public static void Initialize()
     {
-        nint lobbyA = 0, lobbyB = 0, game = 0;
-        int entrySize = 0, fdtName = 0;
-        GameLayout.Resolve("Naming the game's fonts", () =>
-        {
-            entryCount = GameLayout.Get("FontTable.Count");
-
-            entrySize = GameLayout.Get("FontTableEntry");
-            fdtName = GameLayout.Get("FontTableEntry.FdtName");
-            lobbyA = GameLayout.Address("FontTables", "LobbyTableA");
-            lobbyB = GameLayout.Address("FontTables", "LobbyTableB");
-            game = GameLayout.Address("FontTables", "GameTable");
-            GameUi.ResolveResourceHandles();
-        });
-
-        lobbyNamesA = Read(lobbyA, entrySize, fdtName);
-        lobbyNamesB = Read(lobbyB, entrySize, fdtName);
-        gameNames = Read(game, entrySize, fdtName);
+        lobbyNamesA = Read(GameFontTables.LobbyTableA());
+        lobbyNamesB = Read(GameFontTables.LobbyTableB());
+        gameNames = Read(GameFontTables.GameTable());
         Families = gameNames.Select(Preset.FamilyOf).Where(f => f.Length != 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
@@ -62,7 +49,7 @@ internal static unsafe class GameFontNames
         if (gameNames is null || manager is null || manager->Fonts is null)
             return null;
         var index = manager->IndexOf(font);
-        var count = Math.Min((int)manager->FontCount, entryCount);
+        var count = Math.Min((int)manager->FontCount, GameFontTables.EntryCount);
         if (index < 0 || index >= count)
             return null;
         return IsLobby(font) ? LobbyNames(manager, count)[index] : gameNames[index];
@@ -74,7 +61,7 @@ internal static unsafe class GameFontNames
         var manager = GameFontManager.Instance();
         if (gameNames is null || manager is null || manager->Fonts is null)
             return null;
-        var count = Math.Min((int)manager->FontCount, entryCount);
+        var count = Math.Min((int)manager->FontCount, GameFontTables.EntryCount);
         string[]? lobbyNames = null;
         for (var i = 0; i < count; i++)
         {
@@ -109,19 +96,19 @@ internal static unsafe class GameFontNames
     private static bool IsLobby(GameFont* font)
     {
         var handle = font->GetTextureResourceHandle(0);
-        return handle != 0 && GameUi.GetFileName(handle).Contains("font_lobby", StringComparison.OrdinalIgnoreCase);
+        return handle != 0 && GameUi.GetFileName((ResourceHandle*)handle).Contains("font_lobby", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Gets the size of a game font by its name (FontChanger.FixedSizeFont's data/game_fonts.json); 0 if it isn't one.</summary>
     private static float SizeOf(string name) => GameFonts.Find(name)?.Size ?? 0;
 
     /// <summary>Reads a table's FDT names as face names: without the extension, nor the lobby suffix.</summary>
-    private static string[] Read(nint table, int entrySize, int fdtNameOffset)
+    private static string[] Read(GameFontTableEntry* table)
     {
-        var names = new string[entryCount];
-        for (var i = 0; i < entryCount; i++)
+        var names = new string[GameFontTables.EntryCount];
+        for (var i = 0; i < GameFontTables.EntryCount; i++)
         {
-            var name = Marshal.PtrToStringUTF8(*(nint*)(table + (i * entrySize) + fdtNameOffset)) ?? string.Empty;
+            var name = Marshal.PtrToStringUTF8((nint)table[i].FdtName) ?? string.Empty;
             if (name.EndsWith(".fdt", StringComparison.OrdinalIgnoreCase))
                 name = name[..^4];
             if (name.EndsWith("_lobby", StringComparison.OrdinalIgnoreCase))

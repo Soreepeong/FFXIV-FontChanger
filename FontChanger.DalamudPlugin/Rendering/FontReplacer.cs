@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 
+using FFXIVClientStructs.FFXIV.Component.GUI;
+
 namespace CustomFonts;
 
 /// <summary>
@@ -20,9 +22,16 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     private const int SlotBlockSize = 1024;
 
+    // AtkResNode.Type of the first component node type; those after are components too.
+    private const ushort FirstComponentNodeType = 1000;
+
     // When the atlas is full, a plane is emptied of glyphs not drawn this recently, at most this often.
     private const long KeepDrawnMs = 2000;
     private const long EvictIntervalMs = 1000;
+
+    // What LayOutCharacter lays out a character a font has no glyph of as, in order of preference (packed UTF-8 values):
+    // U+3013, '-', U+3400.
+    private static readonly uint[] MissingGlyphSubstitutes = [0xE38093, 0x2D, 0xE39080];
 
     private readonly IHostHook<PickFontDelegate> pickFontHook;
     private readonly IHostHook<GetGlyphDelegate> getGlyphHook;
@@ -35,27 +44,11 @@ internal sealed unsafe class FontReplacer : IDisposable
     [ThreadStatic]
     private static LayoutContext current;
 
-    // The italic bit of the layout state's flags, and of GameFontSet.DrawFlags (which the text node's italics go to only
-    // when drawing; the italic macro sets the copy's); the offsets of both flags, -1 if unknown (italics are left sheared).
-    private uint stateItalicFlag;
-    private uint setItalicFlag;
-    private int stateFlagsOffset = -1;
-    private int setFlagsOffset = -1;
-
-    // What LayOutCharacter lays out a character a font has no glyph of as, in order of preference (packed UTF-8 values).
-    private int[] missingGlyphSubstitutes = [];
-
     // A glyph of no width: the characters of a shaped cluster after its first.
     private GlyphSlot* emptyGlyph;
-    private readonly delegate* unmanaged<nint, void> freeFontCache;
-    private nint rendererVtbl;
-    private nint renderCountVtbl;
-
-    // AtkTextNode: the node's entry in the font manager's caches, 0 for none; the byte of its cache flags, and the flag
-    // that asks for a cache (ToggleFontCache).
-    private int fontCacheSlotOffset;
-    private int fontCacheFlagsOffset;
-    private byte useFontCacheFlag;
+    private readonly delegate* unmanaged<AtkTextNode*, void> freeFontCache;
+    private readonly nint rendererVtbl;
+    private readonly nint renderCountVtbl;
 
     // The glyphs made: blocks of slots the game reads them from (they must not move), and what is kept of each, by its
     // slot's id.
@@ -95,40 +88,15 @@ internal sealed unsafe class FontReplacer : IDisposable
     {
         try
         {
-            // The game's functions, and the layouts of what they use.
-            nint pickFont = 0, getGlyph = 0, layOutCharacter = 0, buildFontCache = 0, freeFontCache = 0, buildFont = 0;
-            GameLayout.Resolve("Font replacement", () =>
-            {
-                GameFontStructs.Resolve();
-                GameUi.ResolveUnits();
-                GameUi.ResolveTextures();
-                pickFont = GameLayout.Address("PickFont");
-                getGlyph = GameLayout.Address("GetGlyph");
-                layOutCharacter = GameLayout.Address("LayOutCharacter");
-                buildFontCache = GameLayout.Address("BuildFontCache");
-                freeFontCache = GameLayout.Address("FreeFontCache");
-                buildFont = GameLayout.Address("BuildFont");
-                this.rendererVtbl = GameLayout.Address("FontAnalyzerVtables", "AtkFontAnalyzerRenderer.Vtable");
-                this.renderCountVtbl = GameLayout.Address("FontAnalyzerVtables", "AtkFontAnalyzerRenderCount.Vtable");
-                this.fontCacheSlotOffset = GameLayout.Get("AtkTextNode.FontCacheSlot");
-                this.fontCacheFlagsOffset = GameLayout.Get("AtkTextNode.FontCacheFlags");
-                this.useFontCacheFlag = (byte)GameLayout.Get("AtkTextNode.FontCacheFlags.UseFontCache");
-                this.missingGlyphSubstitutes = GameLayout.GetList("LayOutCharacter.MissingGlyphSubstitutes");
-
-                // Optional: without them, italics are the game's shear.
-                this.stateFlagsOffset = GameLayout.TryGet("FontAnalyzerState.Flags") ?? -1;
-                this.setFlagsOffset = GameLayout.TryGet("GameFontSet.DrawFlags") ?? -1;
-                this.stateItalicFlag = (uint)GameLayout.Get("FontAnalyzerState.Flags.Italic");
-                this.setItalicFlag = (uint)GameLayout.Get("GameFontSet.DrawFlags.Italic");
-
-                // The functions found call each other.
-                if (getGlyph != 0 && layOutCharacter != 0 && GameLayout.Address("LayOutCharacter", "GetGlyph") != getGlyph)
-                    throw new InvalidOperationException("LayOutCharacter doesn't call the GetGlyph found.");
-                if (buildFontCache != 0 && freeFontCache != 0 && GameLayout.Match("ToggleFontCache") is { } toggle
-                    && (toggle.Target("BuildFontCache") != buildFontCache || toggle.Target("FreeFontCache") != freeFontCache))
-                    throw new InvalidOperationException("ToggleFontCache doesn't call the BuildFontCache and FreeFontCache found.");
-            });
-            ClientStructsCheck.Run();
+            var host = Host.Current;
+            var pickFont = host.ScanText(GameFontSet.PickFontSignature);
+            var getGlyph = host.ScanText(GameFontSet.GetGlyphSignature);
+            var layOutCharacter = host.ScanText(AtkFontAnalyzerMembers.LayOutCharacterSignature);
+            var buildFontCache = host.ScanText(AtkTextNodeMembers.BuildFontCacheSignature);
+            var freeFontCache = host.ScanText(AtkTextNodeMembers.FreeFontCacheSignature);
+            var buildFont = host.ScanText(GameFontManager.BuildFontSignature);
+            this.rendererVtbl = host.GetStaticAddress(AtkFontAnalyzerMembers.VirtualTablesSignature, AtkFontAnalyzerMembers.RendererVirtualTableOffset);
+            this.renderCountVtbl = host.GetStaticAddress(AtkFontAnalyzerMembers.VirtualTablesSignature, AtkFontAnalyzerMembers.RenderCountVirtualTableOffset);
             GlyphAtlas.FirstTextureIndex = GameFontTables.GetMaxTextureCount();
 
             this.rasterizer = new();
@@ -147,8 +115,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             this.emptyGlyph->Glyph.Packed = GameGlyph.Pack(0, 0, 0, GlyphAtlas.FirstTextureIndex);
             this.emptyGlyph->Id = -1;
             this.shaper = new(this.rasterizer, this);
-            this.freeFontCache = (delegate* unmanaged<nint, void>)freeFontCache;
-            var host = Host.Current;
+            this.freeFontCache = (delegate* unmanaged<AtkTextNode*, void>)freeFontCache;
             this.pickFontHook = host.Hook<PickFontDelegate>(pickFont, this.PickFontDetour);
             this.getGlyphHook = host.Hook<GetGlyphDelegate>(getGlyph, this.GetGlyphDetour);
             this.buildFontCacheHook = host.Hook<FontCacheDelegate>(buildFontCache, this.BuildFontCacheDetour);
@@ -174,11 +141,11 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     private delegate GameGlyph* GetGlyphDelegate(GameFontSet* set, uint utf8Value, GameFont* font);
 
-    private delegate void FontCacheDelegate(nint node);
+    private delegate void FontCacheDelegate(AtkTextNode* node);
 
-    private delegate nint LayOutCharacterDelegate(nint analyzer, byte** text, nint state);
+    private delegate nint LayOutCharacterDelegate(nint analyzer, byte** text, AtkFontAnalyzerState* state);
 
-    private delegate int BuildFontDelegate(nint manager, ushort index);
+    private delegate int BuildFontDelegate(GameFontManager* manager, ushort index);
 
     /// <summary>Gets the shaper, which also finds line breaks.</summary>
     public TextShaper Shaper => this.shaper;
@@ -548,7 +515,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// only fit the copy of their size, and a copy's glyphs must not outlive the plugin, so while the replacement is on
     /// nodes get no cache: their text is laid out at each draw, as for nodes that never asked for one.
     /// </summary>
-    private void BuildFontCacheDetour(nint node)
+    private void BuildFontCacheDetour(AtkTextNode* node)
     {
         if (this.enabled)
             this.freeFontCache(node);
@@ -562,38 +529,38 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     private void UpdateFontCaches()
     {
-        foreach (var uld in GameUi.GetLoadedUnitUlds())
-            this.UpdateFontCaches(uld, 0);
+        foreach (var unit in GameUi.GetLoadedUnits())
+            this.UpdateFontCaches(&((AtkUnitBase*)unit)->UldManager, 0);
     }
 
-    private void UpdateFontCaches(nint uld, int depth)
+    private void UpdateFontCaches(AtkUldManager* uld, int depth)
     {
-        if (depth > 16)
+        if (depth > 16 || uld->NodeList is null)
             return;
-        var count = GameUi.GetNodeCount(uld);
-        for (var i = 0; i < count; i++)
+        for (var i = 0; i < uld->NodeListCount; i++)
         {
-            var node = GameUi.GetNode(uld, i);
-            if (node == 0)
+            var node = uld->NodeList[i];
+            if (node is null)
                 continue;
-            var type = GameUi.GetNodeType(node);
-            if (type == GameUi.TextNodeType)
+            var type = (ushort)node->Type;
+            if (type == (ushort)NodeType.Text)
             {
+                var text = (AtkTextNode*)node;
                 if (this.enabled)
                 {
-                    if (*(ushort*)(node + this.fontCacheSlotOffset) != 0)
-                        this.freeFontCache(node);
+                    if (text->FontCacheHandle != 0)
+                        this.freeFontCache(text);
                 }
-                else if ((*(byte*)(node + this.fontCacheFlagsOffset) & this.useFontCacheFlag) != 0)
+                else if ((text->TextFlags & TextFlags.FontCache) != 0)
                 {
-                    this.buildFontCacheHook.Original(node);
+                    this.buildFontCacheHook.Original(text);
                 }
             }
-            else if (type >= GameUi.FirstComponentNodeType)
+            else if (type >= FirstComponentNodeType)
             {
-                var componentUld = GameUi.GetComponentUld(node);
-                if (componentUld != 0)
-                    this.UpdateFontCaches(componentUld, depth + 1);
+                var component = ((AtkComponentNode*)node)->Component;
+                if (component is not null)
+                    this.UpdateFontCaches(&component->UldManager, depth + 1);
             }
         }
     }
@@ -602,14 +569,13 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// The game built a font again in place (a reload, a switch between the lobby's fonts and the game's), freeing the
     /// glyph map and glyphs its copies borrow: they take them again, with the face of the font's name now.
     /// </summary>
-    private int BuildFontDetour(nint manager, ushort index)
+    private int BuildFontDetour(GameFontManager* manager, ushort index)
     {
         var result = this.buildFontHook.Original(manager, index);
         try
         {
-            var fonts = (GameFontManager*)manager;
-            if (index < fonts->FontCount)
-                this.OnFontBuilt(fonts->Font(index));
+            if (index < manager->FontCount)
+                this.OnFontBuilt(manager->Font(index));
         }
         catch (Exception ex)
         {
@@ -690,7 +656,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         }
     }
 
-    private nint LayOutCharacterDetour(nint analyzer, byte** text, nint state)
+    private nint LayOutCharacterDetour(nint analyzer, byte** text, AtkFontAnalyzerState* state)
     {
         var outer = current;
         var vtbl = *(nint*)analyzer;
@@ -708,7 +674,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         {
             // The italic macro reads the bit when italics end (the glyph after moves by the font's italic correction).
             if (current.ItalicCleared)
-                *(uint*)(state + this.stateFlagsOffset) |= this.stateItalicFlag;
+                state->Flags |= AtkFontAnalyzerState.FlagsItalic;
             current = outer;
         }
     }
@@ -719,9 +685,9 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     private ItalicMode GetItalicMode(GameFontSet* set)
     {
-        if (this.stateFlagsOffset < 0 || current.State == 0 || (*(uint*)(current.State + this.stateFlagsOffset) & this.stateItalicFlag) == 0)
+        if (current.State is null || (current.State->Flags & AtkFontAnalyzerState.FlagsItalic) == 0)
             return ItalicMode.Upright;
-        return set is not null && this.setFlagsOffset >= 0 && (*(uint*)((byte*)set + this.setFlagsOffset) & this.setItalicFlag) != 0
+        return set is not null && (set->DrawFlags & GameFontSet.DrawFlagsItalic) != 0
                    ? ItalicMode.Images
                    : ItalicMode.Real;
     }
@@ -736,11 +702,11 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     private GameGlyph* GetMissingGlyph(GameFontSet* set, uint utf8Value, GameFont* font)
     {
-        foreach (var substitute in this.missingGlyphSubstitutes)
+        foreach (var substitute in MissingGlyphSubstitutes)
         {
-            if (utf8Value == (uint)substitute)
+            if (utf8Value == substitute)
                 return null;
-            var glyph = this.GetGlyphDetour(set, (uint)substitute, font);
+            var glyph = this.GetGlyphDetour(set, substitute, font);
             if (glyph is not null)
                 return glyph;
         }
@@ -770,7 +736,7 @@ internal sealed unsafe class FontReplacer : IDisposable
                     // (the quad emitter runs after this lookup), and set again after (LayOutCharacterDetour).
                     if (italic != ItalicMode.Upright && ((GlyphSlot*)shaped)->Id >= 0 && this.CellOf(shaped).RealItalic)
                     {
-                        *(uint*)(current.State + this.stateFlagsOffset) &= ~this.stateItalicFlag;
+                        current.State->Flags &= ~AtkFontAnalyzerState.FlagsItalic;
                         current.ItalicCleared = true;
                     }
 
@@ -955,7 +921,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (this.copiesByKey.TryGetValue(((nint)original, halfPx), out var existing))
             return (GameFont*)existing;
 
-        var copy = (GameFont*)NativeMemory.Alloc((nuint)GameFont.StructSize);
+        var copy = (GameFont*)NativeMemory.Alloc((nuint)sizeof(GameFont));
         var info = new CopyInfo((nint)original, halfPx, this.GetSized(original, halfPx));
         this.Sync(copy, info);
         this.copies.Add((nint)copy, info);
@@ -1331,7 +1297,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     {
         public nint Character;
         public bool MeasuringOnly;
-        public nint State;
+        public AtkFontAnalyzerState* State;
         public bool ItalicCleared;
     }
 

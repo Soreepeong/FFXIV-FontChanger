@@ -11,9 +11,6 @@
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <EmbeddedResource Include="..\xivres\data\game_font_signatures.json" LogicalName="CustomFonts.game_font_signatures.json" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\FontChanger.Presets\FontChanger.Presets.csproj" />
     <Using Include="FontChanger.Presets" />
   </ItemGroup>

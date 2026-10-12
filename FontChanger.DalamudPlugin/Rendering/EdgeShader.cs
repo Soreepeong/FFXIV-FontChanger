@@ -1,6 +1,10 @@
 using System;
 using System.IO;
 
+using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
+using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
+using FFXIVClientStructs.FFXIV.Component.GUI;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
@@ -11,20 +15,16 @@ namespace CustomFonts;
 /// any width, set per font by the texture width it claims.
 /// </summary>
 /// <remarks>
-/// The UI's font shaders are indexed by a draw command's pass (5 is the edge); the ID3D11PixelShader inside the edge's is
-/// swapped, with the same input signature and bindings (t0, s0). The game makes them again only in LoadShaders, which puts the plugin's back.
+/// The UI's font shaders are indexed by a draw command's pass (<see cref="AtkServerShaderPass.FontEdge"/>); the
+/// ID3D11PixelShader inside the edge's is swapped, with the same input signature and bindings (t0, s0). The game makes
+/// them again only in LoadShaders, which puts the plugin's back.
 /// </remarks>
 internal sealed unsafe class EdgeShader : IDisposable
 {
-    // The edge pass and its pixel shader, reached through AtkModule, AtkServer and Kernel::PixelShader; resolved at the first use.
+    private const string ShaderFile = "FontEdgePS.shcd";
+
+    // The game's LoadShaders, hooked at the first use.
     private bool resolved;
-    private int edgePass;
-    private string shaderFile = string.Empty;
-    private int moduleFontManager;
-    private int moduleServer;
-    private int pixelShaderFiles;
-    private int pixelShaders;
-    private int d3dShader;
 
     private IHostHook<LoadShadersDelegate>? loadShadersHook;
     private ID3D11PixelShader* shader;
@@ -32,10 +32,10 @@ internal sealed unsafe class EdgeShader : IDisposable
     private bool used;
 
     // The Kernel::PixelShader patched, and the game's ID3D11PixelShader it had.
-    private nint patchedObject;
+    private PixelShader* patchedObject;
     private ID3D11PixelShader* original;
 
-    private delegate byte LoadShadersDelegate(nint server);
+    private delegate byte LoadShadersDelegate(AtkServer* server);
 
     /// <summary>
     /// Uses the plugin's shader (its radius comes from each font's claimed texture width) with an edge softness, or the
@@ -52,20 +52,7 @@ internal sealed unsafe class EdgeShader : IDisposable
 
         if (!this.resolved)
         {
-            nint loadShaders = 0;
-            GameLayout.Resolve("The edge shader", () =>
-            {
-                GameFontManager.Resolve();
-                GameUi.ResolveResourceHandles();
-                this.edgePass = GameLayout.Get("AtkServer.EdgePass");
-                this.shaderFile = GameLayout.GetString("AtkServer.EdgePixelShaderFile");
-                loadShaders = GameLayout.Address("AtkModuleReloadFontShaders", "AtkServer.LoadShaders");
-                this.moduleFontManager = GameLayout.Get("AtkModule.AtkFontManager");
-                this.moduleServer = GameLayout.Get("AtkModule.AtkServer");
-                this.pixelShaderFiles = GameLayout.Get("AtkServer.PixelShaderFiles");
-                this.pixelShaders = GameLayout.Get("AtkServer.PixelShaders");
-                this.d3dShader = GameLayout.Get("Kernel.PixelShader.D3DShader");
-            });
+            var loadShaders = Host.Current.ScanText(AtkServerMembers.LoadShadersSignature);
             this.loadShadersHook = Host.Current.Hook<LoadShadersDelegate>(loadShaders, this.LoadShadersDetour);
             this.loadShadersHook.Enable();
             this.resolved = true;
@@ -90,25 +77,25 @@ internal sealed unsafe class EdgeShader : IDisposable
     /// <summary>Makes the shader on the device of the game's; false while the game hasn't loaded its edge shader.</summary>
     private bool CreateFromGame()
     {
-        var target = this.GetEdgeShaderObject(true);
-        if (target == 0)
+        var target = GetEdgeShaderObject(true);
+        if (target is null)
             return false;
-        this.shader = Create(*(ID3D11PixelShader**)(target + this.d3dShader), this.softness);
+        this.shader = Create((ID3D11PixelShader*)target->DirectXObject, this.softness);
         return true;
     }
 
     /// <summary>Puts the shader in place, if it isn't.</summary>
     private void Install()
     {
-        var target = this.GetEdgeShaderObject(true);
-        if (target == 0 || (target == this.patchedObject && *(ID3D11PixelShader**)(target + this.d3dShader) == this.shader))
+        var target = GetEdgeShaderObject(true);
+        if (target is null || (target == this.patchedObject && target->DirectXObject == this.shader))
             return;
 
         // The game's object owns a reference to what it binds: it gets one of the plugin's shader.
         this.patchedObject = target;
-        this.original = *(ID3D11PixelShader**)(target + this.d3dShader);
+        this.original = (ID3D11PixelShader*)target->DirectXObject;
         this.shader->AddRef();
-        *(ID3D11PixelShader**)(target + this.d3dShader) = this.shader;
+        target->DirectXObject = this.shader;
     }
 
     public void Dispose()
@@ -123,35 +110,37 @@ internal sealed unsafe class EdgeShader : IDisposable
     }
 
     /// <summary>
-    /// Gets the Kernel::PixelShader of the edge pass, if <paramref name="check"/> only if it is made from FontEdgePS; 0
+    /// Gets the Kernel::PixelShader of the edge pass, if <paramref name="check"/> only if it is made from FontEdgePS; null
     /// if it isn't there.
     /// </summary>
-    private nint GetEdgeShaderObject(bool check)
+    private static PixelShader* GetEdgeShaderObject(bool check)
     {
+        // The AtkModule the font manager is embedded in.
         var fontManager = GameFontManager.Instance();
-        var server = fontManager is null ? 0 : *(nint*)((nint)fontManager - this.moduleFontManager + this.moduleServer);
-        if (server == 0)
-            return 0;
-        var file = *(nint*)(server + this.pixelShaderFiles + (this.edgePass * 8));
-        if (check && (file == 0 || !GameUi.GetFileName(file).EndsWith(this.shaderFile, StringComparison.OrdinalIgnoreCase)))
-            return 0;
-        return *(nint*)(server + this.pixelShaders + (this.edgePass * 8));
+        var module = fontManager is null ? null : (AtkModule*)((byte*)fontManager - (nint)(&((AtkModule*)null)->AtkFontManager));
+        var server = module is null ? null : module->AtkServer;
+        if (server is null)
+            return null;
+        var file = (ResourceHandle*)server->FontEdgePSResource;
+        if (check && (file is null || !GameUi.GetFileName(file).EndsWith(ShaderFile, StringComparison.OrdinalIgnoreCase)))
+            return null;
+        return server->FontEdgePS;
     }
 
     /// <summary>
     /// The game made its shaders again (a reload of the UI's shaders and fonts), letting go of the patched object: the
     /// plugin's shader goes in the new one. The game's shader the old one had is the plugin's to release.
     /// </summary>
-    private byte LoadShadersDetour(nint server)
+    private byte LoadShadersDetour(AtkServer* server)
     {
         var result = this.loadShadersHook!.Original(server);
         try
         {
-            if (this.patchedObject != 0 && this.GetEdgeShaderObject(false) != this.patchedObject)
+            if (this.patchedObject is not null && GetEdgeShaderObject(false) != this.patchedObject)
             {
                 if (this.original is not null)
                     this.original->Release();
-                this.patchedObject = 0;
+                this.patchedObject = null;
                 this.original = null;
             }
 
@@ -197,16 +186,15 @@ internal sealed unsafe class EdgeShader : IDisposable
     /// <summary>Gives the game its shader back, if the object still binds the plugin's.</summary>
     private void Restore()
     {
-        if (this.patchedObject == 0)
+        if (this.patchedObject is null)
             return;
-        var slot = (ID3D11PixelShader**)(this.patchedObject + this.d3dShader);
-        if (this.GetEdgeShaderObject(false) == this.patchedObject && *slot == this.shader)
+        if (GetEdgeShaderObject(false) == this.patchedObject && this.patchedObject->DirectXObject == this.shader)
         {
-            *slot = this.original;
+            this.patchedObject->DirectXObject = this.original;
             this.shader->Release();
         }
 
-        this.patchedObject = 0;
+        this.patchedObject = null;
         this.original = null;
     }
 }
