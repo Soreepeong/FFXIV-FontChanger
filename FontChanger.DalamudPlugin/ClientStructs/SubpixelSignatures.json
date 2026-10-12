@@ -1,5 +1,5 @@
 {
-	"comment": "Signatures and constants for subpixel text, in the format of xivres's data/game_font_signatures.json (see its comment); merged into it by CodeSignature (XivAlexander has the same file, merged by its GameLayout). Addresses are of 7.56h.",
+	"comment": "Signatures and constants for subpixel text, in the format of xivres's data/game_font_signatures.json (see its comment); merged after it by CodeSignature, and by XivAlexander's GameLayout. Addresses are of 7.56h.",
 	"constants": {
 		"AtkServer.TextPass": {
 			"value": 4,

@@ -13,11 +13,6 @@ namespace CustomFonts;
 /// <summary>Subpixel text settings: the stripe order, and Windows' ClearType level and enhanced contrast.</summary>
 internal readonly record struct SubpixelSettings
 {
-    private const uint SpiGetFontSmoothing = 0x004A;
-    private const uint SpiGetFontSmoothingType = 0x200A;
-    private const uint FeFontSmoothingClearType = 2;
-    private const uint MonitorDefaultToNearest = 2;
-
     public SubpixelSettings()
     {
     }
@@ -47,7 +42,7 @@ internal readonly record struct SubpixelSettings
         {
             var iid = IID.IID_IDWriteFactory;
             DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)&factory).ThrowOnError();
-            var monitor = window == 0 ? default : MonitorFromWindow((HWND)window, MonitorDefaultToNearest);
+            var monitor = window == 0 ? default : MonitorFromWindow((HWND)window, MONITOR.MONITOR_DEFAULTTONEAREST);
             if (monitor != default)
                 factory->CreateMonitorRenderingParams(monitor, &parameters).ThrowOnError();
             else
@@ -75,8 +70,8 @@ internal readonly record struct SubpixelSettings
         {
             case SubpixelMode.System:
                 uint smoothing = 0, type = 0;
-                if (!SystemParametersInfoW(SpiGetFontSmoothing, 0, &smoothing, 0) || smoothing == 0
-                    || !SystemParametersInfoW(SpiGetFontSmoothingType, 0, &type, 0) || type != FeFontSmoothingClearType)
+                if (!SystemParametersInfoW(SPI.SPI_GETFONTSMOOTHING, 0, &smoothing, 0) || smoothing == 0
+                    || !SystemParametersInfoW(SPI.SPI_GETFONTSMOOTHINGTYPE, 0, &type, 0) || type != FE_FONTSMOOTHINGCLEARTYPE)
                     return res;
                 return res with
                 {

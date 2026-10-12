@@ -1,6 +1,6 @@
 // FontPS/FontEmbossPS (FontHighlightPS with HIGHLIGHT) as the game has them on even-width textures; on odd-width subpixel pages, per-subpixel
 // coverage in Color.rgb and the text colour in Blend.rgb, for SubpixelText's SRC1_COLOR / INV_SRC_COLOR blend.
-// FontChanger.ShaderGen --subpixel compiles it (and with HIGHLIGHT defined); XivAlexander has the same file.
+// FontChanger.ShaderGen --subpixel compiles it, and with HIGHLIGHT defined; XivAlexander compiles it with fxc the same way.
 
 Texture2D g_TextureT : register(t0);
 SamplerState g_TextureS : register(s0);
