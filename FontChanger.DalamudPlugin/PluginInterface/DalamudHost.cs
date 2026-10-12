@@ -29,6 +29,8 @@ internal sealed class DalamudHost : IHost
 
     public string AssemblyDirectory { get; }
 
+    public nint ScanText(string signature) => Plugin.SigScanner.ScanText(signature);
+
     public IHostHook<T> Hook<T>(nint address, T detour)
         where T : Delegate =>
         new HookAdapter<T>(Plugin.GameInterop.HookFromAddress(address, detour));

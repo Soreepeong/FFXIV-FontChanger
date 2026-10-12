@@ -22,6 +22,12 @@ internal interface IHost
     /// <summary>Gets the folder of the plugin's own files (native libraries).</summary>
     string AssemblyDirectory { get; }
 
+    /// <summary>
+    /// Finds a signature in FFXIVClientStructs' form (hex bytes, ?? for any) in the game's code; a call's or jump's target
+    /// if it starts with E8 or E9. Throws if it isn't found.
+    /// </summary>
+    nint ScanText(string signature);
+
     /// <summary>Makes a hook of a game function, disabled until <see cref="IHostHook{T}.Enable"/>.</summary>
     IHostHook<T> Hook<T>(nint address, T detour)
         where T : Delegate;

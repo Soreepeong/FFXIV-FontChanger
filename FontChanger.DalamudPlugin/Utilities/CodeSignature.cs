@@ -17,9 +17,8 @@ namespace CustomFonts;
 /// match exactly once. Named groups capture what the code says: call targets, RIP-relative addresses, structure offsets.
 /// </summary>
 /// <remarks>
-/// The signatures are xivres's data/game_font_signatures.json, which XivAlexander uses too, embedded, with the plugin's own
-/// (SubpixelSignatures.json; a name in both is xivres's). The code is read from the game's executable rather than from
-/// memory, so hooks that other plugins placed don't hide it.
+/// The signatures are xivres's data/game_font_signatures.json, which XivAlexander uses too, embedded. The code is
+/// read from the game's executable rather than from memory, so hooks that other plugins placed don't hide it.
 /// </remarks>
 internal sealed class CodeSignature
 {
@@ -96,23 +95,18 @@ internal sealed class CodeSignature
     /// </summary>
     public static Dictionary<string, object> LoadConstants()
     {
+        using var document = OpenData();
         var constants = new Dictionary<string, object>();
-        foreach (var name in DataNames)
+        foreach (var p in document.RootElement.GetProperty("constants").EnumerateObject())
         {
-            using var document = OpenData(name);
-            foreach (var p in document.RootElement.GetProperty("constants").EnumerateObject())
+            var value = p.Value.GetProperty("value");
+            constants[p.Name] = value.ValueKind switch
             {
-                if (constants.ContainsKey(p.Name))
-                    continue;
-                var value = p.Value.GetProperty("value");
-                constants[p.Name] = value.ValueKind switch
-                {
-                    JsonValueKind.Number => value.GetInt32(),
-                    JsonValueKind.String => value.GetString()!,
-                    JsonValueKind.Array => value.EnumerateArray().Select(x => x.GetInt32()).ToArray(),
-                    _ => throw new InvalidDataException($"Constant {p.Name} is neither a number, a string nor an array."),
-                };
-            }
+                JsonValueKind.Number => value.GetInt32(),
+                JsonValueKind.String => value.GetString()!,
+                JsonValueKind.Array => value.EnumerateArray().Select(x => x.GetInt32()).ToArray(),
+                _ => throw new InvalidDataException($"Constant {p.Name} is neither a number, a string nor an array."),
+            };
         }
 
         return constants;
@@ -120,24 +114,14 @@ internal sealed class CodeSignature
 
     private static List<CodeSignature> Load()
     {
-        var signatures = new Dictionary<string, CodeSignature>();
-        foreach (var name in DataNames)
-        {
-            using var document = OpenData(name);
-            foreach (var p in document.RootElement.GetProperty("signatures").EnumerateObject())
-                signatures.TryAdd(p.Name, new(p.Name, p.Value));
-        }
-
-        return signatures.Values.ToList();
+        using var document = OpenData();
+        return document.RootElement.GetProperty("signatures").EnumerateObject().Select(p => new CodeSignature(p.Name, p.Value)).ToList();
     }
 
-    // In order of precedence.
-    private static readonly string[] DataNames = ["CustomFonts.game_font_signatures.json", "CustomFonts.SubpixelSignatures.json"];
-
-    private static JsonDocument OpenData(string name)
+    private static JsonDocument OpenData()
     {
-        using var stream = typeof(CodeSignature).Assembly.GetManifestResourceStream(name)
-                           ?? throw new InvalidOperationException($"{name} isn't embedded.");
+        using var stream = typeof(CodeSignature).Assembly.GetManifestResourceStream("CustomFonts.game_font_signatures.json")
+                           ?? throw new InvalidOperationException("The game's code signatures aren't embedded.");
         return JsonDocument.Parse(stream, new() { CommentHandling = JsonCommentHandling.Skip });
     }
 

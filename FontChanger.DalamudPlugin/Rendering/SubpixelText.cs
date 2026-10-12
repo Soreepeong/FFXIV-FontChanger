@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
+using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
+using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
+using FFXIVClientStructs.FFXIV.Component.GUI;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
@@ -107,11 +111,6 @@ internal sealed unsafe class SubpixelText : IDisposable
     private readonly List<PassShader> passes = [];
 
     private bool resolved;
-    private int pixelShaderFiles;
-    private int pixelShaders;
-    private int d3dShader;
-    private int textureWidth;
-    private int renderingToTexture;
 
     private IHostHook<BindShadersDelegate>? bindShadersHook;
     private IHostHook<SetDrawStateDelegate>? setDrawStateHook;
@@ -120,23 +119,23 @@ internal sealed unsafe class SubpixelText : IDisposable
     private SubpixelSettings settings = new();
 
     // From the last BindShaders.
-    private nint server;
-    private int pass = -1;
+    private AtkServer* server;
+    private AtkServerShaderPass pass = (AtkServerShaderPass)(-1);
     private bool alternate;
     private bool passActive;
 
     // The game's last state, forgotten at EndFrame as its texture may be gone by then.
-    private nint lastServer;
-    private DrawState lastState;
+    private AtkServer* lastServer;
+    private AtkServerDrawState lastState;
     private byte lastDivisor = 1;
     private bool lastSubpixelTexture;
     private uint stagedBlend;
     private bool hasState;
     private bool warnedBlend;
 
-    private delegate void BindShadersDelegate(nint server, int pass, byte alternate);
+    private delegate void BindShadersDelegate(AtkServer* server, AtkServerShaderPass pass, byte alternate);
 
-    private delegate void SetDrawStateDelegate(nint server, DrawState* state, byte divisor);
+    private delegate void SetDrawStateDelegate(AtkServer* server, AtkServerDrawState* state, byte divisor);
 
     /// <summary>Gets whether it is on, with the hooks in place. Framework thread.</summary>
     public bool Active => this.enabled;
@@ -202,27 +201,14 @@ internal sealed unsafe class SubpixelText : IDisposable
 
     private void Resolve()
     {
-        nint bindShaders = 0, setDrawState = 0;
-        var found = new List<PassShader>();
-        GameLayout.Resolve("Subpixel text", () =>
-        {
-            GameUi.ResolveResourceHandles();
-            bindShaders = GameLayout.Address("AtkServerBindFontShaders");
-            setDrawState = GameLayout.Address("AtkServerSetDrawState");
-            this.pixelShaderFiles = GameLayout.Get("AtkServer.PixelShaderFiles");
-            this.pixelShaders = GameLayout.Get("AtkServer.PixelShaders");
-            this.d3dShader = GameLayout.Get("Kernel.PixelShader.D3DShader");
-            this.textureWidth = GameLayout.Get("Kernel.Texture.Width");
-            this.renderingToTexture = GameLayout.Get("AtkServer.RenderingToTexture");
-            found.Add(new(GameLayout.Get("AtkServer.TextPass"), GameLayout.GetString("AtkServer.TextPixelShaderFile"), false));
-            found.Add(new(GameLayout.Get("AtkServer.HighlightPass"), GameLayout.GetString("AtkServer.HighlightPixelShaderFile"), true));
-            found.Add(new(GameLayout.Get("AtkServer.EmbossPass"), GameLayout.GetString("AtkServer.EmbossPixelShaderFile"), false));
-        });
-
+        var setDrawState = Host.Current.ScanText(AtkServerMembers.SetDrawStateSignature);
+        var bindShaders = Host.Current.ScanText(AtkServerMembers.BindShadersSignature);
         lock (this.sync)
         {
             this.passes.Clear();
-            this.passes.AddRange(found);
+            this.passes.Add(new(AtkServerShaderPass.Font, "FontPS.shcd", false));
+            this.passes.Add(new(AtkServerShaderPass.FontHighlight, "FontHighlightPS.shcd", true));
+            this.passes.Add(new(AtkServerShaderPass.FontEmboss, "FontEmbossPS.shcd", false));
         }
 
         this.setDrawStateHook = Host.Current.Hook<SetDrawStateDelegate>(setDrawState, this.SetDrawStateDetour);
@@ -232,7 +218,7 @@ internal sealed unsafe class SubpixelText : IDisposable
         this.resolved = true;
     }
 
-    private void BindShadersDetour(nint server, int pass, byte alternate)
+    private void BindShadersDetour(AtkServer* server, AtkServerShaderPass pass, byte alternate)
     {
         this.bindShadersHook!.Original(server, pass, alternate);
         lock (this.sync)
@@ -260,7 +246,7 @@ internal sealed unsafe class SubpixelText : IDisposable
                     var blend = this.Decide(server, this.lastState, this.lastSubpixelTexture);
                     if (blend != this.stagedBlend)
                     {
-                        var state = this.lastState with { Blend = blend };
+                        var state = this.lastState with { BlendStateValue = blend };
                         this.setDrawStateHook!.Original(server, &state, this.lastDivisor);
                         this.stagedBlend = blend;
                     }
@@ -276,7 +262,7 @@ internal sealed unsafe class SubpixelText : IDisposable
         }
     }
 
-    private void SetDrawStateDetour(nint server, DrawState* state, byte divisor)
+    private void SetDrawStateDetour(AtkServer* server, AtkServerDrawState* state, byte divisor)
     {
         uint blend;
         lock (this.sync)
@@ -284,54 +270,55 @@ internal sealed unsafe class SubpixelText : IDisposable
             this.lastServer = server;
             this.lastState = *state;
             this.lastDivisor = divisor;
-            this.lastSubpixelTexture = state->Texture != 0 && (*(uint*)(state->Texture + this.textureWidth) & 1) != 0;
+            this.lastSubpixelTexture = state->Texture is not null && (state->Texture->ActualWidth & 1) != 0;
             this.hasState = true;
             blend = this.Decide(server, *state, this.lastSubpixelTexture);
             this.stagedBlend = blend;
         }
 
-        if (blend == state->Blend)
+        if (blend == state->BlendStateValue)
         {
             this.setDrawStateHook!.Original(server, state, divisor);
             return;
         }
 
         // The caller batches later commands by comparing them with its state.
-        var original = state->Blend;
-        state->Blend = blend;
+        var original = state->BlendStateValue;
+        state->BlendStateValue = blend;
         this.setDrawStateHook!.Original(server, state, divisor);
-        state->Blend = original;
+        state->BlendStateValue = original;
     }
 
-    private uint Decide(nint server, in DrawState state, bool subpixelTexture)
+    private uint Decide(AtkServer* server, in AtkServerDrawState state, bool subpixelTexture)
     {
+        var value = state.BlendStateValue;
         if (!this.enabled || !this.passActive || this.alternate || !subpixelTexture)
-            return state.Blend;
+            return value;
 
-        if (GetFactor(state.Blend, SrcBlendShift) != (uint)D3D11_BLEND.D3D11_BLEND_SRC_ALPHA)
+        if (GetFactor(value, SrcBlendShift) != (uint)D3D11_BLEND.D3D11_BLEND_SRC_ALPHA)
         {
             if (!this.warnedBlend)
             {
                 this.warnedBlend = true;
-                Host.Log.Warning("Subpixel text: a glyph is drawn with blend state 0x{Blend:X8}, which can't take subpixel coverage", state.Blend);
+                Host.Log.Warning("Subpixel text: a glyph is drawn with blend state 0x{Blend:X8}, which can't take subpixel coverage", value);
             }
 
-            return state.Blend;
+            return value;
         }
 
-        var blend = SetFactor(state.Blend, SrcBlendShift, D3D11_BLEND.D3D11_BLEND_SRC1_COLOR);
+        var blend = SetFactor(value, SrcBlendShift, D3D11_BLEND.D3D11_BLEND_SRC1_COLOR);
 
         // A render texture's alpha is composited later, so its colour can't take coverage per channel.
-        var toTexture = *(byte*)(server + this.renderingToTexture) != 0;
+        var toTexture = ((AtkServerMembers*)server)->IsRenderingToTexture;
         if (!toTexture && GetFactor(blend, DestBlendShift) == (uint)D3D11_BLEND.D3D11_BLEND_INV_SRC_ALPHA)
             blend = SetFactor(blend, DestBlendShift, D3D11_BLEND.D3D11_BLEND_INV_SRC_COLOR);
         return blend;
     }
 
     /// <summary>Puts this one's shader in if the game's is there (again after a UI shader reload).</summary>
-    private bool EnsureShader(nint server, PassShader p)
+    private bool EnsureShader(AtkServer* server, PassShader p)
     {
-        var current = this.GetShaderObject(server, p.Pass, null);
+        var current = GetShaderObject(server, p.Pass, null);
 
         // A UI shader reload drops the patched object, so its game shader is ours to release.
         if (p.PatchedObject != 0 && current != p.PatchedObject)
@@ -345,11 +332,11 @@ internal sealed unsafe class SubpixelText : IDisposable
         if (current == 0)
             return false;
 
-        var slot = (ID3D11PixelShader**)(current + this.d3dShader);
+        var slot = (ID3D11PixelShader**)&((PixelShader*)current)->DirectXObject;
         if (current == p.PatchedObject)
             return *slot == p.Shader;
 
-        if (*slot is null || this.GetShaderObject(server, p.Pass, p.File) == 0)
+        if (*slot is null || GetShaderObject(server, p.Pass, p.File) == 0)
             return false;
 
         if (p.Shader is null)
@@ -364,18 +351,33 @@ internal sealed unsafe class SubpixelText : IDisposable
     }
 
     /// <summary>Gets a pass's Kernel::PixelShader; with <paramref name="file"/>, only if it is made from that file.</summary>
-    private nint GetShaderObject(nint server, int pass, string? file)
+    private static nint GetShaderObject(AtkServer* server, AtkServerShaderPass pass, string? file)
     {
-        if (server == 0)
+        if (server is null)
             return 0;
-        if (file is not null)
+        PixelShader* shader;
+        ShaderCodeResourceHandle* resource;
+        switch (pass)
         {
-            var handle = *(nint*)(server + this.pixelShaderFiles + (pass * 8));
-            if (handle == 0 || !GameUi.GetFileName(handle).EndsWith(file, StringComparison.OrdinalIgnoreCase))
-                return 0;
+            case AtkServerShaderPass.Font:
+                shader = server->FontPS;
+                resource = server->FontPSResource;
+                break;
+            case AtkServerShaderPass.FontHighlight:
+                shader = server->FontHightlightPS;
+                resource = server->FontHighlightPSResource;
+                break;
+            case AtkServerShaderPass.FontEmboss:
+                shader = server->FontEmbossPS;
+                resource = server->FontEmbossPSResource;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(pass));
         }
 
-        return *(nint*)(server + this.pixelShaders + (pass * 8));
+        if (file is not null && (resource is null || !((ResourceHandle*)resource)->FileName.ToString().EndsWith(file, StringComparison.OrdinalIgnoreCase)))
+            return 0;
+        return (nint)shader;
     }
 
     private ID3D11PixelShader* CreateShader(ID3D11PixelShader* game, bool highlight)
@@ -400,8 +402,8 @@ internal sealed unsafe class SubpixelText : IDisposable
     {
         if (p.PatchedObject == 0)
             return;
-        var slot = (ID3D11PixelShader**)(p.PatchedObject + this.d3dShader);
-        if (this.GetShaderObject(this.server, p.Pass, null) == p.PatchedObject && *slot == p.Shader)
+        var slot = (ID3D11PixelShader**)&((PixelShader*)p.PatchedObject)->DirectXObject;
+        if (GetShaderObject(this.server, p.Pass, null) == p.PatchedObject && *slot == p.Shader)
         {
             *slot = p.Original;
             p.Shader->Release();
@@ -418,19 +420,9 @@ internal sealed unsafe class SubpixelText : IDisposable
         this.passActive = false;
     }
 
-    /// <summary>What SetDrawState stages for a batch of UI draw commands.</summary>
-    private struct DrawState
+    private sealed class PassShader(AtkServerShaderPass pass, string file, bool highlight)
     {
-        public uint Blend;
-        public uint Padding;
-        public nint Texture;
-        public uint Unknown10;
-        public uint Unknown14;
-    }
-
-    private sealed class PassShader(int pass, string file, bool highlight)
-    {
-        public int Pass { get; } = pass;
+        public AtkServerShaderPass Pass { get; } = pass;
 
         public string File { get; } = file;
 

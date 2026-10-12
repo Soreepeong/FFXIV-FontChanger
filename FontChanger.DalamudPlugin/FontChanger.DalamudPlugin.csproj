@@ -12,7 +12,6 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\xivres\data\game_font_signatures.json" LogicalName="CustomFonts.game_font_signatures.json" />
-    <EmbeddedResource Include="ClientStructs\SubpixelSignatures.json" LogicalName="CustomFonts.SubpixelSignatures.json" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FontChanger.Presets\FontChanger.Presets.csproj" />
