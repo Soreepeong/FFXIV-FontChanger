@@ -937,6 +937,10 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             return cell;
 
         raster = raster with { Advance = advance, Left = raster.Left + pad };
+
+        // A cell that couldn't move left (PlaceClusters) is drawn right of where shaping put its margin: what follows moves along, keeping its distance to the ink.
+        if (raster.Width != 0 && raster.Left < 0)
+            raster = raster with { Advance = raster.Advance + Math.Min(-raster.Left, this.replacer.GetEdgeMargin(sized)) };
         var b = this.textToByte[c.TextStart];
         var utf8 = b < 0 ? 0u : GameUtf8.PackSequence(this.shapingBytes + b, GameUtf8.SequenceLength(this.shapingBytes[b]));
         cell = (nint)this.replacer.PlaceCell(sized, raster, utf8);

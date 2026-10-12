@@ -104,11 +104,11 @@ internal sealed unsafe class NamePlateText : IDisposable
 
     private delegate byte AllocateBakeDelegate(BakePlateRenderer* renderer, NamePlateObject* obj);
 
-    private delegate void PrepareDelegate(BakePlateRenderer* renderer, float* rect, FontSet* set, AtkResNode* node);
+    private delegate void PrepareDelegate(BakePlateRenderer* renderer, float* rect, FontSet* set, AtkTextNode* node);
 
     private delegate void DrawBakedDelegate(BakePlateRenderer* renderer, AtkResNode* node, BakeData* bake);
 
-    private delegate void BakePlateDrawDelegate(BakePlateRenderer* renderer, AtkResNode* node);
+    private delegate void BakePlateDrawDelegate(BakePlateRenderer* renderer, AtkTextNode* node);
 
     /// <summary>Gets or sets how nameplate text is drawn while the replacement is on. Framework thread.</summary>
     public NamePlateMode Mode
@@ -251,7 +251,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         return allocated;
     }
 
-    private void PrepareDetour(BakePlateRenderer* renderer, float* rect, FontSet* set, AtkResNode* node)
+    private void PrepareDetour(BakePlateRenderer* renderer, float* rect, FontSet* set, AtkTextNode* node)
     {
         this.prepareHook.Original(renderer, rect, set, node);
 
@@ -311,7 +311,7 @@ internal sealed unsafe class NamePlateText : IDisposable
     }
 
     /// <summary>In <see cref="NamePlateMode.Live"/>, the renderer's own live mode (set by the game's text render mode setting).</summary>
-    private void BakePlateDrawDetour(BakePlateRenderer* renderer, AtkResNode* node)
+    private void BakePlateDrawDetour(BakePlateRenderer* renderer, AtkTextNode* node)
     {
         this.SeeRenderer(renderer);
         if (this.EffectiveMode != NamePlateMode.Live)

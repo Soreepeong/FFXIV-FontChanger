@@ -44,20 +44,20 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// Gets the texture index of the first page in a replaced font: past the textures of every font of the game's tables
     /// (7 in the global client), so that the textures of the game's own fonts keep their places.
     /// </summary>
-    public static int FirstTextureIndex { get; } = FirstFreeTexture();
+    public static byte FirstTextureIndex { get; } = FirstFreeTexture();
 
     public static int MaxPages => Font.MaxTextures - FirstTextureIndex;
 
     // A font of the global client's texture count, of a table the game doesn't have.
     private const int GlobalTextureCount = 7;
 
-    private static int FirstFreeTexture()
+    private static byte FirstFreeTexture()
     {
         var count = GlobalTextureCount;
         count = Math.Max(count, MostTextures(AtkFontManager.StaticAddressPointers.pGameFontTable));
         count = Math.Max(count, MostTextures(AtkFontManager.StaticAddressPointers.pLobbyFontTableStandardResolution));
         count = Math.Max(count, MostTextures(AtkFontManager.StaticAddressPointers.pLobbyFontTableHighResolution));
-        return count;
+        return checked((byte)count);
     }
 
     private static int MostTextures(FontTableEntry* table)

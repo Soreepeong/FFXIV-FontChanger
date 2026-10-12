@@ -110,7 +110,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             }
 
             this.emptyGlyph = (GlyphSlot*)NativeMemory.AllocZeroed((nuint)sizeof(GlyphSlot));
-            this.emptyGlyph->Glyph.Packed = Pack(0, 0, 0, GlyphAtlas.FirstTextureIndex);
+            this.emptyGlyph->Glyph.Packed = (0, 0, 0, GlyphAtlas.FirstTextureIndex);
             this.emptyGlyph->Id = -1;
             this.shaper = new(this.rasterizer, this);
             this.pickFontHook = host.Hook<PickFontDelegate>(pickFont, this.PickFontDetour);
@@ -395,13 +395,16 @@ internal sealed unsafe class FontReplacer : IDisposable
         this.TextInvalidated?.Invoke();
     }
 
+    /// <summary>Gets the empty pixels <see cref="FinishGlyph"/> adds around a glyph of a size, on each side.</summary>
+    internal int GetEdgeMargin(SizedFont sized) => Math.Max(0, (int)MathF.Ceiling(this.Edge.GetReach(sized.Px)) - 1);
+
     /// <summary>
     /// Makes a glyph rasterized for a size (and adjusted as its element says) ready to be placed: surrounded with empty
     /// pixels for a wide edge, which is only drawn within a glyph's box and the pixel around it.
     /// </summary>
     internal RasterGlyph FinishGlyph(SizedFont sized, RasterGlyph r)
     {
-        var m = Math.Max(0, (int)MathF.Ceiling(this.Edge.GetReach(sized.Px)) - 1);
+        var m = this.GetEdgeMargin(sized);
         if (m == 0 || r.Width == 0)
             return r;
         var w = r.Width + (2 * m);
@@ -992,7 +995,7 @@ internal sealed unsafe class FontReplacer : IDisposable
 
         var glyph = this.AllocateGlyph();
         glyph->Utf8Value = utf8Value;
-        glyph->Packed = Pack(0, 0, 0, GlyphAtlas.FirstTextureIndex);
+        glyph->Packed = (0, 0, 0, GlyphAtlas.FirstTextureIndex);
         glyph->Width = (byte)width;
         glyph->Height = (byte)height;
         glyph->OffsetX = (sbyte)Math.Clamp(r.Advance - width, sbyte.MinValue, sbyte.MaxValue);
@@ -1062,7 +1065,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (!cell.Atlas!.TryAllocate(glyph->Width, glyph->Height, out var page, out var plane, out var x, out var y))
             return false;
 
-        glyph->Packed = Pack(x, y, plane, GlyphAtlas.FirstTextureIndex + page);
+        glyph->Packed = (x, y, plane, GlyphAtlas.FirstTextureIndex + page);
         cell.State = CellState.Placed;
         cell.Drawn = drawn;
         if (cell.Source is not null)
@@ -1147,7 +1150,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             cell.Raster = new(0, 0, 0, glyph->Width, glyph->Height, pixels, lcd);
             cell.BoxLeft = 0;
             cell.InkTop = 0;
-            glyph->Packed = Pack(0, 0, 0, GlyphAtlas.FirstTextureIndex);
+            glyph->Packed = (0, 0, 0, GlyphAtlas.FirstTextureIndex);
             var area = GlyphAtlas.PaddedArea(glyph->Width, glyph->Height);
             if (now - drawn <= KeepDrawnMs && area <= budget && this.WritePixels(glyph, ref cell, drawn))
             {
@@ -1200,10 +1203,6 @@ internal sealed unsafe class FontReplacer : IDisposable
         glyph->OffsetX = (sbyte)Math.Clamp(glyph->OffsetX + glyph->Width, sbyte.MinValue, sbyte.MaxValue);
         glyph->Width = 0;
     }
-
-    /// <summary>Packs where a glyph's pixels are: a place in a page, one of its four channel planes, and one of the font's textures.</summary>
-    private static uint Pack(int x, int y, int plane, int textureIndex) =>
-        (uint)(x & 0xFFF) | ((uint)(y & 0xFFF) << 12) | ((uint)(plane & 3) << 24) | ((uint)textureIndex << 26);
 
     private Glyph* AllocateGlyph()
     {
