@@ -329,7 +329,10 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (this.atlases.TryGetValue(family, out var atlas))
             return atlas;
 
-        atlas = new(string.Equals(family, "AXIS", StringComparison.OrdinalIgnoreCase) ? AxisAtlasSize : OtherAtlasSize, family);
+        // FontSubpixelPS tells subpixel pages from the game's textures by their odd width.
+        var subpixel = this.subpixelText.Active;
+        var size = string.Equals(family, "AXIS", StringComparison.OrdinalIgnoreCase) ? AxisAtlasSize : OtherAtlasSize;
+        atlas = new(subpixel ? size - 1 : size, family, subpixel);
         atlas.PageAdded += () => this.OnPageAdded(atlas);
         this.atlases.Add(family, atlas);
 
@@ -375,6 +378,59 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     private readonly EdgeShader edgeShader = new();
 
+    private readonly SubpixelText subpixelText = new();
+
+    /// <summary>Between frames, after the UI's draw commands are processed; <see cref="Upload"/> does it too.</summary>
+    public void EndFrame() => this.subpixelText.EndFrame();
+
+    /// <summary>Gets the subpixel text settings.</summary>
+    public SubpixelSettings Subpixel { get; private set; } = new();
+
+    /// <summary>
+    /// Sets the subpixel text settings. Framework thread, between frames; switching it on or off remakes the atlases and
+    /// every glyph.
+    /// </summary>
+    public void SetSubpixel(SubpixelSettings settings)
+    {
+        if (settings == this.Subpixel)
+            return;
+        this.Subpixel = settings;
+        try
+        {
+            this.subpixelText.Set(settings);
+        }
+        catch (Exception ex)
+        {
+            Host.Log.Error(ex, "Subpixel text is off");
+            this.subpixelText.Set(new());
+        }
+
+        var active = this.subpixelText.Active;
+        var order = active ? settings.Order : SubpixelOrder.None;
+        var atlasesChange = this.atlases.Values.Any(a => a.Subpixel != active);
+        if (order == this.rasterizer.SubpixelOrder && !atlasesChange)
+            return;
+        this.rasterizer.SubpixelOrder = order;
+        this.RebuildGlyphs();
+        if (!atlasesChange)
+            return;
+
+        // Glyphs and copies refer to the old atlases' pages, so they go first.
+        this.lastEviction.Clear();
+        this.sizedFonts.Clear();
+        foreach (var atlas in this.atlases.Values)
+            atlas.Dispose();
+        this.atlases.Clear();
+        foreach (var (copy, info) in this.copies)
+        {
+            info.Sized = this.GetSized((GameFont*)info.Original, info.HalfPx);
+            this.Sync((GameFont*)copy, info);
+        }
+
+        ForgetPickedFonts();
+        this.TextInvalidated?.Invoke();
+    }
+
     /// <summary>
     /// Makes a glyph rasterized for a size (and adjusted as its element says) ready to be placed: surrounded with empty
     /// pixels for a wide edge, which is only drawn within a glyph's box and the pixel around it.
@@ -389,7 +445,15 @@ internal sealed unsafe class FontReplacer : IDisposable
         var alpha = new byte[w * h];
         for (var y = 0; y < r.Height; y++)
             r.Alpha.AsSpan(y * r.Width, r.Width).CopyTo(alpha.AsSpan(((y + m) * w) + m));
-        return r with { Left = r.Left - m, Top = r.Top - m, Width = w, Height = h, Alpha = alpha };
+        byte[]? lcd = null;
+        if (r.Lcd is { } source)
+        {
+            lcd = new byte[w * h * 3];
+            for (var y = 0; y < r.Height; y++)
+                source.AsSpan(y * r.Width * 3, r.Width * 3).CopyTo(lcd.AsSpan((((y + m) * w) + m) * 3));
+        }
+
+        return r with { Left = r.Left - m, Top = r.Top - m, Width = w, Height = h, Alpha = alpha, Lcd = lcd };
     }
 
     /// <summary>
@@ -435,6 +499,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (this.pickFontHook is not null && this.getGlyphHook is not null && this.buildFontCacheHook is not null)
             this.Enabled = false;
         this.edgeShader.Dispose();
+        this.subpixelText.Dispose();
         this.buildFontHook?.Dispose();
         this.layOutCharacterHook?.Dispose();
         this.buildFontCacheHook?.Dispose();
@@ -838,6 +903,9 @@ internal sealed unsafe class FontReplacer : IDisposable
 
         foreach (var atlas in this.atlases.Values)
             atlas.Upload();
+
+        // This frame's UI draw commands are processed by now.
+        this.subpixelText.EndFrame();
     }
 
     /// <summary>Gets a glyph's box filled with its game texture's pixels (read as 8-bit coverage), scaled.</summary>
@@ -1080,14 +1148,16 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (stale[victim] == 0)
             victim = Array.IndexOf(oldest, oldest.Min());
 
-        var moved = new List<(int Id, long Drawn, byte[] Pixels)>();
+        var moved = new List<(int Id, long Drawn, byte[] Pixels, byte[]? Lcd)>();
         for (var id = 0; id < all.Length; id++)
         {
             var glyph = &this.SlotAt(id)->Glyph;
             if (all[id].State != CellState.Placed || all[id].Atlas != atlas || PlaneOf(glyph) != victim)
                 continue;
-            var pixels = atlas.Read(glyph->TextureIndex - GlyphAtlas.FirstTextureIndex, glyph->Channel, glyph->X, glyph->Y, glyph->Width, glyph->Height);
-            moved.Add((id, all[id].Drawn, pixels));
+            var page = glyph->TextureIndex - GlyphAtlas.FirstTextureIndex;
+            var pixels = atlas.Read(page, glyph->Channel, glyph->X, glyph->Y, glyph->Width, glyph->Height);
+            var lcd = atlas.Subpixel ? atlas.ReadLcd(page, glyph->X, glyph->Y, glyph->Width, glyph->Height) : null;
+            moved.Add((id, all[id].Drawn, pixels, lcd));
         }
 
         moved.Sort((a, b) => b.Drawn.CompareTo(a.Drawn));
@@ -1096,12 +1166,12 @@ internal sealed unsafe class FontReplacer : IDisposable
         // What may stay: the glyphs drawn recently, but no more than half of the plane if none were stale.
         var budget = stale[victim] == 0 ? (long)atlas.Size * atlas.Size / 2 : long.MaxValue;
         var kept = 0;
-        foreach (var (id, drawn, pixels) in moved)
+        foreach (var (id, drawn, pixels, lcd) in moved)
         {
             var glyph = &this.SlotAt(id)->Glyph;
             ref var cell = ref all[id];
             cell.State = CellState.Pending;
-            cell.Raster = new(0, 0, 0, glyph->Width, glyph->Height, pixels);
+            cell.Raster = new(0, 0, 0, glyph->Width, glyph->Height, pixels, lcd);
             cell.BoxLeft = 0;
             cell.InkTop = 0;
             glyph->Packed = GameGlyph.Pack(0, 0, 0, GlyphAtlas.FirstTextureIndex);
@@ -1146,7 +1216,8 @@ internal sealed unsafe class FontReplacer : IDisposable
                 lastRow - firstRow,
                 r.Alpha.AsSpan(firstRow * r.Width, (lastRow - firstRow) * r.Width),
                 r.Width,
-                r.Left - cell.BoxLeft);
+                r.Left - cell.BoxLeft,
+                r.Lcd is { } lcd ? lcd.AsSpan(firstRow * r.Width * 3, (lastRow - firstRow) * r.Width * 3) : default);
         }
     }
 

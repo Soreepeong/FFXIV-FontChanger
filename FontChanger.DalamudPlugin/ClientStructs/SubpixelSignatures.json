@@ -1,0 +1,74 @@
+{
+	"comment": "Signatures and constants for subpixel text, in the format of xivres's data/game_font_signatures.json (see its comment); merged into it by CodeSignature (XivAlexander has the same file, merged by its GameLayout). Addresses are of 7.56h.",
+	"constants": {
+		"AtkServer.TextPass": {
+			"value": 4,
+			"description": "The pass of plain text among the 9 font shader pairs (FontVS/FontPS)."
+		},
+		"AtkServer.HighlightPass": {
+			"value": 7,
+			"description": "The pass of highlighted text (FontHighlightVS/FontHighlightPS: the text colour inverted)."
+		},
+		"AtkServer.EmbossPass": {
+			"value": 8,
+			"description": "The pass of the drop shadow (FontEmbossVS/FontEmbossPS, which is FontPS's bytecode)."
+		},
+		"AtkServer.TextPixelShaderFile": {
+			"value": "FontPS.shcd",
+			"description": "The file name of the text pass's pixel shader."
+		},
+		"AtkServer.HighlightPixelShaderFile": {
+			"value": "FontHighlightPS.shcd",
+			"description": "The file name of the highlight pass's pixel shader."
+		},
+		"AtkServer.EmbossPixelShaderFile": {
+			"value": "FontEmbossPS.shcd",
+			"description": "The file name of the shadow pass's pixel shader."
+		}
+	},
+	"signatures": {
+		"AtkServerSetDrawState": {
+			"description": "void AtkServer.SetDrawState(AtkServer* this, DrawState* state, byte textureDivisor) (FUN_14063BA60 in 7.56h): before a batch of UI draw commands, stages the packed blend state (state+0, masked with 0x7FFFFFF), the texture (state+8; the white or black one if null) and g_TextureParam = the texture's size / textureDivisor. ProcessUICommands calls it only when the blend, texture or a few other fields change, not when only the pass does. Resolves to the function containing the match.",
+			"resolve": "function",
+			"pattern": [
+				"\\x25\\xFF\\xFF\\xFF\\x07\\x89[\\x80-\\xBF]....\\xC6[\\x80-\\xBF]....\\x00",
+				".{0,400}?\\x48\\x85\\xC0(?:\\x74.|\\x0F\\x84....)\\x8B[\\x40-\\x7F](.)\\x33\\xD2\\xF7[\\xF0-\\xF7]"
+			],
+			"captures": [
+				{
+					"name": "Kernel.Texture.Width",
+					"type": "offset",
+					"description": "uint (0x38), divided for g_TextureParam; the height follows."
+				}
+			]
+		},
+		"AtkServerBeginRenderTexture": {
+			"description": "AtkServer.SetRenderTexture(AtkServer* this, bool begin, Kernel::Texture* target, Matrix* transform, bool clear) (FUN_14063B790 in 7.56h), for a type 1 UI command: begin sets a flag, switches the render target to the texture and the projection to the transform; the end clears the flag. Nameplate bakes are drawn this way.",
+			"resolve": "none",
+			"pattern": [
+				"\\x81[\\xE0-\\xE7]\\x01\\x00\\x00\\xFF.{0,16}?\\x83[\\xC8-\\xCF]\\x01\\x89[\\x40-\\x7F]\\x08.{0,8}?\\xC6[\\x80-\\xBF](....)\\x01"
+			],
+			"captures": [
+				{
+					"name": "AtkServer.RenderingToTexture",
+					"type": "offset",
+					"description": "byte: drawing into a texture, not the back buffer (0x8670)."
+				}
+			]
+		},
+		"AtkServerEndRenderTexture": {
+			"description": "The end of AtkServer.SetRenderTexture (FUN_14063B790 in 7.56h), clearing the flag before restoring the projection.",
+			"resolve": "none",
+			"pattern": [
+				"\\x25\\xFF\\xFF\\xFF\\x00\\x33[\\xC0-\\xFF][\\x48\\x49]\\x8B[\\xC8-\\xCF]\\x89[\\x40-\\x7F]\\x08\\xC6[\\x80-\\xBF](....)\\x00\\xE8"
+			],
+			"captures": [
+				{
+					"name": "AtkServer.RenderingToTexture",
+					"type": "offset",
+					"description": "(0x8670)."
+				}
+			]
+		}
+	}
+}

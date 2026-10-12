@@ -76,6 +76,22 @@ internal sealed class MainWindow : Window
         }
 
         this.DrawEdgeSettings(replacer);
+
+        var subpixel = (int)this.plugin.Configuration.Subpixel;
+        if (ImGui.Combo("Subpixel rendering", ref subpixel, "Off (grayscale)\0Follow Windows ClearType settings\0RGB (red, green, blue from the left)\0BGR (blue, green, red from the left)\0"))
+        {
+            this.plugin.Configuration.Subpixel = (SubpixelMode)subpixel;
+            Plugin.PluginInterface.SavePluginConfig(this.plugin.Configuration);
+            Plugin.Framework.RunOnTick(this.plugin.ApplySubpixel);
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(
+                "Draws replaced text per red, green and blue subpixel of the screen, as ClearType does.\n"
+                + "Turn it off on rotated screens and on screens whose subpixels aren't in vertical stripes (most OLED panels).\n"
+                + "Strength and contrast come from the Windows ClearType Text Tuner; scaled text and nameplates stay grayscale.");
+        }
     }
 
     private void DrawPreset()

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
@@ -16,6 +17,10 @@ public sealed class Plugin : IDalamudPlugin
     private bool commandRegistered;
     private bool disposed;
 
+    // How often System mode re-reads Windows' ClearType settings and the game's monitor.
+    private const long SubpixelRefreshMs = 2000;
+    private long lastSubpixelQuery;
+
     public Plugin()
     {
         try
@@ -30,6 +35,7 @@ public sealed class Plugin : IDalamudPlugin
             {
                 var replacer = new FontReplacer();
                 replacer.SetEdge(this.Configuration.Edge);
+                replacer.SetSubpixel(SubpixelSettings.Of(this.Configuration.Subpixel, GameWindow));
                 return (replacer,
                         Optional("Nameplate text", () => new NamePlateText(replacer)),
                         Optional("Line breaking", () => new LineBreaker(replacer)));
@@ -41,6 +47,9 @@ public sealed class Plugin : IDalamudPlugin
             // The game calls Present on the main thread after the frame's UI was drawn; glyphs added during it are uploaded
             // here and show from the next frame.
             PluginInterface.UiBuilder.Draw += this.Replacer.Upload;
+
+            // Draw may not run while the UI is hidden; the subpixel state must still be let go of every frame.
+            Framework.Update += this.OnFrameworkUpdate;
             PluginInterface.UiBuilder.Draw += this.windowSystem.Draw;
             PluginInterface.UiBuilder.OpenMainUi += this.MainWindow.Toggle;
             this.commandRegistered = CommandManager.AddHandler(CommandName, new CommandInfo(this.OnCommand)
@@ -112,6 +121,7 @@ public sealed class Plugin : IDalamudPlugin
             PluginInterface.UiBuilder.Draw -= this.windowSystem.Draw;
             if (this.Replacer is not null)
                 PluginInterface.UiBuilder.Draw -= this.Replacer.Upload;
+            Framework.Update -= this.OnFrameworkUpdate;
             if (this.MainWindow is not null)
                 PluginInterface.UiBuilder.OpenMainUi -= this.MainWindow.Toggle;
         });
@@ -157,4 +167,27 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     private void OnCommand(string command, string args) => this.MainWindow.Toggle();
+
+    private static nint GameWindow => Process.GetCurrentProcess().MainWindowHandle;
+
+    /// <summary>Applies the configured subpixel mode. Framework thread, between frames.</summary>
+    internal void ApplySubpixel()
+    {
+        this.lastSubpixelQuery = Environment.TickCount64;
+        try
+        {
+            this.Replacer.SetSubpixel(SubpixelSettings.Of(this.Configuration.Subpixel, GameWindow));
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Applying the subpixel text setting failed");
+        }
+    }
+
+    private void OnFrameworkUpdate(IFramework framework)
+    {
+        this.Replacer.EndFrame();
+        if (this.Configuration.Subpixel == SubpixelMode.System && Environment.TickCount64 - this.lastSubpixelQuery >= SubpixelRefreshMs)
+            this.ApplySubpixel();
+    }
 }

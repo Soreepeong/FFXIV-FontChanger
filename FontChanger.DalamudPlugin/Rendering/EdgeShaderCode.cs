@@ -42,17 +42,27 @@ internal static class EdgeShaderCode
     /// Replaces every <see cref="Sentinel"/> in the code chunk (SHEX or SHDR) with <paramref name="softness"/> and sets
     /// the checksum. Returns how many were replaced; with none, <paramref name="dxbc"/> is left as it was.
     /// </summary>
-    public static int Patch(Span<byte> dxbc, float softness)
+    public static int Patch(Span<byte> dxbc, float softness) => PatchConstants(dxbc, [(Sentinel, softness)]);
+
+    /// <summary>
+    /// Replaces every word of the code chunk equal to a sentinel (a float's bits) with its value and sets the checksum.
+    /// Returns how many were replaced; with none, <paramref name="dxbc"/> is left as it was.
+    /// </summary>
+    public static int PatchConstants(Span<byte> dxbc, ReadOnlySpan<(uint Sentinel, float Value)> values)
     {
         var (begin, end) = FindCode(dxbc);
-        var value = BitConverter.SingleToUInt32Bits(softness);
         var count = 0;
         for (var i = begin; i + 4 <= end; i += 4)
         {
-            if (BinaryPrimitives.ReadUInt32LittleEndian(dxbc[i..]) != Sentinel)
-                continue;
-            BinaryPrimitives.WriteUInt32LittleEndian(dxbc[i..], value);
-            count++;
+            var word = BinaryPrimitives.ReadUInt32LittleEndian(dxbc[i..]);
+            foreach (var (sentinel, value) in values)
+            {
+                if (word != sentinel)
+                    continue;
+                BinaryPrimitives.WriteUInt32LittleEndian(dxbc[i..], BitConverter.SingleToUInt32Bits(value));
+                count++;
+                break;
+            }
         }
 
         if (count != 0)

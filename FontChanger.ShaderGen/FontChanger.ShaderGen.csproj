@@ -16,5 +16,6 @@
   <ItemGroup>
     <!-- The plugin's patching of the edge shader's softness, checked against the compiler on every build. -->
     <Compile Include="..\FontChanger.DalamudPlugin\Rendering\EdgeShaderCode.cs" Link="EdgeShaderCode.cs" />
+    <Compile Include="..\FontChanger.DalamudPlugin\Rendering\SubpixelShaderCode.cs" Link="SubpixelShaderCode.cs" />
   </ItemGroup>
 </Project>

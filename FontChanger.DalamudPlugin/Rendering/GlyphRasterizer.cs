@@ -14,8 +14,19 @@ internal static class Rounding
     public static float Round(float value) => MathF.Round(value, MidpointRounding.AwayFromZero);
 }
 
-/// <summary>A rasterized glyph: 8-bit coverage, placed relative to the pen on the baseline.</summary>
-internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int Width, int Height, byte[] Alpha)
+/// <summary>The order of a pixel's color stripes, left to right; None draws grayscale.</summary>
+internal enum SubpixelOrder
+{
+    None,
+    Rgb,
+    Bgr,
+}
+
+/// <summary>
+/// A rasterized glyph: 8-bit coverage, placed relative to the pen on the baseline. <paramref name="Lcd"/> is null, or R, G,
+/// B subpixel coverage per pixel of Alpha (which is their mean); resampling drops it.
+/// </summary>
+internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int Width, int Height, byte[] Alpha, byte[]? Lcd = null)
 {
     /// <summary>
     /// Gets the box a glyph's coverage takes when scaled by <paramref name="scale"/> about the pen, moved right and down by
@@ -69,7 +80,7 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
                 }
             }
 
-            return this with { Left = x0, Top = y0, Width = w, Height = h, Alpha = alpha };
+            return this with { Left = x0, Top = y0, Width = w, Height = h, Alpha = alpha, Lcd = null };
         }
 
         const int Samples = 4;
@@ -93,7 +104,7 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
             }
         }
 
-        return this with { Left = x0, Top = y0, Width = w, Height = h, Alpha = alpha };
+        return this with { Left = x0, Top = y0, Width = w, Height = h, Alpha = alpha, Lcd = null };
     }
 
     /// <summary>Gets, per output pixel from <paramref name="first"/>, the source pixels it covers and by how much (summing to 1 / scale).</summary>
@@ -158,7 +169,7 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
             }
         }
 
-        return this with { Left = x0, Width = w, Alpha = alpha };
+        return this with { Left = x0, Width = w, Alpha = alpha, Lcd = null };
     }
 
     /// <summary>Gets the glyph with its empty rows and columns cut off.</summary>
@@ -175,12 +186,20 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
         }
 
         if (x1 >= x2 || y1 >= y2)
-            return this with { Left = 0, Top = 0, Width = 0, Height = 0, Alpha = [] };
+            return this with { Left = 0, Top = 0, Width = 0, Height = 0, Alpha = [], Lcd = null };
         var w = x2 - x1;
         var alpha = new byte[w * (y2 - y1)];
         for (var y = y1; y < y2; y++)
             this.Alpha.AsSpan((y * this.Width) + x1, w).CopyTo(alpha.AsSpan((y - y1) * w));
-        return this with { Left = this.Left + x1, Top = this.Top + y1, Width = w, Height = y2 - y1, Alpha = alpha };
+        byte[]? lcd = null;
+        if (this.Lcd is { } source)
+        {
+            lcd = new byte[alpha.Length * 3];
+            for (var y = y1; y < y2; y++)
+                source.AsSpan(((y * this.Width) + x1) * 3, w * 3).CopyTo(lcd.AsSpan((y - y1) * w * 3));
+        }
+
+        return this with { Left = this.Left + x1, Top = this.Top + y1, Width = w, Height = y2 - y1, Alpha = alpha, Lcd = lcd };
     }
 
     /// <summary>
@@ -203,7 +222,15 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
         var alpha = new byte[w * h];
         foreach (var p in pieces)
             BlitMax(alpha, w, h, p, p.Left - left, p.Top - top);
-        return new(advance, left, top, w, h, alpha);
+        byte[]? lcd = null;
+        if (pieces.Exists(p => p.Lcd is not null))
+        {
+            lcd = new byte[w * h * 3];
+            foreach (var p in pieces)
+                BlitMaxLcd(lcd, w, h, p, p.Left - left, p.Top - top);
+        }
+
+        return new(advance, left, top, w, h, alpha, lcd);
     }
 
     /// <summary>Draws a glyph's coverage into a buffer at a position, keeping the larger value where it overlaps.</summary>
@@ -215,6 +242,21 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
             {
                 ref var d = ref buffer[((row + y) * width) + col + x];
                 d = Math.Max(d, g.Alpha[(row * g.Width) + col]);
+            }
+        }
+    }
+
+    /// <summary>As <see cref="BlitMax"/>, into 3 bytes a pixel; a glyph without Lcd gives its Alpha to all three.</summary>
+    public static void BlitMaxLcd(byte[] buffer, int width, int height, RasterGlyph g, int x, int y)
+    {
+        for (var row = Math.Max(0, -y); row < g.Height && row + y < height; row++)
+        {
+            for (var col = Math.Max(0, -x); col < g.Width && col + x < width; col++)
+            {
+                var from = (row * g.Width) + col;
+                var to = (((row + y) * width) + col + x) * 3;
+                for (var c = 0; c < 3; c++)
+                    buffer[to + c] = Math.Max(buffer[to + c], g.Lcd is { } lcd ? lcd[(from * 3) + c] : g.Alpha[from]);
             }
         }
     }
@@ -234,7 +276,15 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
         var alpha = new byte[this.Alpha.Length];
         for (var i = 0; i < alpha.Length; i++)
             alpha[i] = table[this.Alpha[i]];
-        return this with { Alpha = alpha };
+        byte[]? lcd = null;
+        if (this.Lcd is { } source)
+        {
+            lcd = new byte[source.Length];
+            for (var i = 0; i < lcd.Length; i++)
+                lcd[i] = table[source[i]];
+        }
+
+        return this with { Alpha = alpha, Lcd = lcd };
     }
 }
 
@@ -348,6 +398,12 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     public GlyphRunCollector RunCollector { get; } = new();
 
     /// <summary>
+    /// Gets or sets whether <see cref="RasterizeRun"/> gives ClearType coverage too, in which order. Framework thread, before
+    /// glyphs are made again.
+    /// </summary>
+    public SubpixelOrder SubpixelOrder { get; set; }
+
+    /// <summary>
     /// Finds the font of a family closest to a weight, stretch and style (simulated if the family lacks it); null if the
     /// family isn't installed. The caller releases it.
     /// </summary>
@@ -426,11 +482,51 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         DirectWriteParams parameters,
         GlyphTransform transform)
     {
-        var analysis = this.CreateAnalysis(face, px, glyphs, advances, offsets, count, originX, parameters, transform);
+        // Grayscale is the mean of the three subpixels; aliased text has no ClearType.
+        var subpixel = this.SubpixelOrder != SubpixelOrder.None && (DWRITE_RENDERING_MODE)parameters.RenderMode != DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_ALIASED;
+        var analysis = this.CreateAnalysis(
+            face,
+            px,
+            glyphs,
+            advances,
+            offsets,
+            count,
+            originX,
+            parameters,
+            transform,
+            subpixel ? DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE : DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE);
         try
         {
-            // With grayscale antialiasing, the 1x1 texture type gives 8-bit coverage.
             RECT bounds;
+            if (subpixel)
+            {
+                analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds).ThrowOnError();
+                var cw = bounds.right - bounds.left;
+                var ch = bounds.bottom - bounds.top;
+                if (cw > 0 && ch > 0)
+                {
+                    var lcd = new byte[cw * ch * 3];
+                    fixed (byte* p = lcd)
+                    {
+                        analysis->CreateAlphaTexture(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds, p, (uint)lcd.Length)
+                            .ThrowOnError();
+                    }
+
+                    var mean = new byte[cw * ch];
+                    for (var i = 0; i < mean.Length; i++)
+                    {
+                        mean[i] = (byte)((lcd[i * 3] + lcd[(i * 3) + 1] + lcd[(i * 3) + 2] + 1) / 3);
+                        if (this.SubpixelOrder == SubpixelOrder.Bgr)
+                            (lcd[i * 3], lcd[(i * 3) + 2]) = (lcd[(i * 3) + 2], lcd[i * 3]);
+                    }
+
+                    return new(advance, bounds.left, bounds.top, cw, ch, mean, lcd);
+                }
+
+                // A font may still render aliased (its recommended mode): the 1x1 texture has it then.
+            }
+
+            // With grayscale antialiasing, the 1x1 texture type gives 8-bit coverage.
             analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_ALIASED_1x1, &bounds).ThrowOnError();
             var w = bounds.right - bounds.left;
             var h = bounds.bottom - bounds.top;
@@ -490,7 +586,8 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         uint count,
         float originX,
         DirectWriteParams parameters,
-        GlyphTransform transform)
+        GlyphTransform transform,
+        DWRITE_TEXT_ANTIALIAS_MODE antialiasMode = DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE)
     {
         // DirectWrite transforms row vectors; the origin is on screen, after the transformation.
         var matrix = new DWRITE_MATRIX
@@ -533,7 +630,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
                 renderingMode,
                 measuringMode,
                 gridFitMode,
-                DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+                antialiasMode,
                 0,
                 0,
                 &analysis);
