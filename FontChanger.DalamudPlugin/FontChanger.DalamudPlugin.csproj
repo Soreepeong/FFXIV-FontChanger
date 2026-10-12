@@ -9,6 +9,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Dalamud runs on Windows 10 and later; APIs of later versions are checked for where they are used. -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- The FFXIVClientStructs branch with what ClientStructs/ defines, to be contributed; the game's FFXIVClientStructs is Dalamud's. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);FFXIVClientStructs/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FontChanger.Presets\FontChanger.Presets.csproj" />
