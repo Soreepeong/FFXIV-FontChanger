@@ -7,24 +7,10 @@ using System.Threading.Tasks;
 
 namespace CustomFonts;
 
-/// <summary>A folder of the preset folder, with the presets in it.</summary>
-internal sealed class PresetTreeNode
+/// <summary>A folder of the preset folder, with the presets in it (their paths relative to the preset folder).</summary>
+internal sealed record PresetTreeNode(string Name, IReadOnlyList<PresetTreeNode> Folders, IReadOnlyList<string> Files)
 {
     public static readonly PresetTreeNode Empty = new(string.Empty, [], []);
-
-    public PresetTreeNode(string name, IReadOnlyList<PresetTreeNode> folders, IReadOnlyList<string> files)
-    {
-        this.Name = name;
-        this.Folders = folders;
-        this.Files = files;
-    }
-
-    public string Name { get; }
-
-    public IReadOnlyList<PresetTreeNode> Folders { get; }
-
-    /// <summary>Gets the presets' paths, relative to the preset folder.</summary>
-    public IReadOnlyList<string> Files { get; }
 }
 
 /// <summary>
@@ -240,7 +226,7 @@ internal sealed class PresetController : IDisposable
     }
 
     /// <summary>Gets a family, or every family if null.</summary>
-    private IReadOnlyList<string> TargetFamilies(string? family) => family is null ? this.Families : [family];
+    public IReadOnlyList<string> TargetFamilies(string? family) => family is null ? this.Families : [family];
 
     /// <summary>Changes the settings, saves them (unless not to), and loads the presets again at once.</summary>
     private void Change(Action<Configuration> edit, bool scan = false, bool save = true)

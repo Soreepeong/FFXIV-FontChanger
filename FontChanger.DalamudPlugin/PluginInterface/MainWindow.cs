@@ -10,6 +10,7 @@ using Dalamud.Interface;
 using Dalamud.Interface.FontIdentifier;
 using Dalamud.Interface.ImGuiFileDialog;
 using Dalamud.Interface.ImGuiFontChooserDialog;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 namespace CustomFonts;
@@ -140,20 +141,23 @@ internal sealed class MainWindow : Window
         // the edge outline's caption, its four sliders and its sizes line, and the subpixel combo.
         var reserved = ImGui.GetFrameHeightWithSpacing() * (1 + 1 + (1 + 4 + 1) + 1);
         var height = Math.Max(ImGui.GetContentRegionAvail().Y - reserved, ImGui.GetFrameHeightWithSpacing() * 4);
-        if (ImGui.BeginChild("##families", new Vector2(ImGui.GetFontSize() * 11, height), true))
-            this.DrawFamilies();
-        ImGui.EndChild();
-        ImGui.SameLine();
-        if (ImGui.BeginChild("##presetTree", new Vector2(0, height), true))
+        using (var child = ImRaii.Child("##families", new Vector2(ImGui.GetFontSize() * 11, height), true))
         {
+            if (child)
+                this.DrawFamilies();
+        }
+
+        ImGui.SameLine();
+        using (var child = ImRaii.Child("##presetTree", new Vector2(0, height), true))
+        {
+            if (!child)
+                return;
             var tree = presets.Tree;
             if (tree.Folders.Count == 0 && tree.Files.Count == 0)
                 ImGui.TextUnformatted("No presets (.json files) in the folder.");
             else
                 this.DrawPresetTree(tree);
         }
-
-        ImGui.EndChild();
     }
 
     /// <summary>Draws the families to select presets for, with how many each has; hovering one lists them.</summary>
@@ -190,7 +194,9 @@ internal sealed class MainWindow : Window
     private void DrawFontChoice()
     {
         var presets = this.plugin.Presets;
-        var chosen = (this.family is { } f ? (IReadOnlyList<string>)[f] : presets.Families).Select(presets.GetFont).ToList();
+        var families = presets.TargetFamilies(this.family);
+        var caption = this.family is null ? "System font for all families" : $"System font for {this.family}";
+        var chosen = families.Select(presets.GetFont).ToList();
         var current = chosen.Count != 0 && chosen.All(c => c == chosen[0]) ? chosen[0] : null;
         var various = current is null && chosen.Any(c => c is not null);
 
@@ -199,12 +205,12 @@ internal sealed class MainWindow : Window
         if (ImGui.Button($"{label}###chooseSystemFont") && this.fontChooser is null)
         {
             var dialog = SingleFontChooserDialog.CreateAuto((UiBuilder)Plugin.PluginInterface.UiBuilder);
-            dialog.Title = this.family is null ? "System font for all families" : $"System font for {this.family}";
+            dialog.Title = caption;
             dialog.FontFamilyExcludeFilter = x => x is not SystemFontFamilyId;
             dialog.SelectedFont = new() { FontId = FindSystemFont(current) ?? FindSystemFont(new() { Name = "Segoe UI" })!, SizePx = 24 };
 
             // The fonts before, given back if the chooser is cancelled; each one chosen in it is previewed in game.
-            var before = (this.family is { } one ? (IReadOnlyList<string>)[one] : presets.Families).ToDictionary(x => x, presets.GetFont);
+            var before = families.ToDictionary(x => x, presets.GetFont);
             var chooser = new FontChooser(dialog, this.family, before);
             dialog.SelectedFontSpecChanged += spec => chooser.Preview(ToFamilyFont(spec));
             this.fontChooser = chooser;
@@ -245,7 +251,7 @@ internal sealed class MainWindow : Window
             ImGui.SameLine();
         }
 
-        ImGui.TextUnformatted(this.family is null ? "System font for all families" : $"System font for {this.family}");
+        ImGui.TextUnformatted(caption);
 
         var monospacedDigits = presets.MonospacedDigits;
         if (ImGui.Checkbox("Monospaced digits for system fonts (tabular figures, or cells as wide as the 0)", ref monospacedDigits))
@@ -293,11 +299,9 @@ internal sealed class MainWindow : Window
         foreach (var folder in node.Folders)
         {
             // Named by the folder alone, within its parent's: it stays open when the tree is read again.
-            if (ImGui.TreeNodeEx(folder.Name, ImGuiTreeNodeFlags.SpanAvailWidth))
-            {
+            using var treeNode = ImRaii.TreeNode(folder.Name, ImGuiTreeNodeFlags.SpanAvailWidth);
+            if (treeNode)
                 this.DrawPresetTree(folder);
-                ImGui.TreePop();
-            }
         }
 
         foreach (var file in node.Files)

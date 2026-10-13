@@ -1,3 +1,8 @@
+using System;
+
+using Lumina.Text;
+using Lumina.Text.ReadOnly;
+
 namespace CustomFonts;
 
 /// <summary>
@@ -6,56 +11,23 @@ namespace CustomFonts;
 /// </summary>
 internal static unsafe class GameText
 {
-    public const byte MacroStart = 0x02;
-    public const byte MacroEnd = 0x03;
-
     /// <summary>
-    /// Decodes a SeString integer; returns the bytes its marker declares (not the shortest encoding's), 0 if malformed or
-    /// cut off by the text's end. Values of 2^31 and above come out negative.
+    /// Decodes a SeString integer; <paramref name="length"/> is the bytes its marker declares. Fails on an expression
+    /// marker (0xD0 to 0xEF) or the end of the text inside it. Values of 2^31 and above come out negative.
     /// </summary>
-    public static int ReadInteger(byte* p, out int value)
-    {
-        value = 0;
-        var marker = p[0];
-        if (marker == 0 || marker > 0xFE)
-            return 0;
-
-        if (marker < 0xF0)
-        {
-            value = marker - 1;
-            return 1;
-        }
-
-        // The marker's low bits say which bytes of the value (highest first) follow; the others are zero. A zero byte
-        // among them is where the text ends, so it is not read past.
-        var flags = marker + 1;
-        var n = 1;
-        var result = 0u;
-        for (var bit = 3; bit >= 0; bit--)
-        {
-            if ((flags & (1 << bit)) == 0)
-                continue;
-            var b = p[n];
-            if (b == 0)
-                return 0;
-            result |= (uint)b << (8 * bit);
-            n++;
-        }
-
-        value = unchecked((int)result);
-        return n;
-    }
+    public static bool TryReadInteger(byte* p, out int value, out int length) =>
+        // An integer takes at most 5 bytes, and Lumina stops at a zero byte, so the text's end isn't read past.
+        SeExpressionUtilities.TryDecodeInt(new ReadOnlySpan<byte>(p, 5), out value, out length);
 
     /// <summary>
-    /// Gets the length of the macro at <paramref name="p"/> (which starts with <see cref="MacroStart"/>); 0 if it is
-    /// malformed: a bad length, the end of the text inside it, or no <see cref="MacroEnd"/> after its payload.
+    /// Gets the length of the macro at <paramref name="p"/> (which starts with <see cref="ReadOnlySeString.Stx"/>); 0 if it
+    /// is malformed: a bad length, the end of the text inside it, or no <see cref="ReadOnlySeString.Etx"/> after its payload.
     /// </summary>
     public static int MacroLength(byte* p)
     {
         if (p[1] == 0)
             return 0;
-        var n = ReadInteger(p + 2, out var payload);
-        if (n == 0 || payload < 0)
+        if (!TryReadInteger(p + 2, out var payload, out var n) || payload < 0)
             return 0;
 
         // Counted in 64 bits so a huge declared length can't wrap; the payload is walked up to the end of the text, so
@@ -69,7 +41,7 @@ internal static unsafe class GameText
                 return 0;
         }
 
-        return p[total - 1] == MacroEnd ? (int)total : 0;
+        return p[total - 1] == ReadOnlySeString.Etx ? (int)total : 0;
     }
 
     /// <summary>

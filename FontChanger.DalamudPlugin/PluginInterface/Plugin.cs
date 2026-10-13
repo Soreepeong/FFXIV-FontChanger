@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
@@ -174,7 +173,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnCommand(string command, string args) => this.MainWindow.Toggle();
 
-    private static nint GameWindow => Process.GetCurrentProcess().MainWindowHandle;
+    private static nint GameWindow => PluginInterface.UiBuilder.WindowHandlePtr;
 
     /// <summary>Applies the configured subpixel mode. Framework thread, between frames.</summary>
     internal void ApplySubpixel()

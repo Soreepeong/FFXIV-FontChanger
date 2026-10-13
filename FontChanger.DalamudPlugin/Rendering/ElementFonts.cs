@@ -5,8 +5,6 @@ using System.Linq;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
-using static CustomFonts.CustomClientStructExtensions;
-
 namespace CustomFonts;
 
 /// <summary>

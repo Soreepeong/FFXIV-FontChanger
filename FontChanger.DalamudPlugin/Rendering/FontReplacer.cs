@@ -75,13 +75,12 @@ internal sealed unsafe class FontReplacer : IDisposable
     private readonly Dictionary<nint, CopyInfo> copies = [];
     private readonly Dictionary<(ReplacementFace Face, int HalfPx, string FontName), SizedFont> sizedFonts = [];
 
-    // The faces glyphs come from: the preset's by game font name, or the built-in one; and each game font's.
+    // The faces glyphs come from: the preset's by game font name, or the built-in one.
     private readonly ReplacementFace builtInFace;
 
     // The face of game fonts no preset gives one: their own glyphs, with fallbacks for what they lack.
     private ReplacementFace gameFace = null!;
     private readonly Dictionary<string, ReplacementFace> presetFaces = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<nint, ReplacementFace> faceByFont = [];
     private bool enabled = true;
 
     public FontReplacer()
@@ -112,7 +111,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             this.emptyGlyph = (GlyphSlot*)NativeMemory.AllocZeroed((nuint)sizeof(GlyphSlot));
             this.emptyGlyph->Glyph.Packed = (0, 0, 0, GlyphAtlas.FirstTextureIndex);
             this.emptyGlyph->Id = -1;
-            this.shaper = new(this.rasterizer, this);
+            this.shaper = new(this.rasterizer, this, (nint)this.emptyGlyph);
             this.pickFontHook = host.Hook<PickFontDelegate>(pickFont, this.PickFontDetour);
             this.getGlyphHook = host.Hook<GetGlyphDelegate>(getGlyph, this.GetGlyphDetour);
             this.buildFontCacheHook = host.Hook<FontCacheDelegate>(buildFontCache, this.BuildFontCacheDetour);
@@ -165,7 +164,6 @@ internal sealed unsafe class FontReplacer : IDisposable
     {
         this.shaper.ClearFormats();
         this.DisposePresetFaces();
-        this.faceByFont.Clear();
         this.sizedFonts.Clear();
         this.gameFace = ReplacementFace.CreateGame(this.rasterizer, systemFallback, this.builtInFace);
         foreach (var (name, def) in preset?.Faces ?? new Dictionary<string, FaceDef>())
@@ -188,17 +186,6 @@ internal sealed unsafe class FontReplacer : IDisposable
         }
 
         this.RebuildGlyphs();
-    }
-
-    /// <summary>Gets the face a game font's glyphs come from.</summary>
-    public ReplacementFace GetFace(Font* original)
-    {
-        if (this.faceByFont.TryGetValue((nint)original, out var face))
-            return face;
-        var name = this.presetFaces.Count != 0 ? GameFontNames.GetFaceName(original) : null;
-        face = name is not null && this.presetFaces.TryGetValue(name, out var found) ? found : this.gameFace;
-        this.faceByFont[(nint)original] = face;
-        return face;
     }
 
     private void DisposePresetFaces()
@@ -239,11 +226,11 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (faces.Count == 0)
         {
             fontName = originalName ?? $"0x{(nint)original:X}";
-            face = this.GetFace(original);
+            face = originalName is not null ? this.FaceOf(originalName) : this.gameFace;
             game = (nint)original;
             faces = [(face, game)];
         }
-        else if (GetExactFace(names, px) is { } exact)
+        else if (names.FindIndex(f => MathF.Abs(f.Size - px) < 0.01f) is var exact and >= 0)
         {
             fontName = names[exact].Name;
             (face, game) = faces[exact];
@@ -275,18 +262,6 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// <summary>Gets the face of a game font name: the preset's, or the game's.</summary>
     private ReplacementFace FaceOf(string faceName) => this.presetFaces.GetValueOrDefault(faceName) ?? this.gameFace;
 
-    /// <summary>Gets the index of the face of a size among faces with their sizes; null if none is of it.</summary>
-    internal static int? GetExactFace(IReadOnlyList<(string Name, float Size)> faces, float px)
-    {
-        for (var i = 0; i < faces.Count; i++)
-        {
-            if (MathF.Abs(faces[i].Size - px) < 0.01f)
-                return i;
-        }
-
-        return null;
-    }
-
     /// <summary>Gets the atlas of a game font family, made on its first use.</summary>
     private GlyphAtlas GetAtlas(string family)
     {
@@ -313,12 +288,16 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     public EdgeSettings Edge { get; private set; } = new();
 
-    /// <summary>Sets the edge outline's width at each text size. Framework thread; glyphs are made again.</summary>
+    /// <summary>Sets the edge outline's width at each text size. Framework thread; glyphs are made again if a size's margin changes.</summary>
     public void SetEdge(EdgeSettings edge)
     {
         edge = edge.Clamped();
         if (edge == this.Edge)
             return;
+
+        // Glyphs made now show only from the frame after (Upload), so remaking them blanks text for a frame: only when a
+        // size's margin changes.
+        var marginChanged = this.sizedFonts.Values.Any(s => GetEdgeMargin(edge, s.Px) != GetEdgeMargin(this.Edge, s.Px));
         this.Edge = edge;
 
         // The plugin's edge shader draws a round edge of any width, which each font sets by the texture width it claims;
@@ -337,7 +316,10 @@ internal sealed unsafe class FontReplacer : IDisposable
         // Copies claim their texture width by the edge.
         foreach (var (copy, info) in this.copies)
             this.Sync((Font*)copy, info);
-        this.RebuildGlyphs();
+        if (marginChanged)
+            this.RebuildGlyphs();
+        else
+            this.TextInvalidated?.Invoke();
     }
 
     private readonly EdgeShader edgeShader = new();
@@ -396,7 +378,9 @@ internal sealed unsafe class FontReplacer : IDisposable
     }
 
     /// <summary>Gets the empty pixels <see cref="FinishGlyph"/> adds around a glyph of a size, on each side.</summary>
-    internal int GetEdgeMargin(SizedFont sized) => Math.Max(0, (int)MathF.Ceiling(this.Edge.GetReach(sized.Px)) - 1);
+    internal int GetEdgeMargin(SizedFont sized) => GetEdgeMargin(this.Edge, sized.Px);
+
+    private static int GetEdgeMargin(EdgeSettings edge, float px) => Math.Max(0, (int)MathF.Ceiling(edge.GetReach(px)) - 1);
 
     /// <summary>
     /// Makes a glyph rasterized for a size (and adjusted as its element says) ready to be placed: surrounded with empty
@@ -599,7 +583,6 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     private void OnFontBuilt(Font* font)
     {
-        this.faceByFont.Remove((nint)font);
         var any = false;
         foreach (var sized in this.sizedFonts.Values)
         {
@@ -739,7 +722,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             try
             {
                 var italic = this.GetItalicMode(set);
-                var shaped = (Glyph*)this.shaper.TryGetGlyph(sized, p, (nint)this.emptyGlyph, italic);
+                var shaped = (Glyph*)this.shaper.TryGetGlyph(sized, p, italic);
                 if (shaped is not null)
                 {
                     // A real italic glyph is drawn as it is: the italic bit is cleared while the character is laid out

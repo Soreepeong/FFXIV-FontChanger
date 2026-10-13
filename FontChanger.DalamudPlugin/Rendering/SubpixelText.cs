@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Runtime.CompilerServices;
 
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
@@ -121,7 +120,6 @@ internal sealed unsafe class SubpixelText : IDisposable
 
     // From the last BindShaders.
     private AtkServer* server;
-    private AtkServer.ShaderPass pass = (AtkServer.ShaderPass)(-1);
     private bool alternate;
     private bool passActive;
 
@@ -140,19 +138,6 @@ internal sealed unsafe class SubpixelText : IDisposable
 
     /// <summary>Gets whether it is on, with the hooks in place. Framework thread.</summary>
     public bool Active => this.enabled;
-
-    /// <summary>Gets FontSubpixelPS's bytecode with the settings' level and contrast.</summary>
-    public static byte[] GetShaderCode(SubpixelSettings settings, bool highlight)
-    {
-        var name = highlight ? "CustomFonts.Rendering.FontSubpixelHighlightPS.cso" : "CustomFonts.Rendering.FontSubpixelPS.cso";
-        using var stream = typeof(SubpixelText).Assembly.GetManifestResourceStream(name)
-            ?? throw new FileNotFoundException($"{name} isn't embedded.");
-        var code = new byte[stream.Length];
-        stream.ReadExactly(code);
-        if (EdgeShaderCode.PatchConstants(code, [(SubpixelShaderCode.ClearTypeLevelSentinel, settings.Level), (SubpixelShaderCode.ContrastSentinel, settings.Contrast)]) < 2)
-            Host.Log.Warning("FontSubpixelPS.cso doesn't have both of its settings to set; text is drawn with the values it was compiled with");
-        return code;
-    }
 
     /// <summary>Framework thread. Throws if a signature isn't found; Order None puts the game's shaders back.</summary>
     public void Set(SubpixelSettings value)
@@ -233,7 +218,6 @@ internal sealed unsafe class SubpixelText : IDisposable
             try
             {
                 this.server = server;
-                this.pass = pass;
                 this.alternate = alternate != 0;
                 this.passActive = false;
                 if (this.enabled && !this.alternate)
@@ -388,22 +372,13 @@ internal sealed unsafe class SubpixelText : IDisposable
         return (nint)shader;
     }
 
+    /// <summary>Makes FontSubpixelPS, or its highlight variant, with the settings' level and contrast.</summary>
     private ID3D11PixelShader* CreateShader(ID3D11PixelShader* game, bool highlight)
     {
-        var code = GetShaderCode(this.settings, highlight);
-        ID3D11Device* device;
-        game->GetDevice(&device);
-        try
-        {
-            ID3D11PixelShader* shader;
-            fixed (byte* bytes = code)
-                device->CreatePixelShader(bytes, (nuint)code.Length, null, &shader).ThrowOnError();
-            return shader;
-        }
-        finally
-        {
-            device->Release();
-        }
+        var code = EdgeShader.ReadShaderCode(highlight ? "CustomFonts.Rendering.FontSubpixelHighlightPS.cso" : "CustomFonts.Rendering.FontSubpixelPS.cso");
+        if (EdgeShaderCode.PatchConstants(code, [(SubpixelShaderCode.ClearTypeLevelSentinel, this.settings.Level), (SubpixelShaderCode.ContrastSentinel, this.settings.Contrast)]) < 2)
+            Host.Log.Warning("FontSubpixelPS.cso doesn't have both of its settings to set; text is drawn with the values it was compiled with");
+        return EdgeShader.CreateShader(game, code);
     }
 
     private void Restore(PassShader p)
@@ -415,6 +390,11 @@ internal sealed unsafe class SubpixelText : IDisposable
         {
             *slot = p.Original;
             p.Shader->Release();
+        }
+        else if (p.Original is not null)
+        {
+            // The slot doesn't hold ours any more, so the game shader's reference is ours to release.
+            p.Original->Release();
         }
 
         p.PatchedObject = 0;

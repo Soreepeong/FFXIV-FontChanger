@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 
 using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
 using FFXIVClientStructs.FFXIV.Component.GUI;
@@ -98,16 +97,7 @@ internal static unsafe class GameFontNames
     private static bool IsLobby(Font* font)
     {
         var handle = font->TextureResourceHandles[0].Value;
-        return handle is not null && FileName((ResourceHandle*)handle).Contains("font_lobby", StringComparison.OrdinalIgnoreCase);
-    }
-
-    // A loaded resource's file name, from the game's std::string; a length out of all reason reads as none.
-    private static string FileName(ResourceHandle* handle)
-    {
-        var length = handle->FileName.Length;
-        return length is > 0 and <= 4096
-            ? Encoding.UTF8.GetString(handle->FileName.AsSpan(0, (int)length))
-            : string.Empty;
+        return handle is not null && CustomClientStructExtensions.GetFileName((ResourceHandle*)handle).Contains("font_lobby", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Gets the size of a game font by its name (FontChanger.FixedSizeFont's data/game_fonts.json); 0 if it isn't one.</summary>

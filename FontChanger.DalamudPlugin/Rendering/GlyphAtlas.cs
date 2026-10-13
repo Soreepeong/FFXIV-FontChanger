@@ -24,7 +24,7 @@ namespace CustomFonts;
 internal sealed unsafe class GlyphAtlas : IDisposable
 {
     /// <summary>Makes an atlas of square pages of a side length (up to 4096: glyph positions take 12 bits; odd for a subpixel atlas).</summary>
-    public GlyphAtlas(int size, string name, bool subpixel = false)
+    public GlyphAtlas(int size, string name, bool subpixel)
     {
         this.Size = size;
         this.Name = name;
@@ -407,9 +407,16 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         public Page(int size, string name)
         {
             this.size = size;
-            this.DirtyLeft = this.DirtyTop = size;
             this.Shadow = (byte*)NativeMemory.AllocZeroed((nuint)(size * 4 * size));
-            this.texture = Host.Current.CreateTexture(size, size, name);
+            try
+            {
+                this.texture = Host.Current.CreateTexture(size, size, name);
+            }
+            catch
+            {
+                NativeMemory.Free(this.Shadow);
+                throw;
+            }
 
             // The texture's contents are undefined until written: upload the cleared copy once.
             this.MarkDirty(0, 0, size, size);

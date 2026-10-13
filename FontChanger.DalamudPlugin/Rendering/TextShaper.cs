@@ -4,6 +4,9 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 
+using Lumina.Text.Payloads;
+using Lumina.Text.ReadOnly;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
@@ -44,9 +47,6 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     // of Windows' own (Segoe Fluent Icons) for them.
     internal const string IconFamily = "XIV AXIS Std ATK";
 
-    // The macro that sets italics (<italic>): runs end before it.
-    private const byte ItalicMacro = 0x1A;
-
     private const int MaxRunBytes = 4096;
     private const int MaxActiveRuns = 8;
     private const int MaxCachedRuns = 8192;
@@ -56,7 +56,6 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
     private readonly GlyphRasterizer rasterizer;
     private readonly FontReplacer replacer;
-    private readonly GlyphRunCollector collector = new();
     private readonly Dictionary<(ReplacementFace? Face, int HalfPx), nint> formats = [];
     private readonly Dictionary<(ulong Hash, int Length, FontReplacer.SizedFont Sized, ItalicMode Italic), ShapedRun> runs = [];
 
@@ -77,7 +76,9 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     // The system's fallback, private-use characters to the game's icon font first. A face without system fallback lays
     // out each character in the font of its element only (GlyphRasterizer.NoFallback).
     private IDWriteFontFallback* fallback;
-    private nint emptyGlyph;
+
+    // The glyph of no width given to a cluster's characters after the first.
+    private readonly nint emptyGlyph;
 
     // While shaping a run: its text, and each code unit's byte offset, glyph source and whether it is in italics.
     private char[] text = new char[256];
@@ -94,10 +95,11 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     // as elements' emboldening, transformations, monospacing and letter spacing make it, which DirectWrite doesn't know of.
     private float penShift;
 
-    public TextShaper(GlyphRasterizer rasterizer, FontReplacer replacer)
+    public TextShaper(GlyphRasterizer rasterizer, FontReplacer replacer, nint emptyGlyph)
     {
         this.rasterizer = rasterizer;
         this.replacer = replacer;
+        this.emptyGlyph = emptyGlyph;
         this.fallback = CreateSystemFallback(rasterizer);
     }
 
@@ -111,12 +113,10 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
     /// <summary>
     /// Gets the glyph for the character at <paramref name="p"/> as shaped in its run, in the italics it is in, or 0 to
-    /// look it up per character. <paramref name="emptyGlyph"/> is the glyph of no width given to a cluster's characters
-    /// after the first.
+    /// look it up per character.
     /// </summary>
-    public nint TryGetGlyph(FontReplacer.SizedFont sized, byte* p, nint emptyGlyph, ItalicMode italic)
+    public nint TryGetGlyph(FontReplacer.SizedFont sized, byte* p, ItalicMode italic)
     {
-        this.emptyGlyph = emptyGlyph;
         for (var i = this.active.Count - 1; i >= 0; i--)
         {
             var run = this.active[i];
@@ -157,8 +157,6 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             this.fallback->Release();
             this.fallback = null;
         }
-
-        this.collector.Dispose();
     }
 
     void IGlyphRunSink.OnGlyphRun(float baselineX, DWRITE_GLYPH_RUN* run, DWRITE_GLYPH_RUN_DESCRIPTION* description)
@@ -521,7 +519,6 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         // character's byte whether it is in italics; a run in a node's italics ends at an italic macro instead.
         var count = 0;
         var i = 0;
-        var hash = 0xCBF29CE484222325ul;
         var inItalic = italic != ItalicMode.Upright;
         Span<char> units = stackalloc char[2];
         while (i < MaxRunBytes)
@@ -530,26 +527,25 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             if (b == 0 || b == 0x0A || b == 0x0D)
                 break;
 
-            if (b == GameText.MacroStart)
+            if (b == ReadOnlySeString.Stx)
             {
-                // A macro: skipped whole; a line break macro ends the run.
-                if (p[i + 1] == 0x10 || (p[i + 1] == ItalicMacro && italic == ItalicMode.Images))
+                // A macro: skipped whole; a line break macro ends the run, and so does an italic one in a node's italics.
+                var macro = (MacroCode)p[i + 1];
+                if (macro == MacroCode.NewLine || (macro == MacroCode.Italic && italic == ItalicMode.Images))
                     break;
                 var total = GameText.MacroLength(p + i);
                 if (total == 0 || i + total > MaxRunBytes)
                     break;
 
                 // <italic>: its argument is a plain integer (1 on, 0 off); anything else ends the run.
-                if (p[i + 1] == ItalicMacro)
+                if (macro == MacroCode.Italic)
                 {
-                    var n = GameText.ReadInteger(p + i + 2, out var payload);
-                    if (payload == 0 || GameText.ReadInteger(p + i + 2 + n, out var on) != payload)
+                    if (!GameText.TryReadInteger(p + i + 2, out var payload, out var n)
+                        || !GameText.TryReadInteger(p + i + 2 + n, out var on, out var onLength) || onLength != payload)
                         break;
                     inItalic = on != 0;
                 }
 
-                for (var j = 0; j < total; j++)
-                    hash = (hash ^ p[i + j]) * 0x100000001B3ul;
                 i += total;
                 continue;
             }
@@ -568,9 +564,6 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             {
                 codepoint = rune.Value;
             }
-
-            for (var j = 0; j < length; j++)
-                hash = (hash ^ p[i + j]) * 0x100000001B3ul;
 
             // Control characters and broken sequences shape as a replacement character, which keeps them per character.
             var r = codepoint < 0 ? new Rune(0xFFFD) : new Rune(codepoint);
@@ -591,6 +584,10 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
         if (i == 0)
             return false;
+
+        var hash = 0xCBF29CE484222325ul;
+        for (var j = 0; j < i; j++)
+            hash = (hash ^ p[j]) * 0x100000001B3ul;
 
         // The byte that ended the run is compared too, as what follows the last character could join its cluster.
         var ended = i < MaxRunBytes;
@@ -699,7 +696,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             this.penShift = 0;
             this.clusters.Clear();
             this.clusterGap = false;
-            this.collector.Collect(layout, this);
+            this.rasterizer.RunCollector.Collect(layout, this);
         }
         finally
         {
@@ -951,7 +948,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     }
 
     /// <summary>A cluster of a layout: its glyphs and where they are, and the text it covers.</summary>
-    private sealed class Cluster
+    private sealed record Cluster
     {
         public nint Face { get; init; }
 
@@ -1001,24 +998,12 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         {
             var pen = this.X0 + this.Origin + start;
             var x0 = Rounding.Round(pen);
-            return new()
+            return this with
             {
-                Face = this.Face,
-                EmSize = this.EmSize,
-                Glyphs = this.Glyphs,
-                Advances = this.Advances,
-                Offsets = this.Offsets,
+                RasterKey = null,
                 Origin = Rounding.Round((pen - x0) * SubpixelSteps) / SubpixelSteps,
                 X0 = (int)x0,
                 X1 = (int)Rounding.Round(this.X1 + end),
-                Cell = this.Cell,
-                TextStart = this.TextStart,
-                TextEnd = this.TextEnd,
-                Source = this.Source,
-                Element = this.Element,
-                Missing = this.Missing,
-                AfterGap = this.AfterGap,
-                RealItalic = this.RealItalic,
             };
         }
     }

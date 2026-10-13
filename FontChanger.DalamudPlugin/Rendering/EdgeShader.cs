@@ -1,13 +1,11 @@
 using System;
 using System.IO;
-using System.Text;
 
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using TerraFX.Interop.DirectX;
-using TerraFX.Interop.Windows;
 
 namespace CustomFonts;
 
@@ -127,18 +125,9 @@ internal sealed unsafe class EdgeShader : IDisposable
         if (server is null)
             return null;
         var file = (ResourceHandle*)server->FontEdgePSResource;
-        if (check && (file is null || !FileName(file).EndsWith(ShaderFile, StringComparison.OrdinalIgnoreCase)))
+        if (check && (file is null || !CustomClientStructExtensions.GetFileName(file).EndsWith(ShaderFile, StringComparison.OrdinalIgnoreCase)))
             return null;
         return server->FontEdgePS;
-    }
-
-    // A loaded resource's file name, from the game's std::string; a length out of all reason reads as none.
-    private static string FileName(ResourceHandle* handle)
-    {
-        var length = handle->FileName.Length;
-        return length is > 0 and <= 4096
-            ? Encoding.UTF8.GetString(handle->FileName.AsSpan(0, (int)length))
-            : string.Empty;
     }
 
     /// <summary>
@@ -175,13 +164,25 @@ internal sealed unsafe class EdgeShader : IDisposable
     /// </summary>
     private static ID3D11PixelShader* Create(ID3D11PixelShader* game, float softness)
     {
-        using var stream = typeof(EdgeShader).Assembly.GetManifestResourceStream("CustomFonts.Rendering.FontEdgePS.cso")
-            ?? throw new FileNotFoundException("FontEdgePS.cso isn't embedded.");
-        var code = new byte[stream.Length];
-        stream.ReadExactly(code);
+        var code = ReadShaderCode("CustomFonts.Rendering.FontEdgePS.cso");
         if (EdgeShaderCode.Patch(code, softness) == 0)
             Host.Log.Error(null, "FontEdgePS.cso has no Softness to set; the edge is drawn with the value it was compiled with");
+        return CreateShader(game, code);
+    }
 
+    /// <summary>Gets the bytecode of a shader embedded in the plugin.</summary>
+    internal static byte[] ReadShaderCode(string name)
+    {
+        using var stream = typeof(EdgeShader).Assembly.GetManifestResourceStream(name)
+            ?? throw new FileNotFoundException($"{name} isn't embedded.");
+        var code = new byte[stream.Length];
+        stream.ReadExactly(code);
+        return code;
+    }
+
+    /// <summary>Makes a pixel shader on the device of a game's shader.</summary>
+    internal static ID3D11PixelShader* CreateShader(ID3D11PixelShader* game, byte[] code)
+    {
         ID3D11Device* device;
         game->GetDevice(&device);
         try

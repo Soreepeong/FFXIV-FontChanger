@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
 
 using TerraFX.Interop.DirectX;
-using TerraFX.Interop.Windows;
 
 using static TerraFX.Interop.DirectX.D3D11_CPU_ACCESS_FLAG;
 using static TerraFX.Interop.DirectX.D3D11_MAP;

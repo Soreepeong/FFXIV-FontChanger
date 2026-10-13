@@ -382,7 +382,7 @@ internal static class GlyphMerger
     /// text, which some shapes are sized by; <paramref name="size"/> is the font's, at which the game's glyphs may say
     /// where the shape goes; and an underlined IME box has a bar cut out at its lower left, with the text right of it.
     /// </summary>
-    private static Shape MakeShape(MergeShape kind, int characters, float size = 0, bool underline = false)
+    private static Shape MakeShape(MergeShape kind, int characters, float size, bool underline)
     {
         var s = new Shape();
         var specs = GlyphMergeShapes.Shapes;

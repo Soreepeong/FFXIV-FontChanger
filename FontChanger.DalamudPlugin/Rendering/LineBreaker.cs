@@ -5,6 +5,9 @@ using System.Text;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
+using Lumina.Text.Payloads;
+using Lumina.Text.ReadOnly;
+
 namespace CustomFonts;
 
 /// <summary>
@@ -26,10 +29,6 @@ namespace CustomFonts;
 /// </remarks>
 internal sealed unsafe class LineBreaker : IDisposable
 {
-    // Macros that the game counts as characters (icons).
-    private const byte IconMacro = 0x12;
-    private const byte Icon2Macro = 0x1E;
-
     // Characters the game's word gathering puts for the non-breaking space and hyphen macros.
     private const byte NonBreakingSpaceChar = 0x1D;
     private const byte HyphenChar = 0x1E;
@@ -73,7 +72,7 @@ internal sealed unsafe class LineBreaker : IDisposable
     {
         while (*p != 0)
         {
-            if (*p == GameText.MacroStart)
+            if (*p == ReadOnlySeString.Stx)
             {
                 var length = GameText.MacroLength(p);
                 if (length == 0)
@@ -165,8 +164,7 @@ internal sealed unsafe class LineBreaker : IDisposable
         var best = 0;
         for (var k = 1; k <= fit; k++)
         {
-            var end = this.units[k - 1].TextEnd;
-            if (end > 0 && this.wrapAfter[end])
+            if (EndsAt(this.wrapAfter, k))
                 best = k;
         }
 
@@ -175,15 +173,13 @@ internal sealed unsafe class LineBreaker : IDisposable
         {
             for (var k = 1; k <= fit; k++)
             {
-                var end = this.units[k - 1].TextEnd;
-                if (end > 0 && this.clusterEnd[end])
+                if (EndsAt(this.clusterEnd, k))
                     best = k;
             }
 
             for (var k = fit + 1; best == 0 && k <= count; k++)
             {
-                var end = this.units[k - 1].TextEnd;
-                if (end > 0 && this.clusterEnd[end])
+                if (EndsAt(this.clusterEnd, k))
                     best = k;
             }
 
@@ -196,6 +192,8 @@ internal sealed unsafe class LineBreaker : IDisposable
             best++;
 
         return (uint)best;
+
+        bool EndsAt(bool[] breaks, int k) => this.units[k - 1].TextEnd is var end and > 0 && breaks[end];
     }
 
     /// <summary>
@@ -209,12 +207,12 @@ internal sealed unsafe class LineBreaker : IDisposable
         Span<char> utf16 = stackalloc char[2];
         while (*p != 0)
         {
-            if (*p == GameText.MacroStart)
+            if (*p == ReadOnlySeString.Stx)
             {
                 var length = GameText.MacroLength(p);
                 if (length == 0)
                     break;
-                var icon = p[1] is IconMacro or Icon2Macro;
+                var icon = (MacroCode)p[1] is MacroCode.Icon or MacroCode.Icon2;
                 if (icon)
                     this.text.Append('￼');
                 this.units.Add(new(!icon, this.text.Length));

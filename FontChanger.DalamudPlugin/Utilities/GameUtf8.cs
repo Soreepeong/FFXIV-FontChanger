@@ -41,6 +41,6 @@ public static class GameUtf8
         var n = value > 0xFFFFFF ? 4 : value > 0xFFFF ? 3 : value > 0xFF ? 2 : 1;
         for (var i = 0; i < n; i++)
             buf[i] = (byte)(value >> (8 * (n - 1 - i)));
-        return Rune.DecodeFromUtf8(buf[..n], out var rune, out _) == OperationStatus.Done ? rune.Value : -1;
+        return Rune.DecodeFromUtf8(buf[..n], out var rune, out var consumed) == OperationStatus.Done && consumed == n ? rune.Value : -1;
     }
 }

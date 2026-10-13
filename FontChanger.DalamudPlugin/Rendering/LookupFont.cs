@@ -172,79 +172,93 @@ internal sealed unsafe class LookupFont : IDisposable
     private LookupFont(IDWriteFactory2* factory, IDWriteFont* font, LookupDef lookup, ElementRenderer renderer)
     {
         this.Font = font;
-
-        IDWriteFontFace* face;
-        font->CreateFontFace(&face).ThrowOnError();
-        this.Face = face;
-        DWRITE_FONT_METRICS metrics;
-        face->GetMetrics(&metrics);
-        this.Metrics = metrics;
-
-        // A variable font starts from its instance (DirectWrite lists the named ones as fonts), less the optical size.
-        var ranges = Array.Empty<DWRITE_FONT_AXIS_RANGE>();
-        IDWriteFontFace5* face5;
-        var iid = IID.IID_IDWriteFontFace5;
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19043) && ((IUnknown*)face)->QueryInterface(&iid, (void**)&face5).SUCCEEDED)
+        try
         {
-            if (face5->HasVariations())
+            IDWriteFontFace* face;
+            font->CreateFontFace(&face).ThrowOnError();
+            this.Face = face;
+            DWRITE_FONT_METRICS metrics;
+            face->GetMetrics(&metrics);
+            this.Metrics = metrics;
+
+            // A variable font starts from its instance (DirectWrite lists the named ones as fonts), less the optical size.
+            var ranges = Array.Empty<DWRITE_FONT_AXIS_RANGE>();
+            IDWriteFontFace5* face5;
+            var iid = IID.IID_IDWriteFontFace5;
+            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19043) && ((IUnknown*)face)->QueryInterface(&iid, (void**)&face5).SUCCEEDED)
             {
-                IDWriteFontResource* r;
-                face5->GetFontResource(&r).ThrowOnError();
-                this.resource = r;
-                ranges = new DWRITE_FONT_AXIS_RANGE[r->GetFontAxisCount()];
-                fixed (DWRITE_FONT_AXIS_RANGE* p = ranges)
-                    r->GetFontAxisRanges(p, (uint)ranges.Length).ThrowOnError();
-                this.axes = new DWRITE_FONT_AXIS_VALUE[face5->GetFontAxisValueCount()];
-                fixed (DWRITE_FONT_AXIS_VALUE* p = this.axes)
-                    face5->GetFontAxisValues(p, (uint)this.axes.Length).ThrowOnError();
+                try
+                {
+                    if (face5->HasVariations())
+                    {
+                        IDWriteFontResource* r;
+                        face5->GetFontResource(&r).ThrowOnError();
+                        this.resource = r;
+                        ranges = new DWRITE_FONT_AXIS_RANGE[r->GetFontAxisCount()];
+                        fixed (DWRITE_FONT_AXIS_RANGE* p = ranges)
+                            r->GetFontAxisRanges(p, (uint)ranges.Length).ThrowOnError();
+                        this.axes = new DWRITE_FONT_AXIS_VALUE[face5->GetFontAxisValueCount()];
+                        fixed (DWRITE_FONT_AXIS_VALUE* p = this.axes)
+                            face5->GetFontAxisValues(p, (uint)this.axes.Length).ThrowOnError();
+                    }
+                }
+                finally
+                {
+                    face5->Release();
+                }
             }
 
-            face5->Release();
-        }
-
-        var axisValues = new Dictionary<uint, float>();
-        foreach (var a in this.axes)
-        {
-            if (a.axisTag != DWRITE_FONT_AXIS_TAG.DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE)
-                axisValues[(uint)a.axisTag] = a.value;
-        }
-
-        this.Synthesis = SynthesizedFace.Resolve(lookup, renderer, font, ranges);
-        this.simulations = this.Synthesis.Simulations ?? font->GetSimulations();
-        foreach (var (tag, value) in this.Synthesis.AxisValues)
-            axisValues[tag] = value;
-        foreach (var (tag, value) in lookup.Variations)
-            axisValues[tag] = value;
-        this.AxisValues = axisValues;
-
-        // Layouts match this font again by the properties that make DirectWrite apply the same simulations.
-        var bold = (this.simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_BOLD) != 0;
-        var oblique = (this.simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) != 0;
-        (this.LayoutWeight, this.LayoutStretch, this.LayoutStyle) = this.Synthesis.Simulations is null
-            ? (lookup.Weight, lookup.Stretch, lookup.Style)
-            : (bold ? Math.Max((int)font->GetWeight(), 700) : (int)font->GetWeight(), (int)font->GetStretch(), oblique ? 1 : (int)font->GetStyle());
-
-        if (this.IsVariable)
-        {
-            // Unless set, the optical size follows the text size.
-            var list = new List<DWRITE_FONT_AXIS_VALUE>();
-            foreach (var range in ranges)
+            var axisValues = new Dictionary<uint, float>();
+            foreach (var a in this.axes)
             {
-                if (axisValues.TryGetValue((uint)range.axisTag, out var v))
-                    list.Add(new() { axisTag = range.axisTag, value = Math.Clamp(v, range.minValue, range.maxValue) });
-                else if (range.axisTag == DWRITE_FONT_AXIS_TAG.DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE)
-                    this.AutoOpticalSize = true;
+                if (a.axisTag != DWRITE_FONT_AXIS_TAG.DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE)
+                    axisValues[(uint)a.axisTag] = a.value;
             }
 
-            this.axes = list.ToArray();
-            this.opticalSizeRange = Array.Find(ranges, r => r.axisTag == DWRITE_FONT_AXIS_TAG.DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE);
+            this.Synthesis = SynthesizedFace.Resolve(lookup, renderer, font, ranges);
+            this.simulations = this.Synthesis.Simulations ?? font->GetSimulations();
+            foreach (var (tag, value) in this.Synthesis.AxisValues)
+                axisValues[tag] = value;
+            foreach (var (tag, value) in lookup.Variations)
+                axisValues[tag] = value;
+            this.AxisValues = axisValues;
+
+            // Layouts match this font again by the properties that make DirectWrite apply the same simulations.
+            var bold = (this.simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_BOLD) != 0;
+            var oblique = (this.simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) != 0;
+            (this.LayoutWeight, this.LayoutStretch, this.LayoutStyle) = this.Synthesis.Simulations is null
+                ? (lookup.Weight, lookup.Stretch, lookup.Style)
+                : (bold ? Math.Max((int)font->GetWeight(), 700) : (int)font->GetWeight(), (int)font->GetStretch(), oblique ? 1 : (int)font->GetStyle());
+
+            if (this.IsVariable)
+            {
+                // Unless set, the optical size follows the text size.
+                var list = new List<DWRITE_FONT_AXIS_VALUE>();
+                foreach (var range in ranges)
+                {
+                    if (axisValues.TryGetValue((uint)range.axisTag, out var v))
+                        list.Add(new() { axisTag = range.axisTag, value = Math.Clamp(v, range.minValue, range.maxValue) });
+                    else if (range.axisTag == DWRITE_FONT_AXIS_TAG.DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE)
+                        this.AutoOpticalSize = true;
+                }
+
+                this.axes = list.ToArray();
+                this.opticalSizeRange = Array.Find(ranges, r => r.axisTag == DWRITE_FONT_AXIS_TAG.DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE);
+            }
+            else if (this.simulations != face->GetSimulations())
+            {
+                // The face of the font comes with the font's simulations; one with others is made from the file.
+                var simulated = WithSimulations(factory, face, this.simulations);
+                face->Release();
+                this.Face = simulated;
+            }
         }
-        else if (this.simulations != face->GetSimulations())
+        catch
         {
-            // The face of the font comes with the font's simulations; one with others is made from the file.
-            var simulated = WithSimulations(factory, face, this.simulations);
-            face->Release();
-            this.Face = simulated;
+            // Create releases the font.
+            this.Font = null;
+            this.Dispose();
+            throw;
         }
     }
 

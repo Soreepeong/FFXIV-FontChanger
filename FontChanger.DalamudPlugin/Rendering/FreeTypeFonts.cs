@@ -26,7 +26,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
     private readonly Dictionary<(string Path, uint Index), nint> faces = [];
     private FT_LibraryRec_* library;
 
-    // The size each face was last set to; a bitmap face's selected strike scale.
+    // The size each outline face was last set to.
     private readonly Dictionary<nint, float> faceSizes = [];
 
     // A variable face's axes (tag, minimum, default, maximum; 16.16), and the design coordinates it was last set to.
