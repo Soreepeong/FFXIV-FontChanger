@@ -97,6 +97,9 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// <summary>Gets the area a glyph's box takes in a plane, with its padding.</summary>
     public static int PaddedArea(int width, int height) => (width + (2 * Padding)) * (height + (2 * Padding));
 
+    /// <summary>Gets whether a glyph of this size, with its padding, fits in one empty plane.</summary>
+    public bool CanHold(int width, int height) => width + (2 * Padding) <= Width && height + (2 * Padding) <= Height;
+
     /// <summary>
     /// Empties every page, keeping the textures (fonts refer to them). Framework thread, between frames: no glyph
     /// referring to the old contents may be drawn afterwards.
@@ -157,7 +160,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         page = plane = x = y = 0;
         var w = width + (2 * Padding);
         var h = height + (2 * Padding);
-        if (w > Width || h > Height)
+        if (!this.CanHold(width, height))
             return false;
 
         if (!this.TryEnsurePages(1))

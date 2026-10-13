@@ -1237,6 +1237,15 @@ internal sealed unsafe class FontReplacer : IDisposable
 
         if (cell.State != CellState.Pending)
             return glyph;
+        if (!cell.Atlas!.CanHold(glyph->Width, glyph->Height))
+        {
+            cell.State = CellState.None;
+            cell.Raster = default;
+            cell.Source = null;
+            DropPixels(glyph);
+            return glyph;
+        }
+
         try
         {
             if (this.WritePixels(glyph, ref cell, this.frameTick))
