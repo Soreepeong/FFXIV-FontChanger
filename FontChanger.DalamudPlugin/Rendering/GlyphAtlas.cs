@@ -9,66 +9,49 @@ using TerraFX.Interop.DirectX;
 namespace CustomFonts;
 
 /// <summary>
-/// Atlas pages for the rasterized glyphs of a game font family's replaced fonts. A page is a square B8G8R8A8 texture
-/// holding four glyph planes, one per channel, as the game's own atlases do; glyphs are written to a CPU copy, and the
-/// changed rectangle goes to the GPU from <see cref="Upload"/>.
+/// Atlas pages for the rasterized glyphs of a game font family's replaced fonts. A page is a B8G8R8A8 texture holding
+/// four glyph planes, one per channel, as the game's own atlases do; glyphs are written to a CPU copy, and the changed
+/// rectangle goes to the GPU from <see cref="Upload"/>.
 /// </summary>
 /// <remarks>
 /// The font shaders take UVs as texels over the bound texture's size, so pages may be smaller than the game's atlases;
 /// only the edge and glare shaders' texel step comes from the font's claimed texture width, which a replaced font sets
-/// from its atlas's size. Pages take texture indices <see cref="FirstTextureIndex"/> and up in every replaced font; the
-/// game's own textures stay below, for the glyphs left to the game (the private-use icons).
-/// Subpixel atlases have odd sizes (how FontSubpixelPS tells them apart); glyphs take R, G, B for subpixel coverage and A
-/// (<see cref="SubpixelPlane"/>) for grayscale.
+/// from its atlas's width. A replaced font's textures are all its atlas's: page n is texture index n, and the game's
+/// glyphs it draws are copied into the atlas first.
+/// Subpixel atlases have odd widths (how FontSubpixelPS tells them apart); glyphs take R, G, B for subpixel coverage and
+/// A (<see cref="SubpixelPlane"/>) for grayscale.
 /// </remarks>
 internal sealed unsafe class GlyphAtlas : IDisposable
 {
-    /// <summary>Makes an atlas of square pages of a side length (up to 4096: glyph positions take 12 bits; odd for a subpixel atlas).</summary>
-    public GlyphAtlas(int size, string name, bool subpixel)
+    /// <summary>
+    /// Makes an atlas of pages of a size (sides up to 4096: glyph positions take 12 bits; an odd width for a subpixel
+    /// atlas), of at most <paramref name="maxPages"/> pages.
+    /// </summary>
+    public GlyphAtlas(int width, int height, int maxPages, string name, bool subpixel)
     {
-        this.Size = size;
+        this.Width = width;
+        this.Height = height;
+        this.MaxPages = Math.Clamp(maxPages, 1, MaxTextureSlots);
         this.Name = name;
         this.Subpixel = subpixel;
         this.current = this.FirstPlane;
         this.frontier = this.FirstPlane + this.PlaneStep;
     }
 
-    /// <summary>Gets the pages' side length.</summary>
-    public int Size { get; }
+    public int Width { get; }
+
+    public int Height { get; }
 
     public string Name { get; }
 
     public bool Subpixel { get; }
 
-    /// <summary>
-    /// Gets the texture index of the first page in a replaced font: past the textures of every font of the game's tables
-    /// (7 in the global client), so that the textures of the game's own fonts keep their places.
-    /// </summary>
-    public static byte FirstTextureIndex { get; } = FirstFreeTexture();
+    /// <summary>Gets the number of texture slots of a font, the most pages an atlas can have.</summary>
+    public const int MaxTextureSlots = Font.MaxTextures;
 
-    public static int MaxPages => Font.MaxTextures - FirstTextureIndex;
+    public int MaxPages { get; }
 
-    // A font of the global client's texture count, of a table the game doesn't have.
-    private const int GlobalTextureCount = 7;
-
-    private static byte FirstFreeTexture()
-    {
-        var count = GlobalTextureCount;
-        count = Math.Max(count, MostTextures(AtkFontManager.StaticAddressPointers.pGameFontTable));
-        count = Math.Max(count, MostTextures(AtkFontManager.StaticAddressPointers.pLobbyFontTableStandardResolution));
-        count = Math.Max(count, MostTextures(AtkFontManager.StaticAddressPointers.pLobbyFontTableHighResolution));
-        return checked((byte)count);
-    }
-
-    private static int MostTextures(FontTableEntry* table)
-    {
-        var count = 0;
-        for (var i = 0; table is not null && i < FontTableEntry.Count; i++)
-            count = Math.Max(count, (int)table[i].TextureCount);
-        return count;
-    }
-
-    private int Pitch => this.Size * 4;
+    private int Pitch => this.Width * 4;
 
     // Glyph rectangles are padded by this much on each side: the edge and outline passes sample a texel around a glyph.
     private const int Padding = 1;
@@ -101,10 +84,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
     public nint GetKernelTexture(int page) => this.pages[page].Kernel;
 
-    /// <summary>
-    /// Adds the first page if there is none. Glyphs refer to page texture indices, and the renderer only has vertex
-    /// buffers for indices below a font's texture count, so the page must be there before the first glyph is.
-    /// </summary>
+    /// <summary>Adds the first page if there is none.</summary>
     public void EnsurePage()
     {
         if (!this.TryEnsurePages(1))
@@ -112,7 +92,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     }
 
     /// <summary>Gets the number of planes there can be.</summary>
-    public static int MaxPlanes => MaxPages * PlanesPerPage;
+    public int MaxPlanes => this.MaxPages * PlanesPerPage;
 
     /// <summary>Gets the area a glyph's box takes in a plane, with its padding.</summary>
     public static int PaddedArea(int width, int height) => (width + (2 * Padding)) * (height + (2 * Padding));
@@ -127,9 +107,9 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         {
             foreach (var p in this.pages)
             {
-                NativeMemory.Clear(p.Shadow, (nuint)(Pitch * Size));
+                NativeMemory.Clear(p.Shadow, (nuint)(Pitch * Height));
                 p.Shelves.AsSpan().Clear();
-                p.MarkDirty(0, 0, Size, Size);
+                p.MarkDirty(0, 0, Width, Height);
             }
 
             this.current = this.FirstPlane;
@@ -148,21 +128,21 @@ internal sealed unsafe class GlyphAtlas : IDisposable
             var p = this.pages[page];
             if (this.Subpixel)
             {
-                NativeMemory.Clear(p.Shadow, (nuint)(Pitch * Size));
+                NativeMemory.Clear(p.Shadow, (nuint)(Pitch * Height));
             }
             else
             {
                 var channel = ChannelOffsets[plane];
-                for (var row = 0; row < Size; row++)
+                for (var row = 0; row < Height; row++)
                 {
                     var d = p.Shadow + (row * Pitch) + channel;
-                    for (var col = 0; col < Size; col++)
+                    for (var col = 0; col < Width; col++)
                         d[col * 4] = 0;
                 }
             }
 
             p.Shelves[plane] = default;
-            p.MarkDirty(0, 0, Size, Size);
+            p.MarkDirty(0, 0, Width, Height);
             this.current = (page * PlanesPerPage) + plane;
         }
     }
@@ -177,7 +157,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         page = plane = x = y = 0;
         var w = width + (2 * Padding);
         var h = height + (2 * Padding);
-        if (w > Size || h > Size)
+        if (w > Width || h > Height)
             return false;
 
         if (!this.TryEnsurePages(1))
@@ -191,9 +171,9 @@ internal sealed unsafe class GlyphAtlas : IDisposable
                 page = this.current / PlanesPerPage;
                 plane = this.current % PlanesPerPage;
                 ref var s = ref this.pages[page].Shelves[plane];
-                if (s.X + w > Size)
+                if (s.X + w > Width)
                     s = new() { Y = s.Y + s.Height };
-                if (s.Y + h <= Size)
+                if (s.Y + h <= Height)
                 {
                     x = s.X + Padding;
                     y = s.Y + Padding;
@@ -353,7 +333,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// <summary>Adds pages until there are at least <paramref name="count"/>; false if there can't be that many.</summary>
     private bool TryEnsurePages(int count)
     {
-        if (count > MaxPages)
+        if (count > this.MaxPages)
             return false;
 
         while (true)
@@ -364,7 +344,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
             if (added >= count)
                 return true;
 
-            var page = new Page(this.Size, $"CustomFonts {this.Name} page {added}");
+            var page = new Page(this.Width, this.Height, $"CustomFonts {this.Name} page {added}");
             lock (this.sync)
             {
                 // Another thread added one meanwhile.
@@ -386,7 +366,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
                 }
             }
 
-            Host.Log.Information("Added {name} atlas page {n} ({size} x {size})", this.Name, added + 1, this.Size);
+            Host.Log.Information("Added {name} atlas page {n} of {max} ({width} x {height})", this.Name, added + 1, this.MaxPages, this.Width, this.Height);
             this.PageAdded?.Invoke();
         }
     }
@@ -401,16 +381,18 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
     private sealed class Page : IDisposable
     {
-        private readonly int size;
+        private readonly int width;
+        private readonly int height;
         private readonly IHostTexture texture;
 
-        public Page(int size, string name)
+        public Page(int width, int height, string name)
         {
-            this.size = size;
-            this.Shadow = (byte*)NativeMemory.AllocZeroed((nuint)(size * 4 * size));
+            this.width = width;
+            this.height = height;
+            this.Shadow = (byte*)NativeMemory.AllocZeroed((nuint)(width * 4 * height));
             try
             {
-                this.texture = Host.Current.CreateTexture(size, size, name);
+                this.texture = Host.Current.CreateTexture(width, height, name);
             }
             catch
             {
@@ -419,7 +401,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
             }
 
             // The texture's contents are undefined until written: upload the cleared copy once.
-            this.MarkDirty(0, 0, size, size);
+            this.MarkDirty(0, 0, width, height);
         }
 
         /// <summary>Gets the page as a Kernel::Texture*.</summary>
@@ -450,7 +432,8 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
         public void ClearDirty()
         {
-            this.DirtyLeft = this.DirtyTop = this.size;
+            this.DirtyLeft = this.width;
+            this.DirtyTop = this.height;
             this.DirtyRight = this.DirtyBottom = 0;
         }
 

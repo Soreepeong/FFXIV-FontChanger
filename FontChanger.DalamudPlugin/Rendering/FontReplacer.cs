@@ -6,6 +6,8 @@ using System.Runtime.InteropServices;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
+using TerraFX.Interop.DirectX;
+
 namespace CustomFonts;
 
 /// <summary>
@@ -39,6 +41,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     private readonly IHostHook<FontCacheDelegate> buildFontCacheHook;
     private readonly IHostHook<LayOutCharacterDelegate> layOutCharacterHook;
     private readonly IHostHook<BuildFontDelegate> buildFontHook;
+    private readonly IHostHook<UnloadFontsDelegate> unloadFontsHook;
     private readonly TextShaper shaper;
 
     // The character the game is laying out on this thread (LayOutCharacter).
@@ -66,10 +69,15 @@ internal sealed unsafe class FontReplacer : IDisposable
     private readonly GlyphRasterizer rasterizer;
 
     // The glyphs of each game font family go to an atlas of its own, so that one family's text can't push another's out:
-    // AXIS, the family of most of the UI's text, has pages of the game's size, the others smaller ones.
-    private const int AxisAtlasSize = 4096;
-    private const int OtherAtlasSize = 2048;
+    // AXIS, the family of most of the UI's text, has pages of its own size and count (AtlasSettings).
     private readonly Dictionary<string, GlyphAtlas> atlases = new(StringComparer.OrdinalIgnoreCase);
+
+    // What a copy's texture slots without a page hold, so that a game glyph slipping through draws nothing.
+    private readonly IHostTexture? blankTexture;
+
+    // Copy texture slots are changed only on the thread the game lays text out on; pages added elsewhere wait for it.
+    private readonly int mainThreadId;
+    private readonly HashSet<GlyphAtlas> pendingPageAtlases = [];
 
     private readonly Dictionary<(nint Original, int HalfPx), nint> copiesByKey = [];
     private readonly Dictionary<nint, CopyInfo> copies = [];
@@ -93,6 +101,8 @@ internal sealed unsafe class FontReplacer : IDisposable
             var layOutCharacter = AtkFontAnalyzerBase.Addresses.LayOutCharacter.Value;
             var buildFontCache = AtkTextNode.Addresses.BuildFontCache.Value;
             var buildFont = AtkFontManager.Addresses.BuildFont.Value;
+            var unloadFonts = AtkFontManager.Addresses.UnloadFonts.Value;
+            this.mainThreadId = Environment.CurrentManagedThreadId;
             this.rendererVtbl = AtkFontAnalyzerRenderer.Addresses.StaticVirtualTable.Value;
             this.renderCountVtbl = AtkFontAnalyzerRenderCount.Addresses.StaticVirtualTable.Value;
 
@@ -109,19 +119,21 @@ internal sealed unsafe class FontReplacer : IDisposable
             }
 
             this.emptyGlyph = (GlyphSlot*)NativeMemory.AllocZeroed((nuint)sizeof(GlyphSlot));
-            this.emptyGlyph->Glyph.Packed = (0, 0, 0, GlyphAtlas.FirstTextureIndex);
             this.emptyGlyph->Id = -1;
+            this.blankTexture = CreateBlankTexture();
             this.shaper = new(this.rasterizer, this, (nint)this.emptyGlyph);
             this.pickFontHook = host.Hook<PickFontDelegate>(pickFont, this.PickFontDetour);
             this.getGlyphHook = host.Hook<GetGlyphDelegate>(getGlyph, this.GetGlyphDetour);
             this.buildFontCacheHook = host.Hook<FontCacheDelegate>(buildFontCache, this.BuildFontCacheDetour);
             this.layOutCharacterHook = host.Hook<LayOutCharacterDelegate>(layOutCharacter, this.LayOutCharacterDetour);
             this.buildFontHook = host.Hook<BuildFontDelegate>(buildFont, this.BuildFontDetour);
+            this.unloadFontsHook = host.Hook<UnloadFontsDelegate>(unloadFonts, this.UnloadFontsDetour);
             this.getGlyphHook.Enable();
             this.pickFontHook.Enable();
             this.buildFontCacheHook.Enable();
             this.layOutCharacterHook.Enable();
             this.buildFontHook.Enable();
+            this.unloadFontsHook.Enable();
 
             // Caches built so far hold the game's glyphs.
             this.UpdateFontCaches();
@@ -142,6 +154,33 @@ internal sealed unsafe class FontReplacer : IDisposable
     private delegate nint LayOutCharacterDelegate(nint analyzer, byte** text, AtkFontAnalyzerState* state);
 
     private delegate int BuildFontDelegate(AtkFontManager* manager, ushort index);
+
+    private delegate int UnloadFontsDelegate(AtkFontManager* manager);
+
+    /// <summary>Makes the texture of copy slots without a page: a few texels of nothing.</summary>
+    private static IHostTexture CreateBlankTexture()
+    {
+        const int side = 4;
+        var texture = Host.Current.CreateTexture(side, side, "CustomFonts blank");
+        try
+        {
+            ID3D11Device* device;
+            texture.Resource->GetDevice(&device);
+            ID3D11DeviceContext* context;
+            device->GetImmediateContext(&context);
+            device->Release();
+            var zeros = stackalloc byte[side * side * 4];
+            new Span<byte>(zeros, side * side * 4).Clear();
+            context->UpdateSubresource(texture.Resource, 0, null, zeros, side * 4, 0);
+            context->Release();
+            return texture;
+        }
+        catch
+        {
+            texture.Dispose();
+            throw;
+        }
+    }
 
     /// <summary>Gets the shaper, which also finds line breaks.</summary>
     public TextShaper Shaper => this.shaper;
@@ -268,17 +307,55 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (this.atlases.TryGetValue(family, out var atlas))
             return atlas;
 
-        // FontSubpixelPS tells subpixel pages from the game's textures by their odd width.
+        // FontSubpixelPS tells subpixel pages from the game's textures by their odd width; grayscale pages get an even one.
         var subpixel = this.subpixelText.Active;
-        var size = string.Equals(family, "AXIS", StringComparison.OrdinalIgnoreCase) ? AxisAtlasSize : OtherAtlasSize;
-        atlas = new(subpixel ? size - 1 : size, family, subpixel);
+        var s = this.Atlas;
+        var (width, height, maxPages) = string.Equals(family, "AXIS", StringComparison.OrdinalIgnoreCase)
+                                            ? (s.AxisPageWidth, s.AxisPageHeight, s.AxisMaxPages)
+                                            : (s.OtherPageWidth, s.OtherPageHeight, s.OtherMaxPages);
+        if (subpixel == (width % 2 == 0))
+            width--;
+        atlas = new(width, height, maxPages, family, subpixel);
         atlas.PageAdded += () => this.OnPageAdded(atlas);
         this.atlases.Add(family, atlas);
-
-        // Glyphs refer to page texture indices, and the renderer only has vertex buffers for those below a font's texture
-        // count: the first page is there before any glyph.
         atlas.EnsurePage();
         return atlas;
+    }
+
+    /// <summary>Gets the size and number of the atlas pages.</summary>
+    public AtlasSettings Atlas { get; private set; } = new AtlasSettings().Clamped();
+
+    /// <summary>Sets the size and number of the atlas pages. Framework thread, between frames; a change remakes the atlases and every glyph.</summary>
+    public void SetAtlas(AtlasSettings settings)
+    {
+        settings = settings.Clamped();
+        if (settings == this.Atlas)
+            return;
+        this.Atlas = settings;
+        this.RemakeAtlases();
+    }
+
+    /// <summary>Remakes the atlases with the current settings, and every glyph. Framework thread, between frames.</summary>
+    private void RemakeAtlases()
+    {
+        this.RebuildGlyphs();
+
+        // Glyphs and copies refer to the old atlases' pages, so they go first.
+        this.lastEviction.Clear();
+        lock (this.pendingPageAtlases)
+            this.pendingPageAtlases.Clear();
+        this.sizedFonts.Clear();
+        foreach (var atlas in this.atlases.Values)
+            atlas.Dispose();
+        this.atlases.Clear();
+        foreach (var (copy, info) in this.copies)
+        {
+            info.Sized = this.GetSized((Font*)info.Original, info.HalfPx);
+            this.Sync((Font*)copy, info);
+        }
+
+        ForgetPickedFonts();
+        this.TextInvalidated?.Invoke();
     }
 
     /// <summary>
@@ -327,7 +404,12 @@ internal sealed unsafe class FontReplacer : IDisposable
     private readonly SubpixelText subpixelText = new();
 
     /// <summary>Between frames, after the UI's draw commands are processed; <see cref="Upload"/> does it too.</summary>
-    public void EndFrame() => this.subpixelText.EndFrame();
+    public void EndFrame()
+    {
+        if (Environment.CurrentManagedThreadId == this.mainThreadId)
+            this.ApplyPendingPages();
+        this.subpixelText.EndFrame();
+    }
 
     /// <summary>Gets the subpixel text settings.</summary>
     public SubpixelSettings Subpixel { get; private set; } = new();
@@ -357,24 +439,10 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (order == this.rasterizer.SubpixelOrder && !atlasesChange)
             return;
         this.rasterizer.SubpixelOrder = order;
-        this.RebuildGlyphs();
-        if (!atlasesChange)
-            return;
-
-        // Glyphs and copies refer to the old atlases' pages, so they go first.
-        this.lastEviction.Clear();
-        this.sizedFonts.Clear();
-        foreach (var atlas in this.atlases.Values)
-            atlas.Dispose();
-        this.atlases.Clear();
-        foreach (var (copy, info) in this.copies)
-        {
-            info.Sized = this.GetSized((Font*)info.Original, info.HalfPx);
-            this.Sync((Font*)copy, info);
-        }
-
-        ForgetPickedFonts();
-        this.TextInvalidated?.Invoke();
+        if (atlasesChange)
+            this.RemakeAtlases();
+        else
+            this.RebuildGlyphs();
     }
 
     /// <summary>Gets the empty pixels <see cref="FinishGlyph"/> adds around a glyph of a size, on each side.</summary>
@@ -420,6 +488,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         {
             sized.Glyphs.Clear();
             sized.GameGlyphs.Clear();
+            sized.ConvertedGlyphs.Clear();
         }
         this.FreeGlyphs();
         foreach (var atlas in this.atlases.Values)
@@ -451,6 +520,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             this.Enabled = false;
         this.edgeShader.Dispose();
         this.subpixelText.Dispose();
+        this.unloadFontsHook?.Dispose();
         this.buildFontHook?.Dispose();
         this.layOutCharacterHook?.Dispose();
         this.buildFontCacheHook?.Dispose();
@@ -473,6 +543,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         foreach (var atlas in this.atlases.Values)
             atlas.Dispose();
         this.atlases.Clear();
+        this.blankTexture?.Dispose();
         this.gameTextures.Dispose();
         this.DisposePresetFaces();
         this.builtInFace?.Dispose();
@@ -583,16 +654,7 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     private void OnFontBuilt(Font* font)
     {
-        var any = false;
-        foreach (var sized in this.sizedFonts.Values)
-        {
-            if (!sized.Sources.Contains((nint)font))
-                continue;
-            sized.GameGlyphs.Clear();
-            sized.Picks.Clear();
-            any = true;
-        }
-
+        var any = this.ForgetGameGlyphsOf(font);
         foreach (var (copy, info) in this.copies)
         {
             if (info.Original != (nint)font)
@@ -604,6 +666,79 @@ internal sealed unsafe class FontReplacer : IDisposable
 
         if (any)
             this.TextInvalidated?.Invoke();
+    }
+
+    /// <summary>
+    /// Forgets the glyphs made from a game font's glyphs, whose pixels came from its old textures (and the converted ones
+    /// are keyed by its old glyph pointers). True if any sized font had some.
+    /// </summary>
+    private bool ForgetGameGlyphsOf(Font* font)
+    {
+        var any = false;
+        foreach (var sized in this.sizedFonts.Values)
+        {
+            if (!sized.Sources.Contains((nint)font) && !sized.ConvertedGlyphs.Keys.Any(k => k.Font == (nint)font))
+                continue;
+            sized.GameGlyphs.Clear();
+            sized.ConvertedGlyphs.Clear();
+            sized.Picks.Clear();
+            any = true;
+        }
+
+        return any;
+    }
+
+    /// <summary>
+    /// The game unloads every font (a switch between the lobby's fonts and the game's, a UI shader reload, shutdown),
+    /// releasing their textures' resource handles: the game glyph pixels still to be read from those textures are dropped,
+    /// and no font set may keep a copy picked until its font is built again.
+    /// </summary>
+    private int UnloadFontsDetour(AtkFontManager* manager)
+    {
+        try
+        {
+            var textures = new HashSet<nint>();
+            for (var i = 0; manager->Fonts is not null && i < manager->FontCount; i++)
+            {
+                var font = manager->Fonts + i;
+                if (!font->Flags.HasFlag(FontFlags.Built))
+                    continue;
+                for (var t = 0; t < font->TextureCount && t < Font.MaxTextures; t++)
+                {
+                    if (font->Textures[t].Value is not null)
+                        textures.Add((nint)font->Textures[t].Value);
+                }
+
+                this.ForgetGameGlyphsOf(font);
+            }
+
+            this.DropGameReads(textures);
+            ForgetPickedFonts();
+            this.TextInvalidated?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Host.Log.Error(ex, "Letting go of the fonts being unloaded failed; disabling");
+            this.enabled = false;
+            this.gameReads.Clear();
+            ForgetPickedFonts();
+        }
+
+        return this.unloadFontsHook.Original(manager);
+    }
+
+    /// <summary>Drops the queued reads of game glyph pixels from any of some textures; the glyphs stay blank.</summary>
+    private void DropGameReads(HashSet<nint> textures)
+    {
+        this.gameReads.RemoveAll(g =>
+        {
+            ref var cell = ref this.CellOf((Glyph*)g);
+            if (cell.Source is not { } s || !textures.Contains(s.Texture))
+                return false;
+            cell.Raster = default;
+            cell.Source = null;
+            return true;
+        });
     }
 
     private Font* PickFontDetour(FontSet* set, byte useCache)
@@ -620,13 +755,14 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (!this.enabled)
             return font;
 
-        // A font not built yet (its glyph map may be gone), or one using the texture indices the atlas pages take, is left
-        // alone.
-        if (!font->Flags.HasFlag(FontFlags.Ready) || font->TextureCount > GlyphAtlas.FirstTextureIndex)
+        // A font not built yet (its glyph map may be gone) is left alone.
+        if (!font->Flags.HasFlag(FontFlags.Ready))
             return font;
 
         try
         {
+            this.ApplyPendingPages();
+
             // Picked for the on-screen size, even where the game picked for another (the unscaled size of a node with a
             // fixed font resolution, or a pick scale of its own), so the renderer doesn't scale the glyphs.
             var size = set->ScaledSizeY;
@@ -689,29 +825,36 @@ internal sealed unsafe class FontReplacer : IDisposable
     internal void MarkRealItalic(nint cell) => this.CellOf((Glyph*)cell).RealItalic = true;
 
     /// <summary>
-    /// Gets what a character a copy has no glyph for is laid out as. LayOutCharacter takes the geta mark (U+3013), else
-    /// '-', else U+3400, from the font's glyph map itself rather than through GetGlyph, which would give the game font's
-    /// glyph, at its size and with the edge of its texture. The copy's own glyphs of them are given instead.
+    /// Gets what a character a copy has no glyph for is laid out as, never null. LayOutCharacter would take the geta mark
+    /// (U+3013), else '-', else U+3400, from the font's glyph map itself rather than through GetGlyph, which would give the
+    /// game font's glyph, of a texture index the copy has no texture of. The copy's own glyphs of them are given instead,
+    /// else a glyph of no width.
     /// </summary>
-    private Glyph* GetMissingGlyph(FontSet* set, uint utf8Value, Font* font)
+    private Glyph* GetMissingGlyph(FontSet* set, uint utf8Value, CopyInfo info)
     {
         foreach (var substitute in MissingGlyphSubstitutes)
         {
             if (utf8Value == substitute)
-                return null;
-            var glyph = this.GetGlyphDetour(set, substitute, font);
+                continue;
+            var glyph = this.GetCopyGlyph(set, substitute, info);
             if (glyph is not null)
                 return glyph;
         }
 
-        return null;
+        return &this.emptyGlyph->Glyph;
     }
 
     private Glyph* GetGlyphDetour(FontSet* set, uint utf8Value, Font* font)
     {
         if (!this.copies.TryGetValue((nint)font, out var info))
             return this.getGlyphHook.Original(set, utf8Value, font);
+        var glyph = this.GetCopyGlyph(set, utf8Value, info);
+        return glyph is not null ? glyph : this.GetMissingGlyph(set, utf8Value, info);
+    }
 
+    /// <summary>Gets a copy's glyph of a character, all of whose pixels are in its atlas; null if neither it nor its game font has one.</summary>
+    private Glyph* GetCopyGlyph(FontSet* set, uint utf8Value, CopyInfo info)
+    {
         var sized = info.Sized;
 
         // Laid out by LayOutCharacter at a known place in the text: the glyph of its shaped cluster. The character there must
@@ -771,18 +914,28 @@ internal sealed unsafe class FontReplacer : IDisposable
             Host.Log.Error(ex, "Copying the game's glyph 0x{value:X} failed", utf8Value);
         }
 
-        // The game's glyph, looked up in the game font, whose glyph map the copy borrows.
-        var game = this.getGlyphHook.Original(set, utf8Value, (Font*)info.Original);
+        // The game's glyph, looked up in the game font, whose glyph map the copy borrows: its texture index is of the game
+        // font's textures, so it is copied into the atlas too.
+        var original = (Font*)info.Original;
+        var game = this.getGlyphHook.Original(set, utf8Value, original);
         if (game is null)
-            return current.Character != 0 ? this.GetMissingGlyph(set, utf8Value, font) : null;
-        return game;
+            return null;
+        try
+        {
+            return this.WithPixels(this.ConvertGameGlyph(sized, original, game, utf8Value));
+        }
+        catch (Exception ex)
+        {
+            Host.Log.Error(ex, "Copying the game's glyph 0x{value:X} failed", utf8Value);
+            return &this.emptyGlyph->Glyph;
+        }
     }
 
     /// <summary>
     /// Gets a glyph of the atlas made from a game glyph of the largest of the sized font's game fonts that has it, scaled
     /// to its size: drawn from the game's texture, the edge would step by texels of the atlas's width (all of a font's
     /// textures share one), not the game texture's. Its pixels are read from the game's texture at the next upload. Null
-    /// to draw the game's glyph as it is.
+    /// if none has it.
     /// </summary>
     private Glyph* GetGameGlyph(SizedFont sized, uint utf8Value)
     {
@@ -798,22 +951,53 @@ internal sealed unsafe class FontReplacer : IDisposable
             var game = font->FindGlyph(GameUtf8.Pack(codepoint));
             if (game is null)
                 continue;
-            var textureIndex = game->TextureIndex;
-            var texture = textureIndex < GlyphAtlas.FirstTextureIndex ? (nint)font->Textures[textureIndex].Value : 0;
-            if (texture == 0 || !GameTextureReader.CanRead(texture))
-                continue;
-            var scale = sized.Px / font->Size;
-            var top = game->OffsetY - font->Ascent;
-            var (left, t, w, h) = RasterGlyph.ScaledBounds(0, top, game->Width, game->Height, scale, 0, 0);
-            var r = new RasterGlyph((int)Rounding.Round((game->Width + game->OffsetX) * scale), left, t, w, h, new byte[w * h]);
-            var pixels = new GameTextureSource(texture, game->X, game->Y, game->Width, game->Height, game->Channel, 0, top, scale);
-            glyph = this.PlaceCell(sized, this.FinishGlyph(sized, r), utf8Value, pixels);
-            break;
+            glyph = this.PlaceGameGlyph(sized, font, game, utf8Value);
+            if (glyph is not null)
+                break;
         }
 
         sized.GameGlyphs[utf8Value] = (nint)glyph;
         return glyph;
     }
+
+    /// <summary>
+    /// Gets a glyph of the atlas made from a game glyph the game font's own lookup gave a copy, scaled to the copy's
+    /// size; one of no width at the glyph's advance if its texture can't be read.
+    /// </summary>
+    private Glyph* ConvertGameGlyph(SizedFont sized, Font* font, Glyph* game, uint utf8Value)
+    {
+        var key = ((nint)font, (nint)game);
+        if (sized.ConvertedGlyphs.TryGetValue(key, out var made))
+            return (Glyph*)made;
+        var glyph = this.PlaceGameGlyph(sized, font, game, utf8Value);
+        if (glyph is null)
+        {
+            var advance = (int)Rounding.Round((game->Width + game->OffsetX) * GetGameScale(sized, font));
+            glyph = this.PlaceCell(sized, new RasterGlyph(advance, 0, 0, 0, 0, []), utf8Value);
+        }
+
+        sized.ConvertedGlyphs[key] = (nint)glyph;
+        return glyph;
+    }
+
+    /// <summary>Puts a game glyph into the atlas, its pixels read from its font's texture at the next upload; null if they can't be.</summary>
+    private Glyph* PlaceGameGlyph(SizedFont sized, Font* font, Glyph* game, uint utf8Value)
+    {
+        var textureIndex = game->TextureIndex;
+        var texture = textureIndex < font->TextureCount && textureIndex < Font.MaxTextures ? (nint)font->Textures[textureIndex].Value : 0;
+        if (texture == 0 || !GameTextureReader.CanRead(texture))
+            return null;
+        var scale = GetGameScale(sized, font);
+        var top = game->OffsetY - font->Ascent;
+        var (left, t, w, h) = RasterGlyph.ScaledBounds(0, top, game->Width, game->Height, scale, 0, 0);
+        var r = new RasterGlyph((int)Rounding.Round((game->Width + game->OffsetX) * scale), left, t, w, h, new byte[w * h]);
+        var pixels = new GameTextureSource(texture, game->X, game->Y, game->Width, game->Height, game->Channel, 0, top, scale);
+        return this.PlaceCell(sized, this.FinishGlyph(sized, r), utf8Value, pixels);
+    }
+
+    /// <summary>Gets the scale from a game font's glyphs to a sized font's: 1 within the half-pixel rounding of copy sizes.</summary>
+    private static float GetGameScale(SizedFont sized, Font* font) =>
+        font->Size <= 0 || MathF.Abs(sized.Px - font->Size) <= 0.25f ? 1 : sized.Px / font->Size;
 
     /// <summary>
     /// Fills the cells of game glyphs from the game's textures, then copies the atlas's changes to the GPU. On the thread
@@ -879,8 +1063,9 @@ internal sealed unsafe class FontReplacer : IDisposable
     }
 
     /// <summary>
-    /// Takes what a copy borrows from its game font (glyph map, glyphs, textures, flags), keeping its own size, metrics
-    /// and pages. When the game builds the font again in place (BuildFont), what was borrowed is freed, and taken again.
+    /// Takes what a copy borrows from its game font (glyph map, glyphs, flags), keeping its own size, metrics and texture
+    /// slots, which are all its atlas's. When the game builds the font again in place (BuildFont), what was borrowed is
+    /// freed, and taken again.
     /// </summary>
     private void Sync(Font* copy, CopyInfo info)
     {
@@ -903,10 +1088,14 @@ internal sealed unsafe class FontReplacer : IDisposable
         // game font's textures may not share (the lobby fonts' are smaller), else outlines sample several texels apart.
         // Claiming a narrower width makes the step, and so the edge, that many times wider; the plugin's edge shader takes
         // the step as its radius.
-        var width = (ushort)Math.Clamp(Rounding.Round(sized.Atlas.Size / this.Edge.GetWidth(sized.Px)), 256, ushort.MaxValue);
+        var width = (ushort)Math.Clamp(Rounding.Round(sized.Atlas.Width / this.Edge.GetWidth(sized.Px)), 256, ushort.MaxValue);
         copy->TextureWidth = width;
         copy->TextureHeight = width;
-        ApplyPages(copy, sized.Atlas);
+
+        // None of the game font's textures: they belong to its resource handles, which the game releases on its own.
+        for (var i = 0; i < Font.MaxTextures; i++)
+            copy->TextureResourceHandles[i] = default;
+        this.ApplyPages(copy, sized.Atlas);
     }
 
     private Font* GetOrCreateCopy(Font* original, int halfPx)
@@ -922,21 +1111,49 @@ internal sealed unsafe class FontReplacer : IDisposable
         return copy;
     }
 
-    /// <summary>Gives a copy the pages of its family's atlas, after the game font's textures.</summary>
-    private static void ApplyPages(Font* copy, GlyphAtlas atlas)
+    /// <summary>
+    /// Gives a copy every texture slot: its family atlas's pages, and the blank texture in the slots after them, so that
+    /// the renderer has a vertex buffer and a texture for every texture index. Main thread only.
+    /// </summary>
+    private void ApplyPages(Font* copy, GlyphAtlas atlas)
     {
-        for (var i = 0; i < atlas.PageCount; i++)
-            copy->Textures[GlyphAtlas.FirstTextureIndex + i] = (Texture*)atlas.GetKernelTexture(i);
-        copy->TextureCount = (ushort)(GlyphAtlas.FirstTextureIndex + atlas.PageCount);
+        var blank = (Texture*)(this.blankTexture?.Kernel ?? 0);
+        var pages = Math.Min(atlas.PageCount, Font.MaxTextures);
+        for (var i = 0; i < Font.MaxTextures; i++)
+            copy->Textures[i] = i < pages ? (Texture*)atlas.GetKernelTexture(i) : blank;
+        copy->TextureCount = Font.MaxTextures;
     }
 
     private void OnPageAdded(GlyphAtlas atlas)
     {
+        if (Environment.CurrentManagedThreadId != this.mainThreadId)
+        {
+            lock (this.pendingPageAtlases)
+                this.pendingPageAtlases.Add(atlas);
+            return;
+        }
+
         foreach (var (copy, info) in this.copies)
         {
             if (info.Sized.Atlas == atlas)
-                ApplyPages((Font*)copy, atlas);
+                this.ApplyPages((Font*)copy, atlas);
         }
+    }
+
+    /// <summary>Gives copies the pages added off the main thread. Main thread.</summary>
+    private void ApplyPendingPages()
+    {
+        GlyphAtlas[] pending;
+        lock (this.pendingPageAtlases)
+        {
+            if (this.pendingPageAtlases.Count == 0)
+                return;
+            pending = [.. this.pendingPageAtlases];
+            this.pendingPageAtlases.Clear();
+        }
+
+        foreach (var atlas in pending)
+            this.OnPageAdded(atlas);
     }
 
     /// <summary>Rasterizes a glyph into the atlas; null to leave it to the game.</summary>
@@ -978,7 +1195,7 @@ internal sealed unsafe class FontReplacer : IDisposable
 
         var glyph = this.AllocateGlyph();
         glyph->Utf8Value = utf8Value;
-        glyph->Packed = (0, 0, 0, GlyphAtlas.FirstTextureIndex);
+        glyph->Packed = (0, 0, 0, 0);
         glyph->Width = (byte)width;
         glyph->Height = (byte)height;
         glyph->OffsetX = (sbyte)Math.Clamp(r.Advance - width, sbyte.MinValue, sbyte.MaxValue);
@@ -1048,7 +1265,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (!cell.Atlas!.TryAllocate(glyph->Width, glyph->Height, out var page, out var plane, out var x, out var y))
             return false;
 
-        glyph->Packed = (x, y, plane, GlyphAtlas.FirstTextureIndex + page);
+        glyph->Packed = (x, y, plane, page);
         cell.State = CellState.Placed;
         cell.Drawn = drawn;
         if (cell.Source is not null)
@@ -1087,8 +1304,8 @@ internal sealed unsafe class FontReplacer : IDisposable
     private void EvictPlane(GlyphAtlas atlas)
     {
         var now = Environment.TickCount64;
-        var stale = new long[GlyphAtlas.MaxPlanes];
-        var oldest = new long[GlyphAtlas.MaxPlanes];
+        var stale = new long[atlas.MaxPlanes];
+        var oldest = new long[atlas.MaxPlanes];
         Array.Fill(oldest, long.MaxValue);
         var all = CollectionsMarshal.AsSpan(this.cells);
         for (var id = 0; id < all.Length; id++)
@@ -1113,7 +1330,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             var glyph = &this.SlotAt(id)->Glyph;
             if (all[id].State != CellState.Placed || all[id].Atlas != atlas || PlaneOf(glyph) != victim)
                 continue;
-            var page = glyph->TextureIndex - GlyphAtlas.FirstTextureIndex;
+            var page = glyph->TextureIndex;
             var pixels = atlas.Read(page, glyph->Channel, glyph->X, glyph->Y, glyph->Width, glyph->Height);
             var lcd = atlas.Subpixel ? atlas.ReadLcd(page, glyph->X, glyph->Y, glyph->Width, glyph->Height) : null;
             moved.Add((id, all[id].Drawn, pixels, lcd));
@@ -1123,7 +1340,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         atlas.ClearPlane(victim / GlyphAtlas.PlanesPerPage, victim % GlyphAtlas.PlanesPerPage);
 
         // What may stay: the glyphs drawn recently, but no more than half of the plane if none were stale.
-        var budget = stale[victim] == 0 ? (long)atlas.Size * atlas.Size / 2 : long.MaxValue;
+        var budget = stale[victim] == 0 ? (long)atlas.Width * atlas.Height / 2 : long.MaxValue;
         var kept = 0;
         foreach (var (id, drawn, pixels, lcd) in moved)
         {
@@ -1133,7 +1350,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             cell.Raster = new(0, 0, 0, glyph->Width, glyph->Height, pixels, lcd);
             cell.BoxLeft = 0;
             cell.InkTop = 0;
-            glyph->Packed = (0, 0, 0, GlyphAtlas.FirstTextureIndex);
+            glyph->Packed = (0, 0, 0, 0);
             var area = GlyphAtlas.PaddedArea(glyph->Width, glyph->Height);
             if (now - drawn <= KeepDrawnMs && area <= budget && this.WritePixels(glyph, ref cell, drawn))
             {
@@ -1154,7 +1371,7 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     /// <summary>Gets the atlas plane of a placed glyph (page * planes per page + channel).</summary>
     private static int PlaneOf(Glyph* glyph) =>
-        ((glyph->TextureIndex - GlyphAtlas.FirstTextureIndex) * GlyphAtlas.PlanesPerPage) + glyph->Channel;
+        (glyph->TextureIndex * GlyphAtlas.PlanesPerPage) + glyph->Channel;
 
     /// <summary>Writes a placed glyph's pixels to its place in the atlas.</summary>
     private static void WriteCell(Glyph* glyph, in Cell cell)
@@ -1167,7 +1384,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         if (lastRow > firstRow)
         {
             cell.Atlas!.Write(
-                glyph->TextureIndex - GlyphAtlas.FirstTextureIndex,
+                glyph->TextureIndex,
                 glyph->Channel,
                 glyph->X,
                 glyph->Y + cell.InkTop + firstRow,
@@ -1340,6 +1557,9 @@ internal sealed unsafe class FontReplacer : IDisposable
 
         /// <summary>Copied from <see cref="Sources"/>, by packed UTF-8 value; 0 if none could be.</summary>
         public Dictionary<uint, nint> GameGlyphs { get; } = [];
+
+        /// <summary>Copied from the glyphs the game fonts' own lookups gave copies, by game font and game glyph.</summary>
+        public Dictionary<(nint Font, nint Glyph), nint> ConvertedGlyphs { get; } = [];
 
         /// <summary><see cref="Pick"/>'s, by codepoint.</summary>
         public Dictionary<int, GlyphSource> Picks { get; } = [];

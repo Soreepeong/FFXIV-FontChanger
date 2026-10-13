@@ -39,6 +39,7 @@ public sealed class Plugin : IDalamudPlugin
             (this.Replacer, this.NamePlates, this.LineBreaker) = Framework.RunOnFrameworkThread(() =>
             {
                 var replacer = new FontReplacer();
+                replacer.SetAtlas(this.Configuration.Atlas);
                 replacer.SetEdge(this.Configuration.Edge);
                 replacer.SetSubpixel(SubpixelSettings.Of(this.Configuration.Subpixel, GameWindow));
                 return (replacer,

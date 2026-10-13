@@ -40,6 +40,9 @@ public sealed class Configuration : IPluginConfiguration
 
     public SubpixelMode Subpixel { get; set; } = SubpixelMode.System;
 
+    /// <summary>Gets or sets the size and number of the glyph atlas pages (no UI; edited in the configuration file).</summary>
+    public AtlasSettings Atlas { get; set; } = new();
+
     /// <summary>Gets or sets whether the main window was open, to open it again when the plugin loads.</summary>
     public bool MainWindowOpen { get; set; }
 }
@@ -66,6 +69,45 @@ public sealed record FamilyFont
     public int Style { get; init; }
 
     public LookupDef ToLookup() => LookupDef.Of(this.Name) with { Weight = this.Weight, Stretch = this.Stretch, Style = this.Style };
+}
+
+/// <summary>
+/// The glyph atlas pages of each game font family: AXIS, the family of most of the UI's text, and the others. A page is
+/// a B8G8R8A8 texture (4 bytes a texel in VRAM and in its CPU copy), added when the ones before are full.
+/// </summary>
+public readonly record struct AtlasSettings
+{
+    public AtlasSettings()
+    {
+    }
+
+    /// <summary>The largest page side: glyph positions take 12 bits.</summary>
+    public const int MaxPageSide = 4096;
+
+    public const int MinPageSide = 256;
+
+    public int AxisPageWidth { get; init; } = 4096;
+
+    public int AxisPageHeight { get; init; } = 4096;
+
+    public int AxisMaxPages { get; init; } = 4;
+
+    public int OtherPageWidth { get; init; } = 2048;
+
+    public int OtherPageHeight { get; init; } = 2048;
+
+    public int OtherMaxPages { get; init; } = 2;
+
+    /// <summary>Gets the settings within what the atlas can do: sides of 256 to 4096, 1 page up to the game's texture slots.</summary>
+    public AtlasSettings Clamped() => new()
+    {
+        AxisPageWidth = Math.Clamp(this.AxisPageWidth, MinPageSide, MaxPageSide),
+        AxisPageHeight = Math.Clamp(this.AxisPageHeight, MinPageSide, MaxPageSide),
+        AxisMaxPages = Math.Clamp(this.AxisMaxPages, 1, GlyphAtlas.MaxTextureSlots),
+        OtherPageWidth = Math.Clamp(this.OtherPageWidth, MinPageSide, MaxPageSide),
+        OtherPageHeight = Math.Clamp(this.OtherPageHeight, MinPageSide, MaxPageSide),
+        OtherMaxPages = Math.Clamp(this.OtherMaxPages, 1, GlyphAtlas.MaxTextureSlots),
+    };
 }
 
 /// <summary>
