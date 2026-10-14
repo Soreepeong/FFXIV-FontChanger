@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-
+using CustomFonts.Utilities;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-
 using TerraFX.Interop.DirectX;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// Atlas pages for the rasterized glyphs of a game font family's replaced fonts. A page is a B8G8R8A8 texture holding
@@ -47,7 +46,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     public bool Subpixel { get; }
 
     /// <summary>Gets the number of texture slots of a font, the most pages an atlas can have.</summary>
-    public const int MaxTextureSlots = Font.MaxTextures;
+    public const int MaxTextureSlots = AtkFontManager.Font.MaxTextures;
 
     public int MaxPages { get; }
 
@@ -98,7 +97,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     public static int PaddedArea(int width, int height) => (width + (2 * Padding)) * (height + (2 * Padding));
 
     /// <summary>Gets whether a glyph of this size, with its padding, fits in one empty plane.</summary>
-    public bool CanHold(int width, int height) => width + (2 * Padding) <= Width && height + (2 * Padding) <= Height;
+    public bool CanHold(int width, int height) => width + (2 * Padding) <= this.Width && height + (2 * Padding) <= this.Height;
 
     /// <summary>
     /// Empties every page, keeping the textures (fonts refer to them). Framework thread, between frames: no glyph
@@ -110,9 +109,9 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         {
             foreach (var p in this.pages)
             {
-                NativeMemory.Clear(p.Shadow, (nuint)(Pitch * Height));
+                NativeMemory.Clear(p.Shadow, (nuint)(this.Pitch * this.Height));
                 p.Shelves.AsSpan().Clear();
-                p.MarkDirty(0, 0, Width, Height);
+                p.MarkDirty(0, 0, this.Width, this.Height);
             }
 
             this.current = this.FirstPlane;
@@ -131,21 +130,21 @@ internal sealed unsafe class GlyphAtlas : IDisposable
             var p = this.pages[page];
             if (this.Subpixel)
             {
-                NativeMemory.Clear(p.Shadow, (nuint)(Pitch * Height));
+                NativeMemory.Clear(p.Shadow, (nuint)(this.Pitch * this.Height));
             }
             else
             {
                 var channel = ChannelOffsets[plane];
-                for (var row = 0; row < Height; row++)
+                for (var row = 0; row < this.Height; row++)
                 {
-                    var d = p.Shadow + (row * Pitch) + channel;
-                    for (var col = 0; col < Width; col++)
+                    var d = p.Shadow + (row * this.Pitch) + channel;
+                    for (var col = 0; col < this.Width; col++)
                         d[col * 4] = 0;
                 }
             }
 
             p.Shelves[plane] = default;
-            p.MarkDirty(0, 0, Width, Height);
+            p.MarkDirty(0, 0, this.Width, this.Height);
             this.current = (page * PlanesPerPage) + plane;
         }
     }
@@ -174,9 +173,9 @@ internal sealed unsafe class GlyphAtlas : IDisposable
                 page = this.current / PlanesPerPage;
                 plane = this.current % PlanesPerPage;
                 ref var s = ref this.pages[page].Shelves[plane];
-                if (s.X + w > Width)
+                if (s.X + w > this.Width)
                     s = new() { Y = s.Y + s.Height };
-                if (s.Y + h <= Height)
+                if (s.Y + h <= this.Height)
                 {
                     x = s.X + Padding;
                     y = s.Y + Padding;
@@ -186,7 +185,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
                 }
 
                 // The current plane is full: on to one not used yet.
-                if (this.frontier >= MaxPlanes)
+                if (this.frontier >= this.MaxPlanes)
                     return false;
                 needed = (this.frontier / PlanesPerPage) + 1;
                 if (needed <= this.pages.Count)
@@ -217,10 +216,10 @@ internal sealed unsafe class GlyphAtlas : IDisposable
             if (this.Subpixel)
             {
                 var hasLcd = !lcd.IsEmpty && lcd.Length >= alpha.Length * 3;
-                var dst = p.Shadow + (y * Pitch) + (x * 4);
+                var dst = p.Shadow + (y * this.Pitch) + (x * 4);
                 for (var row = 0; row < height; row++)
                 {
-                    var d = dst + (row * Pitch) + (alphaX * 4);
+                    var d = dst + (row * this.Pitch) + (alphaX * 4);
                     for (var col = 0; col < columns; col++)
                     {
                         var i = (row * alphaStride) + col;
@@ -233,11 +232,11 @@ internal sealed unsafe class GlyphAtlas : IDisposable
             }
             else
             {
-                var dst = p.Shadow + (y * Pitch) + (x * 4) + ChannelOffsets[plane];
+                var dst = p.Shadow + (y * this.Pitch) + (x * 4) + ChannelOffsets[plane];
                 for (var row = 0; row < height; row++)
                 {
                     var src = alpha.Slice(row * alphaStride, alphaStride);
-                    var d = dst + (row * Pitch) + (alphaX * 4);
+                    var d = dst + (row * this.Pitch) + (alphaX * 4);
                     for (var col = 0; col < columns; col++)
                         d[col * 4] = src[col];
                 }
@@ -253,10 +252,10 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         var alpha = new byte[width * height];
         lock (this.sync)
         {
-            var src = this.pages[page].Shadow + (y * Pitch) + (x * 4) + ChannelOffsets[plane];
+            var src = this.pages[page].Shadow + (y * this.Pitch) + (x * 4) + ChannelOffsets[plane];
             for (var row = 0; row < height; row++)
             {
-                var s = src + (row * Pitch);
+                var s = src + (row * this.Pitch);
                 for (var col = 0; col < width; col++)
                     alpha[(row * width) + col] = s[col * 4];
             }
@@ -271,10 +270,10 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         var lcd = new byte[width * height * 3];
         lock (this.sync)
         {
-            var src = this.pages[page].Shadow + (y * Pitch) + (x * 4);
+            var src = this.pages[page].Shadow + (y * this.Pitch) + (x * 4);
             for (var row = 0; row < height; row++)
             {
-                var s = src + (row * Pitch);
+                var s = src + (row * this.Pitch);
                 for (var col = 0; col < width; col++)
                 {
                     for (var c = 0; c < 3; c++)

@@ -1,14 +1,13 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
-
+using CustomFonts.Utilities;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
-
 using static TerraFX.Interop.DirectX.DirectX;
 using static TerraFX.Interop.Windows.Windows;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// Draws SVG documents and bitmaps into coverage with Direct2D, on the CPU (a WIC bitmap target), and decodes PNG files

@@ -4,8 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CustomFonts.Rendering;
 
-namespace CustomFonts;
+namespace CustomFonts.PluginInterface;
 
 /// <summary>A folder of the preset folder, with the presets in it (their paths relative to the preset folder).</summary>
 internal sealed record PresetTreeNode(string Name, IReadOnlyList<PresetTreeNode> Folders, IReadOnlyList<string> Files)

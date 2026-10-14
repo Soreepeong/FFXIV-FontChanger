@@ -1,16 +1,14 @@
 using System;
 using System.Collections.Generic;
-
-using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
-
+using CustomFonts.Utilities;
 using TerraFX.Interop.DirectX;
-
+using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
 using static TerraFX.Interop.DirectX.D3D11_CPU_ACCESS_FLAG;
 using static TerraFX.Interop.DirectX.D3D11_MAP;
 using static TerraFX.Interop.DirectX.D3D11_USAGE;
 using static TerraFX.Interop.DirectX.DXGI_FORMAT;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// Reads glyph coverage out of the game's font textures on the GPU, through a staging texture per texture format. On the

@@ -1,18 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-
+using CustomFonts.PluginInterface;
+using CustomFonts.Utilities;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
-
 using static TerraFX.Interop.DirectX.DirectX;
 using static TerraFX.Interop.Windows.Windows;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>Subpixel text settings: the stripe order, and Windows' ClearType level and enhanced contrast.</summary>
 internal readonly record struct SubpixelSettings

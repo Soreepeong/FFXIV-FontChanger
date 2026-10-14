@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using CustomFonts.Rendering;
 
 namespace FontChanger.ShaderGen;
 
@@ -119,7 +120,7 @@ internal static class Program
         }
 
         var patched = (byte[])code.Clone();
-        if (CustomFonts.EdgeShaderCode.PatchConstants(patched, [(CustomFonts.SubpixelShaderCode.ClearTypeLevelSentinel, testLevel), (CustomFonts.SubpixelShaderCode.ContrastSentinel, testContrast)]) < 2)
+        if (EdgeShaderCode.PatchConstants(patched, [(SubpixelShaderCode.ClearTypeLevelSentinel, testLevel), (SubpixelShaderCode.ContrastSentinel, testContrast)]) < 2)
         {
             Console.Error.WriteLine($"{sourcePath}: error: ClearTypeLevel and Contrast aren't both immediate operands in the bytecode.");
             return 1;
@@ -156,14 +157,14 @@ internal static class Program
         const float test = 1.75f;
 
         var checksum = new byte[16];
-        CustomFonts.EdgeShaderCode.ComputeChecksum(code, checksum);
+        EdgeShaderCode.ComputeChecksum(code, checksum);
         if (!checksum.AsSpan().SequenceEqual(code.AsSpan(4, 16)))
             return "the computed DXBC checksum differs from the compiler's.";
 
         if (!source.Contains(declaration, StringComparison.Ordinal))
             return $"the line {declaration} is missing.";
         var patched = (byte[])code.Clone();
-        if (CustomFonts.EdgeShaderCode.Patch(patched, test) == 0)
+        if (EdgeShaderCode.Patch(patched, test) == 0)
             return "Softness isn't an immediate operand in the bytecode.";
 
         var withTest = source.Replace(declaration, $"static const float Softness = {test.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal);

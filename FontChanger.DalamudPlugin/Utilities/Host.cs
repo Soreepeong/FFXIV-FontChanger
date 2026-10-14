@@ -1,8 +1,7 @@
 using System;
-
 using TerraFX.Interop.DirectX;
 
-namespace CustomFonts;
+namespace CustomFonts.Utilities;
 
 /// <summary>
 /// What the font replacement needs from what loads it into the game (Dalamud here; XivAlexander for a port): a signature

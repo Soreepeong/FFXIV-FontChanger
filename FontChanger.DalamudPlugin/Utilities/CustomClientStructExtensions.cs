@@ -1,16 +1,14 @@
-
 using System.Text;
-
 using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
-namespace CustomFonts;
+namespace CustomFonts.Utilities;
 
 public static unsafe class CustomClientStructExtensions {
-    /// <summary> Gets a glyph by its <see cref="Glyph.Utf8Value"/>, without adding a map entry as the game's lookup does. </summary>
+    /// <summary> Gets a glyph by its <see cref="AtkFontManager.Glyph.Utf8Value"/>, without adding a map entry as the game's lookup does. </summary>
     /// <returns> <c>null</c> if the font has none, or isn't built. </returns>
-    public static Glyph* FindGlyph(this ref AtkFontManager.Font font, uint utf8Value) {
-        if (font.GlyphMap is null || !font.Flags.HasFlag(FontFlags.Ready))
+    public static AtkFontManager.Glyph* FindGlyph(this ref AtkFontManager.Font font, uint utf8Value) {
+        if (font.GlyphMap is null || !font.Flags.HasFlag(AtkFontManager.FontFlags.Ready))
             return null;
         return font.GlyphMap->TryGetValue(utf8Value, out var glyph) ? glyph : null;
     }

@@ -1,9 +1,9 @@
 using System;
-
+using CustomFonts.Utilities;
 using Lumina.Text;
 using Lumina.Text.ReadOnly;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// Steps through the game's text (SeString) as it does: characters by the first byte of their UTF-8 sequence, and macros

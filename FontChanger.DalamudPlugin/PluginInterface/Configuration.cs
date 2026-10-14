@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-
+using CustomFonts.Rendering;
 using Dalamud.Configuration;
 
-namespace CustomFonts;
+namespace CustomFonts.PluginInterface;
 
 [Serializable]
 public sealed class Configuration : IPluginConfiguration

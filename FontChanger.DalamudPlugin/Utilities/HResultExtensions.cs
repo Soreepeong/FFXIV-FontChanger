@@ -1,8 +1,7 @@
 using System.Runtime.InteropServices;
-
 using TerraFX.Interop.Windows;
 
-namespace CustomFonts;
+namespace CustomFonts.Utilities;
 
 internal static class HResultExtensions
 {

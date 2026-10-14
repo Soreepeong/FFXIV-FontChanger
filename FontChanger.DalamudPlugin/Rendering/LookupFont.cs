@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
-
+using CustomFonts.Utilities;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// How a requested face is made from the closest real face of its family (FontChanger's Structs.h SynthesizedFace): the

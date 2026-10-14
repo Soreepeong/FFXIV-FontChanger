@@ -1,10 +1,10 @@
 using System;
 using System.Runtime.InteropServices;
-
+using CustomFonts.Utilities;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>Receives the glyph runs of a text layout (<see cref="GlyphRunCollector"/>).</summary>
 internal unsafe interface IGlyphRunSink

@@ -1,12 +1,13 @@
 using System;
-
+using CustomFonts.Rendering;
+using CustomFonts.Utilities;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 
-namespace CustomFonts;
+namespace CustomFonts.PluginInterface;
 
 public sealed class Plugin : IDalamudPlugin
 {

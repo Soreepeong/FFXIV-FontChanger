@@ -1,16 +1,14 @@
 using System;
-
+using CustomFonts.Utilities;
 using Dalamud.Hooking;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Plugin.Services;
-
-using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
-
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
+using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
 
-namespace CustomFonts;
+namespace CustomFonts.PluginInterface;
 
 /// <summary>The font replacement's host, through Dalamud's services.</summary>
 internal sealed class DalamudHost : IHost

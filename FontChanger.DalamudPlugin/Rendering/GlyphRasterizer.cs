@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
-
+using CustomFonts.Utilities;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
-
 using static TerraFX.Interop.DirectX.DirectX;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>Rounding as the C++ code (xivres, FontChanger) does it: halves away from zero, as std::round and std::lround.</summary>
 internal static class Rounding

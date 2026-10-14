@@ -3,13 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-
+using CustomFonts.Utilities;
 using FreeTypeSharp;
-
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// Rasterizes glyphs with FreeType: for elements a preset draws with FreeType, and for fonts with only bitmaps (which

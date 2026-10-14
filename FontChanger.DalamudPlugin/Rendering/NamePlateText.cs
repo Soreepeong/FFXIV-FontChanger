@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
-
+using CustomFonts.Utilities;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-
 using static FFXIVClientStructs.FFXIV.Client.UI.AddonNamePlate;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>How nameplate text is drawn.</summary>
 internal enum NamePlateMode
@@ -104,7 +103,7 @@ internal sealed unsafe class NamePlateText : IDisposable
 
     private delegate byte AllocateBakeDelegate(BakePlateRenderer* renderer, NamePlateObject* obj);
 
-    private delegate void PrepareDelegate(BakePlateRenderer* renderer, float* rect, FontSet* set, AtkTextNode* node);
+    private delegate void PrepareDelegate(BakePlateRenderer* renderer, float* rect, AtkFontManager.FontSet* set, AtkTextNode* node);
 
     private delegate void DrawBakedDelegate(BakePlateRenderer* renderer, AtkResNode* node, BakeData* bake);
 
@@ -251,7 +250,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         return allocated;
     }
 
-    private void PrepareDetour(BakePlateRenderer* renderer, float* rect, FontSet* set, AtkTextNode* node)
+    private void PrepareDetour(BakePlateRenderer* renderer, float* rect, AtkFontManager.FontSet* set, AtkTextNode* node)
     {
         this.prepareHook.Original(renderer, rect, set, node);
 

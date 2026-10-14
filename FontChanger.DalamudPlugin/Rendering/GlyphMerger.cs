@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// A font the texts of glyph merging are drawn with (xivres glyph_merging's text font): the element's, at a size and

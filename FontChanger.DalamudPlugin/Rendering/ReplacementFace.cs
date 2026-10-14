@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
+using CustomFonts.Utilities;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using TerraFX.Interop.DirectX;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>An element of a face: its definition, and the font it draws with (<see cref="IElementFont"/>).</summary>
 internal sealed class FaceElement(ElementDef def, IElementFont font) : IDisposable
@@ -144,7 +145,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
     /// Gets the element that draws a codepoint (one whose <see cref="FaceElement.DrawsGame"/> if the game's glyph is
     /// used), or null if the system's fonts draw it.
     /// </summary>
-    public FaceElement? GetElement(int codepoint, Font* game)
+    public FaceElement? GetElement(int codepoint, AtkFontManager.Font* game)
     {
         if (this.elementCache.TryGetValue(((nint)game, codepoint), out var cached))
             return cached;
@@ -194,7 +195,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
         element.Def.Replacements.TryGetValue(codepoint, out var to) ? to : codepoint;
 
     /// <summary>Gets the line metrics at a drawn size: from the first element, rounded to whole pixels.</summary>
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, Font* game)
+    public (int Ascent, int LineHeight) GetLineMetrics(float px, AtkFontManager.Font* game)
     {
         var (ascent, lineHeight) = this.elements.Length == 0 ? (0, 0) : this.GetElementMetrics(this.elements[0], px, game);
         if (lineHeight <= 0)
@@ -210,7 +211,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
     /// <summary>
     /// Rasterizes a codepoint at a drawn size, in its cell (<see cref="Wrap"/>); false if the game's glyph is to be used.
     /// </summary>
-    public bool TryRasterize(int codepoint, float px, Font* game, out RasterGlyph glyph)
+    public bool TryRasterize(int codepoint, float px, AtkFontManager.Font* game, out RasterGlyph glyph)
     {
         glyph = default;
         var element = this.GetElement(codepoint, game);
@@ -236,7 +237,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
     /// to the advance, its horizontal offset to the ink (not the pen), and moved down by the element's vertical alignment
     /// in the face and baseline shift. <paramref name="glyph"/>'s advance is the whole pixels it takes, unadjusted.
     /// </summary>
-    public RasterGlyph Wrap(FaceElement element, RasterGlyph glyph, float px, Font* game, Func<float, RasterGlyph> squeezed)
+    public RasterGlyph Wrap(FaceElement element, RasterGlyph glyph, float px, AtkFontManager.Font* game, Func<float, RasterGlyph> squeezed)
     {
         var g = this.Monospace(element, px, glyph, squeezed);
         return g with
@@ -335,7 +336,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
     /// alignment of the element's line box in the face's (xivres merged_fixed_size_font get_vertical_adjustment), and the
     /// element's baseline shift.
     /// </summary>
-    private int GetVerticalShift(FaceElement element, float px, Font* game)
+    private int GetVerticalShift(FaceElement element, float px, AtkFontManager.Font* game)
     {
         // The element's line box is placed in the face's: its top moved down by the adjustment.
         var (faceAscent, faceLineHeight) = this.GetLineMetrics(px, game);
@@ -353,23 +354,23 @@ internal sealed unsafe class ReplacementFace : IDisposable
     }
 
     /// <summary>Gets how far below the line's top the roman baseline of the face is: its first element's.</summary>
-    private float GetRomanBaselineY(float px, Font* game) =>
+    private float GetRomanBaselineY(float px, AtkFontManager.Font* game) =>
         this.GetLineMetrics(px, game).Ascent - (this.elements.Length == 0 ? null : this.GetBaseline(this.elements[0], RomanBaseline, px)).GetValueOrDefault();
 
-    private float GetRomanBaselineY(FaceElement element, float px, Font* game) =>
+    private float GetRomanBaselineY(FaceElement element, float px, AtkFontManager.Font* game) =>
         this.GetElementMetrics(element, px, game).Ascent - this.GetBaseline(element, RomanBaseline, px).GetValueOrDefault();
 
     /// <summary>
     /// Gets how far below the line's top the middle of the ideographic face (or em box) of the face is: its first
     /// element's, or the middle of the line.
     /// </summary>
-    private float GetIdeographicCenterY(float px, Font* game)
+    private float GetIdeographicCenterY(float px, AtkFontManager.Font* game)
     {
         var (ascent, lineHeight) = this.GetLineMetrics(px, game);
         return this.elements.Length == 0 ? lineHeight / 2f : this.GetIdeographicCenterY(this.elements[0], px, ascent, lineHeight);
     }
 
-    private float GetIdeographicCenterY(FaceElement element, float px, Font* game)
+    private float GetIdeographicCenterY(FaceElement element, float px, AtkFontManager.Font* game)
     {
         var (ascent, lineHeight) = this.GetElementMetrics(element, px, game);
         return this.GetIdeographicCenterY(element, px, ascent, lineHeight);
@@ -386,7 +387,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
 
     private float? GetBaseline(FaceElement element, uint tag, float px) => element.Font.GetBaseline(tag, this.GetElementPx(element, px));
 
-    private (int Ascent, int LineHeight) GetElementMetrics(FaceElement element, float px, Font* game) =>
+    private (int Ascent, int LineHeight) GetElementMetrics(FaceElement element, float px, AtkFontManager.Font* game) =>
         element.Font.GetLineMetrics(this.GetElementPx(element, px), game);
 
     /// <summary>

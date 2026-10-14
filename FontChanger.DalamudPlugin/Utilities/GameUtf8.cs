@@ -5,7 +5,7 @@ using System;
 using System.Buffers;
 using System.Text;
 
-namespace CustomFonts;
+namespace CustomFonts.Utilities;
 
 public static class GameUtf8
 {

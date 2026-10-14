@@ -4,7 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-
+using CustomFonts.Rendering;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.FontIdentifier;
@@ -13,7 +13,7 @@ using Dalamud.Interface.ImGuiFontChooserDialog;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
-namespace CustomFonts;
+namespace CustomFonts.PluginInterface;
 
 /// <summary>The plugin's settings: the presets, whether the replacement is on, nameplate text and edge outlines.</summary>
 internal sealed class MainWindow : Window

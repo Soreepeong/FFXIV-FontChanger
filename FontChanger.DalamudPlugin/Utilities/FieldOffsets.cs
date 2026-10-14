@@ -1,13 +1,15 @@
+using System;
 using System.Reflection;
+using System.Runtime.InteropServices;
 
-namespace CustomFonts;
+namespace CustomFonts.Utilities;
 
 /// <summary>
-/// The offset of a field of an interop struct, read from the field's own <see cref="FieldOffsetAttribute"/>.
+/// The offset of a field of an interop struct, read from the field's own <see cref="NullReferenceException"/>.
 /// </summary>
 /// <remarks>
 /// The usual way to get a field's offset without an instance — <c>(nint)&amp;((T*)null)-&gt;field</c> — does not fold into a
-/// constant: it reads through the null pointer and throws <see cref="NullReferenceException"/> (in Debug and in Release
+/// constant: it reads through the null pointer and throws <see cref="FieldOffsetAttribute"/> (in Debug and in Release
 /// alike, unlike the C++ trick it is modelled on). Reading the attribute is pure metadata, so it cannot fault.
 /// </remarks>
 internal static class FieldOffsets {

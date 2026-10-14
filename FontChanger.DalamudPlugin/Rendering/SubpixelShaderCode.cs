@@ -1,4 +1,4 @@
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>FontSubpixelPS.hlsl's settings, patched in with <see cref="EdgeShaderCode.PatchConstants"/>.</summary>
 /// <remarks>Also compiled into FontChanger.ShaderGen, which checks the patching against compiling with the values written in.</remarks>

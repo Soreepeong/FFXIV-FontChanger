@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Numerics;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// Puts a softness into FontEdgePS's bytecode: its <c>Softness</c> constant is a distinctive value, compiled as immediate

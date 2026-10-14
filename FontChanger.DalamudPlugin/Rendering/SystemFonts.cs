@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
-
+using CustomFonts.Utilities;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
-
 using static TerraFX.Interop.DirectX.DirectX;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// The system's fonts, measured for <see cref="FaceFromFont"/>. Its own DirectWrite factory, made when first used, is

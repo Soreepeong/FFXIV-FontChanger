@@ -2,13 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-
+using CustomFonts.Utilities;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-
 using Lumina.Text.Payloads;
 using Lumina.Text.ReadOnly;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// Splits words that don't fit on a line where DirectWrite allows a line break, never inside a cluster.

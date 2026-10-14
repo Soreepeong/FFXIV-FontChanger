@@ -5,8 +5,9 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Xml;
+using CustomFonts.Utilities;
 
-namespace CustomFonts;
+namespace CustomFonts.Rendering;
 
 /// <summary>
 /// The glyphs of a glyph images element (FontChanger GlyphFiles, xivres image_fixed_size_font): SVG documents and bitmaps

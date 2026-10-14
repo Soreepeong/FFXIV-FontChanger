@@ -1,121 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
-  <PropertyGroup>
-    <Version>0.0.0.1</Version>
-    <RootNamespace>CustomFonts</RootNamespace>
-    <Description>Renders the game's UI text with DirectWrite glyphs rasterized on demand, instead of the prebaked font atlases.</Description>
-    <IsPackable>false</IsPackable>
-    <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- Dalamud runs on Windows 10 and later; APIs of later versions are checked for where they are used. -->
-    <!-- CS0436: a type compiled from the FFXIVClientStructs branch stands in for Dalamud's copy of the same name, which
-         lacks what the branch adds; that is the point. -->
-    <NoWarn>$(NoWarn);CA1416;CS0436</NoWarn>
-    <!-- The FFXIVClientStructs branch (submodule) is where what the plugin needs of the game is defined, to be
-         contributed. Its files are not compiled by default; the few the plugin uses are, below. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);FFXIVClientStructs/**</DefaultItemExcludes>
-    <!-- The namespace InteropGenerator emits its address table and its inline arrays into, as FFXIVClientStructs has it. -->
-    <InteropGenerator_InteropNamespace>FFXIVClientStructs.Interop.Generated</InteropGenerator_InteropNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <!-- InteropGenerator, which resolves the [MemberFunction], [StaticAddress] and [VirtualTable] signatures of the
-         FFXIVClientStructs files compiled below. Its runtime is the assembly Dalamud loads. -->
-    <ProjectReference Include="FFXIVClientStructs\InteropGenerator\InteropGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
-    <CompilerVisibleProperty Include="InteropGenerator_InteropNamespace" />
-    <!-- The parts of the game's UI the plugin reads, from the FFXIVClientStructs branch. Compiled into the plugin, they
-         shadow Dalamud's copy of the same types, which lacks them or their members. -->
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\Attributes\CExporterUnionAttribute.cs" />
-	<Compile Include="FFXIVClientStructs\FFXIVClientStructs\STD\Helper\DefaultHasher.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\STD\Helper\IStaticHasher.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\STD\Helper\IStaticKeyExtractor.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\STD\Helper\IStaticNativeObjectOperation.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\STD\Helper\PairKeyExtractor.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\STD\Helper\StdOps.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\STD\Helper\HashTable.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\STD\StdPair.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\STD\StdUnorderedMap.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Component\GUI\AtkContext.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Component\GUI\AtkEventTarget.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Component\GUI\AtkResNode.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Component\GUI\AtkFontManager.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Component\GUI\AtkFontCodeModule.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Component\GUI\AtkFontAnalyzerBase.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Component\GUI\AtkFontAnalyzerRenderer.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Component\GUI\AtkFontAnalyzerRenderCount.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Component\GUI\AtkServer.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Component\GUI\AtkTextNode.cs" />
-    <Compile Include="FFXIVClientStructs\FFXIVClientStructs\FFXIV\Client\UI\AddonNamePlate.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- What those files use without saying so, as FFXIVClientStructs' own project declares them globally
-         (FFXIVClientStructs/FFXIVClientStructs/GlobalUsings.cs), and what the plugin calls the font structures by. -->
-    <Using Include="System" />
-    <Using Include="System.Collections.Generic" />
-    <Using Include="System.Runtime.InteropServices" />
-    <Using Include="FFXIVClientStructs.Attributes" />
-    <Using Include="FFXIVClientStructs.FFXIV.Client.System.String" />
-    <Using Include="FFXIVClientStructs.Interop" />
-    <Using Include="FFXIVClientStructs.Interop.Generated" />
-    <Using Include="FFXIVClientStructs.STD" />
-    <Using Include="InteropGenerator.Runtime" />
-    <Using Include="InteropGenerator.Runtime.Attributes" />
-    <Using Include="FFXIVClientStructs.FFXIV.Component.GUI.AtkFontManager.Font" Alias="Font" />
-    <Using Include="FFXIVClientStructs.FFXIV.Component.GUI.AtkFontManager.FontSet" Alias="FontSet" />
-    <Using Include="FFXIVClientStructs.FFXIV.Component.GUI.AtkFontManager.FontTableEntry" Alias="FontTableEntry" />
-    <Using Include="FFXIVClientStructs.FFXIV.Component.GUI.AtkFontManager.Glyph" Alias="Glyph" />
-    <Using Include="FFXIVClientStructs.FFXIV.Component.GUI.AtkFontManager.DrawFlags" Alias="DrawFlags" />
-    <Using Include="FFXIVClientStructs.FFXIV.Component.GUI.AtkFontManager.FontFlags" Alias="FontFlags" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\FontChanger.Presets\FontChanger.Presets.csproj" />
-    <Using Include="FontChanger.Presets" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- FreeType, with its native library; for elements a preset draws with FreeType, and bitmap-only fonts. -->
-    <PackageReference Include="FreeTypeSharp" Version="3.1.0" />
-  </ItemGroup>
-  <PropertyGroup>
-    <!-- The game is always an x64 Windows process: under WINE, and under x64 emulation on Windows on Arm. -->
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>false</SelfContained>
-    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
-    <!-- The solution builds it as x64; the output stays in bin\$(Configuration), where Dalamud loads it from. -->
-    <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
-  </PropertyGroup>
-  <ItemGroup>
-    <!-- DirectWrite and D3D11; Dalamud ships and loads it. -->
-    <Reference Include="TerraFX.Interop.Windows" Private="false" />
-  </ItemGroup>
-
-  <!-- The edge shader (Rendering\FontEdgePS.hlsl) is completed and compiled by FontChanger.ShaderGen at build time; the
-       bytecode is embedded. The tool is only built first, not referenced. -->
-  <ItemGroup>
-    <ProjectReference Include="..\FontChanger.ShaderGen\FontChanger.ShaderGen.csproj" ReferenceOutputAssembly="false" Private="false" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
-  </ItemGroup>
-  <Target Name="ResolveShaderGen" DependsOnTargets="ResolveProjectReferences" Condition="'$(DesignTimeBuild)' != 'true'">
-    <MSBuild Projects="..\FontChanger.ShaderGen\FontChanger.ShaderGen.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)" RemoveProperties="RuntimeIdentifier;SelfContained">
-      <Output TaskParameter="TargetOutputs" PropertyName="ShaderGenPath" />
-    </MSBuild>
-  </Target>
-  <Target Name="CompileEdgeShader" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'" Inputs="Rendering\FontEdgePS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontEdgePS.cso">
-    <Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; &quot;Rendering\FontEdgePS.hlsl&quot; &quot;$(IntermediateOutputPath)FontEdgePS.cso&quot;" />
-  </Target>
-  <Target Name="EmbedEdgeShader" AfterTargets="CompileEdgeShader" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
-    <ItemGroup>
-      <EmbeddedResource Include="$(IntermediateOutputPath)FontEdgePS.cso" LogicalName="CustomFonts.Rendering.FontEdgePS.cso" />
-      <FileWrites Include="$(IntermediateOutputPath)FontEdgePS.cso;$(IntermediateOutputPath)FontEdgePS.hlsl;$(IntermediateOutputPath)FontEdgePS.asm" />
-    </ItemGroup>
-  </Target>
-  <!-- The subpixel text shader (Rendering\FontSubpixelPS.hlsl), and its highlight variant, compiled the same way. -->
-  <Target Name="CompileSubpixelShaders" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'" Inputs="Rendering\FontSubpixelPS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso">
-    <Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelPS.cso&quot;" />
-    <Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso&quot; --highlight" />
-  </Target>
-  <Target Name="EmbedSubpixelShaders" AfterTargets="CompileSubpixelShaders" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
-    <ItemGroup>
-      <EmbeddedResource Include="$(IntermediateOutputPath)FontSubpixelPS.cso" LogicalName="CustomFonts.Rendering.FontSubpixelPS.cso" />
-      <EmbeddedResource Include="$(IntermediateOutputPath)FontSubpixelHighlightPS.cso" LogicalName="CustomFonts.Rendering.FontSubpixelHighlightPS.cso" />
-      <FileWrites Include="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelPS.asm;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.asm" />
-    </ItemGroup>
-  </Target>
+	<PropertyGroup>
+		<TargetFramework>net10.0-windows10.0.22000.0</TargetFramework>
+		<SupportedOSPlatformVersion>10.0.19043.0</SupportedOSPlatformVersion>
+		<Version>0.0.0.1</Version>
+		<RootNamespace>CustomFonts</RootNamespace>
+		<Description>Renders the game's UI text with DirectWrite glyphs rasterized on demand, instead of the prebaked font atlases.</Description>
+		<IsPackable>false</IsPackable>
+		<Nullable>enable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	</PropertyGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\FontChanger.Presets\FontChanger.Presets.csproj"/>
+		<Using Include="FontChanger.Presets"/>
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="FreeTypeSharp" Version="3.1.0"/>
+	</ItemGroup>
+	<PropertyGroup>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<SelfContained>false</SelfContained>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+		<AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
+	</PropertyGroup>
+	<ItemGroup>
+		<Reference Include="TerraFX.Interop.Windows" Private="false"/>
+	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\FontChanger.ShaderGen\FontChanger.ShaderGen.csproj" ReferenceOutputAssembly="false" Private="false" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained"/>
+	</ItemGroup>
+	<Target Name="ResolveShaderGen" DependsOnTargets="ResolveProjectReferences" Condition="'$(DesignTimeBuild)' != 'true'">
+		<MSBuild Projects="..\FontChanger.ShaderGen\FontChanger.ShaderGen.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)" RemoveProperties="RuntimeIdentifier;SelfContained">
+			<Output TaskParameter="TargetOutputs" PropertyName="ShaderGenPath"/>
+		</MSBuild>
+	</Target>
+	<Target Name="CompileEdgeShader" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'" Inputs="Rendering\FontEdgePS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontEdgePS.cso">
+		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; &quot;Rendering\FontEdgePS.hlsl&quot; &quot;$(IntermediateOutputPath)FontEdgePS.cso&quot;"/>
+	</Target>
+	<Target Name="EmbedEdgeShader" AfterTargets="CompileEdgeShader" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
+		<ItemGroup>
+			<EmbeddedResource Include="$(IntermediateOutputPath)FontEdgePS.cso" LogicalName="CustomFonts.Rendering.FontEdgePS.cso"/>
+			<FileWrites Include="$(IntermediateOutputPath)FontEdgePS.cso;$(IntermediateOutputPath)FontEdgePS.hlsl;$(IntermediateOutputPath)FontEdgePS.asm"/>
+		</ItemGroup>
+	</Target>
+	<Target Name="CompileSubpixelShaders" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'" Inputs="Rendering\FontSubpixelPS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso">
+		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelPS.cso&quot;"/>
+		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso&quot; --highlight"/>
+	</Target>
+	<Target Name="EmbedSubpixelShaders" AfterTargets="CompileSubpixelShaders" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
+		<ItemGroup>
+			<EmbeddedResource Include="$(IntermediateOutputPath)FontSubpixelPS.cso" LogicalName="CustomFonts.Rendering.FontSubpixelPS.cso"/>
+			<EmbeddedResource Include="$(IntermediateOutputPath)FontSubpixelHighlightPS.cso" LogicalName="CustomFonts.Rendering.FontSubpixelHighlightPS.cso"/>
+			<FileWrites Include="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelPS.asm;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.asm"/>
+		</ItemGroup>
+	</Target>
 </Project>
