@@ -4,7 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-using CustomFonts.Rendering;
+using FontChanger.DalamudPlugin.Rendering.Shaders;
 
 namespace FontChanger.ShaderGen;
 
@@ -13,7 +13,7 @@ namespace FontChanger.ShaderGen;
 /// compiles the result (ps_5_0, main, optimization level 3), and writes the bytecode,
 /// the completed source and its listing. The include is kept in the repository, so that a build can compile
 /// FontEdgePS.hlsl with fxc alone; compiling fails if it differs from what would be written now, or if patching the
-/// softness into the bytecode (EdgeShaderCode) doesn't give what compiling with it does.
+/// softness into the bytecode (PixelShaderSwap) doesn't give what compiling with it does.
 /// </summary>
 /// <remarks>
 /// Usage: FontChanger.ShaderGen &lt;FontEdgePS.hlsl&gt; &lt;output .cso&gt;, or FontChanger.ShaderGen --write-include
@@ -120,7 +120,7 @@ internal static class Program
         }
 
         var patched = (byte[])code.Clone();
-        if (EdgeShaderCode.PatchConstants(patched, [(SubpixelShaderCode.ClearTypeLevelSentinel, testLevel), (SubpixelShaderCode.ContrastSentinel, testContrast)]) < 2)
+        if (PixelShaderSwap.PatchConstants(patched,[(SubpixelShaderCode.ClearTypeLevelSentinel, testLevel), (SubpixelShaderCode.ContrastSentinel, testContrast)]) < 2)
         {
             Console.Error.WriteLine($"{sourcePath}: error: ClearTypeLevel and Contrast aren't both immediate operands in the bytecode.");
             return 1;
@@ -148,7 +148,7 @@ internal static class Program
     }
 
     /// <summary>
-    /// Checks that the plugin's patching (EdgeShaderCode) works on this bytecode: the checksum is computed as the
+    /// Checks that the plugin's patching (PixelShaderSwap) works on this bytecode: the checksum is computed as the
     /// compiler does, and patching a softness gives what compiling with it written in gives, byte for byte.
     /// </summary>
     private static string? CheckSoftnessPatch(string source, string sourcePath, byte[] code)
@@ -157,14 +157,14 @@ internal static class Program
         const float test = 1.75f;
 
         var checksum = new byte[16];
-        EdgeShaderCode.ComputeChecksum(code, checksum);
+        PixelShaderSwap.ComputeChecksum(code, checksum);
         if (!checksum.AsSpan().SequenceEqual(code.AsSpan(4, 16)))
             return "the computed DXBC checksum differs from the compiler's.";
 
         if (!source.Contains(declaration, StringComparison.Ordinal))
             return $"the line {declaration} is missing.";
         var patched = (byte[])code.Clone();
-        if (EdgeShaderCode.Patch(patched, test) == 0)
+        if (PixelShaderSwap.PatchConstants(patched, [(EdgeShaderCode.Sentinel, test)]) == 0)
             return "Softness isn't an immediate operand in the bytecode.";
 
         var withTest = source.Replace(declaration, $"static const float Softness = {test.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal);

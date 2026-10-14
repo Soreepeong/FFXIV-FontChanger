@@ -47,7 +47,7 @@ namespace App::FaceElementEditorDialogInternal {
 	std::map<DWRITE_FONT_FEATURE_TAG, uint32_t> GetFeatureAlternateCounts(hb_face_t* face);
 
 	// Returns the features that shaping applies to text of the language when they are left at the default.
-	std::set<DWRITE_FONT_FEATURE_TAG> GetDefaultOnFeatures(hb_face_t* face, const std::string& language);
+	std::set<DWRITE_FONT_FEATURE_TAG> GetDefaultOnFeatures(hb_face_t* face, const std::string& languageCode);
 }
 
 struct App::FaceElementEditorDialog::ControlStruct {

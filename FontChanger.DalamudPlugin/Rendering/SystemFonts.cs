@@ -1,11 +1,17 @@
 using System;
 using System.Collections.Generic;
-using CustomFonts.Utilities;
+using System.Diagnostics.CodeAnalysis;
+using System.Text;
+
+using FontChanger.DalamudPlugin.Utilities;
+using FontChanger.Presets.Records;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
+
 using static TerraFX.Interop.DirectX.DirectX;
 
-namespace CustomFonts.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>
 /// The system's fonts, measured for <see cref="FaceFromFont"/>. Its own DirectWrite factory, made when first used, is
@@ -13,88 +19,75 @@ namespace CustomFonts.Rendering;
 /// </summary>
 internal sealed unsafe class SystemFonts : IDisposable
 {
-    private readonly object sync = new();
-    private IDWriteFactory* factory;
-    private IDWriteFontCollection* collection;
+    private readonly object _sync = new();
+    private ComPtr<IDWriteFactory> _factory;
+    private ComPtr<IDWriteFontCollection> _collection;
 
-    /// <summary>Gets measurements of the font of a family closest to a weight, stretch and style; null if it isn't installed.</summary>
-    public Probe? Open(LookupDef lookup)
+    /// <summary>Gets measurements of the font of a family closest to a weight, stretch and style; false if it isn't installed.</summary>
+    public bool TryOpen(LookupStruct lookup, [NotNullWhen(true)] out Probe? probe)
     {
-        lock (this.sync)
+        probe = null;
+        lock (this._sync)
         {
-            if (this.collection is null)
+            if (this._collection.IsNull)
             {
-                IDWriteFactory* f;
                 var iid = IID.IID_IDWriteFactory;
-                DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)&f).ThrowOnError();
-                this.factory = f;
-                IDWriteFontCollection* c;
-                f->GetSystemFontCollection(&c, BOOL.TRUE).ThrowOnError();
-                this.collection = c;
+                DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)this._factory.ReleaseAndGetAddressOf()).ThrowOnError();
+                this._factory.Get()->GetSystemFontCollection(this._collection.GetAddressOf(), BOOL.TRUE).ThrowOnError();
             }
 
             uint index;
             BOOL exists;
             fixed (char* name = lookup.Name)
             {
-                if (this.collection->FindFamilyName(name, &index, &exists).FAILED || !exists)
-                    return null;
+                if (this._collection.Get()->FindFamilyName(name, &index, &exists).FAILED || !exists)
+                    return false;
             }
 
-            IDWriteFontFamily* family;
-            if (this.collection->GetFontFamily(index, &family).FAILED)
-                return null;
-            try
-            {
-                IDWriteFont* font;
-                if (family->GetFirstMatchingFont((DWRITE_FONT_WEIGHT)lookup.Weight, (DWRITE_FONT_STRETCH)lookup.Stretch, (DWRITE_FONT_STYLE)lookup.Style, &font).FAILED)
-                    return null;
-                try
-                {
-                    IDWriteFontFace* face;
-                    return font->CreateFontFace(&face).SUCCEEDED ? new Probe(face) : null;
-                }
-                finally
-                {
-                    font->Release();
-                }
-            }
-            finally
-            {
-                family->Release();
-            }
+            using var family = default(ComPtr<IDWriteFontFamily>);
+            if (this._collection.Get()->GetFontFamily(index, family.GetAddressOf()).FAILED)
+                return false;
+            using var font = default(ComPtr<IDWriteFont>);
+            if (family.Get()->GetFirstMatchingFont(
+                    (DWRITE_FONT_WEIGHT)lookup.Weight,
+                    (DWRITE_FONT_STRETCH)lookup.Stretch,
+                    (DWRITE_FONT_STYLE)lookup.Style,
+                    font.GetAddressOf()).FAILED)
+                return false;
+            using var face = default(ComPtr<IDWriteFontFace>);
+            if (font.Get()->CreateFontFace(face.GetAddressOf()).FAILED)
+                return false;
+            probe = new(face.Get());
+            return true;
         }
     }
 
     public void Dispose()
     {
-        lock (this.sync)
+        lock (this._sync)
         {
-            if (this.collection is not null)
-                this.collection->Release();
-            this.collection = null;
-            if (this.factory is not null)
-                this.factory->Release();
-            this.factory = null;
+            this._collection.Dispose();
+            this._factory.Dispose();
         }
     }
 
     /// <summary>Measurements of a font face for <see cref="FaceFromFont"/>.</summary>
     public sealed class Probe : IFontProbe, IDisposable
     {
-        private readonly HashSet<int> bitmapSizes = [];
-        private readonly ushort unitsPerEm;
-        private IDWriteFontFace* face;
+        private readonly HashSet<int> _bitmapSizes = [];
+        private readonly ushort _unitsPerEm;
+        private ComPtr<IDWriteFontFace> _face;
 
+        /// <summary>Takes a reference of its own to the face.</summary>
         public Probe(IDWriteFontFace* face)
         {
-            this.face = face;
+            this._face = new(face);
             DWRITE_FONT_METRICS metrics;
             face->GetMetrics(&metrics);
-            this.unitsPerEm = metrics.designUnitsPerEm;
+            this._unitsPerEm = metrics.designUnitsPerEm;
 
             // Sizes of bitmaps: ppemY of the BitmapSize records of 48 bytes after the header of EBLC or CBLC.
-            foreach (var tag in new[] { Preset.Tag("EBLC"), Preset.Tag("CBLC") })
+            foreach (var tag in new[] { Preset.Tag("EBLC"u8), Preset.Tag("CBLC"u8) })
             {
                 void* data;
                 uint size;
@@ -107,36 +100,36 @@ internal sealed unsafe class SystemFonts : IDisposable
                 {
                     var count = ((uint)p[4] << 24) | ((uint)p[5] << 16) | ((uint)p[6] << 8) | p[7];
                     for (var i = 0u; i < count && 8 + (48 * (i + 1)) <= size; i++)
-                        this.bitmapSizes.Add(p[8 + (48 * i) + 45]);
+                        this._bitmapSizes.Add(p[8 + (48 * i) + 45]);
                 }
 
                 face->ReleaseFontTable(context);
             }
         }
 
-        public GlyphBox? GetGlyph(int codepoint)
+        public bool TryGetGlyph(Rune rune, out GlyphBox box)
         {
-            var c = (uint)codepoint;
             ushort glyph;
             DWRITE_GLYPH_METRICS gm;
-            if (this.face->GetGlyphIndices(&c, 1, &glyph).FAILED || glyph == 0 || this.face->GetDesignGlyphMetrics(&glyph, 1, &gm, BOOL.FALSE).FAILED)
-                return null;
+            if (this._face.Get()->GetGlyphIndices((uint*)&rune, 1, &glyph).FAILED || glyph == 0 || this._face.Get()->GetDesignGlyphMetrics(&glyph, 1, &gm, BOOL.FALSE).FAILED)
+            {
+                box = default;
+                return false;
+            }
+
             var top = gm.verticalOriginY - gm.topSideBearing;
             var bottom = top - ((int)gm.advanceHeight - gm.topSideBearing - gm.bottomSideBearing);
-            float em = this.unitsPerEm;
-            return new(gm.leftSideBearing / em, gm.rightSideBearing / em, gm.advanceWidth / em, top / em, bottom / em);
+            float em = this._unitsPerEm;
+            box = new(gm.leftSideBearing / em, gm.rightSideBearing / em, gm.advanceWidth / em, top / em, bottom / em);
+            return true;
         }
 
-        public bool HasBitmapOf(int ppem) => this.bitmapSizes.Contains(ppem);
+        public bool HasBitmapOf(int ppem) => this._bitmapSizes.Contains(ppem);
 
-        public bool HasFeature(string tag) => this.HasFeature(Preset.Tag("GSUB"), tag) || this.HasFeature(Preset.Tag("GPOS"), tag);
+        public bool HasGposFeature(string tag) => this.HasFeature(Preset.Tag("GPOS"u8), tag);
+        public bool HasGsubFeature(string tag) => this.HasFeature(Preset.Tag("GSUB"u8), tag);
 
-        public void Dispose()
-        {
-            if (this.face is not null)
-                this.face->Release();
-            this.face = null;
-        }
+        public void Dispose() => this._face.Dispose();
 
         /// <summary>Gets whether an OpenType layout table (GSUB or GPOS) has a feature of a tag in its feature list.</summary>
         private bool HasFeature(uint table, string feature)
@@ -145,7 +138,7 @@ internal sealed unsafe class SystemFonts : IDisposable
             uint size;
             void* context;
             BOOL exists;
-            if (this.face->TryGetFontTable(table, &data, &size, &context, &exists).FAILED || !exists)
+            if (this._face.Get()->TryGetFontTable(table, &data, &size, &context, &exists).FAILED || !exists)
                 return false;
             try
             {
@@ -169,7 +162,7 @@ internal sealed unsafe class SystemFonts : IDisposable
             }
             finally
             {
-                this.face->ReleaseFontTable(context);
+                this._face.Get()->ReleaseFontTable(context);
             }
         }
     }

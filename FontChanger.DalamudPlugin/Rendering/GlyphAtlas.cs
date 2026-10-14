@@ -1,16 +1,25 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
-using CustomFonts.Utilities;
-using FFXIVClientStructs.FFXIV.Component.GUI;
-using TerraFX.Interop.DirectX;
 
-namespace CustomFonts.Rendering;
+using FFXIVClientStructs.FFXIV.Component.GUI;
+
+using FontChanger.DalamudPlugin.Configuration;
+using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Utilities;
+
+using TerraFX.Interop.DirectX;
+using TerraFX.Interop.Windows;
+
+using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
+
+namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>
-/// Atlas pages for the rasterized glyphs of a game font family's replaced fonts. A page is a B8G8R8A8 texture holding
-/// four glyph planes, one per channel, as the game's own atlases do; glyphs are written to a CPU copy, and the changed
-/// rectangle goes to the GPU from <see cref="Upload"/>.
+/// Atlas pages for the rasterized glyphs of a game font family's replaced fonts. A page is a B8G8R8A8 or B4G4R4A4 texture
+/// holding four glyph planes, one per channel, as the game's own atlases do; glyphs are written to a CPU copy, and the
+/// changed rectangle goes to the GPU from <see cref="Upload"/>. In B4G4R4A4 coverage has 16 levels.
 /// </summary>
 /// <remarks>
 /// The font shaders take UVs as texels over the bound texture's size, so pages may be smaller than the game's atlases;
@@ -26,15 +35,17 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// Makes an atlas of pages of a size (sides up to 4096: glyph positions take 12 bits; an odd width for a subpixel
     /// atlas), of at most <paramref name="maxPages"/> pages.
     /// </summary>
-    public GlyphAtlas(int width, int height, int maxPages, string name, bool subpixel)
+    public GlyphAtlas(int width, int height, int maxPages, string name, bool subpixel, AtlasTextureFormat format = AtlasTextureFormat.Bgra8888)
     {
         this.Width = width;
         this.Height = height;
         this.MaxPages = Math.Clamp(maxPages, 1, MaxTextureSlots);
         this.Name = name;
         this.Subpixel = subpixel;
-        this.current = this.FirstPlane;
-        this.frontier = this.FirstPlane + this.PlaneStep;
+        this.Format4444 = format == AtlasTextureFormat.Bgra4444;
+        this.Texel = this.Format4444 ? 2 : 4;
+        this._current = this.FirstPlane;
+        this._frontier = this.FirstPlane + this.PlaneStep;
     }
 
     public int Width { get; }
@@ -50,13 +61,41 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
     public int MaxPages { get; }
 
-    private int Pitch => this.Width * 4;
+    /// <summary>Gets whether pages are B4G4R4A4, not B8G8R8A8.</summary>
+    public bool Format4444 { get; }
+
+    /// <summary>Gets the bytes a texel takes.</summary>
+    private int Texel { get; }
+
+    private int Pitch => this.Width * this.Texel;
 
     // Glyph rectangles are padded by this much on each side: the edge and outline passes sample a texel around a glyph.
     private const int Padding = 1;
 
     // Byte offset in a B8G8R8A8 texel of the channel a glyph's plane index selects (the shader masks R, G, B, A).
     private static readonly int[] ChannelOffsets = [2, 1, 0, 3];
+
+    // The bit shift of the same in a B4G4R4A4 texel.
+    private static readonly int[] ChannelShifts = [8, 4, 0, 12];
+
+    // 8-bit coverage as 4 bits, rounded; read back as 17 times that.
+    private static readonly byte[] Quantized = Enumerable.Range(0, 256).Select(v => (byte)(((v * 15) + 127) / 255)).ToArray();
+
+    private void SetChannel(byte* texel, int plane, byte value)
+    {
+        if (!this.Format4444)
+        {
+            texel[ChannelOffsets[plane]] = value;
+            return;
+        }
+
+        var shift = ChannelShifts[plane];
+        var t = (ushort*)texel;
+        *t = (ushort)((*t & ~(0xF << shift)) | (Quantized[value] << shift));
+    }
+
+    private byte GetChannel(byte* texel, int plane) =>
+        this.Format4444 ? (byte)(((*(ushort*)texel >> ChannelShifts[plane]) & 0xF) * 17) : texel[ChannelOffsets[plane]];
 
     /// <summary>The planes of a page: one per channel.</summary>
     public const int PlanesPerPage = 4;
@@ -67,21 +106,21 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
     private int PlaneStep => this.Subpixel ? PlanesPerPage : 1;
 
-    private readonly List<Page> pages = [];
-    private readonly object sync = new();
-    private ID3D11DeviceContext* context;
+    private readonly List<Page> _pages = [];
+    private readonly object _sync = new();
+    private ComPtr<ID3D11DeviceContext> _context;
 
     // Planes are numbered page * PlanesPerPage + plane. Glyphs are allocated in the current one; those from the frontier
     // on haven't been used yet (since Clear), the others before it are full.
-    private int current;
-    private int frontier;
+    private int _current;
+    private int _frontier;
 
     /// <summary>Raised on the thread that allocates, after a page was added.</summary>
     public event Action? PageAdded;
 
-    public int PageCount => this.pages.Count;
+    public int PageCount => this._pages.Count;
 
-    public nint GetKernelTexture(int page) => this.pages[page].Kernel;
+    public KernelTexture* GetKernelTexture(int page) => this._pages[page].Kernel;
 
     /// <summary>Adds the first page if there is none.</summary>
     public void EnsurePage()
@@ -105,17 +144,17 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// </summary>
     public void Clear()
     {
-        lock (this.sync)
+        lock (this._sync)
         {
-            foreach (var p in this.pages)
+            foreach (var p in this._pages)
             {
                 NativeMemory.Clear(p.Shadow, (nuint)(this.Pitch * this.Height));
                 p.Shelves.AsSpan().Clear();
                 p.MarkDirty(0, 0, this.Width, this.Height);
             }
 
-            this.current = this.FirstPlane;
-            this.frontier = this.FirstPlane + this.PlaneStep;
+            this._current = this.FirstPlane;
+            this._frontier = this.FirstPlane + this.PlaneStep;
         }
     }
 
@@ -125,27 +164,26 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// </summary>
     public void ClearPlane(int page, int plane)
     {
-        lock (this.sync)
+        lock (this._sync)
         {
-            var p = this.pages[page];
+            var p = this._pages[page];
             if (this.Subpixel)
             {
                 NativeMemory.Clear(p.Shadow, (nuint)(this.Pitch * this.Height));
             }
             else
             {
-                var channel = ChannelOffsets[plane];
                 for (var row = 0; row < this.Height; row++)
                 {
-                    var d = p.Shadow + (row * this.Pitch) + channel;
+                    var d = p.Shadow + (row * this.Pitch);
                     for (var col = 0; col < this.Width; col++)
-                        d[col * 4] = 0;
+                        this.SetChannel(d + (col * this.Texel), plane, 0);
                 }
             }
 
             p.Shelves[plane] = default;
             p.MarkDirty(0, 0, this.Width, this.Height);
-            this.current = (page * PlanesPerPage) + plane;
+            this._current = (page * PlanesPerPage) + plane;
         }
     }
 
@@ -168,11 +206,11 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         while (true)
         {
             int needed;
-            lock (this.sync)
+            lock (this._sync)
             {
-                page = this.current / PlanesPerPage;
-                plane = this.current % PlanesPerPage;
-                ref var s = ref this.pages[page].Shelves[plane];
+                page = this._current / PlanesPerPage;
+                plane = this._current % PlanesPerPage;
+                ref var s = ref this._pages[page].Shelves[plane];
                 if (s.X + w > this.Width)
                     s = new() { Y = s.Y + s.Height };
                 if (s.Y + h <= this.Height)
@@ -185,13 +223,13 @@ internal sealed unsafe class GlyphAtlas : IDisposable
                 }
 
                 // The current plane is full: on to one not used yet.
-                if (this.frontier >= this.MaxPlanes)
+                if (this._frontier >= this.MaxPlanes)
                     return false;
-                needed = (this.frontier / PlanesPerPage) + 1;
-                if (needed <= this.pages.Count)
+                needed = (this._frontier / PlanesPerPage) + 1;
+                if (needed <= this._pages.Count)
                 {
-                    this.current = this.frontier;
-                    this.frontier += this.PlaneStep;
+                    this._current = this._frontier;
+                    this._frontier += this.PlaneStep;
                     continue;
                 }
             }
@@ -207,38 +245,48 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// <paramref name="height"/> box at (x, y); coverage past the box's right edge is cut off. Marks the box for upload.
     /// In a subpixel atlas, <paramref name="lcd"/> (3 bytes a pixel, same layout) fills R, G and B; without it they get alpha.
     /// </summary>
-    public void Write(int page, int plane, int x, int y, int width, int height, ReadOnlySpan<byte> alpha, int alphaStride, int alphaX, ReadOnlySpan<byte> lcd = default)
+    public void Write(
+        int page,
+        int plane,
+        int x,
+        int y,
+        int width,
+        int height,
+        ReadOnlySpan<byte> alpha,
+        int alphaStride,
+        int alphaX,
+        ReadOnlySpan<byte> lcd = default)
     {
         var columns = Math.Min(alphaStride, width - alphaX);
-        lock (this.sync)
+        lock (this._sync)
         {
-            var p = this.pages[page];
+            var p = this._pages[page];
             if (this.Subpixel)
             {
                 var hasLcd = !lcd.IsEmpty && lcd.Length >= alpha.Length * 3;
-                var dst = p.Shadow + (y * this.Pitch) + (x * 4);
+                var dst = p.Shadow + (y * this.Pitch) + (x * this.Texel);
                 for (var row = 0; row < height; row++)
                 {
-                    var d = dst + (row * this.Pitch) + (alphaX * 4);
+                    var d = dst + (row * this.Pitch) + (alphaX * this.Texel);
                     for (var col = 0; col < columns; col++)
                     {
                         var i = (row * alphaStride) + col;
-                        var texel = d + (col * 4);
-                        texel[ChannelOffsets[SubpixelPlane]] = alpha[i];
+                        var texel = d + (col * this.Texel);
+                        this.SetChannel(texel, SubpixelPlane, alpha[i]);
                         for (var c = 0; c < 3; c++)
-                            texel[ChannelOffsets[c]] = hasLcd ? lcd[(i * 3) + c] : alpha[i];
+                            this.SetChannel(texel, c, hasLcd ? lcd[(i * 3) + c] : alpha[i]);
                     }
                 }
             }
             else
             {
-                var dst = p.Shadow + (y * this.Pitch) + (x * 4) + ChannelOffsets[plane];
+                var dst = p.Shadow + (y * this.Pitch) + (x * this.Texel);
                 for (var row = 0; row < height; row++)
                 {
                     var src = alpha.Slice(row * alphaStride, alphaStride);
-                    var d = dst + (row * this.Pitch) + (alphaX * 4);
+                    var d = dst + (row * this.Pitch) + (alphaX * this.Texel);
                     for (var col = 0; col < columns; col++)
-                        d[col * 4] = src[col];
+                        this.SetChannel(d + (col * this.Texel), plane, src[col]);
                 }
             }
 
@@ -250,14 +298,14 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     public byte[] Read(int page, int plane, int x, int y, int width, int height)
     {
         var alpha = new byte[width * height];
-        lock (this.sync)
+        lock (this._sync)
         {
-            var src = this.pages[page].Shadow + (y * this.Pitch) + (x * 4) + ChannelOffsets[plane];
+            var src = this._pages[page].Shadow + (y * this.Pitch) + (x * this.Texel);
             for (var row = 0; row < height; row++)
             {
                 var s = src + (row * this.Pitch);
                 for (var col = 0; col < width; col++)
-                    alpha[(row * width) + col] = s[col * 4];
+                    alpha[(row * width) + col] = this.GetChannel(s + (col * this.Texel), plane);
             }
         }
 
@@ -268,16 +316,16 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     public byte[] ReadLcd(int page, int x, int y, int width, int height)
     {
         var lcd = new byte[width * height * 3];
-        lock (this.sync)
+        lock (this._sync)
         {
-            var src = this.pages[page].Shadow + (y * this.Pitch) + (x * 4);
+            var src = this._pages[page].Shadow + (y * this.Pitch) + (x * this.Texel);
             for (var row = 0; row < height; row++)
             {
                 var s = src + (row * this.Pitch);
                 for (var col = 0; col < width; col++)
                 {
                     for (var c = 0; c < 3; c++)
-                        lcd[(((row * width) + col) * 3) + c] = s[(col * 4) + ChannelOffsets[c]];
+                        lcd[(((row * width) + col) * 3) + c] = this.GetChannel(s + (col * this.Texel), c);
                 }
             }
         }
@@ -288,11 +336,11 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     /// <summary>Copies the changed rectangle of each page to its texture. On the thread that calls Present.</summary>
     public void Upload()
     {
-        lock (this.sync)
+        lock (this._sync)
         {
-            if (this.context is null)
+            if (this._context.IsNull)
                 return;
-            foreach (var p in this.pages)
+            foreach (var p in this._pages)
             {
                 if (p.DirtyRight <= p.DirtyLeft)
                     continue;
@@ -305,11 +353,11 @@ internal sealed unsafe class GlyphAtlas : IDisposable
                     bottom = (uint)p.DirtyBottom,
                     back = 1,
                 };
-                this.context->UpdateSubresource(
+                this._context.Get()->UpdateSubresource(
                     p.Resource,
                     0,
                     &box,
-                    p.Shadow + (p.DirtyTop * this.Pitch) + (p.DirtyLeft * 4),
+                    p.Shadow + (p.DirtyTop * this.Pitch) + (p.DirtyLeft * this.Texel),
                     (uint)this.Pitch,
                     0);
                 p.ClearDirty();
@@ -319,16 +367,12 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
     public void Dispose()
     {
-        lock (this.sync)
+        lock (this._sync)
         {
-            foreach (var p in this.pages)
+            foreach (var p in this._pages)
                 p.Dispose();
-            this.pages.Clear();
-            if (this.context is not null)
-            {
-                this.context->Release();
-                this.context = null;
-            }
+            this._pages.Clear();
+            this._context.Dispose();
         }
     }
 
@@ -341,34 +385,31 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         while (true)
         {
             int added;
-            lock (this.sync)
-                added = this.pages.Count;
+            lock (this._sync)
+                added = this._pages.Count;
             if (added >= count)
                 return true;
 
-            var page = new Page(this.Width, this.Height, $"CustomFonts {this.Name} page {added}");
-            lock (this.sync)
+            var page = new Page(this.Width, this.Height, $"FontChanger.DalamudPlugin {this.Name} page {added}", this.Format4444);
+            lock (this._sync)
             {
                 // Another thread added one meanwhile.
-                if (this.pages.Count != added)
+                if (this._pages.Count != added)
                 {
                     page.Dispose();
                     continue;
                 }
 
-                this.pages.Add(page);
-                if (this.context is null)
+                this._pages.Add(page);
+                if (this._context.IsNull)
                 {
-                    ID3D11Device* device;
-                    page.Resource->GetDevice(&device);
-                    ID3D11DeviceContext* ctx;
-                    device->GetImmediateContext(&ctx);
-                    device->Release();
-                    this.context = ctx;
+                    using var device = default(ComPtr<ID3D11Device>);
+                    page.Resource->GetDevice(device.GetAddressOf());
+                    device.Get()->GetImmediateContext(this._context.GetAddressOf());
                 }
             }
 
-            Host.Log.Information("Added {name} atlas page {n} of {max} ({width} x {height})", this.Name, added + 1, this.MaxPages, this.Width, this.Height);
+            Plugin.Log.Information("Added {name} atlas page {n} of {max} ({width} x {height})", this.Name, added + 1, this.MaxPages, this.Width, this.Height);
             this.PageAdded?.Invoke();
         }
     }
@@ -383,18 +424,18 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
     private sealed class Page : IDisposable
     {
-        private readonly int width;
-        private readonly int height;
-        private readonly IHostTexture texture;
+        private readonly int _width;
+        private readonly int _height;
+        private readonly GameTextureWrapper _texture;
 
-        public Page(int width, int height, string name)
+        public Page(int width, int height, string name, bool format4444)
         {
-            this.width = width;
-            this.height = height;
-            this.Shadow = (byte*)NativeMemory.AllocZeroed((nuint)(width * 4 * height));
+            this._width = width;
+            this._height = height;
+            this.Shadow = (byte*)NativeMemory.AllocZeroed((nuint)(width * (format4444 ? 2 : 4) * height));
             try
             {
-                this.texture = Host.Current.CreateTexture(width, height, name);
+                this._texture = new GameTextureWrapper(width, height, name, format4444);
             }
             catch
             {
@@ -407,9 +448,9 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         }
 
         /// <summary>Gets the page as a Kernel::Texture*.</summary>
-        public nint Kernel => this.texture.Kernel;
+        public KernelTexture* Kernel => this._texture.Kernel;
 
-        public ID3D11Resource* Resource => this.texture.Resource;
+        public ID3D11Resource* Resource => this._texture.Resource;
 
         public byte* Shadow { get; private set; }
 
@@ -434,14 +475,14 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
         public void ClearDirty()
         {
-            this.DirtyLeft = this.width;
-            this.DirtyTop = this.height;
+            this.DirtyLeft = this._width;
+            this.DirtyTop = this._height;
             this.DirtyRight = this.DirtyBottom = 0;
         }
 
         public void Dispose()
         {
-            this.texture.Dispose();
+            this._texture.Dispose();
             if (this.Shadow is not null)
             {
                 NativeMemory.Free(this.Shadow);

@@ -373,8 +373,8 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		const MENUITEMINFOW mii{.cbSize = sizeof mii, .fMask = MIIM_STATE, .fState = static_cast<UINT>(checked ? MFS_CHECKED : 0)};
 		SetMenuItemInfoW(hMenu, id, FALSE, &mii);
 	};
-	for (const auto& [id, language] : LanguageItems)
-		setChecked(id, g_config.Language == language);
+	for (const auto& [id, languageCode] : LanguageItems)
+		setChecked(id, g_config.LanguageCode == languageCode);
 	setChecked(ID_VIEW_WORDWRAP, m_bWordWrap);
 	setChecked(ID_VIEW_KERNING, m_bKerning);
 	setChecked(ID_VIEW_SHOWLINEMETRICS, m_bShowLineMetrics);
@@ -558,9 +558,9 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 	switch (msg) {
 		case WM_COMMAND:
-			for (const auto& [id, language] : LanguageItems) {
+			for (const auto& [id, languageCode] : LanguageItems) {
 				if (LOWORD(wParam) == id)
-					return Menu_File_Language(language);
+					return Menu_File_Language(languageCode);
 			}
 			for (const auto& [id, fontType] : HotReloadFontItems) {
 				if (LOWORD(wParam) == id)

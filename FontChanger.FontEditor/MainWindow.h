@@ -130,7 +130,7 @@ namespace App {
 		LRESULT Menu_File_OpenRecent(size_t index);
 		LRESULT Menu_File_ClearRecent();
 		void PopulateRecentFilesMenu(HMENU hMenu);
-		LRESULT Menu_File_Language(const char* language);
+		LRESULT Menu_File_Language(const char* languageCode);
 		LRESULT Menu_File_GameInstallationManager();
 		LRESULT Menu_File_Exit();
 

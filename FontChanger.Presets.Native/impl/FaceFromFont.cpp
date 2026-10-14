@@ -117,16 +117,16 @@ namespace {
 
 	// Returns the size to draw a font at for its glyph to be as tall as wanted, and how to draw it there: natural at sizes
 	// of the font's bitmaps (rounded to them), natural symmetric otherwise.
-	std::pair<float, DWRITE_RENDERING_MODE> GetSizeAndMode(const FontInfo& font, float exactSize) {
+	std::pair<float, DWRITE_RENDERING_MODE1>GetSizeAndMode(const FontInfo& font, float exactSize) {
 		if (const auto rounded = std::round(exactSize); rounded > 0 && font.HasBitmapOf(static_cast<int>(rounded)))
-			return {rounded, DWRITE_RENDERING_MODE_NATURAL};
-		return {std::round(exactSize * 10) / 10, DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC};
+			return {rounded, DWRITE_RENDERING_MODE1_NATURAL};
+		return {std::round(exactSize * 10) / 10, DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC};
 	}
 
 	struct ExclamationMarkPlacement {
 		float DigitOffset;
 		float Size;
-		DWRITE_RENDERING_MODE RenderMode;
+		DWRITE_RENDERING_MODE1 RenderMode;
 		float Offset;
 		float BaselineShift;
 		float LetterSpacing;
@@ -167,7 +167,7 @@ namespace {
 	std::unique_ptr<FaceElement> Make(
 		LookupStruct lookup,
 		float size,
-		DWRITE_RENDERING_MODE renderMode,
+		DWRITE_RENDERING_MODE1 renderMode,
 		float gamma,
 		Ranges codepoints,
 		codepoint_merge_mode mergeMode,
@@ -234,7 +234,7 @@ namespace {
 				codepoints += mapping.Codepoints;
 
 			// Replacing the glyphs that the game's font has, at the size of the game's own, as the shapes are made for.
-			auto element = Make(fonts[f].first, size, DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC, 1.4f, FontChanger::CodepointRanges::FromCodepoints(codepoints), codepoint_merge_mode::Replace);
+			auto element = Make(fonts[f].first, size, DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC, 1.4f, FontChanger::CodepointRanges::FromCodepoints(codepoints), codepoint_merge_mode::Replace);
 			element->GlyphMerging.Params.Mappings = std::move(mappingsByFont[f]);
 			res.emplace_back(std::move(element));
 		}
@@ -444,7 +444,7 @@ std::vector<std::unique_ptr<FaceElement>> FontChanger::FaceFromFont::MakeElement
 	if (traits.IsAxis) {
 		// The game's PUA glyphs as vectors, so that they scale alike at sizes that the game has no font of; after the
 		// font's elements, which decide how the face is measured.
-		res.emplace_back(Make({.Name = LodestoneFontName}, size, DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC, 1.4f, PrivateUseCodepoints, codepoint_merge_mode::Replace, placement.PuaOffset, placement.CjkShift));
+		res.emplace_back(Make({.Name = LodestoneFontName}, size, DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC, 1.4f, PrivateUseCodepoints, codepoint_merge_mode::Replace, placement.PuaOffset, placement.CjkShift));
 
 		auto merged = MakeMergedGlyphElements(chosen, font, size, open);
 		res.insert(res.end(), std::make_move_iterator(merged.begin()), std::make_move_iterator(merged.end()));

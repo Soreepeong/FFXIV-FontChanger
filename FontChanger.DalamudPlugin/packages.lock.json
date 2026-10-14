@@ -20,8 +20,16 @@
         "resolved": "3.1.0",
         "contentHash": "w0pPUztBFVokuvML8G55SM1HeycyzQQqC/NV3rWdyGOPi/rtVm1vE6UAQ7v4VYzVWoP59KM8O56qH89zJY5T+g=="
       },
+      "JetBrains.Annotations": {
+        "type": "Transitive",
+        "resolved": "2026.2.0",
+        "contentHash": "drvAEaI7Xf4wU6dx4UTB9MoZWXZlraaQ0qoeThPQ411FxNhId7QdUTukIC9I8aUHP0ycAaGwZNKqSvfOZQvUlg=="
+      },
       "fontchanger.presets": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "JetBrains.Annotations": "[2026.2.0, )"
+        }
       }
     },
     "net10.0-windows10.0.22000/win-x64": {

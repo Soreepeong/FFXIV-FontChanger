@@ -17,7 +17,7 @@ struct FontGeneratorConfig {
 	// Installations of the game, by release.
 	std::array<std::vector<std::filesystem::path>, 4> GamePaths;
 
-	std::string Language;
+	std::string LanguageCode;
 
 	int FaceElementListViewHeight;
 	int PreviewEditHeight;

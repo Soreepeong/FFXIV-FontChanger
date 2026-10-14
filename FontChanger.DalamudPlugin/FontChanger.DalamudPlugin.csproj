@@ -4,8 +4,8 @@
 		<TargetFramework>net10.0-windows10.0.22000.0</TargetFramework>
 		<SupportedOSPlatformVersion>10.0.19043.0</SupportedOSPlatformVersion>
 		<Version>0.0.0.1</Version>
-		<RootNamespace>CustomFonts</RootNamespace>
-		<Description>Renders the game's UI text with DirectWrite glyphs rasterized on demand, instead of the prebaked font atlases.</Description>
+		<RootNamespace>FontChanger.DalamudPlugin</RootNamespace>
+		<Description>Provides expanded choices of fonts.</Description>
 		<IsPackable>false</IsPackable>
 		<Nullable>enable</Nullable>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -34,23 +34,23 @@
 			<Output TaskParameter="TargetOutputs" PropertyName="ShaderGenPath"/>
 		</MSBuild>
 	</Target>
-	<Target Name="CompileEdgeShader" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'" Inputs="Rendering\FontEdgePS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontEdgePS.cso">
-		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; &quot;Rendering\FontEdgePS.hlsl&quot; &quot;$(IntermediateOutputPath)FontEdgePS.cso&quot;"/>
+	<Target Name="CompileEdgeShader" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'" Inputs="Rendering\Shaders\FontEdgePS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontEdgePS.cso">
+		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; &quot;Rendering\Shaders\FontEdgePS.hlsl&quot; &quot;$(IntermediateOutputPath)FontEdgePS.cso&quot;"/>
 	</Target>
 	<Target Name="EmbedEdgeShader" AfterTargets="CompileEdgeShader" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
 		<ItemGroup>
-			<EmbeddedResource Include="$(IntermediateOutputPath)FontEdgePS.cso" LogicalName="CustomFonts.Rendering.FontEdgePS.cso"/>
+			<EmbeddedResource Include="$(IntermediateOutputPath)FontEdgePS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontEdgePS.cso"/>
 			<FileWrites Include="$(IntermediateOutputPath)FontEdgePS.cso;$(IntermediateOutputPath)FontEdgePS.hlsl;$(IntermediateOutputPath)FontEdgePS.asm"/>
 		</ItemGroup>
 	</Target>
-	<Target Name="CompileSubpixelShaders" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'" Inputs="Rendering\FontSubpixelPS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso">
-		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelPS.cso&quot;"/>
-		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso&quot; --highlight"/>
+	<Target Name="CompileSubpixelShaders" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'" Inputs="Rendering\Shaders\FontSubpixelPS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso">
+		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\Shaders\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelPS.cso&quot;"/>
+		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\Shaders\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso&quot; --highlight"/>
 	</Target>
 	<Target Name="EmbedSubpixelShaders" AfterTargets="CompileSubpixelShaders" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
 		<ItemGroup>
-			<EmbeddedResource Include="$(IntermediateOutputPath)FontSubpixelPS.cso" LogicalName="CustomFonts.Rendering.FontSubpixelPS.cso"/>
-			<EmbeddedResource Include="$(IntermediateOutputPath)FontSubpixelHighlightPS.cso" LogicalName="CustomFonts.Rendering.FontSubpixelHighlightPS.cso"/>
+			<EmbeddedResource Include="$(IntermediateOutputPath)FontSubpixelPS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelPS.cso"/>
+			<EmbeddedResource Include="$(IntermediateOutputPath)FontSubpixelHighlightPS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelHighlightPS.cso"/>
 			<FileWrites Include="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelPS.asm;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.asm"/>
 		</ItemGroup>
 	</Target>

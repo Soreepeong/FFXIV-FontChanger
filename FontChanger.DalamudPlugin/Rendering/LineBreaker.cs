@@ -2,12 +2,18 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-using CustomFonts.Utilities;
+
+using Dalamud.Hooking;
+
 using FFXIVClientStructs.FFXIV.Component.GUI;
+
+using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Utilities;
+
 using Lumina.Text.Payloads;
 using Lumina.Text.ReadOnly;
 
-namespace CustomFonts.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>
 /// Splits words that don't fit on a line where DirectWrite allows a line break, never inside a cluster.
@@ -33,7 +39,7 @@ internal sealed unsafe class LineBreaker : IDisposable
     private const byte HyphenChar = 0x1E;
 
     private readonly FontReplacer replacer;
-    private readonly IHostHook<SplitWordDelegate> splitWordHook;
+    private readonly Hook<SplitWordDelegate> splitWordHook;
 
     private readonly StringBuilder text = new();
     private readonly List<Unit> units = [];
@@ -49,7 +55,7 @@ internal sealed unsafe class LineBreaker : IDisposable
         try
         {
             var splitWord = AtkFontCodeModule.Addresses.SplitWord.Value;
-            this.splitWordHook = Host.Current.Hook<SplitWordDelegate>(splitWord, this.SplitWordDetour);
+            this.splitWordHook = Plugin.GameInterop.HookFromAddress<SplitWordDelegate>(splitWord, this.SplitWordDetour);
             this.splitWordHook.Enable();
         }
         catch
@@ -73,17 +79,17 @@ internal sealed unsafe class LineBreaker : IDisposable
         {
             if (*p == ReadOnlySeString.Stx)
             {
-                var length = GameText.MacroLength(p);
+                var length = GameUtf8.MacroLength(p);
                 if (length == 0)
                     return false;
                 p += length;
                 continue;
             }
 
-            var n = GameText.CharacterLength(p);
+            var n = GameUtf8.CharacterLength(p);
             if (n == 0)
                 return false;
-            if (Rune.DecodeFromUtf8(new ReadOnlySpan<byte>(p, n), out var rune, out _) == System.Buffers.OperationStatus.Done)
+            if (Rune.DecodeFromUtf8(new(p, n), out var rune, out _) == System.Buffers.OperationStatus.Done)
             {
                 var c = rune.Value;
                 if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark
@@ -118,7 +124,7 @@ internal sealed unsafe class LineBreaker : IDisposable
         }
         catch (Exception ex)
         {
-            Host.Log.Error(ex, "Splitting a word failed");
+            Plugin.Log.Error(ex, "Splitting a word failed");
 
             // The game's own split can take over a word only at its first split; later ones index the table the game
             // built at the first. Past that, a forced split at the fit keeps the line filled.
@@ -208,7 +214,7 @@ internal sealed unsafe class LineBreaker : IDisposable
         {
             if (*p == ReadOnlySeString.Stx)
             {
-                var length = GameText.MacroLength(p);
+                var length = GameUtf8.MacroLength(p);
                 if (length == 0)
                     break;
                 var icon = (MacroCode)p[1] is MacroCode.Icon or MacroCode.Icon2;
@@ -219,17 +225,17 @@ internal sealed unsafe class LineBreaker : IDisposable
                 continue;
             }
 
-            var n = GameText.CharacterLength(p);
+            var n = GameUtf8.CharacterLength(p);
             if (n == 0)
                 break;
             var rune = *p switch
             {
-                NonBreakingSpaceChar => new Rune(0xA0),
-                HyphenChar => new Rune('-'),
-                _ => Rune.DecodeFromUtf8(new ReadOnlySpan<byte>(p, n), out var r, out var consumed) ==
+                NonBreakingSpaceChar => new(0xA0),
+                HyphenChar => new('-'),
+                _ => Rune.DecodeFromUtf8(new(p, n), out var r, out var consumed) ==
                      System.Buffers.OperationStatus.Done && consumed == n
-                    ? r
-                    : Rune.ReplacementChar,
+                         ? r
+                         : Rune.ReplacementChar,
             };
 
             this.text.Append(utf16[..rune.EncodeToUtf16(utf16)]);

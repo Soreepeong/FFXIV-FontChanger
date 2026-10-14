@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using CustomFonts.Utilities;
+
 using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using FFXIVClientStructs.Interop;
 
-namespace CustomFonts.Rendering;
+using FontChanger.DalamudPlugin.Utilities;
+
+namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>
 /// Names the game's fonts as presets do (<c>AXIS_12</c>, <c>TrumpGothic_184</c>).
@@ -42,38 +46,44 @@ internal static unsafe class GameFontNames
         .Where(f => f.Item2 > 0)
         .ToList();
 
-    /// <summary>Gets the face name of a font of the font manager; null if it isn't one.</summary>
-    public static string? GetFaceName(AtkFontManager.Font* font)
+    /// <summary>Gets the face name of a font of the font manager; false if it isn't one.</summary>
+    public static bool TryGetFaceName(AtkFontManager.Font* font, [NotNullWhen(true)] out string? faceName)
     {
-        var manager = (AtkFontManager*)AtkStage.Instance()->AtkFontManager;
+        faceName = null;
+        var manager = AtkStage.Instance()->AtkFontManager;
         if (gameNames is null || manager->Fonts is null)
-            return null;
+            return false;
         var index = font - manager->Fonts;
         var count = Math.Min((int)manager->FontCount, AtkFontManager.FontTableEntry.Count);
         if (index < 0 || index >= count)
-            return null;
-        return IsLobby(font) ? LobbyNames(manager, count)[index] : gameNames[index];
+            return false;
+        faceName = IsLobby(font) ? LobbyNames(manager, count)[index] : gameNames[index];
+        return true;
     }
 
-    /// <summary>Gets the font of the font manager of a face name; null if none is loaded.</summary>
-    public static AtkFontManager.Font* FindFont(string faceName)
+    /// <summary>Gets the font of the font manager of a face name; false if none is loaded.</summary>
+    public static bool TryFindFont(string faceName, out Pointer<AtkFontManager.Font> font)
     {
-        var manager = (AtkFontManager*)AtkStage.Instance()->AtkFontManager;
+        font = null;
+        var manager = AtkStage.Instance()->AtkFontManager;
         if (gameNames is null || manager->Fonts is null)
-            return null;
+            return false;
         var count = Math.Min((int)manager->FontCount, AtkFontManager.FontTableEntry.Count);
         string[]? lobbyNames = null;
         for (var i = 0; i < count; i++)
         {
-            var font = manager->Fonts + i;
-            var lobby = IsLobby(font);
+            var candidate = manager->Fonts + i;
+            var lobby = IsLobby(candidate);
             if (lobby)
                 lobbyNames ??= LobbyNames(manager, count);
             if (string.Equals((lobby ? lobbyNames! : gameNames)[i], faceName, StringComparison.OrdinalIgnoreCase))
-                return font;
+            {
+                font = candidate;
+                return true;
+            }
         }
 
-        return null;
+        return false;
     }
 
     /// <summary>Gets the lobby table whose sizes match the loaded lobby fonts.</summary>
@@ -96,11 +106,12 @@ internal static unsafe class GameFontNames
     private static bool IsLobby(AtkFontManager.Font* font)
     {
         var handle = font->TextureResourceHandles[0].Value;
-        return handle is not null && CustomClientStructExtensions.GetFileName((ResourceHandle*)handle).Contains("font_lobby", StringComparison.OrdinalIgnoreCase);
+        return handle is not null &&
+               ((ResourceHandle*)handle)->GetFileName().Contains("font_lobby", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Gets the size of a game font by its name (FontChanger.FixedSizeFont's data/game_fonts.json); 0 if it isn't one.</summary>
-    private static float SizeOf(string name) => GameFonts.Find(name)?.Size ?? 0;
+    private static float SizeOf(string name) => GameFonts.TryFind(name, out var font) ? font.Size : 0;
 
     /// <summary>Reads a table's FDT names as face names: without the extension, nor the lobby suffix.</summary>
     private static string[] Read(AtkFontManager.FontTableEntry* table)

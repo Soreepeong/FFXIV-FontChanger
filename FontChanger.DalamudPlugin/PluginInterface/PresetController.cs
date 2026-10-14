@@ -1,70 +1,44 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CustomFonts.Rendering;
 
-namespace CustomFonts.PluginInterface;
+using FontChanger.DalamudPlugin.Configuration;
+using FontChanger.DalamudPlugin.Rendering;
+using FontChanger.Presets.Records;
 
-/// <summary>A folder of the preset folder, with the presets in it (their paths relative to the preset folder).</summary>
-internal sealed record PresetTreeNode(string Name, IReadOnlyList<PresetTreeNode> Folders, IReadOnlyList<string> Files)
-{
-    public static readonly PresetTreeNode Empty = new(string.Empty, [], []);
-}
+namespace FontChanger.DalamudPlugin.PluginInterface;
 
-/// <summary>
-/// Loads the presets selected from the preset folder into the replacer, and again whenever their files or their glyph
-/// images change. Presets are selected per game font family: a family's faces come from its presets only (each drawn over
-/// those selected before it, glyph by glyph), so a preset of every family can be used for one. Reading and loading happen
-/// on a background thread, one at a time: right after the settings change, and once changed files have been quiet for a
-/// while.
-/// </summary>
 internal sealed class PresetController : IDisposable
 {
-    // Editors write a file in several steps; a change is acted on once the file has been quiet this long.
     private static readonly TimeSpan ReloadDelay = TimeSpan.FromMilliseconds(500);
 
-    private readonly Configuration configuration;
+    private readonly Configuration.Configuration configuration;
     private readonly FontReplacer replacer;
-    private readonly object sync = new();
-    private readonly object loadSync = new();
+    private readonly Lock sync = new();
+    private readonly Lock loadSync = new();
+    private readonly Dictionary<string, FileSystemWatcher> presetWatchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, FileSystemWatcher> folderWatchers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> watchedPresets = new(StringComparer.OrdinalIgnoreCase);
     private readonly SystemFonts systemFonts = new();
     private readonly Timer timer;
-    private FileSystemWatcher? watcher;
-    private bool pendingScan;
-    private bool pendingLoad;
     private bool pendingSettingsLoad;
     private bool disposed;
 
-    public PresetController(Configuration configuration, FontReplacer replacer)
+    public PresetController(Configuration.Configuration configuration, FontReplacer replacer)
     {
         this.configuration = configuration;
         this.replacer = replacer;
         this.timer = new(_ => this.RunPending());
-        configuration.FamilyPresets = new(configuration.FamilyPresets, StringComparer.OrdinalIgnoreCase);
-        configuration.FamilyFonts = new(configuration.FamilyFonts ?? [], StringComparer.OrdinalIgnoreCase);
-        this.Watch();
-        this.Schedule(true, true, false, TimeSpan.Zero);
+        this.Schedule(false, TimeSpan.Zero);
     }
 
-    /// <summary>Gets what happened at the last load, for display.</summary>
     public string Status { get; private set; } = string.Empty;
 
-    /// <summary>Gets the presets in the preset folder, as of the last time it changed.</summary>
-    public PresetTreeNode Tree { get; private set; } = PresetTreeNode.Empty;
-
-    public string Folder => this.configuration.PresetFolder;
-
     public bool SystemFallback => this.configuration.SystemFallback;
-
-    /// <summary>Gets whether system fonts' digits are made monospaced.</summary>
-    public bool MonospacedDigits => this.configuration.MonospacedDigits;
-
-    /// <summary>Gets the game's font families presets are selected for.</summary>
-    public IReadOnlyList<string> Families => GameFontNames.Families;
 
     public void Dispose()
     {
@@ -72,199 +46,143 @@ internal sealed class PresetController : IDisposable
             this.disposed = true;
         this.timer.Dispose();
 
-        // After a load that is running.
-        lock (this.loadSync)
-        {
-        }
+        // wait for the ongoing operation to complete
+        this.loadSync.EnterScope().Dispose();
 
-        this.watcher?.Dispose();
-        this.watcher = null;
+        this.WatchPresets([]);
         this.WatchFolders([]);
         this.systemFonts.Dispose();
     }
 
-    /// <summary>Saves the settings.</summary>
     public void Save() => Plugin.PluginInterface.SavePluginConfig(this.configuration);
 
-    /// <summary>Gets the system font a family's faces are drawn with, or null if they are of its presets.</summary>
-    public FamilyFont? GetFont(string family)
+    public IReadOnlyList<FontSource> GetSources(string family)
     {
         lock (this.sync)
-            return this.configuration.FamilyFonts.GetValueOrDefault(family);
+            return this.configuration.FamilySources.TryGetValue(family, out var sources) ? [.. sources] : [];
     }
 
-    /// <summary>
-    /// Draws a family's faces, or those of all if null, with a system font over their presets; or with their presets again
-    /// if <paramref name="font"/> is null. Unless <paramref name="save"/>, it is only tried (previewed), not saved.
-    /// </summary>
-    public void SetFont(string? family, FamilyFont? font, bool save = true) =>
-        this.SetFonts(this.TargetFamilies(family).ToDictionary(f => f, _ => font), save);
+    public void AddPresets(string family, IEnumerable<string> paths) => this.Change(c => GetChain(c, family).AddRange(
+        paths.Select(p => new FontSource { Type = FontSourceType.Preset, Path = Path.GetFullPath(p.Trim().Trim('"')) })));
 
-    /// <summary>Sets the system fonts of several families at once (null for their presets).</summary>
-    public void SetFonts(IReadOnlyDictionary<string, FamilyFont?> fonts, bool save = true) => this.Change(
-        c =>
-        {
-            foreach (var (f, font) in fonts)
+    public void AddFont(string family, FamilyFont font) =>
+        this.Change(c => GetChain(c, family).Add(new() { Type = FontSourceType.SystemFont, Font = font }));
+
+    public void Replace(string family, int index, FontSource source) => this.Change(c => {
+        var chain = GetChain(c, family);
+        if (index >= 0 && index < chain.Count)
+            chain[index] = source;
+    });
+
+    public void SetEnabled(string family, int index, bool enabled) => this.Change(c => {
+        var chain = GetChain(c, family);
+        if (index >= 0 && index < chain.Count)
+            chain[index] = chain[index] with { Enabled = enabled };
+    });
+
+    public void Remove(string family, int index) => this.Change(c => {
+        var chain = GetChain(c, family);
+        if (index >= 0 && index < chain.Count)
+            chain.RemoveAt(index);
+    });
+
+    public int Move(string family, int index, int offset)
+    {
+        var target = index;
+        this.Change(c => {
+            var chain = GetChain(c, family);
+            target = Math.Clamp(index + offset, 0, Math.Max(chain.Count - 1, 0));
+            if (index < 0 || index >= chain.Count || target == index)
             {
-                if (font is null)
-                    c.FamilyFonts.Remove(f);
-                else
-                    c.FamilyFonts[f] = font;
+                target = index;
+                return;
             }
-        },
-        save: save);
 
-    /// <summary>Sets whether system fonts' digits are made monospaced (tnum, or cells as wide as the 0).</summary>
-    public void SetMonospacedDigits(bool monospaced) => this.Change(c => c.MonospacedDigits = monospaced);
+            var source = chain[index];
+            chain.RemoveAt(index);
+            chain.Insert(target, source);
+        });
+        return target;
+    }
 
-    /// <summary>Gets the 1-based position of a preset in a family's selection order, or 0 if it isn't selected for it.</summary>
-    public int GetSelectionOrder(string family, string relativePath)
-    {
-        lock (this.sync)
+    public void Clear(string family) => this.Change(c => c.FamilySources.Remove(family));
+
+    public void CopyToOthers(string family) => this.Change(c => {
+        var copy = c.FamilySources.TryGetValue(family, out var chain) ? chain : [];
+        foreach (var other in GameFontNames.Families)
         {
-            return this.configuration.FamilyPresets.TryGetValue(family, out var selected)
-                       ? selected.FindIndex(p => SameName(p, relativePath)) + 1
-                       : 0;
-        }
-    }
-
-    /// <summary>Gets the number of families a preset is selected for.</summary>
-    public int GetFamilyCount(string relativePath)
-    {
-        lock (this.sync)
-            return this.configuration.FamilyPresets.Values.Count(selected => selected.Exists(p => SameName(p, relativePath)));
-    }
-
-    /// <summary>Gets the presets selected for a family, in order.</summary>
-    public IReadOnlyList<string> GetSelection(string family)
-    {
-        lock (this.sync)
-            return this.configuration.FamilyPresets.TryGetValue(family, out var selected) ? [.. selected] : [];
-    }
-
-    /// <summary>Chooses presets from another folder; the selection is cleared if the folder is a different one.</summary>
-    public void SetFolder(string folder)
-    {
-        folder = folder.Trim().Trim('"');
-        this.Change(
-            c =>
-            {
-                if (!SamePath(folder, c.PresetFolder))
-                    c.FamilyPresets.Clear();
-                c.PresetFolder = folder;
-            },
-            scan: true);
-        this.Watch();
-    }
-
-    /// <summary>
-    /// Selects a preset for a family after those selected for it, so that its faces are used over theirs; or deselects it.
-    /// </summary>
-    public void Toggle(string family, string relativePath) => this.Change(c =>
-    {
-        if (!c.FamilyPresets.TryGetValue(family, out var selected))
-            c.FamilyPresets[family] = selected = [];
-        if (selected.RemoveAll(p => SameName(p, relativePath)) == 0)
-            selected.Add(relativePath);
-    });
-
-    /// <summary>
-    /// Deselects a preset for every family if all have it selected; else selects it, last, for those that don't.
-    /// </summary>
-    public void ToggleForAll(string relativePath) => this.Change(c =>
-    {
-        var families = this.Families;
-        var all = families.Count != 0 && this.GetFamilyCount(relativePath) >= families.Count;
-        foreach (var family in families)
-        {
-            if (!c.FamilyPresets.TryGetValue(family, out var selected))
-                c.FamilyPresets[family] = selected = [];
-            if (all)
-                selected.RemoveAll(p => SameName(p, relativePath));
-            else if (!selected.Exists(p => SameName(p, relativePath)))
-                selected.Add(relativePath);
+            if (string.Equals(other, family, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (copy.Count == 0)
+                c.FamilySources.Remove(other);
+            else
+                c.FamilySources[other] = [.. copy];
         }
     });
 
-    /// <summary>Deselects every preset and system font of a family, or of all if null, for the game's fonts (with fallbacks).</summary>
-    public void ClearSelection(string? family) => this.Change(c =>
-    {
-        if (family is null)
-        {
-            c.FamilyPresets.Clear();
-            c.FamilyFonts.Clear();
-        }
-        else
-        {
-            c.FamilyPresets.Remove(family);
-            c.FamilyFonts.Remove(family);
-        }
+    public void SetMonospacedDigits(string family, int index, bool monospaced) => this.Change(c => {
+        var chain = GetChain(c, family);
+        if (index >= 0 && index < chain.Count)
+            chain[index] = chain[index] with { MonospacedDigits = monospaced };
     });
 
-    /// <summary>Sets <see cref="Configuration.SystemFallback"/>.</summary>
+    public bool IsFamilyEnabled(string family)
+    {
+        lock (this.sync)
+            return !this.configuration.DisabledFamilies.Contains(family);
+    }
+
+    public void SetFamilyEnabled(string family, bool enabled) =>
+        this.Change(c => _ = enabled ? c.DisabledFamilies.Remove(family) : c.DisabledFamilies.Add(family));
+
     public void SetSystemFallback(bool systemFallback) => this.Change(c => c.SystemFallback = systemFallback);
 
-    /// <summary>Reads the folder and the selected presets again.</summary>
-    public void Reload() => this.Schedule(true, true, false, TimeSpan.Zero);
+    public void Reload() => this.Schedule(false, TimeSpan.Zero);
 
-    private static bool SameName(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
-
-    private static bool SamePath(string a, string b)
+    private static List<FontSource> GetChain(Configuration.Configuration configuration, string family)
     {
-        if (a.Length == 0 || b.Length == 0)
-            return a.Length == b.Length;
-        try
-        {
-            return string.Equals(
-                Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)),
-                Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)),
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception)
-        {
-            return false;
-        }
+        if (!configuration.FamilySources.TryGetValue(family, out var chain))
+            configuration.FamilySources[family] = chain = [];
+        return chain;
     }
 
-    /// <summary>Gets a family, or every family if null.</summary>
-    public IReadOnlyList<string> TargetFamilies(string? family) => family is null ? this.Families : [family];
-
-    /// <summary>Changes the settings, saves them (unless not to), and loads the presets again at once.</summary>
-    private void Change(Action<Configuration> edit, bool scan = false, bool save = true)
+    private void Change(Action<Configuration.Configuration> edit)
     {
         lock (this.sync)
             edit(this.configuration);
-        if (save)
-            this.Save();
-        this.Schedule(scan, true, false, TimeSpan.Zero);
+        this.Save();
+        this.Schedule(false, TimeSpan.Zero);
     }
 
-    /// <summary>Makes a family's faces with a system font (see <see cref="FaceFromFont"/>); null if it isn't installed.</summary>
-    private Preset? MakeFaces(string family, FamilyFont font, List<string> failures)
+    private Preset? MakeFaces(string family, FamilyFont font, bool monospacedDigits, List<string> failures)
     {
-        // Each font is opened once for all the faces.
         var opened = new Dictionary<(string, int, int, int), SystemFonts.Probe?>();
-        IFontProbe? Open(LookupDef l)
+
+        bool TryOpen(LookupStruct l, [NotNullWhen(true)] out IFontProbe? probe)
         {
             var key = (l.Name, l.Weight, l.Stretch, l.Style);
-            if (!opened.TryGetValue(key, out var probe))
-                opened[key] = probe = this.systemFonts.Open(l);
-            return probe;
+            if (!opened.TryGetValue(key, out var cached))
+            {
+                this.systemFonts.TryOpen(l, out cached);
+                opened[key] = cached;
+            }
+
+            probe = cached;
+            return probe is not null;
         }
 
         try
         {
             var lookup = font.ToLookup();
-            if (Open(lookup) is null)
+            if (!TryOpen(lookup, out _))
             {
                 failures.Add($"{family}: the font {font.Name} isn't installed");
                 return null;
             }
 
-            var monospacedDigits = this.configuration.MonospacedDigits;
             var faces = GameFontNames.FacesOf(family)
-                                     .Select(f => FaceFromFont.MakeFace(f.Name, f.Size, lookup, Open, monospacedDigits))
-                                     .OfType<FaceDef>()
+                                     .Select(f => FaceFromFont.MakeFace(f.Name, f.Size, lookup, TryOpen, monospacedDigits))
+                                     .OfType<Face>()
                                      .ToList();
             return faces.Count == 0 ? null : Preset.FromFaces(faces);
         }
@@ -281,27 +199,37 @@ internal sealed class PresetController : IDisposable
         }
     }
 
-    private void Watch()
+    private void WatchPresets(IEnumerable<string> paths)
     {
-        this.watcher?.Dispose();
-        this.watcher = null;
-        var folder = this.configuration.PresetFolder;
-        if (folder.Length == 0 || !Directory.Exists(folder))
-            return;
-
-        this.watcher = new(folder)
+        lock (this.sync)
         {
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName | NotifyFilters.DirectoryName,
-            IncludeSubdirectories = true,
-        };
-        this.watcher.Changed += this.OnPresetFolderChanged;
-        this.watcher.Created += this.OnPresetFolderChanged;
-        this.watcher.Deleted += this.OnPresetFolderChanged;
-        this.watcher.Renamed += this.OnPresetFolderChanged;
-        this.watcher.EnableRaisingEvents = true;
+            var wanted = paths.ToList();
+            this.watchedPresets.Clear();
+            this.watchedPresets.UnionWith(wanted);
+
+            var folders = wanted.Select(Path.GetDirectoryName).OfType<string>().Where(Directory.Exists).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var folder in this.presetWatchers.Keys.Where(f => !folders.Contains(f)).ToList())
+            {
+                this.presetWatchers[folder].Dispose();
+                this.presetWatchers.Remove(folder);
+            }
+
+            foreach (var folder in folders.Where(f => !this.presetWatchers.ContainsKey(f)))
+            {
+                var w = new FileSystemWatcher(folder)
+                {
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
+                };
+                w.Changed += this.OnPresetChanged;
+                w.Created += this.OnPresetChanged;
+                w.Deleted += this.OnPresetChanged;
+                w.Renamed += this.OnPresetChanged;
+                w.EnableRaisingEvents = true;
+                this.presetWatchers.Add(folder, w);
+            }
+        }
     }
 
-    /// <summary>Watches the folders of the presets' glyph images, and no others.</summary>
     private void WatchFolders(IEnumerable<string> folders)
     {
         lock (this.sync)
@@ -326,32 +254,23 @@ internal sealed class PresetController : IDisposable
         }
     }
 
-    private void OnPresetFolderChanged(object sender, FileSystemEventArgs e)
+    private void OnPresetChanged(object sender, FileSystemEventArgs e)
     {
-        var folder = this.configuration.PresetFolder;
         var paths = e is RenamedEventArgs r ? new[] { e.FullPath, r.OldFullPath } : [e.FullPath];
-        var load = paths.Any(p => this.GetFamilyCount(Path.GetRelativePath(folder, p)) != 0);
-
-        // Only files and folders coming and going change the tree, not the files' contents.
-        this.Schedule(e.ChangeType != WatcherChangeTypes.Changed, load, true, ReloadDelay);
+        bool used;
+        lock (this.sync)
+            used = paths.Any(this.watchedPresets.Contains);
+        if (used)
+            this.Schedule(true, ReloadDelay);
     }
 
-    private void OnGlyphImageChanged(object sender, FileSystemEventArgs e) => this.Schedule(false, true, true, ReloadDelay);
+    private void OnGlyphImageChanged(object sender, FileSystemEventArgs e) => this.Schedule(true, ReloadDelay);
 
-    /// <summary>
-    /// Reads the folder and/or loads the presets after a delay, with whatever else is pending then. A load for files that
-    /// changed (<paramref name="edited"/>) keeps what was applied if a preset can't be read, as it may be half written.
-    /// </summary>
-    private void Schedule(bool scan, bool load, bool edited, TimeSpan delay)
+    private void Schedule(bool edited, TimeSpan delay)
     {
-        if (!scan && !load)
-            return;
-
         lock (this.sync)
         {
-            this.pendingScan |= scan;
-            this.pendingLoad |= load;
-            this.pendingSettingsLoad |= load && !edited;
+            this.pendingSettingsLoad |= !edited;
             if (!this.disposed)
                 this.timer.Change(delay, Timeout.InfiniteTimeSpan);
         }
@@ -359,25 +278,21 @@ internal sealed class PresetController : IDisposable
 
     private void RunPending()
     {
-        // One at a time, in order: each applies the settings as they are when it starts.
         lock (this.loadSync)
         {
             if (this.disposed)
                 return;
 
-            bool scan, load, keepOnFailure;
+            bool keepOnFailure;
             lock (this.sync)
             {
-                (scan, load, keepOnFailure) = (this.pendingScan, this.pendingLoad, !this.pendingSettingsLoad);
-                this.pendingScan = this.pendingLoad = this.pendingSettingsLoad = false;
+                keepOnFailure = !this.pendingSettingsLoad;
+                this.pendingSettingsLoad = false;
             }
 
             try
             {
-                if (scan)
-                    this.Scan();
-                if (load)
-                    this.Load(keepOnFailure);
+                this.Load(keepOnFailure);
             }
             catch (Exception ex)
             {
@@ -387,89 +302,65 @@ internal sealed class PresetController : IDisposable
         }
     }
 
-    /// <summary>Reads the preset folder's tree of presets (JSON files); folders without any are left out.</summary>
-    private void Scan()
-    {
-        var root = this.configuration.PresetFolder;
-        try
-        {
-            this.Tree = root.Length != 0 && Directory.Exists(root) ? ScanFolder(root, string.Empty) ?? PresetTreeNode.Empty : PresetTreeNode.Empty;
-        }
-        catch (Exception ex)
-        {
-            Plugin.Log.Error(ex, "Reading the preset folder {folder} failed", root);
-            this.Tree = PresetTreeNode.Empty;
-        }
-
-        static PresetTreeNode? ScanFolder(string root, string relative)
-        {
-            var path = Path.Combine(root, relative);
-            var options = new EnumerationOptions { IgnoreInaccessible = true };
-            var folders = Directory.EnumerateDirectories(path, "*", options)
-                                   .Order(StringComparer.OrdinalIgnoreCase)
-                                   .Select(d => ScanFolder(root, Path.Combine(relative, Path.GetFileName(d))))
-                                   .OfType<PresetTreeNode>()
-                                   .ToList();
-            var files = Directory.EnumerateFiles(path, "*.json", options)
-                                 .Order(StringComparer.OrdinalIgnoreCase)
-                                 .Select(f => Path.Combine(relative, Path.GetFileName(f)))
-                                 .ToList();
-            return folders.Count == 0 && files.Count == 0 ? null : new(Path.GetFileName(path), folders, files);
-        }
-    }
-
-    /// <summary>
-    /// Reads the selected presets, and applies each family's faces from its presets on the framework thread. Presets that
-    /// can't be read are left out, unless <paramref name="keepOnFailure"/>: then what was applied stays until they all read.
-    /// </summary>
     private void Load(bool keepOnFailure)
     {
-        string folder;
-        List<(string Family, List<string> Selected)> families;
-        List<(string Family, FamilyFont Font)> fonts;
+        List<(string Family, List<FontSource> Sources)> families;
         lock (this.sync)
         {
-            folder = this.configuration.PresetFolder;
-            families = this.configuration.FamilyPresets.Where(f => f.Value.Count != 0).Select(f => (f.Key, f.Value.ToList())).ToList();
-            fonts = this.configuration.FamilyFonts.Select(f => (f.Key, f.Value)).ToList();
+            families = this.configuration.FamilySources
+                           .Where(f => !this.configuration.DisabledFamilies.Contains(f.Key))
+                           .Select(f => (f.Key, f.Value.Where(s => s.Enabled).ToList()))
+                           .Where(f => f.Item2.Count != 0)
+                           .ToList();
         }
 
-        // Each preset is read once, however many families use it.
         var loaded = new Dictionary<string, Preset?>(StringComparer.OrdinalIgnoreCase);
         var failures = new List<string>();
-        Preset? Read(string relative)
+
+        Preset? Read(string path)
         {
-            if (loaded.TryGetValue(relative, out var known))
+            if (loaded.TryGetValue(path, out var known))
                 return known;
-            var path = Path.Combine(folder, relative);
             try
             {
-                return loaded[relative] = Preset.Load(path);
+                return loaded[path] = Preset.Load(path);
             }
             catch (Exception ex)
             {
                 Plugin.Log.Error(ex, "Loading the preset {path} failed", path);
-                failures.Add($"{relative}: {ex.Message}");
-                return loaded[relative] = null;
+                failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+                return loaded[path] = null;
             }
         }
 
-        var perFamily = families.ToDictionary(
-            f => f.Family,
-            f => f.Selected.Select(Read).OfType<Preset>().Select(p => p.OnlyFamily(f.Family)).ToList(),
-            StringComparer.OrdinalIgnoreCase);
-
-        // The families' system fonts, over their presets.
-        var fontFamilies = 0;
-        foreach (var (family, font) in fonts)
+        var perFamily = new Dictionary<string, List<Preset>>(StringComparer.OrdinalIgnoreCase);
+        var fontCount = 0;
+        foreach (var (family, sources) in families)
         {
-            if (this.MakeFaces(family, font, failures) is { } generated)
+            var chain = new List<Preset>();
+            foreach (var source in sources)
             {
-                if (!perFamily.TryGetValue(family, out var sources))
-                    perFamily[family] = sources = [];
-                sources.Add(generated);
-                fontFamilies++;
+                Preset? preset;
+                if (source is { Type: FontSourceType.SystemFont, Font: { } font })
+                {
+                    preset = this.MakeFaces(family, font, source.MonospacedDigits, failures);
+                    if (preset is not null)
+                        fontCount++;
+                }
+                else if (source.Type == FontSourceType.Preset && source.Path.Length != 0)
+                {
+                    preset = Read(source.Path)?.OnlyFamily(family);
+                }
+                else
+                {
+                    continue;
+                }
+
+                if (preset is not null)
+                    chain.Insert(0, preset);
             }
+
+            perFamily[family] = chain;
         }
 
         if (keepOnFailure && failures.Count != 0)
@@ -478,30 +369,27 @@ internal sealed class PresetController : IDisposable
             return;
         }
 
-        var preset = Preset.Combine(perFamily.Values.Select(Preset.Overlay));
-        if (preset.Faces.Count == 0)
-            preset = null;
-        var familyCount = preset?.Faces.Keys.Select(Preset.FamilyOf).Distinct(StringComparer.OrdinalIgnoreCase).Count() ?? 0;
+        var overlaid = Preset.Combine(perFamily.Values.Select(Preset.Overlay));
+        var combined = overlaid.Faces.Count == 0 ? null : overlaid;
+        var familyCount = combined?.Faces.Keys.Select(Preset.FamilyOf).Distinct(StringComparer.OrdinalIgnoreCase).Count() ?? 0;
         var presetCount = loaded.Values.Count(p => p is not null);
-        var status = preset is null
+        var status = combined is null
                          ? "The game's fonts"
-                         : $"{preset.Faces.Count} faces of {familyCount} families"
+                         : $"{combined.Faces.Count} faces of {familyCount} families"
                            + (presetCount != 0 ? $" from {presetCount} presets" : string.Empty)
-                           + (fontFamilies != 0 ? $"; system fonts for {fontFamilies}" : string.Empty);
+                           + (fontCount != 0 ? $"; system fonts for {fontCount}" : string.Empty);
         if (failures.Count != 0)
             status += $"; loading failed ({string.Join("; ", failures)})";
         this.Status = status;
 
-        this.WatchFolders(preset?.GlyphImageFolders ?? []);
+        this.WatchPresets(families.SelectMany(f => f.Sources).Where(s => s.Type == FontSourceType.Preset && s.Path.Length != 0).Select(s => s.Path));
+        this.WatchFolders(combined?.GlyphImageFolders ?? []);
         var systemFallback = this.configuration.SystemFallback;
-        Plugin.Framework.RunOnFrameworkThread(() =>
-        {
-            // Not once the replacer is gone, which unloading the plugin does right after disposing this.
+        Plugin.Framework.RunOnFrameworkThread(() => {
             if (!this.disposed)
-                this.replacer.SetPreset(preset, systemFallback);
+                this.replacer.SetPreset(combined, systemFallback);
         }).ContinueWith(
-            task =>
-            {
+            task => {
                 Plugin.Log.Error(task.Exception!, "Applying the preset failed");
                 this.Status = $"Applying failed ({task.Exception!.InnerException?.Message})";
             },

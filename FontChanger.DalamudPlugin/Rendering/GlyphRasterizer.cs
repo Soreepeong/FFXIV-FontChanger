@@ -1,11 +1,17 @@
 using System;
 using System.Collections.Generic;
-using CustomFonts.Utilities;
+
+using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Utilities;
+using FontChanger.Presets.Records;
+using FontChanger.Presets.Utilities;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
+
 using static TerraFX.Interop.DirectX.DirectX;
 
-namespace CustomFonts.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>Rounding as the C++ code (xivres, FontChanger) does it: halves away from zero, as std::round and std::lround.</summary>
 internal static class Rounding
@@ -36,8 +42,8 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
         var x0 = (int)MathF.Floor((left * scale) + shiftX);
         var y0 = (int)MathF.Floor((top * scale) + shiftY);
         return (x0, y0,
-            (int)MathF.Ceiling((left + width) * scale + shiftX) - x0,
-            (int)MathF.Ceiling((top + height) * scale + shiftY) - y0);
+                   (int)MathF.Ceiling((left + width) * scale + shiftX) - x0,
+                   (int)MathF.Ceiling((top + height) * scale + shiftY) - y0);
     }
 
     /// <summary>
@@ -291,75 +297,64 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
 /// The (first) file of a font face: its loader and reference key, which tell its file apart from others'. Valid until
 /// disposed; <see cref="Loader"/> is null if the face has no file.
 /// </summary>
-internal readonly unsafe ref struct FontFileKey
+internal unsafe ref struct FontFileKey
 {
-    private readonly IDWriteFontFile* file;
+    private ComPtr<IDWriteFontFile> _file;
+    private ComPtr<IDWriteFontFileLoader> _loader;
 
-    private FontFileKey(IDWriteFontFile* file, IDWriteFontFileLoader* loader, ReadOnlySpan<byte> key)
-    {
-        this.file = file;
-        this.Loader = loader;
-        this.Key = key;
-    }
+    public readonly IDWriteFontFileLoader* Loader => this._loader.Get();
 
-    public IDWriteFontFileLoader* Loader { get; }
-
-    public ReadOnlySpan<byte> Key { get; }
+    public ReadOnlySpan<byte> Key { get; private set; }
 
     public static FontFileKey Of(IDWriteFontFace* face)
     {
+        var res = default(FontFileKey);
         uint count = 1;
-        IDWriteFontFile* file = null;
-        if (face->GetFiles(&count, &file).FAILED || file is null)
-            return default;
-
-        IDWriteFontFileLoader* loader;
         void* key;
         uint size;
-        if (file->GetReferenceKey(&key, &size).FAILED || file->GetLoader(&loader).FAILED)
+        if (face->GetFiles(&count, res._file.GetAddressOf()).FAILED
+            || res._file.IsNull
+            || res._file.Get()->GetReferenceKey(&key, &size).FAILED
+            || res._file.Get()->GetLoader(res._loader.GetAddressOf()).FAILED)
         {
-            file->Release();
+            res.Dispose();
             return default;
         }
 
-        return new(file, loader, new(key, (int)size));
+        res.Key = new(key, (int)size);
+        return res;
     }
 
     public void Dispose()
     {
-        if (this.Loader is not null)
-            this.Loader->Release();
-        if (this.file is not null)
-            this.file->Release();
+        this._loader.Dispose();
+        this._file.Dispose();
     }
 }
 
 /// <summary>Finds system fonts and rasterizes glyph runs with DirectWrite, grayscale antialiased.</summary>
 internal sealed unsafe class GlyphRasterizer : IDisposable
 {
-    private IDWriteFactory2* factory;
-    private IDWriteFontCollection* systemFonts;
+    private ComPtr<IDWriteFactory2> _factory;
+    private ComPtr<IDWriteFactory3> _factory3;
+    private ComPtr<IDWriteFontCollection> _systemFonts;
+    private ComPtr<IDWriteFontFallback> _noFallback;
 
     public GlyphRasterizer()
     {
         try
         {
-            IDWriteFactory2* f;
             var iid = IID.IID_IDWriteFactory2;
-            DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)&f).ThrowOnError();
-            this.factory = f;
+            DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)this._factory.GetAddressOf()).ThrowOnError();
 
-            IDWriteFontCollection* collection;
-            this.factory->GetSystemFontCollection(&collection, BOOL.FALSE).ThrowOnError();
-            this.systemFonts = collection;
+            // Rendering modes beyond DWRITE_RENDERING_MODE (such as the downsampled one) are given to the third factory.
+            this._factory.CopyTo(this._factory3.GetAddressOf()).ThrowOnError();
 
-            IDWriteFontFallbackBuilder* builder;
-            this.factory->CreateFontFallbackBuilder(&builder).ThrowOnError();
-            IDWriteFontFallback* none;
-            var hr = builder->CreateFontFallback(&none);
-            builder->Release();
-            hr.ThrowOnError();
-            this.NoFallback = none;
+            this._factory.Get()->GetSystemFontCollection(this._systemFonts.GetAddressOf(), BOOL.FALSE).ThrowOnError();
+
+            using var builder = default(ComPtr<IDWriteFontFallbackBuilder>);
+            this._factory.Get()->CreateFontFallbackBuilder(builder.GetAddressOf()).ThrowOnError();
+            builder.Get()->CreateFontFallback(this._noFallback.GetAddressOf()).ThrowOnError();
 
             this.FreeType = FreeTypeFonts.Create();
             try
@@ -368,7 +363,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
             }
             catch (Exception ex)
             {
-                Host.Log.Warning(ex, "Direct2D can't be used; glyph images and SVG shapes aren't drawn");
+                Plugin.Log.Warning(ex, "Direct2D can't be used; glyph images and SVG shapes aren't drawn");
             }
         }
         catch
@@ -379,10 +374,10 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     }
 
     /// <summary>Gets the DirectWrite factory (shared; owned by this object).</summary>
-    public IDWriteFactory2* Factory => this.factory;
+    public IDWriteFactory2* Factory => this._factory.Get();
 
     /// <summary>Gets the system's font collection (owned by this object).</summary>
-    public IDWriteFontCollection* SystemFonts => this.systemFonts;
+    public IDWriteFontCollection* SystemFonts => this._systemFonts.Get();
 
     /// <summary>Gets FreeType, or null if its native library can't be loaded.</summary>
     public FreeTypeFonts? FreeType { get; }
@@ -391,7 +386,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     public ImageRenderer? Images { get; }
 
     /// <summary>Gets a font fallback that falls back to nothing: text is laid out in its own font only.</summary>
-    public IDWriteFontFallback* NoFallback { get; private set; }
+    public IDWriteFontFallback* NoFallback => this._noFallback.Get();
 
     /// <summary>Gets a collector of text layouts' glyph runs.</summary>
     public GlyphRunCollector RunCollector { get; } = new();
@@ -403,65 +398,64 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     public SubpixelOrder SubpixelOrder { get; set; }
 
     /// <summary>
-    /// Finds the font of a family closest to a weight, stretch and style (simulated if the family lacks it); null if the
+    /// Finds the font of a family closest to a weight, stretch and style (simulated if the family lacks it); false if the
     /// family isn't installed. The caller releases it.
     /// </summary>
-    public IDWriteFont* FindFont(LookupDef lookup)
+    public bool TryFindFont(LookupStruct lookup, out ComPtr<IDWriteFont> match)
     {
+        match = default;
         uint index;
         BOOL exists;
         fixed (char* name = lookup.Name)
-            this.systemFonts->FindFamilyName(name, &index, &exists).ThrowOnError();
+            this._systemFonts.Get()->FindFamilyName(name, &index, &exists).ThrowOnError();
         if (!exists)
-            return null;
+            return false;
 
-        IDWriteFontFamily* fontFamily;
-        this.systemFonts->GetFontFamily(index, &fontFamily).ThrowOnError();
-        try
-        {
-            IDWriteFont* font;
-            fontFamily->GetFirstMatchingFont(
-                (DWRITE_FONT_WEIGHT)lookup.Weight,
-                (DWRITE_FONT_STRETCH)lookup.Stretch,
-                (DWRITE_FONT_STYLE)lookup.Style,
-                &font).ThrowOnError();
-            return font;
-        }
-        finally
-        {
-            fontFamily->Release();
-        }
+        using var fontFamily = default(ComPtr<IDWriteFontFamily>);
+        this._systemFonts.Get()->GetFontFamily(index, fontFamily.GetAddressOf()).ThrowOnError();
+        var font = default(ComPtr<IDWriteFont>);
+        fontFamily.Get()->GetFirstMatchingFont(
+            (DWRITE_FONT_WEIGHT)lookup.Weight,
+            (DWRITE_FONT_STRETCH)lookup.Stretch,
+            (DWRITE_FONT_STYLE)lookup.Style,
+            font.GetAddressOf()).ThrowOnError();
+        match = font;
+        return true;
     }
 
     /// <summary>
     /// Makes a text format that doesn't wrap, of a family at a weight, style and stretch (DWRITE_* values) and a size,
     /// with a font fallback. The caller releases it.
     /// </summary>
-    public IDWriteTextFormat1* CreateFormat(string family, int weight, int style, int stretch, float size, IDWriteFontFallback* fallback)
+    public ComPtr<IDWriteTextFormat1> CreateFormat(string family, int weight, int style, int stretch, float size, IDWriteFontFallback* fallback)
     {
-        IDWriteTextFormat* format;
+        using var format = default(ComPtr<IDWriteTextFormat>);
         fixed (char* name = family)
         fixed (char* locale = "en-us")
         {
-            this.factory->CreateTextFormat(
-                name, null, (DWRITE_FONT_WEIGHT)weight, (DWRITE_FONT_STYLE)style, (DWRITE_FONT_STRETCH)stretch, size, locale, &format).ThrowOnError();
+            this._factory.Get()->CreateTextFormat(
+                name,
+                null,
+                (DWRITE_FONT_WEIGHT)weight,
+                (DWRITE_FONT_STYLE)style,
+                (DWRITE_FONT_STRETCH)stretch,
+                size,
+                locale,
+                format.GetAddressOf()).ThrowOnError();
         }
 
+        format.Get()->SetWordWrapping(DWRITE_WORD_WRAPPING.DWRITE_WORD_WRAPPING_NO_WRAP).ThrowOnError();
+        var format1 = default(ComPtr<IDWriteTextFormat1>);
         try
         {
-            format->SetWordWrapping(DWRITE_WORD_WRAPPING.DWRITE_WORD_WRAPPING_NO_WRAP).ThrowOnError();
-            IDWriteTextFormat1* format1;
-            var iid = IID.IID_IDWriteTextFormat1;
-            ((IUnknown*)format)->QueryInterface(&iid, (void**)&format1).ThrowOnError();
-            var hr = format1->SetFontFallback(fallback);
-            if (hr.FAILED)
-                format1->Release();
-            hr.ThrowOnError();
+            format.CopyTo(format1.GetAddressOf()).ThrowOnError();
+            format1.Get()->SetFontFallback(fallback).ThrowOnError();
             return format1;
         }
-        finally
+        catch
         {
-            format->Release();
+            format1.Dispose();
+            throw;
         }
     }
 
@@ -479,11 +473,12 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         float originX,
         int advance,
         DirectWriteParams parameters,
-        GlyphTransform transform)
+        Matrix2x2 transform)
     {
         // Grayscale is the mean of the three subpixels; aliased text has no ClearType.
-        var subpixel = this.SubpixelOrder != SubpixelOrder.None && (DWRITE_RENDERING_MODE)parameters.RenderMode != DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_ALIASED;
-        var analysis = this.CreateAnalysis(
+        var subpixel = this.SubpixelOrder != SubpixelOrder.None &&
+                       (DWRITE_RENDERING_MODE1)parameters.RenderMode != DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_ALIASED;
+        using var analysis = this.CreateAnalysis(
             face,
             px,
             glyphs,
@@ -494,61 +489,54 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
             parameters,
             transform,
             subpixel ? DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE : DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE);
-        try
+        RECT bounds;
+        if (subpixel)
         {
-            RECT bounds;
-            if (subpixel)
+            analysis.Get()->GetAlphaTextureBounds(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds).ThrowOnError();
+            var cw = bounds.right - bounds.left;
+            var ch = bounds.bottom - bounds.top;
+            if (cw > 0 && ch > 0)
             {
-                analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds).ThrowOnError();
-                var cw = bounds.right - bounds.left;
-                var ch = bounds.bottom - bounds.top;
-                if (cw > 0 && ch > 0)
+                var lcd = new byte[cw * ch * 3];
+                fixed (byte* p = lcd)
                 {
-                    var lcd = new byte[cw * ch * 3];
-                    fixed (byte* p = lcd)
-                    {
-                        analysis->CreateAlphaTexture(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds, p, (uint)lcd.Length)
-                            .ThrowOnError();
-                    }
-
-                    var mean = new byte[cw * ch];
-                    for (var i = 0; i < mean.Length; i++)
-                    {
-                        mean[i] = (byte)((lcd[i * 3] + lcd[(i * 3) + 1] + lcd[(i * 3) + 2] + 1) / 3);
-                        if (this.SubpixelOrder == SubpixelOrder.Bgr)
-                            (lcd[i * 3], lcd[(i * 3) + 2]) = (lcd[(i * 3) + 2], lcd[i * 3]);
-                    }
-
-                    return new(advance, bounds.left, bounds.top, cw, ch, mean, lcd);
-                }
-
-                // A font may still render aliased (its recommended mode): the 1x1 texture has it then.
-            }
-
-            // With grayscale antialiasing, the 1x1 texture type gives 8-bit coverage.
-            analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_ALIASED_1x1, &bounds).ThrowOnError();
-            var w = bounds.right - bounds.left;
-            var h = bounds.bottom - bounds.top;
-            var alpha = w > 0 && h > 0 ? new byte[w * h] : [];
-            if (alpha.Length != 0)
-            {
-                fixed (byte* p = alpha)
-                {
-                    analysis->CreateAlphaTexture(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_ALIASED_1x1, &bounds, p, (uint)alpha.Length)
+                    analysis.Get()->CreateAlphaTexture(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds, p, (uint)lcd.Length)
                         .ThrowOnError();
                 }
-            }
-            else
-            {
-                w = h = 0;
+
+                var mean = new byte[cw * ch];
+                for (var i = 0; i < mean.Length; i++)
+                {
+                    mean[i] = (byte)((lcd[i * 3] + lcd[(i * 3) + 1] + lcd[(i * 3) + 2] + 1) / 3);
+                    if (this.SubpixelOrder == SubpixelOrder.Bgr)
+                        (lcd[i * 3], lcd[(i * 3) + 2]) = (lcd[(i * 3) + 2], lcd[i * 3]);
+                }
+
+                return new(advance, bounds.left, bounds.top, cw, ch, mean, lcd);
             }
 
-            return new(advance, bounds.left, bounds.top, w, h, alpha);
+            // A font may still render aliased (its recommended mode): the 1x1 texture has it then.
         }
-        finally
+
+        // With grayscale antialiasing, the 1x1 texture type gives 8-bit coverage.
+        analysis.Get()->GetAlphaTextureBounds(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_ALIASED_1x1, &bounds).ThrowOnError();
+        var w = bounds.right - bounds.left;
+        var h = bounds.bottom - bounds.top;
+        var alpha = w > 0 && h > 0 ? new byte[w * h] : [];
+        if (alpha.Length != 0)
         {
-            analysis->Release();
+            fixed (byte* p = alpha)
+            {
+                analysis.Get()->CreateAlphaTexture(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_ALIASED_1x1, &bounds, p, (uint)alpha.Length)
+                    .ThrowOnError();
+            }
         }
+        else
+        {
+            w = h = 0;
+        }
+
+        return new(advance, bounds.left, bounds.top, w, h, alpha);
     }
 
     /// <summary>Gets the pixels a run of glyphs covers with the pen at the origin, as <see cref="RasterizeRun"/> draws it.</summary>
@@ -560,23 +548,16 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         DWRITE_GLYPH_OFFSET* offsets,
         uint count,
         DirectWriteParams parameters,
-        GlyphTransform transform)
+        Matrix2x2 transform)
     {
-        var analysis = this.CreateAnalysis(face, px, glyphs, advances, offsets, count, 0, parameters, transform);
-        try
-        {
-            RECT bounds;
-            analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_ALIASED_1x1, &bounds).ThrowOnError();
-            return bounds;
-        }
-        finally
-        {
-            analysis->Release();
-        }
+        using var analysis = this.CreateAnalysis(face, px, glyphs, advances, offsets, count, 0, parameters, transform);
+        RECT bounds;
+        analysis.Get()->GetAlphaTextureBounds(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_ALIASED_1x1, &bounds).ThrowOnError();
+        return bounds;
     }
 
     /// <summary>Makes DirectWrite's analysis of a glyph run, which the caller releases.</summary>
-    private IDWriteGlyphRunAnalysis* CreateAnalysis(
+    private ComPtr<IDWriteGlyphRunAnalysis> CreateAnalysis(
         IDWriteFontFace* face,
         float px,
         ushort* glyphs,
@@ -585,7 +566,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         uint count,
         float originX,
         DirectWriteParams parameters,
-        GlyphTransform transform,
+        Matrix2x2 transform,
         DWRITE_TEXT_ANTIALIAS_MODE antialiasMode = DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE)
     {
         // DirectWrite transforms row vectors; the origin is on screen, after the transformation.
@@ -612,18 +593,23 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         };
 
         var measuringMode = (DWRITE_MEASURING_MODE)parameters.MeasureMode;
-        var renderingMode = (DWRITE_RENDERING_MODE)parameters.RenderMode;
-        if (renderingMode == DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_DEFAULT)
-            face->GetRecommendedRenderingMode(px, 1, measuringMode, null, &renderingMode);
-
-        if (renderingMode is DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_OUTLINE or DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_DEFAULT)
-            renderingMode = DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC;
-
-        IDWriteGlyphRunAnalysis* analysis;
-        var gridFitMode = (DWRITE_GRID_FIT_MODE)parameters.GridFitMode;
-        for (var attempt = 0; ; attempt++)
+        var renderingMode = (DWRITE_RENDERING_MODE1)parameters.RenderMode;
+        if (renderingMode == DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_DEFAULT)
         {
-            var hr = this.factory->CreateGlyphRunAnalysis(
+            DWRITE_RENDERING_MODE recommended;
+            face->GetRecommendedRenderingMode(px, 1, measuringMode, null, &recommended);
+            renderingMode = (DWRITE_RENDERING_MODE1)recommended;
+        }
+
+        // Outlines are not rasterized by glyph run analysis.
+        if (renderingMode is DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_OUTLINE or DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_DEFAULT)
+            renderingMode = DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC;
+
+        var analysis = default(ComPtr<IDWriteGlyphRunAnalysis>);
+        var gridFitMode = (DWRITE_GRID_FIT_MODE)parameters.GridFitMode;
+        for (var attempt = 0;; attempt++)
+        {
+            var hr = this._factory3.Get()->CreateGlyphRunAnalysis(
                 &run,
                 &matrix,
                 renderingMode,
@@ -632,7 +618,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
                 antialiasMode,
                 0,
                 0,
-                &analysis);
+                analysis.GetAddressOf());
             if (hr.SUCCEEDED)
                 return analysis;
             if (attempt != 0)
@@ -640,9 +626,9 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
 
             // Parameters DirectWrite refuses are tried again as the defaults.
             (renderingMode, measuringMode, gridFitMode) = (
-                DWRITE_RENDERING_MODE.DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
-                DWRITE_MEASURING_MODE.DWRITE_MEASURING_MODE_NATURAL,
-                DWRITE_GRID_FIT_MODE.DWRITE_GRID_FIT_MODE_DEFAULT);
+                                                              DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
+                                                              DWRITE_MEASURING_MODE.DWRITE_MEASURING_MODE_NATURAL,
+                                                              DWRITE_GRID_FIT_MODE.DWRITE_GRID_FIT_MODE_DEFAULT);
         }
     }
 
@@ -651,22 +637,9 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         this.RunCollector.Dispose();
         this.Images?.Dispose();
         this.FreeType?.Dispose();
-        if (this.NoFallback is not null)
-        {
-            this.NoFallback->Release();
-            this.NoFallback = null;
-        }
-
-        if (this.systemFonts is not null)
-        {
-            this.systemFonts->Release();
-            this.systemFonts = null;
-        }
-
-        if (this.factory is not null)
-        {
-            this.factory->Release();
-            this.factory = null;
-        }
+        this._noFallback.Dispose();
+        this._systemFonts.Dispose();
+        this._factory3.Dispose();
+        this._factory.Dispose();
     }
 }

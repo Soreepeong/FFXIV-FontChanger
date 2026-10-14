@@ -3,21 +3,18 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Numerics;
 
-namespace CustomFonts.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering.Shaders;
 
 /// <summary>
-/// Puts a softness into FontEdgePS's bytecode: its <c>Softness</c> constant is a distinctive value, compiled as immediate
-/// operands, which are replaced in the code chunk; the container's checksum is then computed again.
+/// The shaders' bytecode: embedded in the plugin, with settings put in by replacing their constants, distinctive values
+/// compiled as immediate operands, in the code chunk; the container's checksum is then computed again.
 /// </summary>
-/// <remarks>Also compiled into FontChanger.ShaderGen, which checks this against compiling with the value written in.</remarks>
-internal static class EdgeShaderCode
+/// <remarks>
+/// Also compiled into FontChanger.ShaderGen, which checks this against compiling with the values written in; so this part
+/// uses nothing but the runtime.
+/// </remarks>
+internal sealed partial class PixelShaderSwap
 {
-    /// <summary>The bits of FontEdgePS.hlsl's <c>Softness</c> (0.123456789f).</summary>
-    public const uint Sentinel = 0x3DFCD6EA;
-
-    /// <summary>The most softness the settings allow; the shader also keeps the fade within its reach.</summary>
-    public const float MaxSoftness = 8;
-
     private static readonly int[] Shifts =
     [
         7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
@@ -38,15 +35,19 @@ internal static class EdgeShaderCode
         0x6FA87E4F, 0xFE2CE6E0, 0xA3014314, 0x4E0811A1, 0xF7537E82, 0xBD3AF235, 0x2AD7D2BB, 0xEB86D391,
     ];
 
-    /// <summary>
-    /// Replaces every <see cref="Sentinel"/> in the code chunk (SHEX or SHDR) with <paramref name="softness"/> and sets
-    /// the checksum. Returns how many were replaced; with none, <paramref name="dxbc"/> is left as it was.
-    /// </summary>
-    public static int Patch(Span<byte> dxbc, float softness) => PatchConstants(dxbc, [(Sentinel, softness)]);
+    /// <summary>Gets the bytecode of a shader embedded in the plugin.</summary>
+    public static byte[] ReadShaderCode(string name)
+    {
+        using var stream = typeof(PixelShaderSwap).Assembly.GetManifestResourceStream(name)
+                           ?? throw new FileNotFoundException($"{name} isn't embedded.");
+        var code = new byte[stream.Length];
+        stream.ReadExactly(code);
+        return code;
+    }
 
     /// <summary>
-    /// Replaces every word of the code chunk equal to a sentinel (a float's bits) with its value and sets the checksum.
-    /// Returns how many were replaced; with none, <paramref name="dxbc"/> is left as it was.
+    /// Replaces every word of the code chunk (SHEX or SHDR) equal to a sentinel (a float's bits) with its value and sets
+    /// the checksum. Returns how many were replaced; with none, <paramref name="dxbc"/> is left as it was.
     /// </summary>
     public static int PatchConstants(Span<byte> dxbc, ReadOnlySpan<(uint Sentinel, float Value)> values)
     {
@@ -68,23 +69,6 @@ internal static class EdgeShaderCode
         if (count != 0)
             ComputeChecksum(dxbc, dxbc.Slice(4, 16));
         return count;
-    }
-
-    /// <summary>The code chunk's tokens, as offsets in the container.</summary>
-    private static (int Begin, int End) FindCode(ReadOnlySpan<byte> dxbc)
-    {
-        if (dxbc.Length < 32 || BinaryPrimitives.ReadUInt32LittleEndian(dxbc) != 0x43425844)
-            throw new InvalidDataException("Not a DXBC container.");
-        var chunks = BinaryPrimitives.ReadInt32LittleEndian(dxbc[28..]);
-        for (var i = 0; i < chunks; i++)
-        {
-            var at = BinaryPrimitives.ReadInt32LittleEndian(dxbc[(32 + (4 * i))..]);
-            var fourCc = BinaryPrimitives.ReadUInt32LittleEndian(dxbc[at..]);
-            if (fourCc is 0x58454853 or 0x52444853)
-                return (at + 8, Math.Min(dxbc.Length, at + 8 + BinaryPrimitives.ReadInt32LittleEndian(dxbc[(at + 4)..])));
-        }
-
-        throw new InvalidDataException("The shader has no code chunk.");
     }
 
     /// <summary>
@@ -122,6 +106,23 @@ internal static class EdgeShaderCode
         Transform(state, block);
         for (var i = 0; i < 4; i++)
             BinaryPrimitives.WriteUInt32LittleEndian(checksum[(4 * i)..], state[i]);
+    }
+
+    /// <summary>The code chunk's tokens, as offsets in the container.</summary>
+    private static (int Begin, int End) FindCode(ReadOnlySpan<byte> dxbc)
+    {
+        if (dxbc.Length < 32 || BinaryPrimitives.ReadUInt32LittleEndian(dxbc) != 0x43425844)
+            throw new InvalidDataException("Not a DXBC container.");
+        var chunks = BinaryPrimitives.ReadInt32LittleEndian(dxbc[28..]);
+        for (var i = 0; i < chunks; i++)
+        {
+            var at = BinaryPrimitives.ReadInt32LittleEndian(dxbc[(32 + (4 * i))..]);
+            var fourCc = BinaryPrimitives.ReadUInt32LittleEndian(dxbc[at..]);
+            if (fourCc is 0x58454853 or 0x52444853)
+                return (at + 8, Math.Min(dxbc.Length, at + 8 + BinaryPrimitives.ReadInt32LittleEndian(dxbc[(at + 4)..])));
+        }
+
+        throw new InvalidDataException("The shader has no code chunk.");
     }
 
     /// <summary>MD5's rounds over a 64-byte block.</summary>

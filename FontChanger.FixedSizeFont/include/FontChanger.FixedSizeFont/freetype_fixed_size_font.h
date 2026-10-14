@@ -29,7 +29,7 @@ namespace FontChanger::FixedSizeFont {
 			std::vector<hb_feature_t> Features;
 
 			// BCP 47 language tag of the text, such as "ja" or "zh-Hant"; empty if unspecified.
-			std::string Language;
+			std::string LanguageCode;
 
 			// Design coordinates of variable fonts, keyed by axis tags in DWRITE_FONT_AXIS_TAG byte order.
 			// Axes not listed stay at the instance of the face index; 'opsz' follows the font size unless listed.

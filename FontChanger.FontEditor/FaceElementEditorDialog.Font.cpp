@@ -447,7 +447,7 @@ void App::FaceElementEditorDialog::RepopulateFontSubComboBox(bool snapToReal) {
 			try {
 				const auto face = CreateHarfBuzzFace(m_element.Lookup);
 				alternateCounts = GetFeatureAlternateCounts(face.get());
-				defaultOn = GetDefaultOnFeatures(face.get(), m_element.Lookup.Language);
+				defaultOn = GetDefaultOnFeatures(face.get(), m_element.Lookup.LanguageCode);
 
 				// Kerning of the legacy kern table is not a feature that DirectWrite lists, but can be turned off as one.
 				if (defaultOn.contains(DWRITE_FONT_FEATURE_TAG_KERNING))

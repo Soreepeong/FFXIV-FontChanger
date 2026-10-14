@@ -1,24 +1,24 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json;
 
+using FontChanger.Presets.Records;
+
 namespace FontChanger.Presets;
 
-/// <summary>A face of the game's fonts (xivres game_fontdata_definition): its FDT file name without the extension, family and size.</summary>
-public sealed record GameFontDef(string FontType, string Name, string Family, string Subfamily, float Size);
-
-/// <summary>
-/// The game's fonts, as FontChanger.FixedSizeFont's data/game_fonts.json lists them (FontChanger.FixedSizeFont reads it too); embedded.
-/// </summary>
 public static class GameFonts
 {
-    private static readonly IReadOnlyList<GameFontDef> All = Load();
+    private static readonly IReadOnlyList<GameFontDataDefinition> All = Load();
 
-    /// <summary>Finds a face of any font type by its name (<c>AXIS_12</c>, <c>AXIS_12_lobby</c>); null if the game has none of the name.</summary>
-    public static GameFontDef? Find(string name) => All.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
+    public static bool TryFind(string name, [NotNullWhen(true)] out GameFontDataDefinition? font)
+    {
+        font = All.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
+        return font is not null;
+    }
 
-    private static List<GameFontDef> Load()
+    private static List<GameFontDataDefinition> Load()
     {
         using var stream = typeof(GameFonts).Assembly.GetManifestResourceStream("FontChanger.Presets.game_fonts.json")
                            ?? throw new InvalidOperationException("The game's fonts aren't embedded.");
@@ -26,7 +26,7 @@ public static class GameFonts
         var root = document.RootElement;
 
         var subfamilies = root.GetProperty("families").EnumerateObject().ToDictionary(f => f.Name, f => f.Value.GetProperty("subfamily").GetString()!);
-        var res = new List<GameFontDef>();
+        var res = new List<GameFontDataDefinition>();
         foreach (var type in root.GetProperty("fontTypes").EnumerateObject())
         {
             foreach (var face in type.Value.GetProperty("faces").EnumerateArray())

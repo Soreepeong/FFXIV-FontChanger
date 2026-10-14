@@ -320,7 +320,7 @@ namespace {
 				specifics.Features.clear();
 				for (const auto& [tag, value] : lookup.Features)
 					specifics.Features.push_back({ .nameTag = tag, .parameter = value });
-				specifics.Language = lookup.Language;
+				specifics.LanguageCode = lookup.LanguageCode;
 				specifics.Variations = synthesis.AxisValues;
 				for (const auto& [tag, value] : lookup.GetVariationAxisValues())
 					specifics.Variations[tag] = value;
@@ -334,7 +334,7 @@ namespace {
 				specifics.Features.clear();
 				for (const auto& [tag, value] : lookup.Features)
 					specifics.Features.push_back({.tag = _byteswap_ulong(tag), .value = value, .start = HB_FEATURE_GLOBAL_START, .end = HB_FEATURE_GLOBAL_END});
-				specifics.Language = lookup.Language;
+				specifics.LanguageCode = lookup.LanguageCode;
 				specifics.Variations = std::move(instanceAxisValues);
 				for (const auto& [tag, value] : synthesis.AxisValues)
 					specifics.Variations[tag] = value;

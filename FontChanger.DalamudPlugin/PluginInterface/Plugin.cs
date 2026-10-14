@@ -1,19 +1,23 @@
 using System;
-using CustomFonts.Rendering;
-using CustomFonts.Utilities;
+
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 
-namespace CustomFonts.PluginInterface;
+using FontChanger.DalamudPlugin.Configuration;
+using FontChanger.DalamudPlugin.Rendering;
+using FontChanger.DalamudPlugin.Rendering.Shaders;
+using FontChanger.DalamudPlugin.Utilities;
+
+namespace FontChanger.DalamudPlugin.PluginInterface;
 
 public sealed class Plugin : IDalamudPlugin
 {
     private const string CommandName = "/customfonts";
 
-    private readonly WindowSystem windowSystem = new("CustomFonts");
+    private readonly WindowSystem windowSystem = new("FontChanger.DalamudPlugin");
     private bool commandRegistered;
     private bool disposed;
 
@@ -25,14 +29,12 @@ public sealed class Plugin : IDalamudPlugin
     {
         try
         {
-            Host.Current = new DalamudHost();
-
             // The FFXIVClientStructs files the plugin compiles (see the project file) carry signatures of their own, which
             // the resolver Dalamud ran at startup never saw: register them, and resolve them with it now.
             FFXIVClientStructs.Interop.Generated.Addresses.Register();
             InteropGenerator.Runtime.Resolver.GetInstance.Resolve();
 
-            this.Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new();
+            this.Configuration = PluginInterface.GetPluginConfig() as Configuration.Configuration ?? new();
 
             // On the framework thread: the hooked functions run there, and the replacer's state isn't locked against them.
             // Without the nameplates and the line breaker, text is still drawn with the replaced fonts: nameplates as the
@@ -44,25 +46,29 @@ public sealed class Plugin : IDalamudPlugin
                 replacer.SetEdge(this.Configuration.Edge);
                 replacer.SetSubpixel(SubpixelSettings.Of(this.Configuration.Subpixel, GameWindow));
                 return (replacer,
-                        Optional("Nameplate text", () => new NamePlateText(replacer)),
-                        Optional("Line breaking", () => new LineBreaker(replacer)));
+                           Optional("Nameplate text", () => new NamePlateText(replacer)),
+                           Optional("Line breaking", () => new LineBreaker(replacer)));
             }).Result;
             this.Presets = new(this.Configuration, this.Replacer);
-            this.MainWindow = new(this);
-            this.windowSystem.AddWindow(this.MainWindow);
+            this.ConfigWindow = new(this);
+            this.windowSystem.AddWindow(this.ConfigWindow);
 
-            // The game calls Present on the main thread after the frame's UI was drawn; glyphs added during it are uploaded
-            // here and show from the next frame.
+            // Draw runs in Present, after the frame's UI was drawn; glyphs added during it are uploaded here and show from
+            // the next frame. Dalamud skips Draw while it hides plugin UI (cutscenes, gpose, the game
+            // UI toggled off), yet the game still draws text then: Draw always runs, and the windows hide themselves.
+            PluginInterface.UiBuilder.DisableAutomaticUiHide = true;
             PluginInterface.UiBuilder.Draw += this.Replacer.Upload;
 
-            // Draw may not run while the UI is hidden; the subpixel state must still be let go of every frame.
+            // The subpixel state must be let go of every frame, also when nothing is drawn.
             Framework.Update += this.OnFrameworkUpdate;
-            PluginInterface.UiBuilder.Draw += this.windowSystem.Draw;
-            PluginInterface.UiBuilder.OpenMainUi += this.MainWindow.Toggle;
-            this.commandRegistered = CommandManager.AddHandler(CommandName, new CommandInfo(this.OnCommand)
-            {
-                HelpMessage = "Open the Custom Fonts window.",
-            });
+            PluginInterface.UiBuilder.Draw += this.DrawWindows;
+            PluginInterface.UiBuilder.OpenMainUi += this.ConfigWindow.Toggle;
+            this.commandRegistered = CommandManager.AddHandler(
+                CommandName,
+                new(this.OnCommand)
+                {
+                    HelpMessage = "Open the Custom Fonts window.",
+                });
         }
         catch
         {
@@ -91,7 +97,13 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService]
     internal static IPluginLog Log { get; private set; } = null!;
 
-    internal MainWindow MainWindow { get; }
+    [PluginService]
+    internal static IClientState ClientState { get; private set; } = null!;
+
+    [PluginService]
+    internal static IGameGui GameGui { get; private set; } = null!;
+
+    internal ConfigWindow ConfigWindow { get; }
 
     internal FontReplacer Replacer { get; }
 
@@ -101,7 +113,7 @@ public sealed class Plugin : IDalamudPlugin
     /// <summary>Gets the line breaker, or null if it couldn't be set up for this version of the game.</summary>
     internal LineBreaker? LineBreaker { get; }
 
-    internal Configuration Configuration { get; } = null!;
+    internal Configuration.Configuration Configuration { get; } = null!;
 
     internal PresetController Presets { get; } = null!;
 
@@ -115,30 +127,36 @@ public sealed class Plugin : IDalamudPlugin
             return;
         this.disposed = true;
 
-        TearDown("command", () =>
-        {
-            if (this.commandRegistered)
-                CommandManager.RemoveHandler(CommandName);
-        });
-        TearDown("drawing", () =>
-        {
-            PluginInterface.UiBuilder.Draw -= this.windowSystem.Draw;
-            if (this.Replacer is not null)
-                PluginInterface.UiBuilder.Draw -= this.Replacer.Upload;
-            Framework.Update -= this.OnFrameworkUpdate;
-            if (this.MainWindow is not null)
-                PluginInterface.UiBuilder.OpenMainUi -= this.MainWindow.Toggle;
-        });
+        TearDown(
+            "command",
+            () =>
+            {
+                if (this.commandRegistered)
+                    CommandManager.RemoveHandler(CommandName);
+            });
+        TearDown(
+            "drawing",
+            () =>
+            {
+                PluginInterface.UiBuilder.Draw -= this.DrawWindows;
+                if (this.Replacer is not null)
+                    PluginInterface.UiBuilder.Draw -= this.Replacer.Upload;
+                Framework.Update -= this.OnFrameworkUpdate;
+                if (this.ConfigWindow is not null)
+                    PluginInterface.UiBuilder.OpenMainUi -= this.ConfigWindow.Toggle;
+            });
         TearDown("windows", this.windowSystem.RemoveAllWindows);
         TearDown("presets", () => this.Presets?.Dispose());
 
         // Between frames on the framework thread: Dalamud calls Dispose there, so this runs inline.
-        TearDown("hooks", () => Framework.RunOnFrameworkThread(() =>
-        {
-            TearDown("line breaker", () => this.LineBreaker?.Dispose());
-            TearDown("nameplate text", () => this.NamePlates?.Dispose());
-            TearDown("font replacer", () => this.Replacer?.Dispose());
-        }).Wait());
+        TearDown(
+            "hooks",
+            () => Framework.RunOnFrameworkThread(() =>
+            {
+                TearDown("line breaker", () => this.LineBreaker?.Dispose());
+                TearDown("nameplate text", () => this.NamePlates?.Dispose());
+                TearDown("font replacer", () => this.Replacer?.Dispose());
+            }).Wait());
 
         // So the resolver, which lives as long as Dalamud, keeps nothing of this assembly's addresses.
         TearDown("signatures", FFXIVClientStructs.Interop.Generated.Addresses.Unregister);
@@ -173,7 +191,15 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
-    private void OnCommand(string command, string args) => this.MainWindow.Toggle();
+    private void OnCommand(string command, string args) => this.ConfigWindow.Toggle();
+
+    /// <summary>Draws the windows, unless the game's UI is hidden, as Dalamud would have (see the constructor).</summary>
+    private void DrawWindows()
+    {
+        if (PluginInterface.UiBuilder.CutsceneActive || ClientState.IsGPosing || GameGui.GameUiHidden)
+            return;
+        this.windowSystem.Draw();
+    }
 
     private static nint GameWindow => PluginInterface.UiBuilder.WindowHandlePtr;
 

@@ -3,12 +3,21 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-using CustomFonts.Utilities;
+
+using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Utilities;
+using FontChanger.Presets.Records;
+using FontChanger.Presets.Utilities;
+
 using FreeTypeSharp;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
-namespace CustomFonts.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering;
+
+// Inside the namespace, so that Pointer<T> is XIVCS's over TerraFX's.
+using FFXIVClientStructs.Interop;
 
 /// <summary>
 /// Rasterizes glyphs with FreeType: for elements a preset draws with FreeType, and for fonts with only bitmaps (which
@@ -22,17 +31,17 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
 
     private const nint FaceFlagMultipleMasters = 1 << 8;
 
-    private readonly Dictionary<(string Path, uint Index), nint> faces = [];
-    private FT_LibraryRec_* library;
+    private readonly Dictionary<(string Path, uint Index), Pointer<FT_FaceRec_>> _faces = [];
+    private FT_LibraryRec_* _library;
 
     // The size each outline face was last set to.
-    private readonly Dictionary<nint, float> faceSizes = [];
+    private readonly Dictionary<Pointer<FT_FaceRec_>, float> _faceSizes = [];
 
     // A variable face's axes (tag, minimum, default, maximum; 16.16), and the design coordinates it was last set to.
-    private readonly Dictionary<nint, (uint Tag, nint Min, nint Default, nint Max)[]> faceAxes = [];
-    private readonly Dictionary<nint, nint[]> faceCoordinates = [];
+    private readonly Dictionary<Pointer<FT_FaceRec_>, (uint Tag, nint Min, nint Default, nint Max)[]> _faceAxes = [];
+    private readonly Dictionary<Pointer<FT_FaceRec_>, nint[]> _faceCoordinates = [];
 
-    private FreeTypeFonts(FT_LibraryRec_* library) => this.library = library;
+    private FreeTypeFonts(FT_LibraryRec_* library) => this._library = library;
 
     /// <summary>Starts FreeType; null if its native library can't be loaded.</summary>
     public static FreeTypeFonts? Create()
@@ -41,7 +50,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         {
             // FreeTypeSharp looks for freetype.dll from the application's directory (the game's): the plugin's copy is
             // loaded first, which the system then gives it by name.
-            var directory = Host.Current.AssemblyDirectory;
+            var directory = Plugin.PluginInterface.AssemblyLocation.DirectoryName!;
             NativeLibrary.TryLoad(Path.Combine(directory, "freetype.dll"), out _);
 
             FT_LibraryRec_* library;
@@ -50,50 +59,50 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         }
         catch (Exception ex)
         {
-            Host.Log.Warning(ex, "FreeType can't be used; its elements are drawn with DirectWrite");
+            Plugin.Log.Warning(ex, "FreeType can't be used; its elements are drawn with DirectWrite");
             return null;
         }
     }
 
     public void Dispose()
     {
-        foreach (var face in this.faces.Values)
+        foreach (var face in this._faces.Values)
         {
-            if (face != 0)
-                FT.FT_Done_Face((FT_FaceRec_*)face);
+            if (!face.IsNull)
+                FT.FT_Done_Face(face);
         }
 
-        this.faces.Clear();
-        if (this.library is not null)
+        this._faces.Clear();
+        if (this._library is not null)
         {
-            FT.FT_Done_FreeType(this.library);
-            this.library = null;
+            FT.FT_Done_FreeType(this._library);
+            this._library = null;
         }
     }
 
-    /// <summary>Opens the font file of a DirectWrite font face (kept open, shared); 0 if it isn't a local file.</summary>
-    public nint Open(IDWriteFontFace* fontFace)
+    /// <summary>Opens the font file of a DirectWrite font face (kept open, shared); null if it isn't a local file.</summary>
+    public FT_FaceRec_* Open(IDWriteFontFace* fontFace)
     {
         var (path, index) = GetFile(fontFace);
         if (path is null)
-            return 0;
-        if (this.faces.TryGetValue((path, index), out var existing))
+            return null;
+        if (this._faces.TryGetValue((path, index), out var existing))
             return existing;
 
         FT_FaceRec_* face = null;
         var bytes = Encoding.UTF8.GetBytes(path + "\0");
         fixed (byte* p = bytes)
         {
-            if (FT.FT_New_Face(this.library, p, (nint)index, &face) != FT_Error.FT_Err_Ok)
+            if (FT.FT_New_Face(this._library, p, (nint)index, &face) != FT_Error.FT_Err_Ok)
                 face = null;
         }
 
-        this.faces.Add((path, index), (nint)face);
-        return (nint)face;
+        this._faces.Add((path, index), face);
+        return face;
     }
 
     /// <summary>Gets whether a face has outlines; one with only bitmaps is drawn by scaling its nearest bitmap size.</summary>
-    public static bool IsScalable(nint face) => (((FT_FaceRec_*)face)->face_flags & (nint)FT_FACE_FLAG.FT_FACE_FLAG_SCALABLE) != 0;
+    public static bool IsScalable(FT_FaceRec_* face) => (face->face_flags & (nint)FT_FACE_FLAG.FT_FACE_FLAG_SCALABLE) != 0;
 
     /// <summary>
     /// Rasterizes a run of glyphs (a glyph, or a shaped cluster) with the pen at <paramref name="originX"/>, each glyph at
@@ -102,7 +111,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
     /// <paramref name="embolden"/> ems before they are transformed.
     /// </summary>
     public RasterGlyph RasterizeRun(
-        nint facePtr,
+        FT_FaceRec_* face,
         float px,
         ushort* glyphs,
         float* advances,
@@ -111,11 +120,10 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         float originX,
         int advance,
         FreeTypeParams parameters,
-        GlyphTransform transform,
+        Matrix2x2 transform,
         IReadOnlyDictionary<uint, float>? axes = null,
         float embolden = 0)
     {
-        var face = (FT_FaceRec_*)facePtr;
         this.SetAxes(face, axes);
         var scale = this.SetSize(face, px);
         var strength = (nint)Rounding.Round(embolden * px * 64);
@@ -214,17 +222,17 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
                 num_grays = 256,
                 pixel_mode = FT_Pixel_Mode_.FT_PIXEL_MODE_GRAY,
             };
-            Check(FT.FT_Outline_Get_Bitmap(this.library, &outline, &bitmap));
+            Check(FT.FT_Outline_Get_Bitmap(this._library, &outline, &bitmap));
         }
 
         return coverage;
     }
 
     [DllImport("freetype", CallingConvention = CallingConvention.Cdecl)]
-    private static extern FT_Error FT_Get_MM_Var(FT_FaceRec_* face, MMVar** master);
+    private static extern FT_Error FT_Get_MM_Var(FT_FaceRec_* face, MmVar** master);
 
     [DllImport("freetype", CallingConvention = CallingConvention.Cdecl)]
-    private static extern FT_Error FT_Done_MM_Var(FT_LibraryRec_* library, MMVar* master);
+    private static extern FT_Error FT_Done_MM_Var(FT_LibraryRec_* library, MmVar* master);
 
     [DllImport("freetype", CallingConvention = CallingConvention.Cdecl)]
     private static extern FT_Error FT_Set_Var_Design_Coordinates(FT_FaceRec_* face, uint count, nint* coordinates);
@@ -235,10 +243,10 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         if ((face->face_flags & FaceFlagMultipleMasters) == 0)
             return;
 
-        if (!this.faceAxes.TryGetValue((nint)face, out var axes))
+        if (!this._faceAxes.TryGetValue(face, out var axes))
         {
             axes = [];
-            MMVar* mm;
+            MmVar* mm;
             if (FT_Get_MM_Var(face, &mm) == FT_Error.FT_Err_Ok)
             {
                 axes = new (uint, nint, nint, nint)[mm->NumAxis];
@@ -249,10 +257,10 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
                     axes[i] = (System.Buffers.Binary.BinaryPrimitives.ReverseEndianness((uint)a.Tag), a.Minimum, a.Default, a.Maximum);
                 }
 
-                FT_Done_MM_Var(this.library, mm);
+                FT_Done_MM_Var(this._library, mm);
             }
 
-            this.faceAxes.Add((nint)face, axes);
+            this._faceAxes.Add(face, axes);
         }
 
         if (axes.Length == 0)
@@ -265,11 +273,11 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
             coordinates[i] = values is not null && values.TryGetValue(tag, out var v) ? Math.Clamp((nint)Rounding.Round(v * 65536), min, max) : def;
         }
 
-        if (this.faceCoordinates.TryGetValue((nint)face, out var current) && current.AsSpan().SequenceEqual(coordinates))
+        if (this._faceCoordinates.TryGetValue(face, out var current) && current.AsSpan().SequenceEqual(coordinates))
             return;
         fixed (nint* c = coordinates)
             Check(FT_Set_Var_Design_Coordinates(face, (uint)coordinates.Length, c));
-        this.faceCoordinates[(nint)face] = coordinates;
+        this._faceCoordinates[face] = coordinates;
     }
 
     private static void Check(FT_Error error)
@@ -282,25 +290,19 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
     private static (string? Path, uint Index) GetFile(IDWriteFontFace* fontFace)
     {
         using var file = FontFileKey.Of(fontFace);
-        IDWriteLocalFontFileLoader* local;
+        using var local = default(ComPtr<IDWriteLocalFontFileLoader>);
         var iid = IID.IID_IDWriteLocalFontFileLoader;
-        if (file.Loader is null || ((IUnknown*)file.Loader)->QueryInterface(&iid, (void**)&local).FAILED)
+        if (file.Loader is null || file.Loader->QueryInterface(&iid, (void**)local.GetAddressOf()).FAILED)
             return (null, 0);
-        try
+
+        fixed (byte* key = file.Key)
         {
-            fixed (byte* key = file.Key)
-            {
-                uint length;
-                local->GetFilePathLengthFromKey(key, (uint)file.Key.Length, &length).ThrowOnError();
-                var path = new char[length + 1];
-                fixed (char* p = path)
-                    local->GetFilePathFromKey(key, (uint)file.Key.Length, p, length + 1).ThrowOnError();
-                return (new string(path, 0, (int)length), fontFace->GetIndex());
-            }
-        }
-        finally
-        {
-            local->Release();
+            uint length;
+            local.Get()->GetFilePathLengthFromKey(key, (uint)file.Key.Length, &length).ThrowOnError();
+            var path = new char[length + 1];
+            fixed (char* p = path)
+                local.Get()->GetFilePathFromKey(key, (uint)file.Key.Length, p, length + 1).ThrowOnError();
+            return (new(path, 0, (int)length), fontFace->GetIndex());
         }
     }
 
@@ -310,12 +312,12 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
     /// </summary>
     private float SetSize(FT_FaceRec_* face, float px)
     {
-        if (IsScalable((nint)face))
+        if (IsScalable(face))
         {
-            if (!this.faceSizes.TryGetValue((nint)face, out var current) || current != px)
+            if (!this._faceSizes.TryGetValue(face, out var current) || current != px)
             {
                 Check(FT.FT_Set_Char_Size(face, 0, (nint)Rounding.Round(px * 64), 72, 72));
-                this.faceSizes[(nint)face] = px;
+                this._faceSizes[face] = px;
             }
 
             return 1;
@@ -357,7 +359,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         {
             FT_Bitmap_ converted;
             FT.FT_Bitmap_Init(&converted);
-            Check(FT.FT_Bitmap_Convert(this.library, bitmap, &converted, 1));
+            Check(FT.FT_Bitmap_Convert(this._library, bitmap, &converted, 1));
             var max = Math.Max(1, converted.num_grays - 1);
             for (var y = 0; y < h; y++)
             {
@@ -365,7 +367,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
                     alpha[(y * w) + x] = (byte)(converted.buffer[(y * converted.pitch) + x] * 255 / max);
             }
 
-            FT.FT_Bitmap_Done(this.library, &converted);
+            FT.FT_Bitmap_Done(this._library, &converted);
         }
 
         return new(0, slot->bitmap_left, -slot->bitmap_top, w, h, alpha);
@@ -373,7 +375,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
 
     /// <summary>FT_MM_Var; FreeType's longs are 64-bit in the bundled library, as FreeTypeSharp declares them.</summary>
     [StructLayout(LayoutKind.Sequential)]
-    private struct MMVar
+    private struct MmVar
     {
         public uint NumAxis;
         public uint NumDesigns;

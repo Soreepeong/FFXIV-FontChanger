@@ -162,12 +162,12 @@ LRESULT App::FontEditorWindow::Menu_File_ClearRecent() {
 	return 0;
 }
 
-LRESULT App::FontEditorWindow::Menu_File_Language(const char* language) {
-	if (g_config.Language != language) {
-		g_config.Language = language;
+LRESULT App::FontEditorWindow::Menu_File_Language(const char* languageCode) {
+	if (g_config.LanguageCode != languageCode) {
+		g_config.LanguageCode = languageCode;
 		g_config.Save();
 
-		const auto langId = GetLanguageIdFromLocaleName(xivres::util::unicode::convert<std::wstring>(std::string_view(language)));
+		const auto langId = GetLanguageIdFromLocaleName(xivres::util::unicode::convert<std::wstring>(std::string_view(languageCode)));
 		MessageBoxW(
 			nullptr,
 			std::wstring(GetStringResource(IDS_LANGUAGE_RESTARTREQUIRED, langId)).c_str(),

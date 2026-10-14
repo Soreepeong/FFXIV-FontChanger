@@ -37,7 +37,7 @@ namespace FontChanger::FixedSizeFont {
 		std::set<uint32_t> DisabledFeatureTags;
 
 		// BCP 47 language tag of the text, such as "ja" or "zh-Hant"; empty if unspecified.
-		std::string Language;
+		std::string LanguageCode;
 
 		float Size = 0.f;
 		unsigned UnitsPerEm = 0;
@@ -72,7 +72,7 @@ namespace FontChanger::FixedSizeFont {
 	// Returns the ISO 15924 script code (such as "Latn" or "Hira") of text in the given BCP 47 language:
 	// the script subtag if the tag has one, otherwise the usual script of the language, or "Latn" if unknown.
 	// Characters that belong to no particular script, such as punctuation, are assumed to be used in text of this script.
-	[[nodiscard]] std::string get_default_script_for_language(const std::string& language);
+	[[nodiscard]] std::string get_default_script_for_language(const std::string& languageCode);
 }
 
 #endif

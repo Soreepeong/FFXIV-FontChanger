@@ -46,7 +46,7 @@ void from_json(const nlohmann::json& json, FontGeneratorConfig& value) {
 		json.value("PreviewEditHeight", PreviewEditHeight),
 		MinPreviewEditHeight);
 
-	value.Language = json.value("Language", "");
+	value.LanguageCode = json.value("Language", "");
 }
 
 void to_json(nlohmann::json& json, const FontGeneratorConfig& value) {
@@ -62,7 +62,7 @@ void to_json(nlohmann::json& json, const FontGeneratorConfig& value) {
 	json.emplace("FaceElementListViewHeight", value.FaceElementListViewHeight);
 	json.emplace("PreviewEditHeight", value.PreviewEditHeight);
 
-	json.emplace("Language", value.Language);
+	json.emplace("Language", value.LanguageCode);
 }
 
 std::filesystem::path FontGeneratorConfig::GetConfigPath() {

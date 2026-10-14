@@ -3,44 +3,81 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Text;
 
-namespace CustomFonts.Utilities;
+using Lumina.Text;
+using Lumina.Text.ReadOnly;
 
-public static class GameUtf8
+namespace FontChanger.DalamudPlugin.Utilities;
+
+public static unsafe class GameUtf8
 {
-    /// <summary>Packs a codepoint's UTF-8 bytes big-endian, the way the game keys glyphs.</summary>
-    public static uint Pack(int codepoint)
+    public static uint Pack(Rune c) => Pack((uint)c.Value);
+
+    public static uint Pack(uint c) => c switch
     {
-        var c = (uint)codepoint;
-        return c switch
+        < 0x80 => c,
+        < 0x800 => 0xC080u | ((c << 2) & 0x1F00) | (c & 0x3F),
+        < 0x10000 => 0xE08080u | ((c << 4) & 0x0F0000) | ((c << 2) & 0x3F00) | (c & 0x3F),
+        _ => 0xF0808080u | ((c << 6) & 0x07000000) | ((c << 4) & 0x3F0000) | ((c << 2) & 0x3F00) | (c & 0x3F),
+    };
+
+    public static uint Pack(byte* p) => p[0] switch
+    {
+        0 => 0,
+        < 0x80 => p[0],
+        < 0xC0 => (uint)Rune.ReplacementChar.Value,
+        < 0xE0 => BinaryPrimitives.ReadUInt16BigEndian(new(p, 2)),
+        < 0xF0 => ((uint)p[0] << 16) | ((uint)p[1] << 8) | p[2],
+        < 0xF8 => BinaryPrimitives.ReadUInt32BigEndian(new(p, 4)),
+        _ => (uint)Rune.ReplacementChar.Value,
+    };
+
+    public static bool TryUnpack(uint value, out Rune rune)
+    {
+        if (BitConverter.IsLittleEndian)
+            value = BinaryPrimitives.ReverseEndianness(value);
+        var buf = MemoryMarshal.Cast<uint, byte>(new Span<uint>(ref value));
+        buf = value switch
         {
-            < 0x80 => c,
-            < 0x800 => 0xC080u | ((c << 2) & 0x1F00) | (c & 0x3F),
-            < 0x10000 => 0xE08080u | ((c << 4) & 0x0F0000) | ((c << 2) & 0x3F00) | (c & 0x3F),
-            _ => 0xF0808080u | ((c << 6) & 0x07000000) | ((c << 4) & 0x3F0000) | ((c << 2) & 0x3F00) | (c & 0x3F),
+            > 0xFFFFFF => buf,
+            > 0xFFFF => buf[1..],
+            > 0xFF => buf[2..],
+            _ => buf[3..],
         };
+        return Rune.DecodeFromUtf8(buf, out rune, out var consumed) == OperationStatus.Done && consumed == buf.Length;
     }
 
-    /// <summary>The length of a UTF-8 sequence by its first byte, as the game steps through text (LayOutCharacter).</summary>
-    public static int SequenceLength(byte b) => b < 0xC0 ? 1 : b < 0xE0 ? 2 : b < 0xF0 ? 3 : b < 0xF8 ? 4 : 1;
-
-    /// <summary>Packs a UTF-8 sequence's bytes big-endian, the way the game keys glyphs.</summary>
-    public static unsafe uint PackSequence(byte* p, int length)
+    public static int CharacterLength(byte* p) => *p switch
     {
-        var v = 0u;
-        for (var i = 0; i < length; i++)
-            v = (v << 8) | p[i];
-        return v;
-    }
+        < 0xC0 => 1,
+        < 0xE0 => p[1] != 0 ? 2 : 0,
+        < 0xF0 => p[1] != 0 && p[2] != 0 ? 3 : 0,
+        < 0xF8 => p[1] != 0 && p[2] != 0 && p[3] != 0 ? 4 : 0,
+        _ => 1,
+    };
 
-    /// <summary>Gets the codepoint of a packed UTF-8 value, or -1 if it isn't valid UTF-8.</summary>
-    public static int Unpack(uint value)
+    public static bool TryReadInteger(byte* p, out int value, out int length) =>
+        SeExpressionUtilities.TryDecodeInt(new ReadOnlySpan<byte>(p, 5), out value, out length);
+
+    public static int MacroLength(byte* p)
     {
-        Span<byte> buf = stackalloc byte[4];
-        var n = value > 0xFFFFFF ? 4 : value > 0xFFFF ? 3 : value > 0xFF ? 2 : 1;
-        for (var i = 0; i < n; i++)
-            buf[i] = (byte)(value >> (8 * (n - 1 - i)));
-        return Rune.DecodeFromUtf8(buf[..n], out var rune, out var consumed) == OperationStatus.Done && consumed == n ? rune.Value : -1;
+        if (p[1] == 0)
+            return 0;
+        if (!TryReadInteger(p + 2, out var payload, out var n) || payload < 0)
+            return 0;
+
+        var total = 2L + n + payload + 1;
+        if (total > int.MaxValue)
+            return 0;
+        for (var i = 2L + n; i < total - 1; i++)
+        {
+            if (p[i] == 0)
+                return 0;
+        }
+
+        return p[total - 1] == ReadOnlySeString.Etx ? (int)total : 0;
     }
 }

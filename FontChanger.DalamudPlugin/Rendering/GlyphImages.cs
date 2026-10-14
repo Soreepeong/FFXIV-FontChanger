@@ -3,11 +3,18 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Xml;
-using CustomFonts.Utilities;
 
-namespace CustomFonts.Rendering;
+using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Utilities;
+using FontChanger.Presets;
+using FontChanger.Presets.Enums;
+using FontChanger.Presets.Records;
+using FontChanger.Presets.Utilities;
+
+namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>
 /// The glyphs of a glyph images element (FontChanger GlyphFiles, xivres image_fixed_size_font): SVG documents and bitmaps
@@ -24,7 +31,7 @@ internal sealed class GlyphImages
     private const float DefaultUnitsPerEm = 1000;
     private const float DefaultBaselineY = 880;
 
-    private readonly Dictionary<int, Source> glyphs;
+    private readonly Dictionary<Rune, Source> glyphs;
     private readonly float unitsPerEm;
     private readonly float baselineY;
     private readonly bool unitsPerEmOverrides;
@@ -32,49 +39,47 @@ internal sealed class GlyphImages
     private readonly float? bitmapUnitsPerEm;
     private readonly float? bitmapBaselineY;
     private readonly ImageCoverageMode coverageMode;
-    private readonly Dictionary<(int, int), float> kerning = [];
+    private readonly Dictionary<(Rune, Rune), float> kerning = [];
 
-    private GlyphImages(GlyphImagesDef def, Dictionary<int, Source> glyphs, JsonElement? metadata)
+    private GlyphImages(GlyphImagesStruct def, Dictionary<Rune, Source> glyphs, JsonElement? metadata)
     {
         this.glyphs = glyphs;
         this.coverageMode = def.BitmapCoverage;
 
         // The element overrides font.json, which gives the units of files without attributes for them.
-        var metadataUnitsPerEm = Number(metadata, "unitsPerEm") ?? DefaultUnitsPerEm;
+        var metadataUnitsPerEm = metadata.GetPropertyNumberOrDefault("unitsPerEm", DefaultUnitsPerEm);
         this.unitsPerEm = def.UnitsPerEm ?? metadataUnitsPerEm;
-        this.baselineY = def.BaselineY ?? Number(metadata, "baselineY") ?? DefaultBaselineY;
+        this.baselineY = def.BaselineY ?? metadata.GetPropertyNumberOrDefault("baselineY", DefaultBaselineY);
         this.unitsPerEmOverrides = def.UnitsPerEm is not null;
         this.baselineYOverrides = def.BaselineY is not null;
         var fromMetadata = this.unitsPerEm / metadataUnitsPerEm;
-        this.Ascent = def.Ascent ?? (Number(metadata, "ascent") * fromMetadata) ?? this.baselineY;
-        this.LineHeight = def.LineHeight ?? (Number(metadata, "lineHeight") * fromMetadata) ?? this.unitsPerEm;
+        this.Ascent = def.Ascent ?? metadata.GetPropertyNumberOrDefault("ascent") * fromMetadata ?? this.baselineY;
+        this.LineHeight = def.LineHeight ?? metadata.GetPropertyNumberOrDefault("lineHeight") * fromMetadata ?? this.unitsPerEm;
 
         if (metadata is { ValueKind: JsonValueKind.Object } m && m.TryGetProperty("kerning", out var pairs) && pairs.ValueKind == JsonValueKind.Array)
         {
             foreach (var p in pairs.EnumerateArray())
             {
-                if (p.ValueKind == JsonValueKind.Array && p.GetArrayLength() == 3 && p[0].TryGetInt32(out var a) && p[1].TryGetInt32(out var b) &&
-                    p[2].ValueKind == JsonValueKind.Number)
-                {
-                    this.kerning[(a, b)] = p[2].GetSingle() * fromMetadata;
-                }
+                if (p.ValueKind != JsonValueKind.Array || p.GetArrayLength() != 3) continue;
+                if (!p[0].TryGetInt32(out var a) || !p[1].TryGetInt32(out var b) || !p[2].TryGetSingle(out var c)) continue;
+                this.kerning[(new(a), new(b))] = c * fromMetadata;
             }
         }
 
         // Bitmaps are in pixels at the size they were exported at; without font.json, drawn as they are at any size.
-        this.bitmapUnitsPerEm = def.UnitsPerEm ?? Number(metadata, "exportedSize");
-        this.bitmapBaselineY = def.BaselineY ?? Number(metadata, "ascentPx");
+        this.bitmapUnitsPerEm = def.UnitsPerEm ?? metadata.GetPropertyNumberOrDefault("exportedSize");
+        this.bitmapBaselineY = def.BaselineY ?? metadata.GetPropertyNumberOrDefault("ascentPx");
         if (metadata is { ValueKind: JsonValueKind.Object } md && md.TryGetProperty("glyphs", out var entries) && entries.ValueKind == JsonValueKind.Object)
         {
-            foreach (var (codepoint, source) in this.glyphs.ToList())
+            foreach (var (rune, source) in this.glyphs.ToList())
             {
-                if (source.Pixels is null || !entries.TryGetProperty($"U+{codepoint:X4}", out var entry) || entry.ValueKind != JsonValueKind.Object)
+                if (source.Pixels is null || !entries.TryGetProperty($"U+{rune:X4}", out var entry) || entry.ValueKind != JsonValueKind.Object)
                     continue;
                 var origin = entry.TryGetProperty("pngOrigin", out var o) && o.ValueKind == JsonValueKind.Array && o.GetArrayLength() == 2 &&
                              o[0].ValueKind == JsonValueKind.Number && o[1].ValueKind == JsonValueKind.Number
-                    ? ((int)o[0].GetSingle(), (int)o[1].GetSingle())
-                    : (0, 0);
-                this.glyphs[codepoint] = source with { Advance = Number(entry, "advancePx"), OriginX = origin.Item1, OriginY = origin.Item2 };
+                                 ? ((int)o[0].GetSingle(), (int)o[1].GetSingle())
+                                 : (0, 0);
+                this.glyphs[rune] = source with { Advance = entry.GetPropertyNumberOrDefault("advancePx"), OriginX = origin.Item1, OriginY = origin.Item2 };
             }
         }
     }
@@ -85,24 +90,24 @@ internal sealed class GlyphImages
     public float LineHeight { get; }
 
     /// <summary>Loads the files of an element, from its folder or the preset. Files that can't be read are left out.</summary>
-    public static GlyphImages Load(GlyphImagesDef def, ImageRenderer? renderer)
+    public static GlyphImages Load(GlyphImagesStruct def, ImageRenderer? renderer)
     {
-        var glyphs = new Dictionary<int, Source>();
+        var glyphs = new Dictionary<Rune, Source>();
         JsonElement? metadata = def.EmbeddedMetadata;
         if (def.Embedded.Count != 0)
         {
-            foreach (var (codepoint, (svg, png)) in def.Embedded)
+            foreach (var (rune, (svg, png)) in def.Embedded)
             {
                 try
                 {
                     if (svg is not null)
-                        glyphs[codepoint] = new(svg, ReadSvgMetrics(svg), null, 0, 0);
+                        glyphs[rune] = new(svg, ReadSvgMetrics(svg), null, 0, 0);
                     else if (png is not null && renderer is not null)
-                        glyphs[codepoint] = Bitmap(renderer, Convert.FromBase64String(png));
+                        glyphs[rune] = Bitmap(renderer, Convert.FromBase64String(png));
                 }
                 catch (Exception ex)
                 {
-                    Host.Log.Warning(ex, "Embedded glyph U+{codepoint:X4} can't be read", codepoint);
+                    Plugin.Log.Warning(ex, "Embedded glyph U+{rune:X4} can't be read", rune);
                 }
             }
         }
@@ -110,9 +115,9 @@ internal sealed class GlyphImages
         {
             // SVG files over PNG files of the same codepoint, and files without suffixes over ones with them.
             var files = Directory.EnumerateFiles(def.Folder)
-                .OrderBy(f => Path.GetExtension(f).Equals(".svg", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                .ThenBy(f => Path.GetFileNameWithoutExtension(f).Contains('_'))
-                .ThenBy(f => Path.GetFileName(f), StringComparer.Ordinal);
+                                 .OrderBy(f => Path.GetExtension(f).Equals(".svg", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                                 .ThenBy(f => Path.GetFileNameWithoutExtension(f).Contains('_'))
+                                 .ThenBy(f => Path.GetFileName(f), StringComparer.Ordinal);
             foreach (var file in files)
             {
                 var name = Path.GetFileName(file);
@@ -121,47 +126,49 @@ internal sealed class GlyphImages
                 {
                     if (name.Equals("font.json", StringComparison.OrdinalIgnoreCase))
                     {
-                        using var document = JsonDocument.Parse(File.ReadAllBytes(file), new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+                        using var document = JsonDocument.Parse(
+                            File.ReadAllBytes(file),
+                            new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
                         metadata = document.RootElement.Clone();
                         continue;
                     }
 
-                    if (extension is not (".svg" or ".png") || ParseFileName(name) is not { } codepoint || glyphs.ContainsKey(codepoint))
+                    if (extension is not (".svg" or ".png") || !TryParseFileName(name, out var rune) || glyphs.ContainsKey(rune))
                         continue;
                     if (extension == ".svg")
                     {
                         var svg = File.ReadAllText(file);
-                        glyphs[codepoint] = new(svg, ReadSvgMetrics(svg) ?? throw new InvalidDataException("Not an SVG document."), null, 0, 0);
+                        glyphs[rune] = new(svg, ReadSvgMetrics(svg) ?? throw new InvalidDataException("Not an SVG document."), null, 0, 0);
                     }
                     else if (renderer is not null)
                     {
-                        glyphs[codepoint] = Bitmap(renderer, File.ReadAllBytes(file));
+                        glyphs[rune] = Bitmap(renderer, File.ReadAllBytes(file));
                     }
                 }
                 catch (Exception ex)
                 {
-                    Host.Log.Warning(ex, "Glyph file {file} can't be read", file);
+                    Plugin.Log.Warning(ex, "Glyph file {file} can't be read", file);
                 }
             }
         }
         else
         {
-            Host.Log.Warning("Glyph images folder {folder} isn't there", def.Folder);
+            Plugin.Log.Warning("Glyph images folder {folder} isn't there", def.Folder);
         }
 
         return new(def, glyphs, metadata);
     }
 
-    public bool Has(int codepoint) => this.glyphs.ContainsKey(codepoint);
+    public bool Has(Rune rune) => this.glyphs.ContainsKey(rune);
 
-    public IEnumerable<int> Codepoints => this.glyphs.Keys;
+    public IEnumerable<Rune> Codepoints => this.glyphs.Keys;
 
     /// <summary>Gets the kerning between two codepoints in pixels at a size, as the transformation scales advances.</summary>
-    public int GetKerning(int left, int right, float px, GlyphTransform transform) =>
+    public int GetKerning(Rune left, Rune right, float px, Matrix2x2 transform) =>
         this.kerning.TryGetValue((left, right), out var k) ? (int)Rounding.Round(k * px / this.unitsPerEm * transform.M11) : 0;
 
     /// <summary>Gets the line metrics at a size, scaled vertically as the glyphs are.</summary>
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, GlyphTransform transform)
+    public (int Ascent, int LineHeight) GetLineMetrics(float px, Matrix2x2 transform)
     {
         var scale = px / this.unitsPerEm * MathF.Abs(transform.M22);
         return ((int)Rounding.Round(this.Ascent * scale), (int)Rounding.Round(this.LineHeight * scale));
@@ -171,9 +178,9 @@ internal sealed class GlyphImages
     /// Draws a glyph at a size, transformed on screen, relative to the pen on the baseline; null if there is none, or it
     /// can't be drawn.
     /// </summary>
-    public RasterGlyph? Rasterize(ImageRenderer renderer, int codepoint, float px, GlyphTransform transform)
+    public RasterGlyph? Rasterize(ImageRenderer renderer, Rune rune, float px, Matrix2x2 transform)
     {
-        if (!this.glyphs.TryGetValue(codepoint, out var source))
+        if (!this.glyphs.TryGetValue(rune, out var source))
             return null;
 
         try
@@ -245,24 +252,25 @@ internal sealed class GlyphImages
         }
         catch (Exception ex)
         {
-            Host.Log.Warning(ex, "Glyph image U+{codepoint:X4} can't be drawn", codepoint);
+            Plugin.Log.Warning(ex, "Glyph image U+{rune:X4} can't be drawn", rune);
             return new RasterGlyph(0, 0, 0, 0, 0, []);
         }
     }
 
-    /// <summary>Gets the codepoint of a glyph file's name: uniXXXX, uXXXXX or u+XXXX, with an optional suffix after an underscore.</summary>
-    private static int? ParseFileName(string name)
+    /// <summary>Gets the character of a glyph file's name: uniXXXX, uXXXXX or u+XXXX, with an optional suffix after an underscore.</summary>
+    private static bool TryParseFileName(string name, out Rune rune)
     {
+        rune = default;
         var stem = Path.GetFileNameWithoutExtension(name).ToLowerInvariant();
         if (stem.IndexOf('_') is var suffix and >= 0)
             stem = stem[..suffix];
         var hex = stem.StartsWith("uni", StringComparison.Ordinal) ? stem[3..]
-            : stem.StartsWith("u+", StringComparison.Ordinal) ? stem[2..]
-            : stem.StartsWith('u') ? stem[1..]
-            : null;
+                  : stem.StartsWith("u+", StringComparison.Ordinal) ? stem[2..]
+                  : stem.StartsWith('u') ? stem[1..]
+                  : null;
         if (hex is not { Length: >= 4 and <= 6 } || !int.TryParse(hex, NumberStyles.AllowHexSpecifier, null, out var value))
-            return null;
-        return value is > 0x10FFFF or (>= 0xD800 and <= 0xDFFF) ? null : value;
+            return false;
+        return Rune.TryCreate(value, out rune);
     }
 
     private static Source Bitmap(ImageRenderer renderer, byte[] data)
@@ -270,9 +278,6 @@ internal sealed class GlyphImages
         var (pixels, width, height) = renderer.Decode(data);
         return new(null, null, pixels, width, height);
     }
-
-    private static float? Number(JsonElement? json, string name) =>
-        json is { ValueKind: JsonValueKind.Object } j && j.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetSingle() : null;
 
     /// <summary>Reads an SVG document's root attributes that decide its metrics; null if it isn't one.</summary>
     private static SvgMetrics? ReadSvgMetrics(string svg)

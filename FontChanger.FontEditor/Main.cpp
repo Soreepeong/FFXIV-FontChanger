@@ -43,8 +43,8 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
 
 	if (const auto r = TryCatchShowError(nullptr, IDS_ERROR_OPENFILEFAILURE_BODY, 1, [&] {
 		g_config = FontGeneratorConfig::Load();
-		if (!g_config.Language.empty()) {
-			g_localeName = xivres::util::unicode::convert<std::wstring>(g_config.Language);
+		if (!g_config.LanguageCode.empty()) {
+			g_localeName = xivres::util::unicode::convert<std::wstring>(g_config.LanguageCode);
 			g_langId = GetLanguageIdFromLocaleName(g_localeName);
 		}
 		return 0;

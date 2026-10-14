@@ -179,8 +179,8 @@ FontChanger::FixedSizeFont::opentype_positioning FontChanger::FixedSizeFont::ext
 
 	// Characters such as punctuation belong to no script in particular, and take the script of the surrounding text.
 	// As the FDT format is context-free, assume that they are used in text of the script of the language.
-	const auto language = params.Language.empty() ? HB_LANGUAGE_INVALID : hb_language_from_string(params.Language.c_str(), static_cast<int>(params.Language.size()));
-	auto defaultScript = hb_script_from_string(get_default_script_for_language(params.Language).c_str(), -1);
+	const auto language = params.LanguageCode.empty() ? HB_LANGUAGE_INVALID : hb_language_from_string(params.LanguageCode.c_str(), static_cast<int>(params.LanguageCode.size()));
+	auto defaultScript = hb_script_from_string(get_default_script_for_language(params.LanguageCode).c_str(), -1);
 	if (defaultScript == HB_SCRIPT_INVALID || defaultScript == HB_SCRIPT_UNKNOWN)
 		defaultScript = HB_SCRIPT_LATIN;
 
@@ -302,7 +302,7 @@ FontChanger::FixedSizeFont::opentype_positioning FontChanger::FixedSizeFont::ext
 	return result;
 }
 
-std::string FontChanger::FixedSizeFont::get_default_script_for_language(const std::string& language) {
+std::string FontChanger::FixedSizeFont::get_default_script_for_language(const std::string& languageCode) {
 	// Usual scripts of languages whose text is not written in the Latin script.
 	static const std::map<std::string, std::string> LanguageScripts{
 		{"ja", "Hira"},
@@ -333,11 +333,11 @@ std::string FontChanger::FixedSizeFont::get_default_script_for_language(const st
 	};
 
 	std::vector<std::string> subtags;
-	for (size_t pos = 0; pos <= language.size();) {
-		auto next = language.find_first_of("-_", pos);
+	for (size_t pos = 0; pos <= languageCode.size();) {
+		auto next = languageCode.find_first_of("-_", pos);
 		if (next == std::string::npos)
-			next = language.size();
-		std::string subtag = language.substr(pos, next - pos);
+			next = languageCode.size();
+		std::string subtag = languageCode.substr(pos, next - pos);
 		for (auto& ch : subtag)
 			ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
 		subtags.emplace_back(std::move(subtag));

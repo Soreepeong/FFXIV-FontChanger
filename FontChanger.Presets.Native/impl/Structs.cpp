@@ -492,7 +492,7 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, RendererSpecifi
 	} else
 		value.FreeType = {};
 	if (const auto obj = json.find("directwrite"); obj != json.end() && obj->is_object()) {
-		value.DirectWrite.RenderMode = static_cast<DWRITE_RENDERING_MODE>(obj->value<int>("renderMode", DWRITE_RENDERING_MODE_DEFAULT));
+		value.DirectWrite.RenderMode = static_cast<DWRITE_RENDERING_MODE1>(obj->value<int>("renderMode", DWRITE_RENDERING_MODE1_DEFAULT));
 		value.DirectWrite.MeasureMode = static_cast<DWRITE_MEASURING_MODE>(obj->value<int>("measureMode", DWRITE_MEASURING_MODE_GDI_NATURAL));
 		value.DirectWrite.GridFitMode = static_cast<DWRITE_GRID_FIT_MODE>(obj->value<int>("gridFitMode", DWRITE_GRID_FIT_MODE_DEFAULT));
 	} else
@@ -694,7 +694,7 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, LookupStruct& v
 			value.Features[static_cast<DWRITE_FONT_FEATURE_TAG>(FontChanger::DirectWriteUtil::StringToTag(name))] = v.get<uint32_t>();
 		}
 	}
-	value.Language = json.value<std::string>("language", "");
+	value.LanguageCode = json.value<std::string>("language", "");
 	value.Variations.clear();
 	if (const auto it = json.find("variations"); it != json.end() && it->is_object()) {
 		for (const auto& [tag, v] : it->items()) {
@@ -726,8 +726,8 @@ void FontChanger::Structs::to_json(nlohmann::json& json, const LookupStruct& val
 	json.emplace("features", features);
 	if (!featureValues.empty())
 		json.emplace("featureValues", std::move(featureValues));
-	if (!value.Language.empty())
-		json.emplace("language", value.Language);
+	if (!value.LanguageCode.empty())
+		json.emplace("language", value.LanguageCode);
 	if (!value.Variations.empty()) {
 		auto variations = nlohmann::json::object();
 		for (const auto& [tag, v] : value.Variations)

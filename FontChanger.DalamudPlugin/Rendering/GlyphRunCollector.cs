@@ -1,10 +1,13 @@
 using System;
 using System.Runtime.InteropServices;
-using CustomFonts.Utilities;
+
+using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Utilities;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
-namespace CustomFonts.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>Receives the glyph runs of a text layout (<see cref="GlyphRunCollector"/>).</summary>
 internal unsafe interface IGlyphRunSink
@@ -61,7 +64,9 @@ internal sealed unsafe class GlyphRunCollector : IDisposable
         vtbl[3] = (delegate* unmanaged<Native*, void*, BOOL*, int>)&IsPixelSnappingDisabled;
         vtbl[4] = (delegate* unmanaged<Native*, void*, DWRITE_MATRIX*, int>)&GetCurrentTransform;
         vtbl[5] = (delegate* unmanaged<Native*, void*, float*, int>)&GetPixelsPerDip;
-        vtbl[6] = (delegate* unmanaged<Native*, void*, float, float, DWRITE_MEASURING_MODE, DWRITE_GLYPH_RUN*, DWRITE_GLYPH_RUN_DESCRIPTION*, IUnknown*, int>)&DrawGlyphRun;
+        vtbl[6] =
+            (delegate* unmanaged<Native*, void*, float, float, DWRITE_MEASURING_MODE, DWRITE_GLYPH_RUN*, DWRITE_GLYPH_RUN_DESCRIPTION*, IUnknown*, int>)
+            &DrawGlyphRun;
         vtbl[7] = (delegate* unmanaged<Native*, void*, float, float, DWRITE_UNDERLINE*, IUnknown*, int>)&DrawUnderline;
         vtbl[8] = (delegate* unmanaged<Native*, void*, float, float, DWRITE_STRIKETHROUGH*, IUnknown*, int>)&DrawStrikethrough;
         vtbl[9] = (delegate* unmanaged<Native*, void*, float, float, IDWriteInlineObject*, BOOL, BOOL, IUnknown*, int>)&DrawInlineObject;
@@ -127,7 +132,7 @@ internal sealed unsafe class GlyphRunCollector : IDisposable
         }
         catch (Exception ex)
         {
-            Host.Log.Error(ex, "Collecting a glyph run failed");
+            Plugin.Log.Error(ex, "Collecting a glyph run failed");
             return E.E_FAIL;
         }
     }
@@ -142,7 +147,14 @@ internal sealed unsafe class GlyphRunCollector : IDisposable
 
     [UnmanagedCallersOnly]
     private static int DrawInlineObject(
-        Native* self, void* context, float x, float y, IDWriteInlineObject* inlineObject, BOOL isSideways, BOOL isRightToLeft, IUnknown* effect) =>
+        Native* self,
+        void* context,
+        float x,
+        float y,
+        IDWriteInlineObject* inlineObject,
+        BOOL isSideways,
+        BOOL isRightToLeft,
+        IUnknown* effect) =>
         S.S_OK;
 
     [StructLayout(LayoutKind.Sequential)]

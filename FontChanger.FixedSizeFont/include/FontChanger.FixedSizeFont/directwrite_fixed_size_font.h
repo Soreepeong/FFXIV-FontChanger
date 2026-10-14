@@ -50,13 +50,13 @@ namespace FontChanger::FixedSizeFont {
 	class directwrite_fixed_size_font : public default_abstract_fixed_size_font {
 	public:
 		struct create_struct {
-			DWRITE_RENDERING_MODE RenderMode = DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL;
+			DWRITE_RENDERING_MODE1 RenderMode = DWRITE_RENDERING_MODE1_NATURAL;
 			DWRITE_MEASURING_MODE MeasureMode = DWRITE_MEASURING_MODE_GDI_CLASSIC;
 			DWRITE_GRID_FIT_MODE GridFitMode = DWRITE_GRID_FIT_MODE_ENABLED;
 			std::vector<DWRITE_FONT_FEATURE> Features{};
 
 			// BCP 47 language tag of the text, such as "ja" or "zh-Hant"; empty if unspecified.
-			std::string Language;
+			std::string LanguageCode;
 
 			// Design coordinates of variable fonts, keyed by axis tags in DWRITE_FONT_AXIS_TAG byte order.
 			// Axes not listed stay at the instance of the font; 'opsz' follows the font size unless listed.

@@ -30,8 +30,6 @@ namespace FontChanger::Structs {
 		PrerenderedGameInstallation,
 		DirectWrite,
 		FreeType,
-
-		// Glyphs from SVG and PNG files, one per glyph; see GlyphFiles.h.
 		GlyphImages,
 	};
 
@@ -47,7 +45,7 @@ namespace FontChanger::Structs {
 		std::optional<float> Ascent;
 		std::optional<float> LineHeight;
 
-		FontChanger::FixedSizeFont::image_coverage_mode BitmapCoverage = FontChanger::FixedSizeFont::image_coverage_mode::Auto;
+		FixedSizeFont::image_coverage_mode BitmapCoverage = FixedSizeFont::image_coverage_mode::Auto;
 
 		// Files stored in the configuration instead of the folder: font.json, and the files of the glyphs, which are SVG
 		// documents, or PNG files as base64.
@@ -79,7 +77,7 @@ namespace FontChanger::Structs {
 
 		// Enabled OpenType features and their values; values above 1 pick an alternate for features such as 'salt' and 'cv01'.
 		std::map<DWRITE_FONT_FEATURE_TAG, uint32_t> Features;
-		std::string Language;
+		std::string LanguageCode;
 
 		// Axis values of variable fonts, such as {"wght", 450}, that override the instance of the font.
 		std::map<std::string, float> Variations;
@@ -89,15 +87,15 @@ namespace FontChanger::Structs {
 	};
 
 	struct RendererSpecificStruct {
-		FontChanger::FixedSizeFont::empty_fixed_size_font::create_struct Empty;
-		FontChanger::FixedSizeFont::freetype_fixed_size_font::create_struct FreeType;
-		FontChanger::FixedSizeFont::directwrite_fixed_size_font::create_struct DirectWrite;
+		FixedSizeFont::empty_fixed_size_font::create_struct Empty;
+		FixedSizeFont::freetype_fixed_size_font::create_struct FreeType;
+		FixedSizeFont::directwrite_fixed_size_font::create_struct DirectWrite;
 		GlyphImagesStruct GlyphImages;
 	};
 
 	// Scaling, skewing, and rotation of glyphs on screen, where y grows downwards.
 	struct TransformStruct {
-		using matrix = FontChanger::FixedSizeFont::font_render_transformation_matrix;
+		using matrix = FixedSizeFont::font_render_transformation_matrix;
 
 		// Negative values mirror.
 		float ScaleX = 1.f;
@@ -124,7 +122,7 @@ namespace FontChanger::Structs {
 	};
 
 	struct GlyphMergingStruct {
-		FontChanger::FixedSizeFont::glyph_merge_params Params;
+		FixedSizeFont::glyph_merge_params Params;
 
 		// Applied to the texts after the transformation of the element.
 		TransformStruct TextTransform;
@@ -134,24 +132,24 @@ namespace FontChanger::Structs {
 	};
 
 	class FaceElement {
-		mutable std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> m_baseFont;
-		mutable std::shared_ptr<FontChanger::FixedSizeFont::wrapping_fixed_size_font> m_wrappedFont;
+		mutable std::shared_ptr<FixedSizeFont::fixed_size_font> m_baseFont;
+		mutable std::shared_ptr<FixedSizeFont::wrapping_fixed_size_font> m_wrappedFont;
 		friend struct FontSet;
 
 	public:
 		float Size = 0.f;
 		float Gamma = 1.f;
-		FontChanger::FixedSizeFont::codepoint_merge_mode MergeMode = FontChanger::FixedSizeFont::codepoint_merge_mode::AddNew;
+		FixedSizeFont::codepoint_merge_mode MergeMode = FixedSizeFont::codepoint_merge_mode::AddNew;
 		TransformStruct Transform;
-		FontChanger::FixedSizeFont::wrap_modifiers WrapModifiers;
+		FixedSizeFont::wrap_modifiers WrapModifiers;
 		RendererEnum Renderer = RendererEnum::Empty;
 		LookupStruct Lookup;
 		RendererSpecificStruct RendererSpecific;
 		GlyphMergingStruct GlyphMerging;
 
 		// The fonts of the element, made by ElementFonts.cpp when first asked for, until the parameters change.
-		const std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font>& GetBaseFont() const;
-		const std::shared_ptr<FontChanger::FixedSizeFont::wrapping_fixed_size_font>& GetWrappedFont() const;
+		const std::shared_ptr<FixedSizeFont::fixed_size_font>& GetBaseFont() const;
+		const std::shared_ptr<FixedSizeFont::wrapping_fixed_size_font>& GetWrappedFont() const;
 
 		// Drops the wrapped font, for changes of how it picks and moves the glyphs of the base font.
 		void OnFontWrappingParametersChange();
@@ -170,13 +168,13 @@ namespace FontChanger::Structs {
 	};
 
 	class Face {
-		mutable std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> MergedFont;
+		mutable std::shared_ptr<FixedSizeFont::fixed_size_font> MergedFont;
 
 	public:
 		std::string Name;
 		std::string PreviewText;
 		std::vector<std::unique_ptr<FaceElement>> Elements;
-		FontChanger::FixedSizeFont::vertical_alignment VerticalAlignment = FontChanger::FixedSizeFont::vertical_alignment::Baseline;
+		FixedSizeFont::vertical_alignment VerticalAlignment = FixedSizeFont::vertical_alignment::Baseline;
 
 		Face() noexcept = default;
 		Face(Face&& r) noexcept = default;
@@ -185,7 +183,7 @@ namespace FontChanger::Structs {
 		Face& operator=(const Face& r);
 
 		// The merged font of the elements, made by ElementFonts.cpp when first asked for, until the elements change.
-		const std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font>& GetMergedFont() const;
+		const std::shared_ptr<FixedSizeFont::fixed_size_font>& GetMergedFont() const;
 
 		void FlushCache();
 

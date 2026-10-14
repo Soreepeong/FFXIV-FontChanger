@@ -533,8 +533,8 @@ FontChanger::FixedSizeFont::shaped_line FontChanger::FixedSizeFont::freetype_fix
 
 	const auto buffer = std::unique_ptr<hb_buffer_t, decltype(&hb_buffer_destroy)>(hb_buffer_create(), &hb_buffer_destroy);
 	hb_buffer_add_utf32(buffer.get(), reinterpret_cast<const uint32_t*>(text.data()), static_cast<int>(text.size()), 0, static_cast<int>(text.size()));
-	if (!m_info->Params.Language.empty())
-		hb_buffer_set_language(buffer.get(), hb_language_from_string(m_info->Params.Language.c_str(), static_cast<int>(m_info->Params.Language.size())));
+	if (!m_info->Params.LanguageCode.empty())
+		hb_buffer_set_language(buffer.get(), hb_language_from_string(m_info->Params.LanguageCode.c_str(), static_cast<int>(m_info->Params.LanguageCode.size())));
 	hb_buffer_guess_segment_properties(buffer.get());
 	hb_shape(font.get(), buffer.get(), m_info->Params.Features.data(), static_cast<unsigned>(m_info->Params.Features.size()));
 
@@ -614,8 +614,8 @@ int FontChanger::FixedSizeFont::freetype_fixed_size_font::freetype_face_wrapper:
 	const auto buf = hb_buffer_create();
 	const auto bufFree = std::unique_ptr<hb_buffer_t, decltype(&hb_buffer_destroy)>(buf, hb_buffer_destroy);
 	hb_buffer_add_codepoints(buf, reinterpret_cast<const hb_codepoint_t*>(&codepoint), 1, 0, 1);
-	if (!params.Language.empty())
-		hb_buffer_set_language(buf, hb_language_from_string(params.Language.c_str(), static_cast<int>(params.Language.size())));
+	if (!params.LanguageCode.empty())
+		hb_buffer_set_language(buf, hb_language_from_string(params.LanguageCode.c_str(), static_cast<int>(params.LanguageCode.size())));
 	hb_buffer_guess_segment_properties(buf);
 	hb_shape(hbFont, buf, params.Features.data(), static_cast<unsigned>(params.Features.size()));
 	unsigned count = 0;
@@ -760,7 +760,7 @@ FontChanger::FixedSizeFont::freetype_fixed_size_font::freetype_face_wrapper::fre
 			.Fvar = fvarDataRef.get_span<char>(),
 			.Avar = avarDataRef.get_span<char>(),
 			.DesignCoordinates = get_design_coordinates(m_library.get(), m_face),
-			.Language = info->Params.Language,
+			.LanguageCode = info->Params.LanguageCode,
 			.Size = info->Size,
 			.UnitsPerEm = m_face->units_per_EM,
 			.ScaleX = matrix.M11,
@@ -864,7 +864,7 @@ freetype_font_table::freetype_font_table(FT_Face face, uint32_t tag) {
 }
 
 bool FontChanger::FixedSizeFont::freetype_fixed_size_font::create_struct::requires_shaping() const {
-	return !Features.empty() || !Language.empty();
+	return !Features.empty() || !LanguageCode.empty();
 }
 std::map<uint32_t, float> FontChanger::FixedSizeFont::freetype_fixed_size_font::freetype_face_wrapper::get_design_coordinates(FT_Library library, FT_Face face) {
 	std::map<uint32_t, float> result;

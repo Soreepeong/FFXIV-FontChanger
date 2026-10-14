@@ -1,11 +1,18 @@
 using System;
 using System.Collections.Generic;
-using CustomFonts.Utilities;
+
+using Dalamud.Hooking;
+
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using FFXIVClientStructs.Interop;
+
+using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Utilities;
+
 using static FFXIVClientStructs.FFXIV.Client.UI.AddonNamePlate;
 
-namespace CustomFonts.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>How nameplate text is drawn.</summary>
 internal enum NamePlateMode
@@ -46,19 +53,19 @@ internal sealed unsafe class NamePlateText : IDisposable
     private const float MaxBakeScale = 4f;
 
     // AddonNamePlate.BakePlate's offset in the addon; from the field's attribute (see FieldOffsets).
-    private static readonly nint AddonBakePlateOffset = FieldOffsets.Of(typeof(AddonNamePlate), nameof(AddonNamePlate.BakePlate));
+    private static readonly nint AddonBakePlateOffset = typeof(AddonNamePlate).FieldOffsetOf(nameof(AddonNamePlate.BakePlate));
 
     // A plate shown this much larger than its bake is baked again; within this of its bake scale it is drawn at exactly 1.
     private const float ScaleTolerance = 0.02f;
 
     private readonly FontReplacer replacer;
-    private readonly IHostHook<AllocateBakeDelegate> allocateBakeHook;
-    private readonly IHostHook<PrepareDelegate> prepareHook;
-    private readonly IHostHook<DrawBakedDelegate> drawBakedHook;
-    private readonly IHostHook<BakePlateDrawDelegate> bakePlateDrawHook;
+    private readonly Hook<AllocateBakeDelegate> allocateBakeHook;
+    private readonly Hook<PrepareDelegate> prepareHook;
+    private readonly Hook<DrawBakedDelegate> drawBakedHook;
+    private readonly Hook<BakePlateDrawDelegate> bakePlateDrawHook;
 
-    // The scale each object's current region was baked at, by the object (its BakeData, at its start).
-    private readonly Dictionary<nint, float> bakeScales = [];
+    // The scale each object's current region was baked at, by the object's BakeData (at its start).
+    private readonly Dictionary<Pointer<BakeData>, float> bakeScales = [];
 
     // The renderer last seen by a hook, and whether every plate must be baked again once one is seen.
     private BakePlateRenderer* lastRenderer;
@@ -73,7 +80,6 @@ internal sealed unsafe class NamePlateText : IDisposable
         {
             // AllocateBake is called by OnRequestedUpdate for the plates with NeedsToBeBaked, which it clears on success;
             // DrawBaked point samples only when the transform's scale is exactly 1.
-            var host = Host.Current;
             var allocateBake = BakePlateRenderer.Addresses.AllocateBake.Value;
             var drawBaked = BakePlateRenderer.Addresses.DrawBaked.Value;
 
@@ -83,10 +89,10 @@ internal sealed unsafe class NamePlateText : IDisposable
                 throw new InvalidOperationException("The nameplate renderer's table isn't in this version of the game.");
             var prepare = (nint)vtable->PrepareNode;
             var bakePlateDraw = (nint)vtable->Draw;
-            this.allocateBakeHook = host.Hook<AllocateBakeDelegate>(allocateBake, this.AllocateBakeDetour);
-            this.prepareHook = host.Hook<PrepareDelegate>(prepare, this.PrepareDetour);
-            this.drawBakedHook = host.Hook<DrawBakedDelegate>(drawBaked, this.DrawBakedDetour);
-            this.bakePlateDrawHook = host.Hook<BakePlateDrawDelegate>(bakePlateDraw, this.BakePlateDrawDetour);
+            this.allocateBakeHook = Plugin.GameInterop.HookFromAddress<AllocateBakeDelegate>(allocateBake, this.AllocateBakeDetour);
+            this.prepareHook = Plugin.GameInterop.HookFromAddress<PrepareDelegate>(prepare, this.PrepareDetour);
+            this.drawBakedHook = Plugin.GameInterop.HookFromAddress<DrawBakedDelegate>(drawBaked, this.DrawBakedDetour);
+            this.bakePlateDrawHook = Plugin.GameInterop.HookFromAddress<BakePlateDrawDelegate>(bakePlateDraw, this.BakePlateDrawDetour);
             this.allocateBakeHook.Enable();
             this.prepareHook.Enable();
             this.drawBakedHook.Enable();
@@ -139,7 +145,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         }
         catch (Exception ex)
         {
-            Host.Log.Error(ex, "Marking nameplates for baking failed");
+            Plugin.Log.Error(ex, "Marking nameplates for baking failed");
         }
 
         this.prepareHook?.Dispose();
@@ -160,7 +166,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         }
 
         var addon = (AddonNamePlate*)((byte*)this.lastRenderer - AddonBakePlateOffset);
-        if (!IsLoaded((nint)addon))
+        if (!IsLoaded(&addon->AtkUnitBase))
         {
             this.rebakePending = true;
             return;
@@ -175,7 +181,7 @@ internal sealed unsafe class NamePlateText : IDisposable
     }
 
     // Whether a unit is still loaded: it is in the unit manager's list of loaded ones.
-    private static bool IsLoaded(nint unit)
+    private static bool IsLoaded(AtkUnitBase* unit)
     {
         var stage = AtkStage.Instance();
         var manager = stage is null ? null : stage->RaptureAtkUnitManager;
@@ -184,7 +190,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         ref var loaded = ref manager->AtkUnitManager.AllLoadedUnitsList;
         for (var i = 0; i < loaded.Count; i++)
         {
-            if ((nint)loaded.Entries[i].Value == unit)
+            if (loaded.Entries[i].Value == unit)
                 return true;
         }
 
@@ -203,41 +209,52 @@ internal sealed unsafe class NamePlateText : IDisposable
     private static ref float Transform(AtkResNode* node, int index) => ref ((float*)&node->Transform)[index];
 
     /// <summary>Gets the text node's on-screen scale as its nodes are now: the product of its and its ancestors' scales.</summary>
-    private static float? GetShownScale(NamePlateObject* obj)
+    private static bool TryGetShownScale(NamePlateObject* obj, out float scale)
     {
+        scale = 0;
         var text = (AtkResNode*)obj->NameText;
         if (text is null)
-            return null;
-        var scale = 1f;
+            return false;
+        var product = 1f;
         for (var node = text; node is not null; node = node->ParentNode)
-            scale *= node->ScaleX;
-        return float.IsFinite(scale) && scale > 0 ? scale : null;
+            product *= node->ScaleX;
+        if (!float.IsFinite(product) || product <= 0)
+            return false;
+        scale = product;
+        return true;
     }
+
+    private static float GetShownScaleOrDefault(NamePlateObject* obj, float fallback) => TryGetShownScale(obj, out var scale) ? scale : fallback;
 
     /// <summary>
     /// Gets the text node's on-screen scale with the plate at 100 percent: its current scale divided by the plate's
     /// current distance factor, which OnRequestedUpdate stored as the bake alpha (factor^(1/4) * 255) this update.
     /// </summary>
-    private static float? GetFullSizeScale(NamePlateObject* obj)
+    private static bool TryGetFullSizeScale(NamePlateObject* obj, out float fullSize)
     {
-        if (GetShownScale(obj) is not { } shown)
-            return null;
+        fullSize = 0;
+        if (!TryGetShownScale(obj, out var shown))
+            return false;
         var a = obj->BakeData.Alpha / 255f;
         var factor = Math.Max(a * a * a * a, MinDistanceFactor);
         var scale = shown / factor;
-        return float.IsFinite(scale) ? Math.Clamp(scale, MinBakeScale, MaxBakeScale) : null;
+        if (!float.IsFinite(scale))
+            return false;
+        fullSize = Math.Clamp(scale, MinBakeScale, MaxBakeScale);
+        return true;
     }
 
     private byte AllocateBakeDetour(BakePlateRenderer* renderer, NamePlateObject* obj)
     {
         this.SeeRenderer(renderer);
-        var previous = this.bakeScales.GetValueOrDefault((nint)obj);
-        this.bakeScales.Remove((nint)obj);
-        if (this.EffectiveMode != NamePlateMode.BakedAtFullSize || GetFullSizeScale(obj) is not { } fullSize)
+        Pointer<BakeData> bake = &obj->BakeData;
+        var previous = this.bakeScales.GetValueOrDefault(bake);
+        this.bakeScales.Remove(bake);
+        if (this.EffectiveMode != NamePlateMode.BakedAtFullSize || !TryGetFullSizeScale(obj, out var fullSize))
             return this.allocateBakeHook.Original(renderer, obj);
 
         // At least the size it is shown at now, and what it was baked at before (it was shown that large).
-        var scale = Math.Clamp(Math.Max(fullSize, Math.Max(GetShownScale(obj) ?? 0, previous)), MinBakeScale, MaxBakeScale);
+        var scale = Math.Clamp(Math.Max(fullSize, Math.Max(GetShownScaleOrDefault(obj, 0), previous)), MinBakeScale, MaxBakeScale);
 
         var (w, h) = (obj->TextW, obj->TextH);
         obj->TextW = (short)MathF.Ceiling(w * scale);
@@ -245,7 +262,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         var allocated = this.allocateBakeHook.Original(renderer, obj);
         (obj->TextW, obj->TextH) = (w, h);
         if (allocated != 0)
-            this.bakeScales[(nint)obj] = scale;
+            this.bakeScales[bake] = scale;
 
         return allocated;
     }
@@ -256,7 +273,7 @@ internal sealed unsafe class NamePlateText : IDisposable
 
         // A bake of a region allocated at a scale: lay the text out at that scale (the original sets 1).
         var bake = renderer->CurrentBakeData;
-        if (bake is not null && this.bakeScales.TryGetValue((nint)bake, out var scale))
+        if (bake is not null && this.bakeScales.TryGetValue(bake, out var scale))
         {
             set->NodeScaleX = scale;
             set->NodeScaleY = scale;
@@ -266,7 +283,7 @@ internal sealed unsafe class NamePlateText : IDisposable
     private void DrawBakedDetour(BakePlateRenderer* renderer, AtkResNode* node, BakeData* bake)
     {
         this.SeeRenderer(renderer);
-        if (!this.bakeScales.TryGetValue((nint)bake, out var scale))
+        if (!this.bakeScales.TryGetValue(bake, out var scale))
         {
             this.drawBakedHook.Original(renderer, node, bake);
             return;
@@ -291,7 +308,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         var textYOffset = bake->TextYOffset;
         var exact = MathF.Abs((shown / scale) - 1) < ScaleTolerance;
         for (var i = 0; i < 4; i++)
-            Transform(node, i) = exact ? (i is 0 or 3 ? 1 : 0) : transform[i] / scale;
+            Transform(node, i) = exact ? i is 0 or 3 ? 1 : 0 : transform[i] / scale;
 
         node->Width = (ushort)Math.Min(ushort.MaxValue, Rounding.Round(width * scale));
         node->Height = (ushort)Math.Min(ushort.MaxValue, Rounding.Round(height * scale));

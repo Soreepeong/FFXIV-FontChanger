@@ -2,9 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 
-namespace CustomFonts.Rendering;
+using FontChanger.Presets.Enums;
+using FontChanger.Presets.Records;
+
+namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>
 /// A font the texts of glyph merging are drawn with (xivres glyph_merging's text font): the element's, at a size and
@@ -16,7 +20,7 @@ internal interface IMergeTextFont
     int Ascent { get; }
 
     /// <summary>Gets whether a codepoint can be drawn.</summary>
-    bool Has(int codepoint);
+    bool Has(Rune rune);
 
     /// <summary>
     /// Lays out a line, its glyphs <paramref name="letterSpacing"/> pixels further apart. A shaped line is drawn at any
@@ -61,9 +65,9 @@ internal static class GlyphMerger
     /// are at its font sizes, by the element's size in the preset (<paramref name="designSize"/>).
     /// </summary>
     public static RasterGlyph Draw(
-        MergeMapping mapping,
+        GlyphMergeMapping mapping,
         string mappedText,
-        GlyphMergingDef def,
+        GlyphMergingStruct def,
         float pixelScale,
         float size,
         float designSize,
@@ -84,6 +88,7 @@ internal static class GlyphMerger
 
         // Shapes drawn into pixels, in coordinates from the top of the line: the element's glyph, or an SVG document.
         RasterGlyph? raster = null;
+
         void SetArea(float x1, float y1, float x2, float y2)
         {
             if (mapping.CustomTextArea is { } a)
@@ -151,6 +156,7 @@ internal static class GlyphMerger
         var textScale = def.TextSize is { } textSize ? textSize * pixelScale / size : 1;
         var condense = 1f;
         var cache = new Dictionary<(int, int), IMergeTextFont>();
+
         IMergeTextFont GetTextFont(float s, float c)
         {
             // Sizes in steps of 1/20 pixel, scales of 1/1000.
@@ -210,8 +216,8 @@ internal static class GlyphMerger
             // Letters and digits are centered by the capitals' height, so they line up across glyphs; symbols such as +
             // sit around the middle of lowercase letters instead, and are centered by themselves.
             textY = IsSymbolsOnly(text) && layout.InkY1 < layout.InkY2
-                ? (int)Rounding.Round(centerY - ((layout.InkY1 + layout.InkY2) / 2f))
-                : (int)Rounding.Round(centerY - ((layout.CapTop + layout.LastBaseline) / 2f));
+                        ? (int)Rounding.Round(centerY - ((layout.InkY1 + layout.InkY2) / 2f))
+                        : (int)Rounding.Round(centerY - ((layout.CapTop + layout.LastBaseline) / 2f));
         }
         else
         {
@@ -230,7 +236,7 @@ internal static class GlyphMerger
     /// where it goes past the shape, by its text mode), or alone. Returned relative to the pen on the baseline.
     /// </summary>
     private static RasterGlyph Compose(
-        MergeMapping mapping,
+        GlyphMergeMapping mapping,
         Shape shape,
         RasterGlyph? raster,
         bool hasShape,
@@ -292,8 +298,8 @@ internal static class GlyphMerger
         {
             int a = shapeCoverage[i], t = textCoverage[i];
             var v = !hasShape || shape.DrawsText ? a + t - (a * t / 255)
-                : mapping.TextMode == MergeTextMode.Difference ? a + t - (2 * a * t / 255)
-                : a * (255 - t) / 255;
+                    : mapping.TextMode == MergeTextMode.Difference ? a + t - (2 * a * t / 255)
+                    : a * (255 - t) / 255;
             alpha[i] = (byte)Math.Clamp(v, 0, 255);
         }
 
@@ -323,7 +329,7 @@ internal static class GlyphMerger
     /// Lines are aligned by their ink when the text is put in a shape, else by their advances, keeping the side bearings
     /// as they are in text of the font. Coordinates are from the top of the first line.
     /// </summary>
-    private static Layout LayOut(IMergeTextFont font, string[] lines, GlyphMergingDef def, float pixelScale, bool alignByInk)
+    private static Layout LayOut(IMergeTextFont font, string[] lines, GlyphMergingStruct def, float pixelScale, bool alignByInk)
     {
         var letterSpacing = (int)Rounding.Round(def.LetterSpacing * pixelScale);
         var laidOut = new List<MergeTextLine>();
@@ -331,7 +337,7 @@ internal static class GlyphMerger
         var res = new Layout();
         foreach (var text in lines)
         {
-            var available = string.Concat(text.EnumerateRunes().Where(r => font.Has(r.Value)).Select(r => r.ToString()));
+            var available = string.Concat(text.EnumerateRunes().Where(font.Has).Select(r => r.ToString()));
             var line = font.LayOut(available, letterSpacing);
             laidOut.Add(line);
             maxInkWidth = Math.Max(maxInkWidth, line.InkX2 - line.InkX1);
@@ -339,7 +345,7 @@ internal static class GlyphMerger
         }
 
         // The capitals' height, from H's ink.
-        var h = font.Has('H') ? font.LayOut("H", 0) : null;
+        var h = font.Has(new('H')) ? font.LayOut("H", 0) : null;
         var capHeight = h is not null && h.InkY1 < h.InkY2 ? font.Ascent - h.InkY1 : (int)Rounding.Round(font.Ascent * 0.7f);
         var lineAdvance = (int)Rounding.Round((capHeight * StackedLineAdvance) + (def.LineSpacing * pixelScale));
 
@@ -435,7 +441,8 @@ internal static class GlyphMerger
         if (placement.ValueKind != JsonValueKind.Array)
             return s;
 
-        var (advance, gx1, gy1, gx2, gy2) = (placement[1].GetSingle(), placement[2].GetSingle(), placement[3].GetSingle(), placement[4].GetSingle(), placement[5].GetSingle());
+        var (advance, gx1, gy1, gx2, gy2) = (placement[1].GetSingle(), placement[2].GetSingle(), placement[3].GetSingle(), placement[4].GetSingle(),
+                                                placement[5].GetSingle());
         var sx = (gx2 - gx1) / (nominal.X2 - nominal.X1);
         var sy = (gy2 - gy1) / (nominal.Y2 - nominal.Y1);
         float MapX(float x) => gx1 + ((x - nominal.X1) * sx);
@@ -453,8 +460,9 @@ internal static class GlyphMerger
 
         // The vertices of a shape of rounded corners: those of its rectangle or its polygon.
         static (float X, float Y)[] Vertices(JsonElement spec) => spec.TryGetProperty("rect", out var rect)
-            ? Rect(ReadBox(rect))
-            : spec.GetProperty("polygon").EnumerateArray().Select(v => (X: v[0].GetSingle(), Y: v[1].GetSingle())).ToArray();
+                                                                      ? Rect(ReadBox(rect))
+                                                                      : spec.GetProperty("polygon").EnumerateArray()
+                                                                            .Select(v => (X: v[0].GetSingle(), Y: v[1].GetSingle())).ToArray();
 
         static (float X1, float Y1, float X2, float Y2) Bounds((float X, float Y)[] vertices) =>
             (vertices.Min(v => v.X), vertices.Min(v => v.Y), vertices.Max(v => v.X), vertices.Max(v => v.Y));
@@ -643,21 +651,21 @@ internal static class GlyphMerger
 
         var (cosA, sinA) = (MathF.Cos(angle), MathF.Sin(angle));
         var (dx, dy) = ((from.X - to.X) / 2, (from.Y - to.Y) / 2);
-        var (x1p, y1p) = ((cosA * dx) + (sinA * dy), (-sinA * dx) + (cosA * dy));
-        var lambda = (x1p * x1p / (rx * rx)) + (y1p * y1p / (ry * ry));
+        var (x1P, y1P) = ((cosA * dx) + (sinA * dy), (-sinA * dx) + (cosA * dy));
+        var lambda = (x1P * x1P / (rx * rx)) + (y1P * y1P / (ry * ry));
         if (lambda > 1)
             (rx, ry) = (rx * MathF.Sqrt(lambda), ry * MathF.Sqrt(lambda));
 
-        var num = (rx * rx * ry * ry) - (rx * rx * y1p * y1p) - (ry * ry * x1p * x1p);
-        var den = (rx * rx * y1p * y1p) + (ry * ry * x1p * x1p);
+        var num = (rx * rx * ry * ry) - (rx * rx * y1P * y1P) - (ry * ry * x1P * x1P);
+        var den = (rx * rx * y1P * y1P) + (ry * ry * x1P * x1P);
         var coef = MathF.Sqrt(Math.Max(0, num / den));
         if (largeArc == sweep)
             coef = -coef;
-        var (cxp, cyp) = (coef * rx * y1p / ry, -coef * ry * x1p / rx);
+        var (cxp, cyp) = (coef * rx * y1P / ry, -coef * ry * x1P / rx);
         var cx = (cosA * cxp) - (sinA * cyp) + ((from.X + to.X) / 2);
         var cy = (sinA * cxp) + (cosA * cyp) + ((from.Y + to.Y) / 2);
-        var theta1 = VectorAngle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
-        var delta = VectorAngle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
+        var theta1 = VectorAngle(1, 0, (x1P - cxp) / rx, (y1P - cyp) / ry);
+        var delta = VectorAngle((x1P - cxp) / rx, (y1P - cyp) / ry, (-x1P - cxp) / rx, (-y1P - cyp) / ry);
         if (!sweep && delta > 0)
             delta -= 2 * MathF.PI;
         else if (sweep && delta < 0)

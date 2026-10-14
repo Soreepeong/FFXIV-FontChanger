@@ -1,14 +1,22 @@
 using System;
 using System.Collections.Generic;
-using CustomFonts.Utilities;
+
+using FontChanger.DalamudPlugin.Utilities;
+
 using TerraFX.Interop.DirectX;
+using TerraFX.Interop.Windows;
+
 using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
+
 using static TerraFX.Interop.DirectX.D3D11_CPU_ACCESS_FLAG;
 using static TerraFX.Interop.DirectX.D3D11_MAP;
 using static TerraFX.Interop.DirectX.D3D11_USAGE;
 using static TerraFX.Interop.DirectX.DXGI_FORMAT;
 
-namespace CustomFonts.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering;
+
+// Inside the namespace, so that Pointer<T> is XIVCS's over TerraFX's.
+using FFXIVClientStructs.Interop;
 
 /// <summary>
 /// Reads glyph coverage out of the game's font textures on the GPU, through a staging texture per texture format. On the
@@ -25,13 +33,13 @@ internal sealed unsafe class GameTextureReader : IDisposable
     private static readonly int[] OffsetsBgra = [2, 1, 0, 3];
     private static readonly int[] OffsetsRgba = [0, 1, 2, 3];
 
-    private readonly Dictionary<DXGI_FORMAT, nint> staging = [];
-    private ID3D11DeviceContext* context;
+    private readonly Dictionary<DXGI_FORMAT, ComPtr<ID3D11Texture2D>> _staging = [];
+    private ComPtr<ID3D11DeviceContext> _context;
 
     /// <summary>Gets whether a texture's pixels can be read: it has a format game font textures use.</summary>
-    public static bool CanRead(nint texture)
+    public static bool CanRead(Pointer<KernelTexture> texture)
     {
-        var resource = (ID3D11Texture2D*)((KernelTexture*)texture)->D3D11Texture2D;
+        var resource = (ID3D11Texture2D*)texture.Value->D3D11Texture2D;
         if (resource is null)
             return false;
         D3D11_TEXTURE2D_DESC desc;
@@ -40,11 +48,11 @@ internal sealed unsafe class GameTextureReader : IDisposable
     }
 
     /// <summary>Reads a rectangle of a plane of a texture as 8-bit coverage.</summary>
-    public byte[] Read(nint texture, int x, int y, int width, int height, int plane)
+    public byte[] Read(Pointer<KernelTexture> texture, int x, int y, int width, int height, int plane)
     {
         var alpha = new byte[width * height];
         var stride = width;
-        var resource = (ID3D11Texture2D*)((KernelTexture*)texture)->D3D11Texture2D;
+        var resource = (ID3D11Texture2D*)texture.Value->D3D11Texture2D;
         D3D11_TEXTURE2D_DESC desc;
         resource->GetDesc(&desc);
         width = Math.Min(width, (int)desc.Width - x);
@@ -63,10 +71,10 @@ internal sealed unsafe class GameTextureReader : IDisposable
             bottom = (uint)(y + height),
             back = 1,
         };
-        this.context->CopySubresourceRegion(staging, 0, 0, 0, 0, (ID3D11Resource*)resource, 0, &box);
+        this._context.Get()->CopySubresourceRegion(staging, 0, 0, 0, 0, (ID3D11Resource*)resource, 0, &box);
 
         D3D11_MAPPED_SUBRESOURCE mapped;
-        this.context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped).ThrowOnError();
+        this._context.Get()->Map(staging, 0, D3D11_MAP_READ, 0, &mapped).ThrowOnError();
         try
         {
             for (var row = 0; row < height; row++)
@@ -89,7 +97,7 @@ internal sealed unsafe class GameTextureReader : IDisposable
         }
         finally
         {
-            this.context->Unmap(staging, 0);
+            this._context.Get()->Unmap(staging, 0);
         }
 
         return alpha;
@@ -97,14 +105,10 @@ internal sealed unsafe class GameTextureReader : IDisposable
 
     public void Dispose()
     {
-        foreach (var texture in this.staging.Values)
-            ((ID3D11Texture2D*)texture)->Release();
-        this.staging.Clear();
-        if (this.context is not null)
-        {
-            this.context->Release();
-            this.context = null;
-        }
+        foreach (var texture in this._staging.Values)
+            texture.Get()->Release();
+        this._staging.Clear();
+        this._context.Dispose();
     }
 
     private static int BytesPerTexel(DXGI_FORMAT format) => format switch
@@ -116,39 +120,28 @@ internal sealed unsafe class GameTextureReader : IDisposable
 
     private ID3D11Resource* GetStaging(ID3D11Texture2D* source, DXGI_FORMAT format)
     {
-        if (this.staging.TryGetValue(format, out var existing))
-            return (ID3D11Resource*)existing;
+        if (this._staging.TryGetValue(format, out var existing))
+            return (ID3D11Resource*)existing.Get();
 
-        ID3D11Device* device;
-        source->GetDevice(&device);
-        try
-        {
-            if (this.context is null)
-            {
-                ID3D11DeviceContext* ctx;
-                device->GetImmediateContext(&ctx);
-                this.context = ctx;
-            }
+        using var device = default(ComPtr<ID3D11Device>);
+        source->GetDevice(device.GetAddressOf());
+        if (this._context.IsNull)
+            device.Get()->GetImmediateContext(this._context.GetAddressOf());
 
-            var desc = new D3D11_TEXTURE2D_DESC
-            {
-                Width = StagingSize,
-                Height = StagingSize,
-                MipLevels = 1,
-                ArraySize = 1,
-                Format = format,
-                SampleDesc = new(1, 0),
-                Usage = D3D11_USAGE_STAGING,
-                CPUAccessFlags = (uint)D3D11_CPU_ACCESS_READ,
-            };
-            ID3D11Texture2D* texture;
-            device->CreateTexture2D(&desc, null, &texture).ThrowOnError();
-            this.staging.Add(format, (nint)texture);
-            return (ID3D11Resource*)texture;
-        }
-        finally
+        var desc = new D3D11_TEXTURE2D_DESC
         {
-            device->Release();
-        }
+            Width = StagingSize,
+            Height = StagingSize,
+            MipLevels = 1,
+            ArraySize = 1,
+            Format = format,
+            SampleDesc = new(1, 0),
+            Usage = D3D11_USAGE_STAGING,
+            CPUAccessFlags = (uint)D3D11_CPU_ACCESS_READ,
+        };
+        var texture = default(ComPtr<ID3D11Texture2D>);
+        device.Get()->CreateTexture2D(&desc, null, texture.GetAddressOf()).ThrowOnError();
+        this._staging.Add(format, texture);
+        return (ID3D11Resource*)texture.Get();
     }
 }

@@ -55,10 +55,10 @@ std::map<DWRITE_FONT_FEATURE_TAG, uint32_t> App::FaceElementEditorDialogInternal
 // - Feature variations of variable fonts are evaluated at the default instance.
 // - DirectWrite decides on its own, and may differ from HarfBuzz for some features or scripts.
 // The legacy 'kern' table is applied by default by both shapers where GPOS has no kerning, without being a lookup.
-std::set<DWRITE_FONT_FEATURE_TAG> App::FaceElementEditorDialogInternal::GetDefaultOnFeatures(hb_face_t* face, const std::string& language) {
+std::set<DWRITE_FONT_FEATURE_TAG> App::FaceElementEditorDialogInternal::GetDefaultOnFeatures(hb_face_t* face, const std::string& languageCode) {
 	std::set<hb_tag_t> featureTags;
 	std::set<hb_script_t> scripts;
-	if (const auto script = hb_script_from_string(FontChanger::FixedSizeFont::get_default_script_for_language(language).c_str(), -1); script != HB_SCRIPT_INVALID && script != HB_SCRIPT_UNKNOWN)
+	if (const auto script = hb_script_from_string(FontChanger::FixedSizeFont::get_default_script_for_language(languageCode).c_str(), -1); script != HB_SCRIPT_INVALID && script != HB_SCRIPT_UNKNOWN)
 		scripts.insert(script);
 	for (const auto table : { HB_OT_TAG_GSUB, HB_OT_TAG_GPOS }) {
 		std::vector<hb_tag_t> tags(hb_ot_layout_table_get_feature_tags(face, table, 0, nullptr, nullptr));
@@ -82,7 +82,7 @@ std::set<DWRITE_FONT_FEATURE_TAG> App::FaceElementEditorDialogInternal::GetDefau
 	if (const auto kern = std::unique_ptr<hb_blob_t, decltype(&hb_blob_destroy)>(hb_face_reference_table(face, HB_TAG('k', 'e', 'r', 'n')), &hb_blob_destroy); hb_blob_get_length(kern.get()))
 		result.insert(DWRITE_FONT_FEATURE_TAG_KERNING);
 
-	const auto hbLanguage = language.empty() ? HB_LANGUAGE_INVALID : hb_language_from_string(language.c_str(), static_cast<int>(language.size()));
+	const auto hbLanguage = languageCode.empty() ? HB_LANGUAGE_INVALID : hb_language_from_string(languageCode.c_str(), static_cast<int>(languageCode.size()));
 	const char* const shapers[]{ "ot", nullptr };
 	using set_ptr = std::unique_ptr<hb_set_t, decltype(&hb_set_destroy)>;
 	for (const auto script : scripts) {
@@ -271,8 +271,8 @@ INT_PTR App::FaceElementEditorDialog::FontLanguageCombo_OnCommand(uint16_t notiC
 	if (index < 0 || index >= static_cast<int>(m_languageTags.size()))
 		return 0;
 
-	if (m_languageTags[index] != m_element.Lookup.Language) {
-		m_element.Lookup.Language = m_languageTags[index];
+	if (m_languageTags[index] != m_element.Lookup.LanguageCode) {
+		m_element.Lookup.LanguageCode = m_languageTags[index];
 		RefreshFontFeatureDefaults();
 		OnBaseFontChanged();
 	}
@@ -322,7 +322,7 @@ INT_PTR App::FaceElementEditorDialog::FontVariationValueEdit_OnCommand(uint16_t 
 void App::FaceElementEditorDialog::RefreshFontFeatureDefaults() {
 	std::set<DWRITE_FONT_FEATURE_TAG> defaultOn;
 	try {
-		defaultOn = GetDefaultOnFeatures(CreateHarfBuzzFace(m_element.Lookup).get(), m_element.Lookup.Language);
+		defaultOn = GetDefaultOnFeatures(CreateHarfBuzzFace(m_element.Lookup).get(), m_element.Lookup.LanguageCode);
 	} catch (...) {
 		// Show every feature as off by default if the font cannot be read.
 	}
@@ -430,8 +430,8 @@ void App::FaceElementEditorDialog::RepopulateFontLanguageCombobox() {
 	m_languageTags.clear();
 	m_languageTags.emplace_back();
 	m_languageTags.insert(m_languageTags.end(), std::begin(Languages), std::end(Languages));
-	if (!m_element.Lookup.Language.empty() && std::ranges::find(m_languageTags, m_element.Lookup.Language) == m_languageTags.end())
-		m_languageTags.emplace_back(m_element.Lookup.Language);
+	if (!m_element.Lookup.LanguageCode.empty() && std::ranges::find(m_languageTags, m_element.Lookup.LanguageCode) == m_languageTags.end())
+		m_languageTags.emplace_back(m_element.Lookup.LanguageCode);
 
 	ComboBox_ResetContent(m_controls->FontLanguageCombo);
 	for (const auto& tag : m_languageTags) {
@@ -447,7 +447,7 @@ void App::FaceElementEditorDialog::RepopulateFontLanguageCombobox() {
 				text = tagW;
 		}
 		ComboBox_AddString(m_controls->FontLanguageCombo, text.c_str());
-		if (tag == m_element.Lookup.Language)
+		if (tag == m_element.Lookup.LanguageCode)
 			ComboBox_SetCurSel(m_controls->FontLanguageCombo, ComboBox_GetCount(m_controls->FontLanguageCombo) - 1);
 	}
 }

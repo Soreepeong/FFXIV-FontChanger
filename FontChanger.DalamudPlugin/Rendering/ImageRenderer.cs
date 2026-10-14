@@ -1,13 +1,16 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
-using CustomFonts.Utilities;
+
+using FontChanger.DalamudPlugin.Utilities;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
+
 using static TerraFX.Interop.DirectX.DirectX;
 using static TerraFX.Interop.Windows.Windows;
 
-namespace CustomFonts.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>
 /// Draws SVG documents and bitmaps into coverage with Direct2D, on the CPU (a WIC bitmap target), and decodes PNG files
@@ -19,23 +22,19 @@ internal sealed unsafe class ImageRenderer : IDisposable
     // transformation alone decides where the drawing goes.
     private const float SvgViewportHalfSize = 100000;
 
-    private ID2D1Factory1* factory;
-    private IWICImagingFactory* wic;
+    private ComPtr<ID2D1Factory1> _factory;
+    private ComPtr<IWICImagingFactory> _wic;
 
     public ImageRenderer()
     {
         try
         {
-            ID2D1Factory1* f;
             var iid = IID.IID_ID2D1Factory1;
             var options = default(D2D1_FACTORY_OPTIONS);
-            D2D1CreateFactory(D2D1_FACTORY_TYPE.D2D1_FACTORY_TYPE_SINGLE_THREADED, &iid, &options, (void**)&f).ThrowOnError();
-            this.factory = f;
+            D2D1CreateFactory(D2D1_FACTORY_TYPE.D2D1_FACTORY_TYPE_SINGLE_THREADED, &iid, &options, (void**)this._factory.GetAddressOf()).ThrowOnError();
 
             // Without COM, which the game's thread may not have set up.
-            IWICImagingFactory* w;
-            WICCreateImagingFactory_Proxy(0x0237, &w).ThrowOnError();
-            this.wic = w;
+            WICCreateImagingFactory_Proxy(0x0237, this._wic.GetAddressOf()).ThrowOnError();
         }
         catch
         {
@@ -46,17 +45,8 @@ internal sealed unsafe class ImageRenderer : IDisposable
 
     public void Dispose()
     {
-        if (this.wic is not null)
-        {
-            this.wic->Release();
-            this.wic = null;
-        }
-
-        if (this.factory is not null)
-        {
-            this.factory->Release();
-            this.factory = null;
-        }
+        this._wic.Dispose();
+        this._factory.Dispose();
     }
 
     /// <summary>
@@ -72,29 +62,38 @@ internal sealed unsafe class ImageRenderer : IDisposable
         // The viewBox starts at -SvgViewportHalfSize.
         matrix._31 -= SvgViewportHalfSize * (matrix._11 + matrix._21);
         matrix._32 -= SvgViewportHalfSize * (matrix._12 + matrix._22);
-        var pixels = this.Render(width, height, context =>
-        {
-            IStream* stream;
-            fixed (byte* p = bytes)
-                stream = SHCreateMemStream(p, (uint)bytes.Length);
-            if (stream is null)
-                throw new OutOfMemoryException();
-
-            ID2D1SvgDocument* document = null;
-            ID2D1SvgElement* root = null;
-            try
+        var pixels = this.Render(
+            width,
+            height,
+            context =>
             {
-                context->CreateSvgDocument(stream, new D2D_SIZE_F(2 * SvgViewportHalfSize, 2 * SvgViewportHalfSize), &document).ThrowOnError();
-                RemoveReferenceLayer(document);
+                var created = default(ComPtr<IStream>);
+                fixed (byte* p = bytes)
+                    created.Attach(SHCreateMemStream(p, (uint)bytes.Length));
+                using var stream = created;
+                if (stream.IsNull)
+                    throw new OutOfMemoryException();
 
-                document->GetRoot(&root);
+                using var document = default(ComPtr<ID2D1SvgDocument>);
+                context->CreateSvgDocument(stream.Get(), new(2 * SvgViewportHalfSize, 2 * SvgViewportHalfSize), document.GetAddressOf()).ThrowOnError();
+                RemoveReferenceLayer(document.Get());
+
+                using var rootPtr = default(ComPtr<ID2D1SvgElement>);
+                document.Get()->GetRoot(rootPtr.GetAddressOf());
+                var root = rootPtr.Get();
                 if (root is null)
                     throw new InvalidDataException("The SVG document has no root.");
-                var viewBox = new D2D1_SVG_VIEWBOX { x = -SvgViewportHalfSize, y = -SvgViewportHalfSize, width = 2 * SvgViewportHalfSize, height = 2 * SvgViewportHalfSize };
+                var viewBox = new D2D1_SVG_VIEWBOX
+                    { x = -SvgViewportHalfSize, y = -SvgViewportHalfSize, width = 2 * SvgViewportHalfSize, height = 2 * SvgViewportHalfSize };
                 var length = new D2D1_SVG_LENGTH { value = 2 * SvgViewportHalfSize, units = D2D1_SVG_LENGTH_UNITS.D2D1_SVG_LENGTH_UNITS_NUMBER };
-                var aspect = new D2D1_SVG_PRESERVE_ASPECT_RATIO { defer = BOOL.FALSE, align = D2D1_SVG_ASPECT_ALIGN.D2D1_SVG_ASPECT_ALIGN_NONE, meetOrSlice = D2D1_SVG_ASPECT_SCALING.D2D1_SVG_ASPECT_SCALING_MEET };
+                var aspect = new D2D1_SVG_PRESERVE_ASPECT_RATIO
+                {
+                    defer = BOOL.FALSE, align = D2D1_SVG_ASPECT_ALIGN.D2D1_SVG_ASPECT_ALIGN_NONE,
+                    meetOrSlice = D2D1_SVG_ASPECT_SCALING.D2D1_SVG_ASPECT_SCALING_MEET
+                };
                 fixed (char* name = "viewBox")
-                    root->SetAttributeValue(name, D2D1_SVG_ATTRIBUTE_POD_TYPE.D2D1_SVG_ATTRIBUTE_POD_TYPE_VIEWBOX, &viewBox, (uint)sizeof(D2D1_SVG_VIEWBOX)).ThrowOnError();
+                    root->SetAttributeValue(name, D2D1_SVG_ATTRIBUTE_POD_TYPE.D2D1_SVG_ATTRIBUTE_POD_TYPE_VIEWBOX, &viewBox, (uint)sizeof(D2D1_SVG_VIEWBOX))
+                        .ThrowOnError();
                 fixed (char* name = "width")
                     root->SetAttributeValue(name, &length).ThrowOnError();
                 fixed (char* name = "height")
@@ -108,17 +107,8 @@ internal sealed unsafe class ImageRenderer : IDisposable
 
                 var transform = matrix;
                 context->SetTransform(&transform);
-                context->DrawSvgDocument(document);
-            }
-            finally
-            {
-                if (root is not null)
-                    root->Release();
-                if (document is not null)
-                    document->Release();
-                stream->Release();
-            }
-        });
+                context->DrawSvgDocument(document.Get());
+            });
 
         var coverage = new byte[pixels.Length];
         for (var i = 0; i < pixels.Length; i++)
@@ -137,7 +127,14 @@ internal sealed unsafe class ImageRenderer : IDisposable
     /// <paramref name="width"/> by <paramref name="height"/>; with nearest-neighbour sampling, else high quality cubic.
     /// </summary>
     public byte[] DrawCoverage(
-        byte[] source, int sourceWidth, int sourceHeight, (float X1, float Y1, float X2, float Y2) rect, ReadOnlySpan<float> m, int width, int height, bool nearest)
+        byte[] source,
+        int sourceWidth,
+        int sourceHeight,
+        (float X1, float Y1, float X2, float Y2) rect,
+        ReadOnlySpan<float> m,
+        int width,
+        int height,
+        bool nearest)
     {
         // Black, with the coverage as its opacity (premultiplied).
         var premultiplied = new uint[source.Length];
@@ -145,35 +142,33 @@ internal sealed unsafe class ImageRenderer : IDisposable
             premultiplied[i] = (uint)source[i] << 24;
 
         var matrix = ToD2D(m);
-        var pixels = this.Render(width, height, context =>
-        {
-            ID2D1Bitmap1* bitmap;
-            var props = new D2D1_BITMAP_PROPERTIES1
+        var pixels = this.Render(
+            width,
+            height,
+            context =>
             {
-                pixelFormat = new() { format = DXGI_FORMAT.DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode = D2D1_ALPHA_MODE.D2D1_ALPHA_MODE_PREMULTIPLIED },
-                dpiX = 96,
-                dpiY = 96,
-            };
-            fixed (uint* p = premultiplied)
-                context->CreateBitmap(new D2D_SIZE_U((uint)sourceWidth, (uint)sourceHeight), p, (uint)sourceWidth * 4, &props, &bitmap).ThrowOnError();
-            try
-            {
+                using var bitmap = default(ComPtr<ID2D1Bitmap1>);
+                var props = new D2D1_BITMAP_PROPERTIES1
+                {
+                    pixelFormat = new() { format = DXGI_FORMAT.DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode = D2D1_ALPHA_MODE.D2D1_ALPHA_MODE_PREMULTIPLIED },
+                    dpiX = 96,
+                    dpiY = 96,
+                };
+                fixed (uint* p = premultiplied)
+                    context->CreateBitmap(new((uint)sourceWidth, (uint)sourceHeight), p, (uint)sourceWidth * 4, &props, bitmap.GetAddressOf()).ThrowOnError();
                 var transform = matrix;
                 context->SetTransform(&transform);
                 var dest = new D2D_RECT_F(rect.X1, rect.Y1, rect.X2, rect.Y2);
                 context->DrawBitmap(
-                    (ID2D1Bitmap*)bitmap,
+                    (ID2D1Bitmap*)bitmap.Get(),
                     &dest,
                     1,
-                    nearest ? D2D1_INTERPOLATION_MODE.D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR : D2D1_INTERPOLATION_MODE.D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
+                    nearest
+                        ? D2D1_INTERPOLATION_MODE.D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR
+                        : D2D1_INTERPOLATION_MODE.D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
                     null,
                     null);
-            }
-            finally
-            {
-                bitmap->Release();
-            }
-        });
+            });
 
         var coverage = new byte[pixels.Length];
         for (var i = 0; i < pixels.Length; i++)
@@ -184,38 +179,25 @@ internal sealed unsafe class ImageRenderer : IDisposable
     /// <summary>Decodes an image file (PNG and others WIC reads) into straight-alpha BGRA pixels.</summary>
     public (uint[] Pixels, int Width, int Height) Decode(byte[] data)
     {
-        IWICStream* stream = null;
-        IWICBitmapDecoder* decoder = null;
-        IWICBitmapFrameDecode* frame = null;
-        IWICBitmapSource* converted = null;
-        try
+        using var stream = default(ComPtr<IWICStream>);
+        using var decoder = default(ComPtr<IWICBitmapDecoder>);
+        using var frame = default(ComPtr<IWICBitmapFrameDecode>);
+        using var converted = default(ComPtr<IWICBitmapSource>);
+        this._wic.Get()->CreateStream(stream.GetAddressOf()).ThrowOnError();
+        fixed (byte* p = data)
         {
-            this.wic->CreateStream(&stream).ThrowOnError();
-            fixed (byte* p = data)
-            {
-                stream->InitializeFromMemory(p, (uint)data.Length).ThrowOnError();
-                this.wic->CreateDecoderFromStream((IStream*)stream, null, WICDecodeOptions.WICDecodeMetadataCacheOnDemand, &decoder).ThrowOnError();
-                decoder->GetFrame(0, &frame).ThrowOnError();
-                var format = GUID.GUID_WICPixelFormat32bppBGRA;
-                WICConvertBitmapSource(&format, (IWICBitmapSource*)frame, &converted).ThrowOnError();
-                uint w, h;
-                converted->GetSize(&w, &h).ThrowOnError();
-                var pixels = new uint[w * h];
-                fixed (uint* d = pixels)
-                    converted->CopyPixels(null, w * 4, (uint)pixels.Length * 4, (byte*)d).ThrowOnError();
-                return (pixels, (int)w, (int)h);
-            }
-        }
-        finally
-        {
-            if (converted is not null)
-                converted->Release();
-            if (frame is not null)
-                frame->Release();
-            if (decoder is not null)
-                decoder->Release();
-            if (stream is not null)
-                stream->Release();
+            stream.Get()->InitializeFromMemory(p, (uint)data.Length).ThrowOnError();
+            this._wic.Get()->CreateDecoderFromStream((IStream*)stream.Get(), null, WICDecodeOptions.WICDecodeMetadataCacheOnDemand, decoder.GetAddressOf())
+                .ThrowOnError();
+            decoder.Get()->GetFrame(0, frame.GetAddressOf()).ThrowOnError();
+            var format = GUID.GUID_WICPixelFormat32bppBGRA;
+            WICConvertBitmapSource(&format, (IWICBitmapSource*)frame.Get(), converted.GetAddressOf()).ThrowOnError();
+            uint w, h;
+            converted.Get()->GetSize(&w, &h).ThrowOnError();
+            var pixels = new uint[w * h];
+            fixed (uint* d = pixels)
+                converted.Get()->CopyPixels(null, w * 4, (uint)pixels.Length * 4, (byte*)d).ThrowOnError();
+            return (pixels, (int)w, (int)h);
         }
     }
 
@@ -238,65 +220,46 @@ internal sealed unsafe class ImageRenderer : IDisposable
     /// <summary>Removes the reference layer of exported glyphs, which is there to be traced over, not drawn.</summary>
     private static void RemoveReferenceLayer(ID2D1SvgDocument* document)
     {
-        ID2D1SvgElement* reference = null;
+        using var reference = default(ComPtr<ID2D1SvgElement>);
         fixed (char* id = "xivfont-reference")
         {
-            if (document->FindElementById(id, &reference).FAILED || reference is null)
+            if (document->FindElementById(id, reference.GetAddressOf()).FAILED || reference.IsNull)
                 return;
         }
 
-        ID2D1SvgElement* parent = null;
-        reference->GetParent(&parent);
-        if (parent is not null)
-        {
-            parent->RemoveChild(reference);
-            parent->Release();
-        }
-
-        reference->Release();
+        using var parent = default(ComPtr<ID2D1SvgElement>);
+        reference.Get()->GetParent(parent.GetAddressOf());
+        if (!parent.IsNull)
+            parent.Get()->RemoveChild(reference.Get());
     }
 
     /// <summary>Draws into a transparent target of a size, and returns its premultiplied BGRA pixels.</summary>
     private uint[] Render(int width, int height, DrawCallback draw)
     {
-        IWICBitmap* bitmap = null;
-        ID2D1RenderTarget* target = null;
-        ID2D1DeviceContext5* context = null;
-        try
+        using var bitmap = default(ComPtr<IWICBitmap>);
+        using var target = default(ComPtr<ID2D1RenderTarget>);
+        using var context = default(ComPtr<ID2D1DeviceContext5>);
+        var format = GUID.GUID_WICPixelFormat32bppPBGRA;
+        this._wic.Get()->CreateBitmap((uint)width, (uint)height, &format, WICBitmapCreateCacheOption.WICBitmapCacheOnLoad, bitmap.GetAddressOf()).ThrowOnError();
+        var props = new D2D1_RENDER_TARGET_PROPERTIES
         {
-            var format = GUID.GUID_WICPixelFormat32bppPBGRA;
-            this.wic->CreateBitmap((uint)width, (uint)height, &format, WICBitmapCreateCacheOption.WICBitmapCacheOnLoad, &bitmap).ThrowOnError();
-            var props = new D2D1_RENDER_TARGET_PROPERTIES
-            {
-                type = D2D1_RENDER_TARGET_TYPE.D2D1_RENDER_TARGET_TYPE_SOFTWARE,
-                pixelFormat = new() { format = DXGI_FORMAT.DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode = D2D1_ALPHA_MODE.D2D1_ALPHA_MODE_PREMULTIPLIED },
-                dpiX = 96,
-                dpiY = 96,
-            };
-            ((ID2D1Factory*)this.factory)->CreateWicBitmapRenderTarget(bitmap, &props, &target).ThrowOnError();
-            var iid = IID.IID_ID2D1DeviceContext5;
-            ((IUnknown*)target)->QueryInterface(&iid, (void**)&context).ThrowOnError();
+            type = D2D1_RENDER_TARGET_TYPE.D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+            pixelFormat = new() { format = DXGI_FORMAT.DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode = D2D1_ALPHA_MODE.D2D1_ALPHA_MODE_PREMULTIPLIED },
+            dpiX = 96,
+            dpiY = 96,
+        };
+        ((ID2D1Factory*)this._factory.Get())->CreateWicBitmapRenderTarget(bitmap.Get(), &props, target.GetAddressOf()).ThrowOnError();
+        target.CopyTo(context.GetAddressOf()).ThrowOnError();
 
-            context->BeginDraw();
-            context->Clear(null);
-            draw(context);
-            context->EndDraw(null, null).ThrowOnError();
+        context.Get()->BeginDraw();
+        context.Get()->Clear(null);
+        draw(context.Get());
+        context.Get()->EndDraw(null, null).ThrowOnError();
 
-            var pixels = new uint[width * height];
-            var rect = new WICRect { X = 0, Y = 0, Width = width, Height = height };
-            fixed (uint* p = pixels)
-                bitmap->CopyPixels(&rect, (uint)width * 4, (uint)pixels.Length * 4, (byte*)p).ThrowOnError();
-            return pixels;
-        }
-        finally
-        {
-            if (context is not null)
-                context->Release();
-            if (target is not null)
-                target->Release();
-            if (bitmap is not null)
-                bitmap->Release();
-        }
+        var pixels = new uint[width * height];
+        var rect = new WICRect { X = 0, Y = 0, Width = width, Height = height };
+        fixed (uint* p = pixels)
+            bitmap.Get()->CopyPixels(&rect, (uint)width * 4, (uint)pixels.Length * 4, (byte*)p).ThrowOnError();
+        return pixels;
     }
-
 }

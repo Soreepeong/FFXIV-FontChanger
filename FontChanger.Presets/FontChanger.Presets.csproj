@@ -1,18 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Version>0.0.0.1</Version>
-    <RootNamespace>FontChanger.Presets</RootNamespace>
-    <Description>Reads FontChanger presets (XivRes.FontGenerator JSON); without dependencies, for other solutions to include this repository as a submodule.</Description>
-    <IsPackable>false</IsPackable>
-    <Nullable>enable</Nullable>
-    <!-- The solution builds it as x64; any platform runs it. -->
-    <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
-  </PropertyGroup>
-  <ItemGroup>
-    <!-- Data FontChanger.FixedSizeFont reads too: the game's fonts, and the shapes and presets of glyph merging. -->
-    <EmbeddedResource Include="..\FontChanger.FixedSizeFont\data\game_fonts.json" LogicalName="FontChanger.Presets.game_fonts.json" />
-    <EmbeddedResource Include="..\FontChanger.FixedSizeFont\data\glyph_merge_shapes.json" LogicalName="FontChanger.Presets.glyph_merge_shapes.json" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Version>0.0.0.1</Version>
+        <RootNamespace>FontChanger.Presets</RootNamespace>
+        <Description>Reads FontChanger presets (XivRes.FontGenerator JSON); without dependencies, for other solutions to include this repository as a submodule.</Description>
+        <IsPackable>false</IsPackable>
+        <Nullable>enable</Nullable>
+        <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
+    </PropertyGroup>
+    <ItemGroup>
+        <EmbeddedResource Include="..\FontChanger.FixedSizeFont\data\game_fonts.json"
+                          LogicalName="FontChanger.Presets.game_fonts.json" />
+        <EmbeddedResource Include="..\FontChanger.FixedSizeFont\data\glyph_merge_shapes.json"
+                          LogicalName="FontChanger.Presets.glyph_merge_shapes.json" />
+    </ItemGroup>
+    <ItemGroup>
+      <PackageReference Include="JetBrains.Annotations" Version="2026.2.0" />
+    </ItemGroup>
 </Project>

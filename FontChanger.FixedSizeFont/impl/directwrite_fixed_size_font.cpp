@@ -458,7 +458,7 @@ FontChanger::FixedSizeFont::directwrite_fixed_size_font::dwrite_interfaces FontC
 		style,
 		res.Font->GetStretch(),
 		info.Size,
-		info.Params.Language.empty() ? L"en-us" : util::unicode::convert<std::wstring>(info.Params.Language).c_str(),
+		info.Params.LanguageCode.empty() ? L"en-us" : util::unicode::convert<std::wstring>(info.Params.LanguageCode).c_str(),
 		&res.Format));
 	if (IDWriteTextFormat3Ptr format3; !axisValues.empty() && SUCCEEDED(res.Format.QueryInterface(decltype(format3)::GetIID(), &format3)))
 		success_or_throw(format3->SetFontAxisValues(axisValues.data(), static_cast<UINT32>(axisValues.size())));
@@ -532,7 +532,7 @@ void FontChanger::FixedSizeFont::directwrite_fixed_size_font::load_font_data(inf
 
 	// Positioning is keyed by the glyphs that are actually drawn, which may be substituted by the selected features.
 	std::vector<std::set<char32_t>> glyphToCharMap(65536);
-	if (info.Params.Features.empty() && info.Params.Language.empty()) {
+	if (info.Params.Features.empty() && info.Params.LanguageCode.empty()) {
 		const std::vector<UINT32> codepoints(info.Characters.begin(), info.Characters.end());
 		std::vector<UINT16> glyphIndices(codepoints.size());
 		success_or_throw(dwrite.Face->GetGlyphIndices(codepoints.data(), static_cast<UINT32>(codepoints.size()), glyphIndices.data()));
@@ -565,7 +565,7 @@ void FontChanger::FixedSizeFont::directwrite_fixed_size_font::load_font_data(inf
 		.Fvar = fvarDataRef.get_span<char>(),
 		.Avar = avarDataRef.get_span<char>(),
 		.DesignCoordinates = std::move(designCoordinates),
-		.Language = info.Params.Language,
+		.LanguageCode = info.Params.LanguageCode,
 		.Size = info.Size,
 		.UnitsPerEm = info.Metrics.designUnitsPerEm,
 		.ScaleX = info.Matrix.m11,
@@ -709,8 +709,15 @@ bool FontChanger::FixedSizeFont::directwrite_fixed_size_font::try_get_glyph_inde
 		};
 
 		auto renderMode = m_info->Params.RenderMode;
-		if (renderMode == DWRITE_RENDERING_MODE_DEFAULT)
-			success_or_throw(m_dwrite.Face->GetRecommendedRenderingMode(m_info->Size, 1.f, m_info->Params.MeasureMode, nullptr, &renderMode));
+		if (renderMode == DWRITE_RENDERING_MODE1_DEFAULT) {
+			DWRITE_RENDERING_MODE recommended;
+			success_or_throw(m_dwrite.Face->GetRecommendedRenderingMode(m_info->Size, 1.f, m_info->Params.MeasureMode, nullptr, &recommended));
+			renderMode = static_cast<DWRITE_RENDERING_MODE1>(recommended);
+		}
+
+		// Outlines are not rasterized by glyph run analysis.
+		if (renderMode == DWRITE_RENDERING_MODE1_OUTLINE)
+			renderMode = DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC;
 
 		// The origin is given in pixels, after the transformation; the baseline origin of the run would be transformed too.
 		auto matrix = m_info->Matrix;
@@ -1032,12 +1039,14 @@ const wchar_t* FontChanger::FixedSizeFont::directwrite_fixed_size_font::create_s
 
 const wchar_t* FontChanger::FixedSizeFont::directwrite_fixed_size_font::create_struct::get_rendering_mode_string() const {
 	switch (RenderMode) {
-		case DWRITE_RENDERING_MODE_DEFAULT: return L"Default";
-		case DWRITE_RENDERING_MODE_ALIASED: return L"Aliased";
-		case DWRITE_RENDERING_MODE_GDI_CLASSIC: return L"GDI Classic";
-		case DWRITE_RENDERING_MODE_GDI_NATURAL: return L"GDI Natural";
-		case DWRITE_RENDERING_MODE_NATURAL: return L"Natural";
-		case DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC: return L"Natural Symmetric";
+		case DWRITE_RENDERING_MODE1_DEFAULT: return L"Default";
+		case DWRITE_RENDERING_MODE1_ALIASED: return L"Aliased";
+		case DWRITE_RENDERING_MODE1_GDI_CLASSIC: return L"GDI Classic";
+		case DWRITE_RENDERING_MODE1_GDI_NATURAL: return L"GDI Natural";
+		case DWRITE_RENDERING_MODE1_NATURAL: return L"Natural";
+		case DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC: return L"Natural Symmetric";
+		case DWRITE_RENDERING_MODE1_OUTLINE: return L"Outline";
+		case DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC_DOWNSAMPLED: return L"Natural Symmetric Downsampled";
 		default: return L"Invalid";
 	}
 }
