@@ -94,13 +94,15 @@ internal static class Program
         return 0;
     }
 
-    /// <summary>Compiles FontSubpixelPS.hlsl, and checks that patching its ClearTypeLevel and Contrast gives what compiling with them does.</summary>
+    /// <summary>Compiles FontSubpixelPS.hlsl, and checks that patching its ClearTypeLevel, Contrast and Gamma gives what compiling with them does.</summary>
     private static int CompileSubpixel(string sourcePath, string outputPath, bool highlight)
     {
         const string levelDeclaration = "static const float ClearTypeLevel = 0.234567891f;";
         const string contrastDeclaration = "static const float Contrast = 0.345678912f;";
+        const string gammaDeclaration = "static const float Gamma = 0.456789123f;";
         const float testLevel = 0.75f;
         const float testContrast = 1.25f;
+        const float testGamma = 2.2f;
 
         var source = File.ReadAllText(sourcePath).Replace("\r\n", "\n");
         if (highlight)
@@ -113,22 +115,30 @@ internal static class Program
 
         if (messages.Length > 0)
             Console.WriteLine(messages);
-        if (!source.Contains(levelDeclaration, StringComparison.Ordinal) || !source.Contains(contrastDeclaration, StringComparison.Ordinal))
+        if (!source.Contains(levelDeclaration, StringComparison.Ordinal) || !source.Contains(contrastDeclaration, StringComparison.Ordinal)
+            || !source.Contains(gammaDeclaration, StringComparison.Ordinal))
         {
-            Console.Error.WriteLine($"{sourcePath}: error: the lines {levelDeclaration} and {contrastDeclaration} are needed.");
+            Console.Error.WriteLine($"{sourcePath}: error: the lines {levelDeclaration}, {contrastDeclaration} and {gammaDeclaration} are needed.");
             return 1;
         }
 
         var patched = (byte[])code.Clone();
-        if (PixelShaderSwap.PatchConstants(patched,[(SubpixelShaderCode.ClearTypeLevelSentinel, testLevel), (SubpixelShaderCode.ContrastSentinel, testContrast)]) < 2)
+        if (PixelShaderSwap.PatchConstants(
+                patched,
+                [
+                    (SubpixelShaderCode.ClearTypeLevelSentinel, testLevel),
+                    (SubpixelShaderCode.ContrastSentinel, testContrast),
+                    (SubpixelShaderCode.GammaSentinel, testGamma),
+                ]) < 3)
         {
-            Console.Error.WriteLine($"{sourcePath}: error: ClearTypeLevel and Contrast aren't both immediate operands in the bytecode.");
+            Console.Error.WriteLine($"{sourcePath}: error: ClearTypeLevel, Contrast and Gamma aren't all immediate operands in the bytecode.");
             return 1;
         }
 
         var withTest = source
                        .Replace(levelDeclaration, $"static const float ClearTypeLevel = {testLevel.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal)
-                       .Replace(contrastDeclaration, $"static const float Contrast = {testContrast.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal);
+                       .Replace(contrastDeclaration, $"static const float Contrast = {testContrast.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal)
+                       .Replace(gammaDeclaration, $"static const float Gamma = {testGamma.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal);
         if (!D3DCompiler.Compile(Encoding.UTF8.GetBytes(withTest), sourcePath, "main", "ps_5_0", out var expected, out messages))
         {
             Console.Error.WriteLine($"{sourcePath}: error: compiling with the test values failed: {messages}");

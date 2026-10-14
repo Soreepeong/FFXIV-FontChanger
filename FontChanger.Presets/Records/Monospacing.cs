@@ -1,10 +1,8 @@
 ﻿using System.Text;
 using System.Text.Json.Serialization;
-
-using JetBrains.Annotations;
-
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Utilities;
+using JetBrains.Annotations;
 
 namespace FontChanger.Presets.Records;
 

@@ -423,7 +423,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// <summary>Sets the edge outline's width at each text size. Framework thread; glyphs are made again if a size's margin changes.</summary>
     public void SetEdge(EdgeSettings edge)
     {
-        edge = edge.Clamped();
+        edge = edge.Drawn();
         if (edge == this.Edge)
             return;
 
@@ -437,7 +437,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         // claiming a narrower texture (blocky past about 1.5 px): the fallback if the plugin's can't be used.
         try
         {
-            this._edgeShader.Set(edge != new EdgeSettings(), edge.Softness);
+            this._edgeShader.Set(edge.Enabled && edge != new EdgeSettings { Enabled = true }, edge.Softness);
         }
         catch (Exception ex)
         {

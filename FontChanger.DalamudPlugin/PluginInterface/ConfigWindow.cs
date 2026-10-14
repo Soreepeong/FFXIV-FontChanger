@@ -28,6 +28,7 @@ internal sealed class ConfigWindow : Window
     private readonly FileDialogManager _fileDialog = new();
     private FontChooser? _fontChooser;
     private EdgeSettings? _pendingEdge;
+    private ClearTypeSettings? _pendingClearType;
     private AtlasSettings? _pendingAtlas;
 
     private string? _selectedFamily;
@@ -65,7 +66,7 @@ internal sealed class ConfigWindow : Window
 
         Ig.TabBar("##tabs", this, static t => {
             Ig.TabItem("Font", t, DrawFontTab);
-            Ig.TabItem("Edge", t, DrawEdgeTab);
+            Ig.TabItem("Rendering", t, DrawRenderingTab);
             Ig.TabItem("Advanced", t, DrawAdvancedTab);
         });
     }
@@ -254,38 +255,119 @@ internal sealed class ConfigWindow : Window
         });
     }
 
-    private static void DrawEdgeTab(ConfigWindow t)
+    private static void DrawRenderingTab(ConfigWindow t)
     {
-        var edge = t._pendingEdge ?? t._plugin.Replacer.Edge;
+        var configuration = t._plugin.Configuration;
+        var save = false;
 
-        var (scale, min, max, softness) = (edge.Scale, edge.Min, edge.Max, edge.Softness);
-        var changed = ImGui.SliderFloat("Scale (px per px of text)", ref scale, 0, 0.25f, "%.3f");
-        var active = ImGui.IsItemActive();
-        changed |= ImGui.SliderFloat("Minimum (px)", ref min, 0.25f, 8f, "%.2f");
-        active |= ImGui.IsItemActive();
-        changed |= ImGui.SliderFloat("Maximum (px)", ref max, 0.25f, 8f, "%.2f");
-        active |= ImGui.IsItemActive();
-        changed |= ImGui.SliderFloat("Softness", ref softness, 0, EdgeShaderCode.MaxSoftness, "%.2f");
-        active |= ImGui.IsItemActive();
+        // The configured edge: the replacer has the game's own while customization is off.
+        var edge = t._pendingEdge ?? configuration.Edge;
+        var (edgeEnabled, scale, min, max, softness) = (edge.Enabled, edge.Scale, edge.Min, edge.Max, edge.Softness);
+        var changed = ImGui.Checkbox("Use text border customization", ref edgeEnabled);
+        var active = false;
+        using (ImRaii.Disabled(!edgeEnabled))
+        {
+            changed |= ImGui.SliderFloat("Scale (px per px of text)", ref scale, 0, 0.25f, "%.3f");
+            active |= ImGui.IsItemActive();
+            changed |= ImGui.SliderFloat("Minimum (px)", ref min, 0.25f, 8f, "%.2f");
+            active |= ImGui.IsItemActive();
+            changed |= ImGui.SliderFloat("Maximum (px)", ref max, 0.25f, 8f, "%.2f");
+            active |= ImGui.IsItemActive();
+            changed |= ImGui.SliderFloat("Softness", ref softness, 0, EdgeShaderCode.MaxSoftness, "%.2f");
+            active |= ImGui.IsItemActive();
+        }
 
-        if (changed) t._pendingEdge = new EdgeSettings { Scale = scale, Min = min, Max = max, Softness = softness }.Clamped();
+        if (changed) t._pendingEdge = new EdgeSettings(scale, min, max, softness, edgeEnabled).Clamped();
 
         if (t._pendingEdge is { } pending && !active)
         {
             t._pendingEdge = null;
-            t._plugin.Configuration.Edge = pending;
+            configuration.Edge = pending;
+            save = true;
             Plugin.Framework.RunOnTick(() => t._plugin.Replacer.SetEdge(pending));
         }
 
-        var subpixel = (int)t._plugin.Configuration.Subpixel;
-        if (Ig.Radios("Subpixel rendering", ref subpixel, "Off", "System", "RGB", "BGR"))
+        ImGui.Separator();
+
+        var mode = configuration.Subpixel;
+        var modeChanged = false;
+        var subpixel = mode != SubpixelMode.Off;
+        if (ImGui.Checkbox("Use subpixel rendering", ref subpixel))
         {
-            changed = true;
-            t._plugin.Configuration.Subpixel = (SubpixelMode)subpixel;
+            mode = subpixel ? SubpixelMode.System : SubpixelMode.Off;
+            modeChanged = true;
+        }
+
+        Tooltip(
+            "Draws replaced text per red, green and blue subpixel of the screen, as ClearType does. Turn it off on rotated screens and on screens "
+            + "whose subpixels are not in vertical stripes (most OLED panels). Following Windows' ClearType settings takes the layout, color "
+            + "separation, contrast and gamma that the ClearType Text Tuner set for the game's monitor. Text drawn scaled, and nameplates, stay "
+            + "grayscale.");
+
+        using (ImRaii.Disabled(!subpixel))
+        {
+            var layout = Math.Max((int)mode - (int)SubpixelMode.System, 0);
+            if (Ig.Radios("Subpixel layout", ref layout, "Follow Windows ClearType settings", "RGB", "BGR"))
+            {
+                mode = SubpixelMode.System + layout;
+                modeChanged = true;
+            }
+        }
+
+        var own = mode is SubpixelMode.Rgb or SubpixelMode.Bgr;
+        if (modeChanged)
+        {
+            // Choosing a layout for the first time starts from Windows' values.
+            if (own && configuration.ClearType == new ClearTypeSettings())
+            {
+                var windows = SubpixelSettings.OfWindows(Plugin.GameWindow);
+                configuration.ClearType = new ClearTypeSettings(windows.Level, windows.Contrast, windows.Gamma).Clamped();
+            }
+
+            configuration.Subpixel = mode;
+            save = true;
             Plugin.Framework.RunOnTick(t._plugin.ApplySubpixel);
         }
 
-        if (changed) Plugin.PluginInterface.SavePluginConfig(t._plugin.Configuration);
+        // While following Windows, its values as last applied.
+        var applied = t._plugin.Replacer.Subpixel;
+        var clearType = t._pendingClearType
+                        ?? (mode == SubpixelMode.System ? new(applied.Level, applied.Contrast, applied.Gamma) : configuration.ClearType);
+        var (level, contrast, gamma) = (clearType.Level, clearType.Contrast, clearType.Gamma);
+        changed = false;
+        active = false;
+        using (ImRaii.Disabled(!own))
+        {
+            changed |= ImGui.SliderFloat("Color separation", ref level, 0, 1, "%.2f");
+            active |= ImGui.IsItemActive();
+            Tooltip(
+                "How differently the red, green and blue subpixels of a pixel are drawn (the ClearType level): 0 is grayscale, 1 is full "
+                + "ClearType. Lower values weaken color fringes but blur strokes.");
+            changed |= ImGui.SliderFloat("Enhanced contrast", ref contrast, 0, 4, "%.2f");
+            active |= ImGui.IsItemActive();
+            Tooltip("Darkens partly covered pixels, making strokes look heavier. 0 leaves them as they are.");
+            changed |= ImGui.SliderFloat("Gamma", ref gamma, 1, 3, "%.2f");
+            active |= ImGui.IsItemActive();
+            Tooltip("The display's gamma, which blending corrects for. Higher values make light text heavier and dark text lighter.");
+        }
+
+        if (changed) t._pendingClearType = new ClearTypeSettings(level, contrast, gamma).Clamped();
+
+        if (t._pendingClearType is { } pendingClearType && !active)
+        {
+            t._pendingClearType = null;
+            configuration.ClearType = pendingClearType;
+            save = true;
+            Plugin.Framework.RunOnTick(t._plugin.ApplySubpixel);
+        }
+
+        if (save) Plugin.PluginInterface.SavePluginConfig(configuration);
+    }
+
+    private static void Tooltip(string text)
+    {
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(text);
     }
 
     private static void DrawAdvancedTab(ConfigWindow t)

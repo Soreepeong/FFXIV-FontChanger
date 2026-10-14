@@ -67,7 +67,7 @@ internal sealed unsafe class SubpixelTextShaders : IDisposable
 
         lock (this._sync)
         {
-            var shaderChanged = value.Level != this._settings.Level || value.Contrast != this._settings.Contrast;
+            var shaderChanged = value.Level != this._settings.Level || value.Contrast != this._settings.Contrast || value.Gamma != this._settings.Gamma;
             this._settings = value;
             this._enabled = value.Order != SubpixelOrder.None;
 
@@ -277,15 +277,19 @@ internal sealed unsafe class SubpixelTextShaders : IDisposable
         return shader;
     }
 
-    /// <summary>Makes FontSubpixelPS, or its highlight variant, with the settings' level and contrast.</summary>
+    /// <summary>Makes FontSubpixelPS, or its highlight variant, with the settings' level, contrast and gamma.</summary>
     private ComPtr<ID3D11PixelShader> CreateShader(ID3D11PixelShader* game, bool highlight)
     {
         var code = PixelShaderSwap.ReadShaderCode(
             highlight ? "FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelHighlightPS.cso" : "FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelPS.cso");
         if (PixelShaderSwap.PatchConstants(
                 code,
-                [(SubpixelShaderCode.ClearTypeLevelSentinel, this._settings.Level), (SubpixelShaderCode.ContrastSentinel, this._settings.Contrast)]) < 2)
-            Plugin.Log.Warning("FontSubpixelPS.cso doesn't have both of its settings to set; text is drawn with the values it was compiled with");
+                [
+                    (SubpixelShaderCode.ClearTypeLevelSentinel, this._settings.Level),
+                    (SubpixelShaderCode.ContrastSentinel, this._settings.Contrast),
+                    (SubpixelShaderCode.GammaSentinel, this._settings.Gamma),
+                ]) < 3)
+            Plugin.Log.Warning("FontSubpixelPS.cso doesn't have all of its settings to set; text is drawn with the values it was compiled with");
         return PixelShaderSwap.CreateShader(game, code);
     }
 

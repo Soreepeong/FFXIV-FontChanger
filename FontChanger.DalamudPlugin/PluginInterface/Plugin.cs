@@ -21,7 +21,7 @@ public sealed class Plugin : IDalamudPlugin
     private bool commandRegistered;
     private bool disposed;
 
-    // How often System mode re-reads Windows' ClearType settings and the game's monitor.
+    // How often Windows' ClearType settings are re-read for the game's monitor, which the window may move to.
     private const long SubpixelRefreshMs = 2000;
     private long lastSubpixelQuery;
 
@@ -35,6 +35,8 @@ public sealed class Plugin : IDalamudPlugin
             InteropGenerator.Runtime.Resolver.GetInstance.Resolve();
 
             this.Configuration = PluginInterface.GetPluginConfig() as Configuration.Configuration ?? new();
+            if (this.Configuration.Migrate())
+                PluginInterface.SavePluginConfig(this.Configuration);
 
             // On the framework thread: the hooked functions run there, and the replacer's state isn't locked against them.
             // Without the nameplates and the line breaker, text is still drawn with the replaced fonts: nameplates as the
@@ -44,7 +46,7 @@ public sealed class Plugin : IDalamudPlugin
                 var replacer = new FontReplacer();
                 replacer.SetAtlas(this.Configuration.Atlas);
                 replacer.SetEdge(this.Configuration.Edge);
-                replacer.SetSubpixel(SubpixelSettings.Of(this.Configuration.Subpixel, GameWindow));
+                replacer.SetSubpixel(SubpixelSettings.Of(this.Configuration.Subpixel, this.Configuration.ClearType, GameWindow));
                 return (replacer,
                            Optional("Nameplate text", () => new NamePlateText(replacer)),
                            Optional("Line breaking", () => new LineBreaker(replacer)));
@@ -201,7 +203,7 @@ public sealed class Plugin : IDalamudPlugin
         this.windowSystem.Draw();
     }
 
-    private static nint GameWindow => PluginInterface.UiBuilder.WindowHandlePtr;
+    internal static nint GameWindow => PluginInterface.UiBuilder.WindowHandlePtr;
 
     /// <summary>Applies the configured subpixel mode. Framework thread, between frames.</summary>
     internal void ApplySubpixel()
@@ -209,7 +211,7 @@ public sealed class Plugin : IDalamudPlugin
         this.lastSubpixelQuery = Environment.TickCount64;
         try
         {
-            this.Replacer.SetSubpixel(SubpixelSettings.Of(this.Configuration.Subpixel, GameWindow));
+            this.Replacer.SetSubpixel(SubpixelSettings.Of(this.Configuration.Subpixel, this.Configuration.ClearType, GameWindow));
         }
         catch (Exception ex)
         {
@@ -220,7 +222,7 @@ public sealed class Plugin : IDalamudPlugin
     private void OnFrameworkUpdate(IFramework framework)
     {
         this.Replacer.EndFrame();
-        if (this.Configuration.Subpixel == SubpixelMode.System && Environment.TickCount64 - this.lastSubpixelQuery >= SubpixelRefreshMs)
+        if (this.Configuration.Subpixel != SubpixelMode.Off && Environment.TickCount64 - this.lastSubpixelQuery >= SubpixelRefreshMs)
             this.ApplySubpixel();
     }
 }
