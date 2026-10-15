@@ -49,6 +49,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
             this.Replacer.Atlas = this.Configuration.Atlas;
             this.Replacer.Edge = this.Configuration.Edge;
+            this.Replacer.VerticalSubpixel = this.Configuration.VerticalSubpixel;
             this.Replacer.Subpixel = SubpixelShaders.SettingsRecord.From(this.Configuration.Subpixel, this.Configuration.ClearType, PluginInterface.UiBuilder.WindowHandlePtr);
             return;
 

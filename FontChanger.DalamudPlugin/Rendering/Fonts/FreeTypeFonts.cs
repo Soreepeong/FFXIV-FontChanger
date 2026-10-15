@@ -29,6 +29,9 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
 
     private const nint FaceFlagMultipleMasters = 1 << 8;
 
+    // FT_LcdFilter.
+    private const int LcdFilterDefault = 1;
+
     private readonly Dictionary<(string Path, uint Index), FFXIVClientStructs.Interop.Pointer<FT_FaceRec_>> _faces = [];
     private FT_LibraryRec_* _library;
 
@@ -53,6 +56,11 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
 
             FT_LibraryRec_* library;
             Check(FT.FT_Init_FreeType(&library));
+
+            // A library built for ClearType-style rendering filters subpixel coverage across neighbors, against color
+            // fringes; one rendering the Harmony way (the bundled one) samples each color at its stripe's place instead,
+            // and has no filter to set.
+            FT_Library_SetLcdFilter(library, LcdFilterDefault);
             return new(library);
         }
         catch (Exception ex)
@@ -77,6 +85,12 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
             this._library = null;
         }
     }
+
+    /// <summary>
+    /// Gets or sets the subpixel order glyphs are drawn for: vertical ones are rendered LCD_V, with R, G, B coverage; others
+    /// as the parameters say.
+    /// </summary>
+    public SubpixelOrder SubpixelOrder { get; set; }
 
     /// <summary>Opens the font file of a DirectWrite font face (kept open, shared); null if it isn't a local file.</summary>
     public FT_FaceRec_* Open(IDWriteFontFace* fontFace)
@@ -129,6 +143,11 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         // Emboldening needs outlines.
         var loadFlags = (FT_LOAD)(parameters.LoadFlags | ((parameters.RenderMode & 15) << LoadTargetShift) | (strength != 0 ? 0x8 : 0));
 
+        // For vertical stripes, antialiased modes give per-subpixel coverage; hinted as the parameters' mode is.
+        var renderMode = (FT_Render_Mode_)parameters.RenderMode;
+        if (this.SubpixelOrder.IsVertical() && renderMode is not (FT_Render_Mode_.FT_RENDER_MODE_MONO or FT_Render_Mode_.FT_RENDER_MODE_SDF))
+            renderMode = FT_Render_Mode_.FT_RENDER_MODE_LCD_V;
+
         // FreeType transforms column vectors with y growing upwards (16.16 fixed point).
         var matrix = new FT_Matrix_
         {
@@ -162,7 +181,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
                     FT.FT_Outline_EmboldenXY(&slot->outline, strength, strength);
                 FT.FT_Outline_Transform(&slot->outline, &matrix);
                 FT.FT_Outline_Translate(&slot->outline, (nint)Rounding.Round((gx - MathF.Floor(gx)) * 64), (nint)Rounding.Round(gy * 64));
-                if (FT.FT_Render_Glyph(slot, (FT_Render_Mode_)parameters.RenderMode) != FT_Error.FT_Err_Ok)
+                if (FT.FT_Render_Glyph(slot, renderMode) != FT_Error.FT_Err_Ok)
                     continue;
             }
 
@@ -231,6 +250,9 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
 
     [DllImport("freetype", CallingConvention = CallingConvention.Cdecl)]
     private static extern FT_Error FT_Done_MM_Var(FT_LibraryRec_* library, MmVar* master);
+
+    [DllImport("freetype", CallingConvention = CallingConvention.Cdecl)]
+    private static extern FT_Error FT_Library_SetLcdFilter(FT_LibraryRec_* library, int filter);
 
     [DllImport("freetype", CallingConvention = CallingConvention.Cdecl)]
     private static extern FT_Error FT_Set_Var_Design_Coordinates(FT_FaceRec_* face, uint count, nint* coordinates);
@@ -336,15 +358,48 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         return px / bestPx;
     }
 
-    /// <summary>Reads a glyph slot's bitmap as 8-bit coverage (converting 1, 2 and 4-bit, and taking BGRA's alpha).</summary>
+    /// <summary>
+    /// Reads a glyph slot's bitmap as 8-bit coverage (converting 1, 2 and 4-bit, and taking BGRA's alpha); an LCD or LCD_V
+    /// one as R, G, B coverage too, with their mean as coverage.
+    /// </summary>
     private RasterGlyph ReadBitmap(FT_GlyphSlotRec_* slot)
     {
         var bitmap = &slot->bitmap;
         int w = (int)bitmap->width, h = (int)bitmap->rows;
+        if (bitmap->pixel_mode == FT_Pixel_Mode_.FT_PIXEL_MODE_LCD)
+            w /= 3;
+        else if (bitmap->pixel_mode == FT_Pixel_Mode_.FT_PIXEL_MODE_LCD_V)
+            h /= 3;
         if (w == 0 || h == 0)
             return new(0, 0, 0, 0, 0, []);
 
         var alpha = new byte[w * h];
+        if (bitmap->pixel_mode is FT_Pixel_Mode_.FT_PIXEL_MODE_LCD or FT_Pixel_Mode_.FT_PIXEL_MODE_LCD_V)
+        {
+            // Subpixels follow each other in a row (LCD) or in three rows (LCD_V), in the stripes' order.
+            var vertical = bitmap->pixel_mode == FT_Pixel_Mode_.FT_PIXEL_MODE_LCD_V;
+            var lcd = new byte[w * h * 3];
+            var blueFirst = this.SubpixelOrder.IsBlueFirst();
+            for (var y = 0; y < h; y++)
+            {
+                for (var x = 0; x < w; x++)
+                {
+                    var i = (y * w) + x;
+                    var sum = 0;
+                    for (var c = 0; c < 3; c++)
+                    {
+                        var v = vertical ? bitmap->buffer[(((y * 3) + c) * bitmap->pitch) + x] : bitmap->buffer[(y * bitmap->pitch) + (x * 3) + c];
+                        lcd[(i * 3) + (blueFirst ? 2 - c : c)] = v;
+                        sum += v;
+                    }
+
+                    alpha[i] = (byte)((sum + 1) / 3);
+                }
+            }
+
+            return new(0, slot->bitmap_left, -slot->bitmap_top, w, h, alpha, lcd);
+        }
+
         if (bitmap->pixel_mode == FT_Pixel_Mode_.FT_PIXEL_MODE_BGRA)
         {
             for (var y = 0; y < h; y++)

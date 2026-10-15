@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Fonts;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
+
+using FreeTypeSharp;
 
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
@@ -65,10 +68,26 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     public IDWriteFontFallback* NoFallback => this._noFallback.Get();
 
     /// <summary>
-    /// Gets or sets whether <see cref="RasterizeRun"/> gives ClearType coverage too, in which order. Framework thread, before
-    /// glyphs are made again.
+    /// Gets or sets whether <see cref="RasterizeRun"/> gives ClearType coverage too, in which order (FreeType's too).
+    /// Framework thread, before glyphs are made again.
     /// </summary>
-    public SubpixelOrder SubpixelOrder { get; set; }
+    public SubpixelOrder SubpixelOrder
+    {
+        get;
+        set
+        {
+            field = value;
+            if (this.FreeType is { } freeType)
+                freeType.SubpixelOrder = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether glyph runs are drawn with FreeType's LCD_V rendering for vertical subpixel orders, which
+    /// DirectWrite has no ClearType for; else (or if FreeType can't open the font) DirectWrite draws them turned a quarter,
+    /// unhinted. Framework thread, before glyphs are made again.
+    /// </summary>
+    public bool VerticalWithFreeType { get; set; }
 
     /// <summary>
     /// Finds the font of a family closest to a weight, stretch and style (simulated if the family lacks it); false if the
@@ -149,8 +168,13 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         Matrix2x2 transform)
     {
         // Grayscale is the mean of the three subpixels; aliased text has no ClearType.
-        var subpixel = this.SubpixelOrder != SubpixelOrder.None &&
-                       (DWRITE_RENDERING_MODE1)parameters.RenderMode != DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_ALIASED;
+        var subpixel = this.UsesSubpixel(parameters);
+        if (subpixel && this.SubpixelOrder.IsVertical() && this.VerticalWithFreeType &&
+            this.RasterizeWithFreeType(face, px, glyphs, advances, offsets, count, originX, advance, parameters, transform) is { } drawn)
+            return drawn;
+
+        // ClearType's stripes are horizontal: for vertical ones, the glyphs are drawn turned a quarter and turned back.
+        var turned = subpixel && this.SubpixelOrder.IsVertical();
         using var analysis = this.CreateAnalysis(
             face,
             px,
@@ -161,7 +185,8 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
             originX,
             parameters,
             transform,
-            subpixel ? DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE : DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            subpixel ? DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE : DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+            turned);
         RECT bounds;
         if (subpixel)
         {
@@ -177,11 +202,15 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
                         .ThrowOnError();
                 }
 
+                if (turned)
+                    (lcd, bounds, cw, ch) = (TurnBack(lcd, cw, ch, 3), TurnBack(bounds), ch, cw);
+
                 var mean = new byte[cw * ch];
+                var blueFirst = this.SubpixelOrder.IsBlueFirst();
                 for (var i = 0; i < mean.Length; i++)
                 {
                     mean[i] = (byte)((lcd[i * 3] + lcd[(i * 3) + 1] + lcd[(i * 3) + 2] + 1) / 3);
-                    if (this.SubpixelOrder == SubpixelOrder.Bgr)
+                    if (blueFirst)
                         (lcd[i * 3], lcd[(i * 3) + 2]) = (lcd[(i * 3) + 2], lcd[i * 3]);
                 }
 
@@ -203,6 +232,9 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
                 analysis.Get()->CreateAlphaTexture(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_ALIASED_1x1, &bounds, p, (uint)alpha.Length)
                     .ThrowOnError();
             }
+
+            if (turned)
+                (alpha, bounds, w, h) = (TurnBack(alpha, w, h, 1), TurnBack(bounds), h, w);
         }
         else
         {
@@ -223,13 +255,133 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         DirectWriteParams parameters,
         Matrix2x2 transform)
     {
-        using var analysis = this.CreateAnalysis(face, px, glyphs, advances, offsets, count, 0, parameters, transform);
+        var vertical = this.UsesSubpixel(parameters) && this.SubpixelOrder.IsVertical();
+        if (vertical && this.VerticalWithFreeType &&
+            this.RasterizeWithFreeType(face, px, glyphs, advances, offsets, count, 0, 0, parameters, transform) is { } g)
+            return new() { left = g.Left, top = g.Top, right = g.Left + g.Width, bottom = g.Top + g.Height };
+
+        using var analysis = this.CreateAnalysis(face, px, glyphs, advances, offsets, count, 0, parameters, transform, turned: vertical);
         RECT bounds;
         analysis.Get()->GetAlphaTextureBounds(DWRITE_TEXTURE_TYPE.DWRITE_TEXTURE_ALIASED_1x1, &bounds).ThrowOnError();
-        return bounds;
+        return vertical ? TurnBack(bounds) : bounds;
     }
 
-    /// <summary>Makes DirectWrite's analysis of a glyph run, which the caller releases.</summary>
+    /// <summary>Gets whether glyph runs drawn with the parameters get subpixel coverage: aliased ones have none.</summary>
+    private bool UsesSubpixel(DirectWriteParams parameters) =>
+        this.SubpixelOrder != SubpixelOrder.None &&
+        (DWRITE_RENDERING_MODE1)parameters.RenderMode != DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_ALIASED;
+
+    /// <summary>
+    /// Rasterizes a glyph run as <see cref="RasterizeRun"/> with FreeType: the face's file, its simulations made as
+    /// FreeType makes them, its axis values, and hinted as the parameters' rendering and grid fitting modes are; null if
+    /// FreeType can't open it, or it has only bitmaps.
+    /// </summary>
+    private RasterGlyph? RasterizeWithFreeType(
+        IDWriteFontFace* face,
+        float px,
+        ushort* glyphs,
+        float* advances,
+        DWRITE_GLYPH_OFFSET* offsets,
+        uint count,
+        float originX,
+        int advance,
+        DirectWriteParams parameters,
+        Matrix2x2 transform)
+    {
+        if (this.FreeType is not { } freeType)
+            return null;
+        var ftFace = freeType.Open(face);
+        if (ftFace is null || !FreeTypeFonts.IsScalable(ftFace))
+            return null;
+
+        // DirectWrite's oblique simulation slants as synthesis does, before the transformation; its bold simulation makes
+        // glyphs 1/50 em wider and taller.
+        var simulations = face->GetSimulations();
+        if ((simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) != 0)
+            transform *= new Matrix2x2(1, -LookupFont.SynthesizedFace.ObliqueSlope, 0, 1);
+        var embolden = (simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_BOLD) != 0 ? 1 / 50f : 0;
+
+        // GDI's modes hint both ways, the natural ones vertically only (FT_LOAD_TARGET_NORMAL, _LIGHT); with the font's
+        // own hinting, as DirectWrite does: FreeType's light mode auto-hints TrueType fonts otherwise, which rounds heights
+        // differently (Comic Sans gains a row above and below).
+        const int noHinting = 1 << 1;
+        const int noAutohint = 1 << 15;
+        var renderMode = (DWRITE_RENDERING_MODE1)parameters.RenderMode is DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_GDI_CLASSIC
+                             or DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_GDI_NATURAL
+                             ? (int)FT_Render_Mode_.FT_RENDER_MODE_NORMAL
+                             : (int)FT_Render_Mode_.FT_RENDER_MODE_LIGHT;
+        var loadFlags = (DWRITE_GRID_FIT_MODE)parameters.GridFitMode == DWRITE_GRID_FIT_MODE.DWRITE_GRID_FIT_MODE_DISABLED ? noHinting : noAutohint;
+
+        return freeType.RasterizeRun(
+            ftFace,
+            px,
+            glyphs,
+            advances,
+            offsets,
+            count,
+            originX,
+            advance,
+            new(loadFlags, renderMode),
+            transform,
+            GetAxisValues(face),
+            embolden);
+    }
+
+    /// <summary>Gets a variable font face's axis values (as DWRITE_FONT_AXIS_TAG); null if it isn't variable.</summary>
+    private static Dictionary<uint, float>? GetAxisValues(IDWriteFontFace* face)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19043))
+            return null;
+
+        using var face5 = default(ComPtr<IDWriteFontFace5>);
+        var iid = IID.IID_IDWriteFontFace5;
+        if (face->QueryInterface(&iid, (void**)face5.GetAddressOf()).FAILED || !face5.Get()->HasVariations())
+            return null;
+
+        var values = new DWRITE_FONT_AXIS_VALUE[face5.Get()->GetFontAxisValueCount()];
+        fixed (DWRITE_FONT_AXIS_VALUE* p = values)
+        {
+            if (face5.Get()->GetFontAxisValues(p, (uint)values.Length).FAILED)
+                return null;
+        }
+
+        var res = new Dictionary<uint, float>(values.Length);
+        foreach (var v in values)
+            res[(uint)v.axisTag] = v.value;
+        return res;
+    }
+
+    /// <summary>
+    /// Turns the pixels of a run drawn turned a quarter (<see cref="CreateAnalysis"/>'s <c>turned</c>), of
+    /// <paramref name="width"/> by <paramref name="height"/> with <paramref name="channels"/> bytes each, back: its rows
+    /// become columns, the last on the left. A pixel's channels stay in order, now top to bottom.
+    /// </summary>
+    private static byte[] TurnBack(byte[] pixels, int width, int height, int channels)
+    {
+        var res = new byte[pixels.Length];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var from = ((y * width) + x) * channels;
+                var to = ((x * height) + (height - 1 - y)) * channels;
+                pixels.AsSpan(from, channels).CopyTo(res.AsSpan(to));
+            }
+        }
+
+        return res;
+    }
+
+    /// <summary>Gets the box of a run drawn turned a quarter, turned back: (u, v) drawn is (y, -x) on screen.</summary>
+    private static RECT TurnBack(RECT turned) =>
+        new() { left = -turned.bottom, top = turned.left, right = -turned.top, bottom = turned.right };
+
+    /// <summary>
+    /// Makes DirectWrite's analysis of a glyph run, which the caller releases. <paramref name="turned"/> draws it turned a
+    /// quarter, its screen's (x, y) at (y, -x), so ClearType's horizontal stripes are vertical when turned back
+    /// (<see cref="TurnBack(byte[], int, int, int)"/>): antialiased both ways and unhinted, as both are then needed across
+    /// the text.
+    /// </summary>
     private ComPtr<IDWriteGlyphRunAnalysis> CreateAnalysis(
         IDWriteFontFace* face,
         float px,
@@ -240,7 +392,8 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         float originX,
         DirectWriteParams parameters,
         Matrix2x2 transform,
-        DWRITE_TEXT_ANTIALIAS_MODE antialiasMode = DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE)
+        DWRITE_TEXT_ANTIALIAS_MODE antialiasMode = DWRITE_TEXT_ANTIALIAS_MODE.DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+        bool turned = false)
     {
         // DirectWrite transforms row vectors; the origin is on screen, after the transformation.
         var matrix = new DWRITE_MATRIX
@@ -252,6 +405,8 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
             dx = originX,
             dy = 0,
         };
+        if (turned)
+            matrix = new() { m11 = matrix.m12, m12 = -matrix.m11, m21 = matrix.m22, m22 = -matrix.m21, dx = matrix.dy, dy = -matrix.dx };
 
         var run = new DWRITE_GLYPH_RUN
         {
@@ -280,6 +435,11 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
 
         var analysis = default(ComPtr<IDWriteGlyphRunAnalysis>);
         var gridFitMode = (DWRITE_GRID_FIT_MODE)parameters.GridFitMode;
+
+        // Turned, the other modes leave the text's horizontal unantialiased, and hint across it.
+        if (turned)
+            (renderingMode, gridFitMode) = (DWRITE_RENDERING_MODE1.DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC, DWRITE_GRID_FIT_MODE.DWRITE_GRID_FIT_MODE_DISABLED);
+
         for (var attempt = 0;; attempt++)
         {
             var hr = this._factory3.Get()->CreateGlyphRunAnalysis(

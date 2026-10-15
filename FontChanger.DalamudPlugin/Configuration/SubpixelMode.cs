@@ -6,4 +6,6 @@ public enum SubpixelMode
     System,
     Rgb,
     Bgr,
+    VerticalRgb,
+    VerticalBgr,
 }

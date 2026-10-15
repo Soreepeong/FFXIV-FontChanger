@@ -67,11 +67,17 @@ internal sealed partial class SubpixelShaders
                         type != TerraFX.Interop.Windows.Windows.FE_FONTSMOOTHINGCLEARTYPE)
                         return res with { Order = SubpixelOrder.None };
                     return res;
-                case SubpixelMode.Rgb or SubpixelMode.Bgr:
+                case SubpixelMode.Rgb or SubpixelMode.Bgr or SubpixelMode.VerticalRgb or SubpixelMode.VerticalBgr:
                     clearType = clearType.Clamped();
                     return new()
                     {
-                        Order = mode == SubpixelMode.Rgb ? SubpixelOrder.Rgb : SubpixelOrder.Bgr,
+                        Order = mode switch
+                        {
+                            SubpixelMode.Rgb => SubpixelOrder.Rgb,
+                            SubpixelMode.Bgr => SubpixelOrder.Bgr,
+                            SubpixelMode.VerticalRgb => SubpixelOrder.VerticalRgb,
+                            _ => SubpixelOrder.VerticalBgr,
+                        },
                         Level = clearType.Level,
                         Contrast = clearType.Contrast,
                         Gamma = clearType.Gamma,

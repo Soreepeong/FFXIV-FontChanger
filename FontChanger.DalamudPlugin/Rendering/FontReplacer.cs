@@ -547,6 +547,25 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     private SubpixelShaders.SettingsRecord _subpixel = new();
 
+    /// <summary>
+    /// Gets or sets what draws fonts set to DirectWrite for vertical subpixel orders; changing it makes their glyphs again.
+    /// Framework thread.
+    /// </summary>
+    public VerticalSubpixelRenderer VerticalSubpixel
+    {
+        get => this._rasterizer.VerticalWithFreeType ? VerticalSubpixelRenderer.FreeType : VerticalSubpixelRenderer.DirectWrite;
+        set
+        {
+            Misc.DebugAssertMainThread();
+            var withFreeType = value == VerticalSubpixelRenderer.FreeType;
+            if (withFreeType == this._rasterizer.VerticalWithFreeType)
+                return;
+            this._rasterizer.VerticalWithFreeType = withFreeType;
+            if (this._rasterizer.SubpixelOrder.IsVertical())
+                this.RebuildGlyphs();
+        }
+    }
+
     private void ApplySubpixel(SubpixelShaders.SettingsRecord settings)
     {
         Misc.DebugAssertMainThread();

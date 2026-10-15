@@ -301,14 +301,38 @@ internal sealed class ConfigWindow : Window
         using (ImRaii.Disabled(!subpixel))
         {
             var layout = Math.Max((int)mode - (int)SubpixelMode.System, 0);
-            if (Ig.Radios("Subpixel layout", ref layout, "Follow Windows ClearType settings", "RGB", "BGR"))
+            using (ImRaii.Group())
             {
-                mode = SubpixelMode.System + layout;
-                modeChanged = true;
+                if (Ig.Radios("Subpixel layout", ref layout, "Follow Windows ClearType settings", "RGB", "BGR", "RGB (vertical)", "BGR (vertical)"))
+                {
+                    mode = SubpixelMode.System + layout;
+                    modeChanged = true;
+                }
             }
+
+            Tooltip(
+                "The order of each pixel's red, green and blue stripes. Windows only knows horizontal ones: choose a vertical layout for a monitor turned to portrait, or a handheld whose screen is a portrait panel turned to landscape (red at the top for RGB).");
         }
 
-        var own = mode is SubpixelMode.Rgb or SubpixelMode.Bgr;
+        var vertical = mode is SubpixelMode.VerticalRgb or SubpixelMode.VerticalBgr;
+        using (ImRaii.Disabled(!vertical))
+        {
+            var renderer = (int)configuration.VerticalSubpixel;
+            using (ImRaii.Group())
+            {
+                if (Ig.Radios("Vertical layout rendering", ref renderer, "FreeType", "DirectWrite, turned"))
+                {
+                    configuration.VerticalSubpixel = (VerticalSubpixelRenderer)renderer;
+                    save = true;
+                    Plugin.Framework.RunOnTick(() => t._plugin.Replacer.VerticalSubpixel = (VerticalSubpixelRenderer)renderer);
+                }
+            }
+
+            Tooltip(
+                "DirectWrite has no ClearType for vertical stripes, so fonts set to DirectWrite are drawn either by FreeType (hinted, but they look somewhat different) or by DirectWrite with the text turned a quarter and turned back (unhinted, so softer). Fonts set to FreeType are always drawn by FreeType.");
+        }
+
+        var own = mode is SubpixelMode.Rgb or SubpixelMode.Bgr || vertical;
         if (modeChanged)
         {
             if (own && configuration.ClearType == new SubpixelRenderingParameters())
@@ -336,8 +360,8 @@ internal sealed class ConfigWindow : Window
                 "How differently the red, green and blue subpixels of a pixel are drawn (the ClearType level): 0 is grayscale, 1 is full ClearType. Lower values weaken color fringes but blur strokes.");
             changed |= ImGui.SliderFloat("Enhanced contrast", ref contrast, 0, 4, "%.2f");
             active |= ImGui.IsItemActive();
-            Tooltip("Darkens partly covered pixels, making strokes look heavier. 0 leaves them as they are.");
-            changed |= ImGui.SliderFloat("Gamma", ref gamma, 1, 3, "%.2f");
+            Tooltip("Darkens partly covered pixels, making strokes look heavier. 0 leaves them as they are. As in DirectWrite, light text gets less of it, and none from a lightness of 0.75.");
+            changed |= ImGui.SliderFloat("Gamma", ref gamma, 1, 2.2f, "%.2f");
             active |= ImGui.IsItemActive();
             Tooltip("The display's gamma, which blending corrects for. Higher values make light text heavier and dark text lighter.");
         }

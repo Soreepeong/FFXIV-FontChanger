@@ -22,6 +22,8 @@ public sealed class Configuration : IPluginConfiguration
 
     public SubpixelRenderingParameters ClearType { get; set; } = new();
 
+    public VerticalSubpixelRenderer VerticalSubpixel { get; set; } = VerticalSubpixelRenderer.FreeType;
+
     public AtlasSettings Atlas { get; set; } = new();
 
     public bool ConfigWindowOpen { get; set; } = true;
