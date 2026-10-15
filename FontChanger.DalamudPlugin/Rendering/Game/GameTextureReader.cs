@@ -13,10 +13,7 @@ using static TerraFX.Interop.DirectX.D3D11_MAP;
 using static TerraFX.Interop.DirectX.D3D11_USAGE;
 using static TerraFX.Interop.DirectX.DXGI_FORMAT;
 
-namespace FontChanger.DalamudPlugin.Rendering;
-
-// Inside the namespace, so that Pointer<T> is XIVCS's over TerraFX's.
-using FFXIVClientStructs.Interop;
+namespace FontChanger.DalamudPlugin.Rendering.Game;
 
 /// <summary>
 /// Reads glyph coverage out of the game's font textures on the GPU, through a staging texture per texture format. On the
@@ -37,7 +34,7 @@ internal sealed unsafe class GameTextureReader : IDisposable
     private ComPtr<ID3D11DeviceContext> _context;
 
     /// <summary>Gets whether a texture's pixels can be read: it has a format game font textures use.</summary>
-    public static bool CanRead(Pointer<KernelTexture> texture)
+    public static bool CanRead(FFXIVClientStructs.Interop.Pointer<KernelTexture> texture)
     {
         var resource = (ID3D11Texture2D*)texture.Value->D3D11Texture2D;
         if (resource is null)
@@ -48,7 +45,7 @@ internal sealed unsafe class GameTextureReader : IDisposable
     }
 
     /// <summary>Reads a rectangle of a plane of a texture as 8-bit coverage.</summary>
-    public byte[] Read(Pointer<KernelTexture> texture, int x, int y, int width, int height, int plane)
+    public byte[] Read(FFXIVClientStructs.Interop.Pointer<KernelTexture> texture, int x, int y, int width, int height, int plane)
     {
         var alpha = new byte[width * height];
         var stride = width;

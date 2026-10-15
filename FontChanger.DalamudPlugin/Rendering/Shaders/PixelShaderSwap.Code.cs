@@ -35,7 +35,6 @@ internal sealed partial class PixelShaderSwap
         0x6FA87E4F, 0xFE2CE6E0, 0xA3014314, 0x4E0811A1, 0xF7537E82, 0xBD3AF235, 0x2AD7D2BB, 0xEB86D391,
     ];
 
-    /// <summary>Gets the bytecode of a shader embedded in the plugin.</summary>
     public static byte[] ReadShaderCode(string name)
     {
         using var stream = typeof(PixelShaderSwap).Assembly.GetManifestResourceStream(name)
@@ -45,36 +44,39 @@ internal sealed partial class PixelShaderSwap
         return code;
     }
 
-    /// <summary>
-    /// Replaces every word of the code chunk (SHEX or SHDR) equal to a sentinel (a float's bits) with its value and sets
-    /// the checksum. Returns how many were replaced; with none, <paramref name="dxbc"/> is left as it was.
-    /// </summary>
-    public static int PatchConstants(Span<byte> dxbc, ReadOnlySpan<(uint Sentinel, float Value)> values)
+    /// <summary>Replaces every word of the code chunk equal to a sentinel (a float's bits) with its value and updates the checksum.</summary>
+    /// <returns>Whether every sentinel was found exactly once.</returns>
+    public static bool PatchConstants(Span<byte> dxbc, params ReadOnlySpan<(uint Sentinel, float Value)> values)
     {
         var (begin, end) = FindCode(dxbc);
-        var count = 0;
+        Span<int> counts = stackalloc int[values.Length];
+        counts.Clear();
+        var any = false;
         for (var i = begin; i + 4 <= end; i += 4)
         {
             var word = BinaryPrimitives.ReadUInt32LittleEndian(dxbc[i..]);
-            foreach (var (sentinel, value) in values)
+            for (var j = 0; j < values.Length; j++)
             {
-                if (word != sentinel)
+                if (word != values[j].Sentinel)
                     continue;
-                BinaryPrimitives.WriteUInt32LittleEndian(dxbc[i..], BitConverter.SingleToUInt32Bits(value));
-                count++;
+                BinaryPrimitives.WriteUInt32LittleEndian(dxbc[i..], BitConverter.SingleToUInt32Bits(values[j].Value));
+                counts[j]++;
+                any = true;
                 break;
             }
         }
 
-        if (count != 0)
+        if (any)
             ComputeChecksum(dxbc, dxbc.Slice(4, 16));
-        return count;
+        foreach (var count in counts)
+        {
+            if (count != 1)
+                return false;
+        }
+
+        return true;
     }
 
-    /// <summary>
-    /// The container's checksum, of everything after it: MD5's rounds, but the bit count goes in front of the last
-    /// block's data and <c>(bits &gt;&gt; 2) | 1</c> at its end.
-    /// </summary>
     public static void ComputeChecksum(ReadOnlySpan<byte> dxbc, Span<byte> checksum)
     {
         var data = dxbc[20..];

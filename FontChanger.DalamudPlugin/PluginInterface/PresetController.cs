@@ -8,6 +8,9 @@ using System.Threading.Tasks;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Rendering;
+using FontChanger.DalamudPlugin.Rendering.Fonts;
+using FontChanger.DalamudPlugin.Rendering.Game;
+using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;
@@ -16,50 +19,50 @@ internal sealed class PresetController : IDisposable
 {
     private static readonly TimeSpan ReloadDelay = TimeSpan.FromMilliseconds(500);
 
-    private readonly Configuration.Configuration configuration;
-    private readonly FontReplacer replacer;
-    private readonly Lock sync = new();
-    private readonly Lock loadSync = new();
-    private readonly Dictionary<string, FileSystemWatcher> presetWatchers = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, FileSystemWatcher> folderWatchers = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> watchedPresets = new(StringComparer.OrdinalIgnoreCase);
-    private readonly SystemFonts systemFonts = new();
-    private readonly Timer timer;
-    private bool pendingSettingsLoad;
-    private bool disposed;
+    private readonly Configuration.Configuration _configuration;
+    private readonly FontReplacer _replacer;
+    private readonly Lock _sync = new();
+    private readonly Lock _loadSync = new();
+    private readonly Dictionary<string, FileSystemWatcher> _presetWatchers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, FileSystemWatcher> _folderWatchers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _watchedPresets = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SystemFonts _systemFonts = new();
+    private readonly Timer _timer;
+    private bool _pendingSettingsLoad;
+    private bool _disposed;
 
     public PresetController(Configuration.Configuration configuration, FontReplacer replacer)
     {
-        this.configuration = configuration;
-        this.replacer = replacer;
-        this.timer = new(_ => this.RunPending());
+        this._configuration = configuration;
+        this._replacer = replacer;
+        this._timer = new(_ => this.RunPending());
         this.Schedule(false, TimeSpan.Zero);
     }
 
     public string Status { get; private set; } = string.Empty;
 
-    public bool SystemFallback => this.configuration.SystemFallback;
+    public bool SystemFallback => this._configuration.SystemFallback;
 
     public void Dispose()
     {
-        lock (this.sync)
-            this.disposed = true;
-        this.timer.Dispose();
+        lock (this._sync)
+            this._disposed = true;
+        this._timer.Dispose();
 
         // wait for the ongoing operation to complete
-        this.loadSync.EnterScope().Dispose();
+        this._loadSync.EnterScope().Dispose();
 
         this.WatchPresets([]);
         this.WatchFolders([]);
-        this.systemFonts.Dispose();
+        this._systemFonts.Dispose();
     }
 
-    public void Save() => Plugin.PluginInterface.SavePluginConfig(this.configuration);
+    public void Save() => Plugin.PluginInterface.SavePluginConfig(this._configuration);
 
     public IReadOnlyList<FontSource> GetSources(string family)
     {
-        lock (this.sync)
-            return this.configuration.FamilySources.TryGetValue(family, out var sources) ? [.. sources] : [];
+        lock (this._sync)
+            return this._configuration.FamilySources.TryGetValue(family, out var sources) ? [.. sources] : [];
     }
 
     public void AddPresets(string family, IEnumerable<string> paths) => this.Change(c => GetChain(c, family).AddRange(
@@ -128,8 +131,8 @@ internal sealed class PresetController : IDisposable
 
     public bool IsFamilyEnabled(string family)
     {
-        lock (this.sync)
-            return !this.configuration.DisabledFamilies.Contains(family);
+        lock (this._sync)
+            return !this._configuration.DisabledFamilies.Contains(family);
     }
 
     public void SetFamilyEnabled(string family, bool enabled) =>
@@ -148,14 +151,15 @@ internal sealed class PresetController : IDisposable
 
     private void Change(Action<Configuration.Configuration> edit)
     {
-        lock (this.sync)
-            edit(this.configuration);
+        lock (this._sync)
+            edit(this._configuration);
         this.Save();
         this.Schedule(false, TimeSpan.Zero);
     }
 
     private Preset? MakeFaces(string family, FamilyFont font, bool monospacedDigits, List<string> failures)
     {
+        this._loadSync.DebugAssertLockHeld();
         var opened = new Dictionary<(string, int, int, int), SystemFonts.Probe?>();
 
         bool TryOpen(LookupStruct l, [NotNullWhen(true)] out IFontProbe? probe)
@@ -163,7 +167,7 @@ internal sealed class PresetController : IDisposable
             var key = (l.Name, l.Weight, l.Stretch, l.Style);
             if (!opened.TryGetValue(key, out var cached))
             {
-                this.systemFonts.TryOpen(l, out cached);
+                this._systemFonts.TryOpen(l, out cached);
                 opened[key] = cached;
             }
 
@@ -201,20 +205,20 @@ internal sealed class PresetController : IDisposable
 
     private void WatchPresets(IEnumerable<string> paths)
     {
-        lock (this.sync)
+        lock (this._sync)
         {
             var wanted = paths.ToList();
-            this.watchedPresets.Clear();
-            this.watchedPresets.UnionWith(wanted);
+            this._watchedPresets.Clear();
+            this._watchedPresets.UnionWith(wanted);
 
             var folders = wanted.Select(Path.GetDirectoryName).OfType<string>().Where(Directory.Exists).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var folder in this.presetWatchers.Keys.Where(f => !folders.Contains(f)).ToList())
+            foreach (var folder in this._presetWatchers.Keys.Where(f => !folders.Contains(f)).ToList())
             {
-                this.presetWatchers[folder].Dispose();
-                this.presetWatchers.Remove(folder);
+                this._presetWatchers[folder].Dispose();
+                this._presetWatchers.Remove(folder);
             }
 
-            foreach (var folder in folders.Where(f => !this.presetWatchers.ContainsKey(f)))
+            foreach (var folder in folders.Where(f => !this._presetWatchers.ContainsKey(f)))
             {
                 var w = new FileSystemWatcher(folder)
                 {
@@ -225,23 +229,23 @@ internal sealed class PresetController : IDisposable
                 w.Deleted += this.OnPresetChanged;
                 w.Renamed += this.OnPresetChanged;
                 w.EnableRaisingEvents = true;
-                this.presetWatchers.Add(folder, w);
+                this._presetWatchers.Add(folder, w);
             }
         }
     }
 
     private void WatchFolders(IEnumerable<string> folders)
     {
-        lock (this.sync)
+        lock (this._sync)
         {
             var wanted = folders.Where(Directory.Exists).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var folder in this.folderWatchers.Keys.Where(f => !wanted.Contains(f)).ToList())
+            foreach (var folder in this._folderWatchers.Keys.Where(f => !wanted.Contains(f)).ToList())
             {
-                this.folderWatchers[folder].Dispose();
-                this.folderWatchers.Remove(folder);
+                this._folderWatchers[folder].Dispose();
+                this._folderWatchers.Remove(folder);
             }
 
-            foreach (var folder in wanted.Where(f => !this.folderWatchers.ContainsKey(f)))
+            foreach (var folder in wanted.Where(f => !this._folderWatchers.ContainsKey(f)))
             {
                 var w = new FileSystemWatcher(folder) { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName };
                 w.Changed += this.OnGlyphImageChanged;
@@ -249,7 +253,7 @@ internal sealed class PresetController : IDisposable
                 w.Deleted += this.OnGlyphImageChanged;
                 w.Renamed += this.OnGlyphImageChanged;
                 w.EnableRaisingEvents = true;
-                this.folderWatchers.Add(folder, w);
+                this._folderWatchers.Add(folder, w);
             }
         }
     }
@@ -258,8 +262,8 @@ internal sealed class PresetController : IDisposable
     {
         var paths = e is RenamedEventArgs r ? new[] { e.FullPath, r.OldFullPath } : [e.FullPath];
         bool used;
-        lock (this.sync)
-            used = paths.Any(this.watchedPresets.Contains);
+        lock (this._sync)
+            used = paths.Any(this._watchedPresets.Contains);
         if (used)
             this.Schedule(true, ReloadDelay);
     }
@@ -268,26 +272,26 @@ internal sealed class PresetController : IDisposable
 
     private void Schedule(bool edited, TimeSpan delay)
     {
-        lock (this.sync)
+        lock (this._sync)
         {
-            this.pendingSettingsLoad |= !edited;
-            if (!this.disposed)
-                this.timer.Change(delay, Timeout.InfiniteTimeSpan);
+            this._pendingSettingsLoad |= !edited;
+            if (!this._disposed)
+                this._timer.Change(delay, Timeout.InfiniteTimeSpan);
         }
     }
 
     private void RunPending()
     {
-        lock (this.loadSync)
+        lock (this._loadSync)
         {
-            if (this.disposed)
+            if (this._disposed)
                 return;
 
             bool keepOnFailure;
-            lock (this.sync)
+            lock (this._sync)
             {
-                keepOnFailure = !this.pendingSettingsLoad;
-                this.pendingSettingsLoad = false;
+                keepOnFailure = !this._pendingSettingsLoad;
+                this._pendingSettingsLoad = false;
             }
 
             try
@@ -304,11 +308,12 @@ internal sealed class PresetController : IDisposable
 
     private void Load(bool keepOnFailure)
     {
+        this._loadSync.DebugAssertLockHeld();
         List<(string Family, List<FontSource> Sources)> families;
-        lock (this.sync)
+        lock (this._sync)
         {
-            families = this.configuration.FamilySources
-                           .Where(f => !this.configuration.DisabledFamilies.Contains(f.Key))
+            families = this._configuration.FamilySources
+                           .Where(f => !this._configuration.DisabledFamilies.Contains(f.Key))
                            .Select(f => (f.Key, f.Value.Where(s => s.Enabled).ToList()))
                            .Where(f => f.Item2.Count != 0)
                            .ToList();
@@ -384,10 +389,10 @@ internal sealed class PresetController : IDisposable
 
         this.WatchPresets(families.SelectMany(f => f.Sources).Where(s => s.Type == FontSourceType.Preset && s.Path.Length != 0).Select(s => s.Path));
         this.WatchFolders(combined?.GlyphImageFolders ?? []);
-        var systemFallback = this.configuration.SystemFallback;
+        var systemFallback = this._configuration.SystemFallback;
         Plugin.Framework.RunOnFrameworkThread(() => {
-            if (!this.disposed)
-                this.replacer.SetPreset(combined, systemFallback);
+            if (!this._disposed)
+                this._replacer.Faces = new(combined, systemFallback);
         }).ContinueWith(
             task => {
                 Plugin.Log.Error(task.Exception!, "Applying the preset failed");

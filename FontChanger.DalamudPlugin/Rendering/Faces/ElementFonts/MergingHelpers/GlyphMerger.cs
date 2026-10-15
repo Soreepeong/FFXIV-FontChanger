@@ -2,39 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 
+using FontChanger.DalamudPlugin.Rendering.Fonts;
+using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
 
-namespace FontChanger.DalamudPlugin.Rendering;
-
-/// <summary>
-/// A font the texts of glyph merging are drawn with (xivres glyph_merging's text font): the element's, at a size and
-/// transformation, its gamma applied. Its glyphs are placed relative to the pen on the baseline.
-/// </summary>
-internal interface IMergeTextFont
-{
-    /// <summary>Gets the ascent in pixels.</summary>
-    int Ascent { get; }
-
-    /// <summary>Gets whether a codepoint can be drawn.</summary>
-    bool Has(Rune rune);
-
-    /// <summary>
-    /// Lays out a line, its glyphs <paramref name="letterSpacing"/> pixels further apart. A shaped line is drawn at any
-    /// fraction of a pixel; others are drawn at whole pixels.
-    /// </summary>
-    MergeTextLine LayOut(string text, int letterSpacing);
-}
-
-/// <summary>
-/// A laid out line: its advance; its ink, measured by its glyphs' metrics (horizontally from the outlines of shaped
-/// glyphs, which partly covered pixels may go past; vertically in pixels from the line's top; all 0 if it has none); and
-/// how to draw it with the pen at an x on the baseline.
-/// </summary>
-internal sealed record MergeTextLine(int Width, bool Shaped, float InkX1, float InkX2, int InkY1, int InkY2, Func<float, RasterGlyph> Draw);
+namespace FontChanger.DalamudPlugin.Rendering.Faces.ElementFonts.MergingHelpers;
 
 /// <summary>
 /// Draws merged glyphs (xivres glyph_merging_fixed_size_font): a text put in a shape, the text cut out of the shape (or

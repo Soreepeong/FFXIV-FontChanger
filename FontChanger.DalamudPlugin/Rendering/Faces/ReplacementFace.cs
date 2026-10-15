@@ -8,30 +8,16 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.PluginInterface;
-using FontChanger.DalamudPlugin.Utilities;
+using FontChanger.DalamudPlugin.Rendering.Faces.ElementFonts;
+using FontChanger.DalamudPlugin.Rendering.Faces.ElementFonts.MergingHelpers;
+using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
 
 using TerraFX.Interop.DirectX;
 
-namespace FontChanger.DalamudPlugin.Rendering;
-
-/// <summary>An element of a face: its definition, and the font it draws with (<see cref="IElementFont"/>).</summary>
-internal sealed class ReplacementElement(FaceElement def, IElementFont font) : IDisposable
-{
-    public FaceElement Def { get; } = def;
-
-    public IElementFont Font { get; } = font;
-
-    /// <summary>Gets the element's font if its glyphs are shaped with DirectWrite: those of a font, not merged or images.</summary>
-    public OutlineElementFont? Shaped => this.Font as OutlineElementFont;
-
-    /// <summary>Gets whether the game draws the element's glyphs (its own).</summary>
-    public bool DrawsGame => this.Font is GameElementFont;
-
-    public void Dispose() => this.Font.Dispose();
-}
+namespace FontChanger.DalamudPlugin.Rendering.Faces;
 
 /// <summary>
 /// A face of a preset made usable (xivres merged_fixed_size_font): its elements' fonts, which element draws each
@@ -63,14 +49,14 @@ internal sealed unsafe class ReplacementFace : IDisposable
     private static readonly uint IdeographicFaceBottom = Preset.Tag("icfb"u8);
     private static readonly uint IdeographicFaceTop = Preset.Tag("icft"u8);
 
-    private readonly GlyphRasterizer rasterizer;
-    private readonly Face def;
-    private readonly ReplacementElement[] elements;
-    private readonly ReplacementElement gameElement = new(new() { Renderer = Renderer.Game }, new GameElementFont());
-    private readonly ReplacementFace? fallback;
-    private readonly Dictionary<(Pointer<AtkFontManager.Font> Game, Rune rune), ReplacementElement?> elementCache = [];
-    private readonly Dictionary<(ReplacementElement Element, float Px), float> referenceAdvances = [];
-    private int? ownGlyphCount;
+    private readonly GlyphRasterizer _rasterizer;
+    private readonly Face _def;
+    private readonly ReplacementElement[] _elements;
+    private readonly ReplacementElement _gameElement = new(new() { Renderer = Renderer.Game }, GameElementFont.Instance);
+    private readonly ReplacementFace? _fallback;
+    private readonly Dictionary<(Pointer<AtkFontManager.Font> Game, Rune rune), ReplacementElement?> _elementCache = [];
+    private readonly Dictionary<(ReplacementElement Element, float Px), float> _referenceAdvances = [];
+    private int? _ownGlyphCount;
 
     /// <summary>
     /// Sets a face up. With <paramref name="systemFallback"/>, characters no element has are drawn with system fonts:
@@ -78,10 +64,10 @@ internal sealed unsafe class ReplacementFace : IDisposable
     /// </summary>
     public ReplacementFace(GlyphRasterizer rasterizer, Face def, bool systemFallback, ReplacementFace? fallback)
     {
-        this.rasterizer = rasterizer;
-        this.def = def;
+        this._rasterizer = rasterizer;
+        this._def = def;
         this.SystemFallback = systemFallback;
-        this.fallback = systemFallback ? fallback : null;
+        this._fallback = systemFallback ? fallback : null;
         var elements = new List<ReplacementElement>();
         try
         {
@@ -95,13 +81,13 @@ internal sealed unsafe class ReplacementFace : IDisposable
             throw;
         }
 
-        this.elements = elements.ToArray();
+        this._elements = elements.ToArray();
         this.ReferenceSize = def.Elements.Count != 0 && def.Elements[0].Size > 0 ? def.Elements[0].Size : 1;
-        this.Primary = Array.Find(this.elements, e => e.Shaped is not null);
+        this.Primary = Array.Find(this._elements, e => e.Shaped is not null);
         this.MeasureMode = this.Primary?.Def.DirectWrite.MeasureMode ?? 0;
 
         // The face's text is measured one way, its primary element's; every font of it draws glyphs measured so.
-        foreach (var e in this.elements)
+        foreach (var e in this._elements)
         {
             foreach (var outline in OutlineFonts(e.Font))
                 outline.MeasureMode = this.MeasureMode;
@@ -142,7 +128,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
 
     public void Dispose()
     {
-        foreach (var e in this.elements)
+        foreach (var e in this._elements)
             e.Dispose();
     }
 
@@ -159,14 +145,14 @@ internal sealed unsafe class ReplacementFace : IDisposable
     public bool TryGetElement(Rune rune, AtkFontManager.Font* game, [NotNullWhen(true)] out ReplacementElement? element)
     {
         var key = ((Pointer<AtkFontManager.Font>)game, rune);
-        if (this.elementCache.TryGetValue(key, out var cached))
+        if (this._elementCache.TryGetValue(key, out var cached))
         {
             element = cached;
             return element is not null;
         }
 
         ReplacementElement? assigned = null;
-        foreach (var e in this.elements)
+        foreach (var e in this._elements)
         {
             var mode = e.Def.MergeMode;
             if ((mode == MergeMode.AddNew && assigned is not null) || (mode == MergeMode.Replace && assigned is null))
@@ -176,8 +162,8 @@ internal sealed unsafe class ReplacementFace : IDisposable
         }
 
         if (assigned is null && !this.SystemFallback)
-            assigned = this.gameElement;
-        this.elementCache[key] = assigned;
+            assigned = this._gameElement;
+        this._elementCache[key] = assigned;
         element = assigned;
         return element is not null;
     }
@@ -187,10 +173,10 @@ internal sealed unsafe class ReplacementFace : IDisposable
     {
         get
         {
-            if (this.ownGlyphCount is { } known)
+            if (this._ownGlyphCount is { } known)
                 return known;
             var drawn = new HashSet<Rune>();
-            foreach (var e in this.elements)
+            foreach (var e in this._elements)
             {
                 if (e.DrawsGame || e.Font.Codepoints is not { } codepoints)
                     continue;
@@ -201,7 +187,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
                 }
             }
 
-            this.ownGlyphCount = drawn.Count;
+            this._ownGlyphCount = drawn.Count;
             return drawn.Count;
         }
     }
@@ -213,7 +199,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
     /// <summary>Gets the line metrics at a drawn size: from the first element, rounded to whole pixels.</summary>
     public (int Ascent, int LineHeight) GetLineMetrics(float px, AtkFontManager.Font* game)
     {
-        var (ascent, lineHeight) = this.elements.Length == 0 ? (0, 0) : this.GetElementMetrics(this.elements[0], px, game);
+        var (ascent, lineHeight) = this._elements.Length == 0 ? (0, 0) : this.GetElementMetrics(this._elements[0], px, game);
         if (lineHeight <= 0)
         {
             // Nothing to take them from: proportions of Segoe UI.
@@ -233,7 +219,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
         if (!this.TryGetElement(rune, game, out var element))
         {
             var size = this.Primary is { } primary ? this.GetElementPx(primary, px) : px;
-            return this.fallback is not null && this.fallback.TryRasterize(rune, size, null, out glyph);
+            return this._fallback is not null && this._fallback.TryRasterize(rune, size, null, out glyph);
         }
 
         var font = element.Font;
@@ -285,7 +271,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
         if (element?.Shaped is { } font)
             return font.RasterizeRun(face, size, glyphs, advances, offsets, count, originX, advance, squeezeX);
         var parameters = DirectWriteParams.Default with { MeasureMode = this.MeasureMode };
-        return this.rasterizer.RasterizeRun(face, size, glyphs, advances, offsets, count, originX, advance, parameters, Matrix2x2.CreateScale(squeezeX, 1));
+        return this._rasterizer.RasterizeRun(face, size, glyphs, advances, offsets, count, originX, advance, parameters, Matrix2x2.CreateScale(squeezeX, 1));
     }
 
     /// <summary>
@@ -299,7 +285,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
         switch (def.Renderer)
         {
             case Renderer.Game:
-                font = new GameElementFont();
+                font = GameElementFont.Instance;
                 break;
 
             case Renderer.DirectWrite or Renderer.FreeType:
@@ -356,7 +342,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
         // The element's line box is placed in the face's: its top moved down by the adjustment.
         var (faceAscent, faceLineHeight) = this.GetLineMetrics(px, game);
         var (ascent, lineHeight) = this.GetElementMetrics(element, px, game);
-        var adjustment = this.def.Alignment switch
+        var adjustment = this._def.Alignment switch
         {
             VerticalAlignment.Top => 0,
             VerticalAlignment.Middle => (faceLineHeight - lineHeight) / 2,
@@ -370,7 +356,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
 
     /// <summary>Gets how far below the line's top the roman baseline of the face is: its first element's.</summary>
     private float GetRomanBaselineY(float px, AtkFontManager.Font* game) =>
-        this.GetLineMetrics(px, game).Ascent - (this.elements.Length == 0 ? 0 : this.GetBaselineOrDefault(this.elements[0], RomanBaseline, px, 0));
+        this.GetLineMetrics(px, game).Ascent - (this._elements.Length == 0 ? 0 : this.GetBaselineOrDefault(this._elements[0], RomanBaseline, px, 0));
 
     private float GetRomanBaselineY(ReplacementElement element, float px, AtkFontManager.Font* game) =>
         this.GetElementMetrics(element, px, game).Ascent - this.GetBaselineOrDefault(element, RomanBaseline, px, 0);
@@ -382,7 +368,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
     private float GetIdeographicCenterY(float px, AtkFontManager.Font* game)
     {
         var (ascent, lineHeight) = this.GetLineMetrics(px, game);
-        return this.elements.Length == 0 ? lineHeight / 2f : this.GetIdeographicCenterY(this.elements[0], px, ascent, lineHeight);
+        return this._elements.Length == 0 ? lineHeight / 2f : this.GetIdeographicCenterY(this._elements[0], px, ascent, lineHeight);
     }
 
     private float GetIdeographicCenterY(ReplacementElement element, float px, AtkFontManager.Font* game)
@@ -473,10 +459,10 @@ internal sealed unsafe class ReplacementFace : IDisposable
     /// <summary>Gets the advance of an element's monospacing reference character at a drawn size (kept by size).</summary>
     private float GetReferenceAdvance(ReplacementElement element, float px, Rune rune)
     {
-        if (!this.referenceAdvances.TryGetValue((element, px), out var advance))
+        if (!this._referenceAdvances.TryGetValue((element, px), out var advance))
         {
             advance = element.Font.GetAdvance(rune, this.GetElementPx(element, px));
-            this.referenceAdvances.Add((element, px), advance);
+            this._referenceAdvances.Add((element, px), advance);
         }
 
         return advance;

@@ -16,7 +16,17 @@
   <ItemGroup>
     <!-- The plugin's patching of the shaders' settings, checked against the compiler on every build. -->
     <Compile Include="..\FontChanger.DalamudPlugin\Rendering\Shaders\PixelShaderSwap.Code.cs" Link="PixelShaderSwap.Code.cs" />
-    <Compile Include="..\FontChanger.DalamudPlugin\Rendering\Shaders\EdgeShaderCode.cs" Link="EdgeShaderCode.cs" />
-    <Compile Include="..\FontChanger.DalamudPlugin\Rendering\Shaders\SubpixelShaderCode.cs" Link="SubpixelShaderCode.cs" />
+    <Compile Include="..\FontChanger.DalamudPlugin\Rendering\Shaders\EdgeShader.Code.cs" Link="EdgeShader.cs" />
+    <Compile Include="..\FontChanger.DalamudPlugin\Rendering\Shaders\SubpixelShaders.Code.cs" Link="SubpixelShaders.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="obj\Debug\net10.0\apphost.exe" />
+    <Content Include="obj\Debug\net10.0\FontChanger.ShaderGen.csproj.CoreCompileInputs.cache" />
+    <Content Include="obj\Debug\net10.0\FontChanger.ShaderGen.csproj.FileListAbsolute.txt" />
+    <Content Include="obj\Debug\net10.0\FontChanger.ShaderGen.dll" />
+    <Content Include="obj\Debug\net10.0\FontChanger.ShaderGen.genruntimeconfig.cache" />
+    <Content Include="obj\Debug\net10.0\FontChanger.ShaderGen.pdb" />
+    <Content Include="obj\Debug\net10.0\FontChanger.ShaderGen.sourcelink.json" />
+    <Content Include="obj\rider.project.model.nuget.info" />
   </ItemGroup>
 </Project>

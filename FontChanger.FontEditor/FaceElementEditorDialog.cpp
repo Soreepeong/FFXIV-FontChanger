@@ -62,7 +62,8 @@ bool App::FaceElementEditorDialog::ConsumeDialogMessage(MSG& msg) {
 
 INT_PTR App::FaceElementEditorDialog::OkButton_OnCommand(uint16_t notiCode) {
 	Reactivate();
-	EndDialog(m_controls->Window, 0);
+	// A modeless dialog: EndDialog would only hide it, leaving its windows behind.
+	DestroyWindow(m_controls->Window);
 	m_bOpened = false;
 	return 0;
 }
@@ -70,13 +71,15 @@ INT_PTR App::FaceElementEditorDialog::OkButton_OnCommand(uint16_t notiCode) {
 INT_PTR App::FaceElementEditorDialog::CancelButton_OnCommand(uint16_t notiCode) {
 	Reactivate();
 	m_element = std::move(m_elementOriginal);
-	EndDialog(m_controls->Window, 0);
-	m_bOpened = false;
 
+	// Before the controls they update are destroyed.
 	if (m_bBaseFontChanged)
 		OnBaseFontChanged();
 	else if (m_bWrappedFontChanged)
 		OnWrappedFontChanged();
+
+	DestroyWindow(m_controls->Window);
+	m_bOpened = false;
 	return 0;
 }
 
@@ -617,7 +620,7 @@ INT_PTR App::FaceElementEditorDialog::DlgProc(UINT message, WPARAM wParam, LPARA
 		}
 		case WM_CLOSE: {
 			Reactivate();
-			EndDialog(m_controls->Window, 0);
+			DestroyWindow(m_controls->Window);
 			m_bOpened = false;
 			return 0;
 		}

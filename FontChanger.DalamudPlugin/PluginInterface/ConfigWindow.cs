@@ -16,6 +16,7 @@ using Dalamud.Interface.Windowing;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Rendering;
+using FontChanger.DalamudPlugin.Rendering.Game;
 using FontChanger.DalamudPlugin.Rendering.Shaders;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
@@ -28,7 +29,7 @@ internal sealed class ConfigWindow : Window
     private readonly FileDialogManager _fileDialog = new();
     private FontChooser? _fontChooser;
     private EdgeSettings? _pendingEdge;
-    private ClearTypeSettings? _pendingClearType;
+    private SubpixelRenderingParameters? _pendingClearType;
     private AtlasSettings? _pendingAtlas;
 
     private string? _selectedFamily;
@@ -260,20 +261,19 @@ internal sealed class ConfigWindow : Window
         var configuration = t._plugin.Configuration;
         var save = false;
 
-        // The configured edge: the replacer has the game's own while customization is off.
         var edge = t._pendingEdge ?? configuration.Edge;
         var (edgeEnabled, scale, min, max, softness) = (edge.Enabled, edge.Scale, edge.Min, edge.Max, edge.Softness);
         var changed = ImGui.Checkbox("Use text border customization", ref edgeEnabled);
         var active = false;
         using (ImRaii.Disabled(!edgeEnabled))
         {
-            changed |= ImGui.SliderFloat("Scale (px per px of text)", ref scale, 0, 0.25f, "%.3f");
+            changed |= ImGui.SliderFloat("Scale", ref scale, 0, 0.25f, "%.3f");
             active |= ImGui.IsItemActive();
-            changed |= ImGui.SliderFloat("Minimum (px)", ref min, 0.25f, 8f, "%.2f");
+            changed |= ImGui.SliderFloat("Minimum", ref min, 0.25f, 8f, "%.2f");
             active |= ImGui.IsItemActive();
-            changed |= ImGui.SliderFloat("Maximum (px)", ref max, 0.25f, 8f, "%.2f");
+            changed |= ImGui.SliderFloat("Maximum", ref max, 0.25f, 8f, "%.2f");
             active |= ImGui.IsItemActive();
-            changed |= ImGui.SliderFloat("Softness", ref softness, 0, EdgeShaderCode.MaxSoftness, "%.2f");
+            changed |= ImGui.SliderFloat("Softness", ref softness, 0, EdgeShader.MaxSoftness, "%.2f");
             active |= ImGui.IsItemActive();
         }
 
@@ -284,7 +284,7 @@ internal sealed class ConfigWindow : Window
             t._pendingEdge = null;
             configuration.Edge = pending;
             save = true;
-            Plugin.Framework.RunOnTick(() => t._plugin.Replacer.SetEdge(pending));
+            Plugin.Framework.RunOnTick(() => t._plugin.Replacer.Edge = pending);
         }
 
         ImGui.Separator();
@@ -297,12 +297,6 @@ internal sealed class ConfigWindow : Window
             mode = subpixel ? SubpixelMode.System : SubpixelMode.Off;
             modeChanged = true;
         }
-
-        Tooltip(
-            "Draws replaced text per red, green and blue subpixel of the screen, as ClearType does. Turn it off on rotated screens and on screens "
-            + "whose subpixels are not in vertical stripes (most OLED panels). Following Windows' ClearType settings takes the layout, color "
-            + "separation, contrast and gamma that the ClearType Text Tuner set for the game's monitor. Text drawn scaled, and nameplates, stay "
-            + "grayscale.");
 
         using (ImRaii.Disabled(!subpixel))
         {
@@ -317,11 +311,10 @@ internal sealed class ConfigWindow : Window
         var own = mode is SubpixelMode.Rgb or SubpixelMode.Bgr;
         if (modeChanged)
         {
-            // Choosing a layout for the first time starts from Windows' values.
-            if (own && configuration.ClearType == new ClearTypeSettings())
+            if (own && configuration.ClearType == new SubpixelRenderingParameters())
             {
-                var windows = SubpixelSettings.OfWindows(Plugin.GameWindow);
-                configuration.ClearType = new ClearTypeSettings(windows.Level, windows.Contrast, windows.Gamma).Clamped();
+                var windows = SubpixelShaders.SettingsRecord.FromWindow(Plugin.PluginInterface.UiBuilder.WindowHandlePtr);
+                configuration.ClearType = new SubpixelRenderingParameters(windows.Level, windows.Contrast, windows.Gamma).Clamped();
             }
 
             configuration.Subpixel = mode;
@@ -329,7 +322,6 @@ internal sealed class ConfigWindow : Window
             Plugin.Framework.RunOnTick(t._plugin.ApplySubpixel);
         }
 
-        // While following Windows, its values as last applied.
         var applied = t._plugin.Replacer.Subpixel;
         var clearType = t._pendingClearType
                         ?? (mode == SubpixelMode.System ? new(applied.Level, applied.Contrast, applied.Gamma) : configuration.ClearType);
@@ -341,8 +333,7 @@ internal sealed class ConfigWindow : Window
             changed |= ImGui.SliderFloat("Color separation", ref level, 0, 1, "%.2f");
             active |= ImGui.IsItemActive();
             Tooltip(
-                "How differently the red, green and blue subpixels of a pixel are drawn (the ClearType level): 0 is grayscale, 1 is full "
-                + "ClearType. Lower values weaken color fringes but blur strokes.");
+                "How differently the red, green and blue subpixels of a pixel are drawn (the ClearType level): 0 is grayscale, 1 is full ClearType. Lower values weaken color fringes but blur strokes.");
             changed |= ImGui.SliderFloat("Enhanced contrast", ref contrast, 0, 4, "%.2f");
             active |= ImGui.IsItemActive();
             Tooltip("Darkens partly covered pixels, making strokes look heavier. 0 leaves them as they are.");
@@ -351,7 +342,7 @@ internal sealed class ConfigWindow : Window
             Tooltip("The display's gamma, which blending corrects for. Higher values make light text heavier and dark text lighter.");
         }
 
-        if (changed) t._pendingClearType = new ClearTypeSettings(level, contrast, gamma).Clamped();
+        if (changed) t._pendingClearType = new SubpixelRenderingParameters(level, contrast, gamma).Clamped();
 
         if (t._pendingClearType is { } pendingClearType && !active)
         {
@@ -422,7 +413,7 @@ internal sealed class ConfigWindow : Window
             {
                 var pending = t._pendingAtlas!.Value;
                 t._pendingAtlas = null;
-                Plugin.Framework.RunOnTick(() => t._plugin.Replacer.SetAtlas(pending));
+                Plugin.Framework.RunOnTick(() => t._plugin.Replacer.Atlas = pending);
                 t._plugin.Configuration.Atlas = pending;
                 Plugin.PluginInterface.SavePluginConfig(t._plugin.Configuration);
             }
@@ -444,8 +435,6 @@ internal sealed class ConfigWindow : Window
         if (source.Font is not { } font)
             return;
 
-        string Describe(int value) => $"{value} {ToTitle(describe(value))}";
-
         var popupId = $"##{kind}Menu{index}";
         if (ImGui.Selectable($"{Describe(get(font))}###{kind}{index}"))
             ImGui.OpenPopup(popupId);
@@ -459,9 +448,7 @@ internal sealed class ConfigWindow : Window
         if (FindSystemFamily(font.Name) is { } systemFamily)
         {
             foreach (var id in systemFamily.Fonts.OfType<SystemFontId>())
-            {
                 values.Add(kind switch { "weight" => id.Weight, "stretch" => id.Stretch, _ => id.Style });
-            }
         }
 
         foreach (var value in values)
@@ -469,6 +456,10 @@ internal sealed class ConfigWindow : Window
             if (ImGui.MenuItem(Describe(value), string.Empty, value == current) && value != current)
                 this._plugin.Presets.Replace(family, index, source with { Font = set(font, value) });
         }
+
+        return;
+
+        string Describe(int value) => $"{value} {ToTitle(describe(value))}";
     }
 
     private void PickAnother(string family, int index, FontSource source)

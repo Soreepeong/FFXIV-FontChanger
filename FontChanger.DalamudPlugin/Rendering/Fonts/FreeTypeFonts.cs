@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
@@ -14,10 +15,7 @@ using FreeTypeSharp;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
-namespace FontChanger.DalamudPlugin.Rendering;
-
-// Inside the namespace, so that Pointer<T> is XIVCS's over TerraFX's.
-using FFXIVClientStructs.Interop;
+namespace FontChanger.DalamudPlugin.Rendering.Fonts;
 
 /// <summary>
 /// Rasterizes glyphs with FreeType: for elements a preset draws with FreeType, and for fonts with only bitmaps (which
@@ -31,15 +29,15 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
 
     private const nint FaceFlagMultipleMasters = 1 << 8;
 
-    private readonly Dictionary<(string Path, uint Index), Pointer<FT_FaceRec_>> _faces = [];
+    private readonly Dictionary<(string Path, uint Index), FFXIVClientStructs.Interop.Pointer<FT_FaceRec_>> _faces = [];
     private FT_LibraryRec_* _library;
 
     // The size each outline face was last set to.
-    private readonly Dictionary<Pointer<FT_FaceRec_>, float> _faceSizes = [];
+    private readonly Dictionary<FFXIVClientStructs.Interop.Pointer<FT_FaceRec_>, float> _faceSizes = [];
 
     // A variable face's axes (tag, minimum, default, maximum; 16.16), and the design coordinates it was last set to.
-    private readonly Dictionary<Pointer<FT_FaceRec_>, (uint Tag, nint Min, nint Default, nint Max)[]> _faceAxes = [];
-    private readonly Dictionary<Pointer<FT_FaceRec_>, nint[]> _faceCoordinates = [];
+    private readonly Dictionary<FFXIVClientStructs.Interop.Pointer<FT_FaceRec_>, (uint Tag, nint Min, nint Default, nint Max)[]> _faceAxes = [];
+    private readonly Dictionary<FFXIVClientStructs.Interop.Pointer<FT_FaceRec_>, nint[]> _faceCoordinates = [];
 
     private FreeTypeFonts(FT_LibraryRec_* library) => this._library = library;
 

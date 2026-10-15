@@ -19,4 +19,12 @@
     <ItemGroup>
       <PackageReference Include="JetBrains.Annotations" Version="2026.2.0" />
     </ItemGroup>
+    <ItemGroup>
+      <Content Include="obj\Debug\net10.0\FontChanger.Presets.csproj.CoreCompileInputs.cache" />
+      <Content Include="obj\Debug\net10.0\FontChanger.Presets.csproj.FileListAbsolute.txt" />
+      <Content Include="obj\Debug\net10.0\FontChanger.Presets.dll" />
+      <Content Include="obj\Debug\net10.0\FontChanger.Presets.pdb" />
+      <Content Include="obj\Debug\net10.0\FontChanger.Presets.sourcelink.json" />
+      <Content Include="obj\rider.project.model.nuget.info" />
+    </ItemGroup>
 </Project>

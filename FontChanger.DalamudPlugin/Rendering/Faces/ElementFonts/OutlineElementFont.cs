@@ -1,11 +1,12 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Rendering.Fonts;
+using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
@@ -16,96 +17,7 @@ using FreeTypeSharp;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
-namespace FontChanger.DalamudPlugin.Rendering;
-
-// Inside the namespace, so that Pointer<T> is XIVCS's over TerraFX's.
-using FFXIVClientStructs.Interop;
-
-/// <summary>
-/// The glyphs a face element draws (xivres fixed_size_font), at any size: what it has, its line metrics and baselines,
-/// and its glyphs, rasterized as the element draws them (its gamma applied) but not yet adjusted by the face
-/// (<see cref="ReplacementFace.Wrap"/>). Made by <see cref="ReplacementFace"/> from an element's renderer: the game's
-/// glyphs, none, a font (DirectWrite or FreeType), glyph images, or glyph merging around one of those.
-/// </summary>
-/// <remarks>Sizes are the element's (the face's drawn size scaled by the element's size); glyphs are placed relative to
-/// the pen on the baseline.</remarks>
-internal unsafe interface IElementFont : IDisposable
-{
-    /// <summary>Gets whether a codepoint has a glyph; the game's glyphs are those of <paramref name="game"/>.</summary>
-    bool Has(Rune rune, AtkFontManager.Font* game);
-
-    /// <summary>Gets the line metrics at a size, in whole pixels.</summary>
-    (int Ascent, int LineHeight) GetLineMetrics(float px, AtkFontManager.Font* game);
-
-    /// <summary>Gets a baseline of the BASE table (by tag, as DWRITE_FONT_FEATURE_TAG) in pixels above the glyphs' origin; false if none.</summary>
-    bool TryGetBaseline(uint tag, float px, out float baseline);
-
-    /// <summary>Rasterizes a codepoint's glyph at a size; null if there is none, or the game draws it.</summary>
-    RasterGlyph? Rasterize(Rune rune, float px);
-
-    /// <summary>
-    /// Gets a glyph (<paramref name="glyph"/>, rasterized by <see cref="Rasterize"/>) drawn narrower by a horizontal scale,
-    /// for monospacing: resampled, unless the font can draw it so.
-    /// </summary>
-    RasterGlyph Squeeze(Rune rune, float px, RasterGlyph glyph, float scale) => glyph.SqueezedX(scale);
-
-    /// <summary>Gets a codepoint's advance on screen at a size, unrounded (monospacing's reference glyph); 0 if none.</summary>
-    float GetAdvance(Rune rune, float px);
-
-    /// <summary>Gets the codepoints it has glyphs of; null if they can't be listed (the game's, which depend on the font).</summary>
-    IEnumerable<Rune>? Codepoints => null;
-}
-
-/// <summary>The game's own glyphs (xivres fontdata_fixed_size_font), which the game draws.</summary>
-internal sealed unsafe class GameElementFont : IElementFont
-{
-    public bool Has(Rune rune, AtkFontManager.Font* game) => game is not null && game->FindGlyph(rune) is not null;
-
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, AtkFontManager.Font* game)
-    {
-        if (game is null || game->Size <= 0)
-            return (0, 0);
-        var scale = px / game->Size;
-        return ((int)Rounding.Round(game->Ascent * scale), (int)Rounding.Round(game->LineHeight * scale));
-    }
-
-    public bool TryGetBaseline(uint tag, float px, out float baseline)
-    {
-        baseline = 0;
-        return false;
-    }
-
-    public RasterGlyph? Rasterize(Rune rune, float px) => null;
-
-    public float GetAdvance(Rune rune, float px) => 0;
-
-    public void Dispose()
-    {
-    }
-}
-
-/// <summary>No glyphs, only line metrics (xivres empty_fixed_size_font), given in pixels at the element's size.</summary>
-internal sealed unsafe class EmptyElementFont(float size, float ascent, float lineHeight) : IElementFont
-{
-    public bool Has(Rune rune, AtkFontManager.Font* game) => false;
-
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, AtkFontManager.Font* game) =>
-        size > 0 ? ((int)Rounding.Round(ascent * px / size), (int)Rounding.Round(lineHeight * px / size)) : (0, 0);
-
-    public bool TryGetBaseline(uint tag, float px, out float baseline)
-    {
-        baseline = 0;
-        return false;
-    }
-
-    public RasterGlyph? Rasterize(Rune rune, float px) => null;
-
-    public float GetAdvance(Rune rune, float px) => 0;
-
-    public void Dispose()
-    {
-    }
-}
+namespace FontChanger.DalamudPlugin.Rendering.Faces.ElementFonts;
 
 /// <summary>
 /// A font's glyphs (xivres directwrite_fixed_size_font and freetype_fixed_size_font): with FreeType if the element is drawn
@@ -120,7 +32,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     private readonly GlyphRasterizer _rasterizer;
     private readonly FaceElement _def;
     private readonly byte[]? _gamma;
-    private readonly Dictionary<(Pointer<IDWriteFontFace> A, Pointer<IDWriteFontFace> B), bool> _sameFonts = [];
+    private readonly Dictionary<(FFXIVClientStructs.Interop.Pointer<IDWriteFontFace> A, FFXIVClientStructs.Interop.Pointer<IDWriteFontFace> B), bool> _sameFonts = [];
 
     // References to the faces compared in _sameFonts, so their pointers aren't reused.
     private readonly List<ComPtr<IDWriteFontFace>> _comparedFaces = [];
@@ -139,7 +51,6 @@ internal sealed unsafe class OutlineElementFont : IElementFont
         this.Transform = def.Transform * font.Transform;
     }
 
-    /// <summary>Gets the font.</summary>
     public LookupFont Font { get; }
 
     /// <summary>Gets the lookup the font was found by, which layouts ask for (with its language and features).</summary>
@@ -595,7 +506,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     {
         if (a == b)
             return true;
-        var key = ((Pointer<IDWriteFontFace>)a, (Pointer<IDWriteFontFace>)b);
+        var key = ((FFXIVClientStructs.Interop.Pointer<IDWriteFontFace>)a, (FFXIVClientStructs.Interop.Pointer<IDWriteFontFace>)b);
         if (this._sameFonts.TryGetValue(key, out var same))
             return same;
 
@@ -610,265 +521,5 @@ internal sealed unsafe class OutlineElementFont : IElementFont
         this._comparedFaces.Add(new(b));
         this._sameFonts.Add(key, same);
         return same;
-    }
-}
-
-/// <summary>Glyph images (xivres image_fixed_size_font): SVG and PNG files per glyph, drawn with Direct2D.</summary>
-internal sealed unsafe class ImageElementFont(GlyphImages? images, ImageRenderer? renderer, Matrix2x2 transform, byte[]? gamma) : IElementFont
-{
-    /// <summary>Gets whether glyphs can be drawn (Direct2D can be used).</summary>
-    public bool CanDraw => images is not null && renderer is not null;
-
-    public bool Has(Rune rune, AtkFontManager.Font* game) => images?.Has(rune) ?? false;
-
-    public IEnumerable<Rune> Codepoints => images?.Codepoints ?? [];
-
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, AtkFontManager.Font* game) => this.GetLineMetrics(px, transform);
-
-    /// <summary>Gets the line metrics at a size, scaled vertically as glyphs transformed by <paramref name="t"/> are.</summary>
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, Matrix2x2 t) => images?.GetLineMetrics(px, t) ?? (0, 0);
-
-    public bool TryGetBaseline(uint tag, float px, out float baseline)
-    {
-        baseline = 0;
-        return false;
-    }
-
-    public RasterGlyph? Rasterize(Rune rune, float px) => this.Rasterize(rune, px, transform);
-
-    /// <summary>Rasterizes a codepoint's glyph at a size, transformed by <paramref name="t"/>.</summary>
-    public RasterGlyph? Rasterize(Rune rune, float px, Matrix2x2 t) =>
-        images is not null && renderer is not null && images.Rasterize(renderer, rune, px, t) is { } g
-            ? gamma is null ? g : g.WithCoverage(gamma)
-            : null;
-
-    public float GetAdvance(Rune rune, float px) => this.Rasterize(rune, px)?.Advance ?? 0;
-
-    /// <summary>Gets the kerning between two codepoints in pixels at a size, as <paramref name="t"/> scales advances.</summary>
-    public int GetKerning(Rune left, Rune right, float px, Matrix2x2 t) => images?.GetKerning(left, right, px, t) ?? 0;
-
-    public void Dispose()
-    {
-    }
-}
-
-/// <summary>
-/// Glyph merging (xivres glyph_merging_fixed_size_font) around an element's font: its merged codepoints only, each a text
-/// put in a shape (<see cref="GlyphMerger"/>), the text drawn with fonts <paramref name="textFont"/> makes at a size and
-/// horizontal scale (from <paramref name="textOutline"/>, which it owns, if it isn't <paramref name="baseFont"/>).
-/// Metrics and baselines are the font's.
-/// </summary>
-internal sealed unsafe class MergingElementFont(
-    IElementFont baseFont,
-    FaceElement def,
-    GlyphMergingStruct merging,
-    Func<float, float, IMergeTextFont> textFont,
-    GlyphRasterizer rasterizer,
-    OutlineElementFont? textOutline) : IElementFont
-{
-    /// <summary>Gets the fonts of DirectWrite and FreeType it draws with: its own, and its texts'.</summary>
-    public IEnumerable<OutlineElementFont> OutlineFonts => new[] { baseFont as OutlineElementFont, textOutline }.OfType<OutlineElementFont>();
-
-    public bool Has(Rune rune, AtkFontManager.Font* game) => merging.Glyphs.ContainsKey(rune);
-
-    public IEnumerable<Rune> Codepoints => merging.Glyphs.Keys;
-
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, AtkFontManager.Font* game) => baseFont.GetLineMetrics(px, game);
-
-    public bool TryGetBaseline(uint tag, float px, out float baseline) => baseFont.TryGetBaseline(tag, px, out baseline);
-
-    public RasterGlyph? Rasterize(Rune rune, float px)
-    {
-        if (!merging.Glyphs.TryGetValue(rune, out var glyph))
-            return null;
-
-        // Pixel values of the merging are at the face's size, which the element's is to its own.
-        return GlyphMerger.Draw(
-            glyph.Mapping,
-            glyph.Text,
-            merging,
-            def.Size > 0 ? px / def.Size : 1,
-            px,
-            def.Size,
-            baseFont.GetLineMetrics(px, null).Ascent,
-            textFont,
-            glyph.Mapping.Shape == MergeShape.Glyph ? baseFont.Rasterize(rune, px) : null,
-            rasterizer.Images,
-            rasterizer.FreeType);
-    }
-
-    /// <summary>Gets the advance of the font's own glyph (monospacing's reference glyph is measured in it).</summary>
-    public float GetAdvance(Rune rune, float px) => baseFont.GetAdvance(rune, px);
-
-    public void Dispose()
-    {
-        baseFont.Dispose();
-        if (!ReferenceEquals(textOutline, baseFont))
-            textOutline?.Dispose();
-    }
-}
-
-/// <summary>Texts of glyph merging in a font, shaped with its features, measured by its glyphs' metrics.</summary>
-internal sealed unsafe class OutlineTextFont(OutlineElementFont font, float size, Matrix2x2 transform, GlyphRasterizer rasterizer)
-    : IMergeTextFont, IGlyphRunSink
-{
-    private readonly List<TextRun> _runs = [];
-
-    public int Ascent { get; } = font.GetLineMetrics(size, transform).Ascent;
-
-    public bool Has(Rune rune) => font.Has(rune, null);
-
-    public MergeTextLine LayOut(string text, int letterSpacing)
-    {
-        this._runs.Clear();
-        var spacing = text.Length != 0 && transform.M11 != 0 ? letterSpacing / transform.M11 : 0;
-        if (text.Length != 0)
-            this.Shape(text, spacing);
-
-        // Letter spacing goes between glyphs.
-        var runs = this._runs.ToArray();
-        var extra = font.GetExtraAdvance(size);
-        var width = runs.Sum(r => r.Advances.Sum() + (extra * r.Glyphs.Length)) - spacing;
-        var advance = (int)Rounding.Round(width * transform.M11);
-
-        // The ink: horizontally from the outlines, vertically in pixels (xivres glyph_merging layout_text).
-        float inkX1 = float.MaxValue, inkX2 = float.MinValue;
-        int inkY1 = int.MaxValue, inkY2 = int.MinValue;
-        var pen = 0f;
-        foreach (var r in runs)
-        {
-            // Each run is drawn from the pen, its glyphs at their advances and offsets, transformed (as RasterizeRun does).
-            var runFace = font.GetRunFace(r.Face, r.EmSize);
-            var along = 0f;
-            for (var i = 0; i < r.Glyphs.Length; i++)
-            {
-                var offset = r.Offsets?[i] ?? default;
-                var x = pen + (transform.M11 * (along + offset.advanceOffset)) - (transform.M12 * offset.ascenderOffset);
-                if (font.MeasureGlyph(runFace, r.EmSize, r.Glyphs[i], offset with { advanceOffset = 0 }, transform) is { } ink)
-                {
-                    var (left, right) = font.GetInkExtent(runFace, r.EmSize, r.Glyphs[i], transform);
-                    (inkX1, inkX2) = (Math.Min(inkX1, x + left), Math.Max(inkX2, x + right));
-                    (inkY1, inkY2) = (Math.Min(inkY1, ink.Top), Math.Max(inkY2, ink.Bottom));
-                }
-
-                along += r.Advances[i] + extra;
-            }
-
-            pen += along * transform.M11;
-        }
-
-        if (inkX1 > inkX2 || inkY1 > inkY2)
-            (inkX1, inkX2, inkY1, inkY2) = (0, 0, 0, 0);
-        else
-            (inkY1, inkY2) = (inkY1 + this.Ascent, inkY2 + this.Ascent);
-
-        return new(
-            advance,
-            true,
-            inkX1,
-            inkX2,
-            inkY1,
-            inkY2,
-            x =>
-            {
-                var pieces = new List<RasterGlyph>();
-                var pen = x;
-                foreach (var r in runs)
-                {
-                    var advances = r.Advances.Select(a => a + extra).ToArray();
-                    fixed (ushort* g = r.Glyphs)
-                    fixed (float* a = advances)
-                    fixed (DWRITE_GLYPH_OFFSET* o = r.Offsets)
-                    {
-                        var runFace = font.GetRunFace(r.Face, r.EmSize);
-                        pieces.Add(font.RasterizeRun(runFace, r.EmSize, g, a, o, (uint)r.Glyphs.Length, pen, 0, 1, transform));
-                    }
-
-                    pen += advances.Sum() * transform.M11;
-                }
-
-                return RasterGlyph.Merge(pieces, advance);
-            });
-    }
-
-    void IGlyphRunSink.OnGlyphRun(float baselineX, DWRITE_GLYPH_RUN* run, DWRITE_GLYPH_RUN_DESCRIPTION* description)
-    {
-        // Glyphs the font lacks are left out.
-        var glyphs = new List<ushort>();
-        var advances = new List<float>();
-        var offsets = run->glyphOffsets is null ? null : new List<DWRITE_GLYPH_OFFSET>();
-        for (var i = 0; i < run->glyphCount; i++)
-        {
-            if (run->glyphIndices[i] == 0)
-            {
-                if (advances.Count != 0)
-                    advances[^1] += run->glyphAdvances[i];
-                continue;
-            }
-
-            glyphs.Add(run->glyphIndices[i]);
-            advances.Add(run->glyphAdvances[i]);
-            offsets?.Add(run->glyphOffsets[i]);
-        }
-
-        if (glyphs.Count != 0)
-            this._runs.Add(new(run->fontFace, run->fontEmSize,glyphs.ToArray(), advances.ToArray(), offsets?.ToArray()));
-    }
-
-    private void Shape(string text, float letterSpacing)
-    {
-        using var format = rasterizer.CreateFormat(
-            font.Lookup.Name,
-            font.Font.LayoutWeight,
-            font.Font.LayoutStyle,
-            font.Font.LayoutStretch,
-            size,
-            rasterizer.NoFallback);
-        using var layout = default(ComPtr<IDWriteTextLayout>);
-        fixed (char* t = text)
-            rasterizer.Factory->CreateTextLayout(t, (uint)text.Length, (IDWriteTextFormat*)format.Get(), 1e6f, 1e6f, layout.GetAddressOf()).ThrowOnError();
-
-        var range = new DWRITE_TEXT_RANGE { startPosition = 0, length = (uint)text.Length };
-        font.ApplyTo(layout.Get(), range, size);
-        if (letterSpacing != 0)
-        {
-            using var layout1 = default(ComPtr<IDWriteTextLayout1>);
-            if (layout.CopyTo(layout1.GetAddressOf()).SUCCEEDED)
-                layout1.Get()->SetCharacterSpacing(0, letterSpacing, 0, range);
-        }
-
-        rasterizer.RunCollector.Collect(layout.Get(), this);
-    }
-
-    /// <summary>The glyph run of a laid out line: its face, size, and glyphs.</summary>
-    private sealed record TextRun(Pointer<IDWriteFontFace> Face, float EmSize, ushort[] Glyphs, float[] Advances, DWRITE_GLYPH_OFFSET[]? Offsets);
-}
-
-/// <summary>Texts of glyph merging in glyph images, glyph by glyph with font.json's kerning.</summary>
-internal sealed unsafe class ImageTextFont(ImageElementFont? images, float size, Matrix2x2 transform) : IMergeTextFont
-{
-    public int Ascent { get; } = images?.GetLineMetrics(size, transform).Ascent ?? 0;
-
-    public bool Has(Rune rune) => images is { CanDraw: true } && images.Has(rune, null);
-
-    public MergeTextLine LayOut(string text, int letterSpacing)
-    {
-        var pieces = new List<RasterGlyph>();
-        var codepoints = text.EnumerateRunes().ToArray();
-        var pen = 0;
-        for (var i = 0; i < codepoints.Length; i++)
-        {
-            if (images!.Rasterize(codepoints[i], size, transform) is not { } g)
-                continue;
-            pieces.Add(g with { Left = g.Left + pen });
-            pen += i + 1 < codepoints.Length ? g.Advance + images.GetKerning(codepoints[i], codepoints[i + 1], size, transform) + letterSpacing : g.Advance;
-        }
-
-        // The ink: the glyphs' boxes (xivres image_fixed_size_font's metrics).
-        var merged = RasterGlyph.Merge(pieces, pen);
-        var (inkX1, inkX2, inkY1, inkY2) = merged.Width == 0
-                                               ? (0f, 0f, 0, 0)
-                                               : (merged.Left, merged.Left + merged.Width, this.Ascent + merged.Top, this.Ascent + merged.Top + merged.Height);
-        return new(pen, false, inkX1, inkX2, inkY1, inkY2, x => merged with { Left = merged.Left + (int)Rounding.Round(x) });
     }
 }

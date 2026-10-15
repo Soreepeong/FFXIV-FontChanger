@@ -10,7 +10,7 @@ using TerraFX.Interop.Windows;
 using static TerraFX.Interop.DirectX.DirectX;
 using static TerraFX.Interop.Windows.Windows;
 
-namespace FontChanger.DalamudPlugin.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering.Rasterization;
 
 /// <summary>
 /// Draws SVG documents and bitmaps into coverage with Direct2D, on the CPU (a WIC bitmap target), and decodes PNG files

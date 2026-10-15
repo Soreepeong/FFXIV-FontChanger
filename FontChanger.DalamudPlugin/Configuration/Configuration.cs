@@ -20,7 +20,7 @@ public sealed class Configuration : IPluginConfiguration
 
     public SubpixelMode Subpixel { get; set; } = SubpixelMode.Off;
 
-    public ClearTypeSettings ClearType { get; set; } = new();
+    public SubpixelRenderingParameters ClearType { get; set; } = new();
 
     public AtlasSettings Atlas { get; set; } = new();
 

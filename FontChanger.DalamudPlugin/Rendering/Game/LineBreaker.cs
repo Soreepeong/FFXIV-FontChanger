@@ -13,7 +13,7 @@ using FontChanger.DalamudPlugin.Utilities;
 using Lumina.Text.Payloads;
 using Lumina.Text.ReadOnly;
 
-namespace FontChanger.DalamudPlugin.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering.Game;
 
 /// <summary>
 /// Splits words that don't fit on a line where DirectWrite allows a line break, never inside a cluster.
@@ -38,25 +38,25 @@ internal sealed unsafe class LineBreaker : IDisposable
     private const byte NonBreakingSpaceChar = 0x1D;
     private const byte HyphenChar = 0x1E;
 
-    private readonly FontReplacer replacer;
-    private readonly Hook<SplitWordDelegate> splitWordHook;
+    private readonly FontReplacer _replacer;
+    private readonly Hook<SplitWordDelegate> _splitWordHook;
 
-    private readonly StringBuilder text = new();
-    private readonly List<Unit> units = [];
-    private bool[] clusterEnd = new bool[64];
-    private bool[] wrapAfter = new bool[64];
+    private readonly StringBuilder _text = new();
+    private readonly List<Unit> _units = [];
+    private bool[] _clusterEnd = new bool[64];
+    private bool[] _wrapAfter = new bool[64];
 
     // The decision for the word being split, made at its first split.
-    private bool splittingOwnWord;
+    private bool _splittingOwnWord;
 
     public LineBreaker(FontReplacer replacer)
     {
-        this.replacer = replacer;
+        this._replacer = replacer;
         try
         {
             var splitWord = AtkFontCodeModule.Addresses.SplitWord.Value;
-            this.splitWordHook = Plugin.GameInterop.HookFromAddress<SplitWordDelegate>(splitWord, this.SplitWordDetour);
-            this.splitWordHook.Enable();
+            this._splitWordHook = Plugin.GameInterop.HookFromAddress<SplitWordDelegate>(splitWord, this.SplitWordDetour);
+            this._splitWordHook.Enable();
         }
         catch
         {
@@ -67,7 +67,7 @@ internal sealed unsafe class LineBreaker : IDisposable
 
     private delegate uint SplitWordDelegate(AtkFontCodeModule* wrapper, int width, int unused, byte* word, byte* measuredWord, byte lineStart);
 
-    public void Dispose() => this.splitWordHook?.Dispose();
+    public void Dispose() => this._splitWordHook?.Dispose();
 
     /// <summary>
     /// Gets whether a word needs clusters or dictionary breaks: it has combining marks, conjoining jamo, joiners, or
@@ -118,8 +118,8 @@ internal sealed unsafe class LineBreaker : IDisposable
         try
         {
             if (first)
-                this.splittingOwnWord = this.replacer.Enabled && NeedsClusters(word);
-            if (this.splittingOwnWord)
+                this._splittingOwnWord = this._replacer.Enabled && NeedsClusters(word);
+            if (this._splittingOwnWord)
                 return this.Split(wrapper, width, word, measuredWord, lineStart != 0);
         }
         catch (Exception ex)
@@ -134,10 +134,10 @@ internal sealed unsafe class LineBreaker : IDisposable
                 return fit <= 0 ? lineStart != 0 ? 1u : 0u : (uint)fit;
             }
 
-            this.splittingOwnWord = false;
+            this._splittingOwnWord = false;
         }
 
-        return this.splitWordHook.Original(wrapper, width, unused, word, measuredWord, lineStart);
+        return this._splitWordHook.Original(wrapper, width, unused, word, measuredWord, lineStart);
     }
 
     private uint Split(AtkFontCodeModule* wrapper, int width, byte* word, byte* measuredWord, bool lineStart)
@@ -147,29 +147,29 @@ internal sealed unsafe class LineBreaker : IDisposable
             return 0;
 
         this.Decode(word);
-        var count = this.units.Count;
+        var count = this._units.Count;
         if (fit >= count)
             return (uint)count;
 
-        if (this.clusterEnd.Length <= this.text.Length)
+        if (this._clusterEnd.Length <= this._text.Length)
         {
-            this.clusterEnd = new bool[this.text.Length * 2];
-            this.wrapAfter = new bool[this.text.Length * 2];
+            this._clusterEnd = new bool[this._text.Length * 2];
+            this._wrapAfter = new bool[this._text.Length * 2];
         }
 
-        var chars = this.text.Length <= 512 ? stackalloc char[this.text.Length] : new char[this.text.Length];
-        this.text.CopyTo(0, chars, chars.Length);
-        this.replacer.Shaper.GetBreaks(
+        var chars = this._text.Length <= 512 ? stackalloc char[this._text.Length] : new char[this._text.Length];
+        this._text.CopyTo(0, chars, chars.Length);
+        this._replacer.Shaper.GetBreaks(
             chars,
-            this.clusterEnd.AsSpan(0, chars.Length + 1),
-            this.wrapAfter.AsSpan(0, chars.Length + 1));
+            this._clusterEnd.AsSpan(0, chars.Length + 1),
+            this._wrapAfter.AsSpan(0, chars.Length + 1));
 
         // The last break opportunity among the units that fit. A break right after a unit is at the end of its text; a
         // macro has none of its own.
         var best = 0;
         for (var k = 1; k <= fit; k++)
         {
-            if (EndsAt(this.wrapAfter, k))
+            if (EndsAt(this._wrapAfter, k))
                 best = k;
         }
 
@@ -178,13 +178,13 @@ internal sealed unsafe class LineBreaker : IDisposable
         {
             for (var k = 1; k <= fit; k++)
             {
-                if (EndsAt(this.clusterEnd, k))
+                if (EndsAt(this._clusterEnd, k))
                     best = k;
             }
 
             for (var k = fit + 1; best == 0 && k <= count; k++)
             {
-                if (EndsAt(this.clusterEnd, k))
+                if (EndsAt(this._clusterEnd, k))
                     best = k;
             }
 
@@ -192,13 +192,13 @@ internal sealed unsafe class LineBreaker : IDisposable
                 best = count;
         }
 
-        // Macros (colours and the like) right after the break stay with the line they follow, as in the game's split.
-        while (best > 0 && best < count && this.units[best].IsMacro)
+        // Macros (colors and the like) right after the break stay with the line they follow, as in the game's split.
+        while (best > 0 && best < count && this._units[best].IsMacro)
             best++;
 
         return (uint)best;
 
-        bool EndsAt(bool[] breaks, int k) => this.units[k - 1].TextEnd is var end and > 0 && breaks[end];
+        bool EndsAt(bool[] breaks, int k) => this._units[k - 1].TextEnd is var end and > 0 && breaks[end];
     }
 
     /// <summary>
@@ -207,8 +207,8 @@ internal sealed unsafe class LineBreaker : IDisposable
     /// </summary>
     private void Decode(byte* p)
     {
-        this.units.Clear();
-        this.text.Clear();
+        this._units.Clear();
+        this._text.Clear();
         Span<char> utf16 = stackalloc char[2];
         while (*p != 0)
         {
@@ -219,8 +219,8 @@ internal sealed unsafe class LineBreaker : IDisposable
                     break;
                 var icon = (MacroCode)p[1] is MacroCode.Icon or MacroCode.Icon2;
                 if (icon)
-                    this.text.Append('￼');
-                this.units.Add(new(!icon, this.text.Length));
+                    this._text.Append('￼');
+                this._units.Add(new(!icon, this._text.Length));
                 p += length;
                 continue;
             }
@@ -238,8 +238,8 @@ internal sealed unsafe class LineBreaker : IDisposable
                          : Rune.ReplacementChar,
             };
 
-            this.text.Append(utf16[..rune.EncodeToUtf16(utf16)]);
-            this.units.Add(new(false, this.text.Length));
+            this._text.Append(utf16[..rune.EncodeToUtf16(utf16)]);
+            this._units.Add(new(false, this._text.Length));
             p += n;
         }
     }

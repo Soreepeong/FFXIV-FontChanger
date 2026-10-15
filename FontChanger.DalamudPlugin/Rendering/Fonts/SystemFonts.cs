@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using System.Threading;
 
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
@@ -11,7 +12,7 @@ using TerraFX.Interop.Windows;
 
 using static TerraFX.Interop.DirectX.DirectX;
 
-namespace FontChanger.DalamudPlugin.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering.Fonts;
 
 /// <summary>
 /// The system's fonts, measured for <see cref="FaceFromFont"/>. Its own DirectWrite factory, made when first used, is
@@ -19,7 +20,7 @@ namespace FontChanger.DalamudPlugin.Rendering;
 /// </summary>
 internal sealed unsafe class SystemFonts : IDisposable
 {
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private ComPtr<IDWriteFactory> _factory;
     private ComPtr<IDWriteFontCollection> _collection;
 
@@ -37,9 +38,9 @@ internal sealed unsafe class SystemFonts : IDisposable
             }
 
             uint index;
-            BOOL exists;
             fixed (char* name = lookup.Name)
             {
+                BOOL exists;
                 if (this._collection.Get()->FindFamilyName(name, &index, &exists).FAILED || !exists)
                     return false;
             }

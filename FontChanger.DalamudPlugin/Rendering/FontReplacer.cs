@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 using Dalamud.Hooking;
+using Dalamud.Utility;
 
 using FontChanger.Presets.Records;
 
@@ -12,6 +13,9 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Rendering.Faces;
+using FontChanger.DalamudPlugin.Rendering.Game;
+using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Rendering.Shaders;
 using FontChanger.DalamudPlugin.Utilities;
 
@@ -106,6 +110,12 @@ internal sealed unsafe class FontReplacer : IDisposable
     private readonly Dictionary<string, ReplacementFace> _presetFaces = new(StringComparer.OrdinalIgnoreCase);
     private bool _enabled = true;
 
+    /// <summary>
+    /// Undoes the setup in reverse: what the hooks hand the game (copies, glyphs) outlives them, and the faces and the
+    /// rasterizer outlive what draws with them. Mutable fields are registered as actions, read when they run.
+    /// </summary>
+    private readonly DisposeSafety.ScopedFinalizer _finalizer = new();
+
     public FontReplacer()
     {
         try
@@ -120,8 +130,9 @@ internal sealed unsafe class FontReplacer : IDisposable
             this._rendererVtbl = AtkFontAnalyzerRenderer.Addresses.StaticVirtualTable.Value;
             this._renderCountVtbl = AtkFontAnalyzerRenderCount.Addresses.StaticVirtualTable.Value;
 
-            this._rasterizer = new();
-            this._builtInFace = ReplacementFace.CreateBuiltIn(this._rasterizer);
+            this._rasterizer = this._finalizer.Add(new GlyphRasterizer());
+            this._builtInFace = this._finalizer.Add(ReplacementFace.CreateBuiltIn(this._rasterizer));
+            this._finalizer.Add(this.DisposePresetFaces);
             this._gameFace = ReplacementFace.CreateGame(this._rasterizer, true, this._builtInFace);
             try
             {
@@ -132,16 +143,38 @@ internal sealed unsafe class FontReplacer : IDisposable
                 Plugin.Log.Warning(ex, "The game's font names weren't found; presets can't be applied");
             }
 
+            this._finalizer.Add(this._gameTextures);
+            this._blankTexture = this._finalizer.Add(CreateBlankTexture());
+            this._finalizer.Add(() => {
+                foreach (var atlas in this._atlases.Values)
+                    atlas.Dispose();
+                this._atlases.Clear();
+            });
             this._emptyGlyph = (GlyphSlot*)NativeMemory.AllocZeroed((nuint)sizeof(GlyphSlot));
             this._emptyGlyph->Id = -1;
-            this._blankTexture = CreateBlankTexture();
-            this._shaper = new(this._rasterizer, this, &this._emptyGlyph->Glyph);
-            this._pickFontHook = Plugin.GameInterop.HookFromAddress<PickFontDelegate>(pickFont, this.PickFontDetour);
-            this._getGlyphHook = Plugin.GameInterop.HookFromAddress<GetGlyphDelegate>(getGlyph, this.GetGlyphDetour);
-            this._buildFontCacheHook = Plugin.GameInterop.HookFromAddress<FontCacheDelegate>(buildFontCache, this.BuildFontCacheDetour);
-            this._layOutCharacterHook = Plugin.GameInterop.HookFromAddress<LayOutCharacterDelegate>(layOutCharacter, this.LayOutCharacterDetour);
-            this._buildFontHook = Plugin.GameInterop.HookFromAddress<BuildFontDelegate>(buildFont, this.BuildFontDetour);
-            this._unloadFontsHook = Plugin.GameInterop.HookFromAddress<UnloadFontsDelegate>(unloadFonts, this.UnloadFontsDetour);
+            this._finalizer.Add(() => {
+                NativeMemory.Free(this._emptyGlyph);
+                this._emptyGlyph = null;
+            });
+            this._finalizer.Add(this.FreeGlyphs);
+            this._shaper = this._finalizer.Add(new TextShaper(this._rasterizer, this, &this._emptyGlyph->Glyph));
+            this._finalizer.Add(() => {
+                foreach (var copy in this._copies.Keys)
+                    NativeMemory.Free(copy.Value);
+                this._copies.Clear();
+                this._copiesByKey.Clear();
+            });
+
+            // Font sets may still have a copy picked: forgotten once no hook can pick one again.
+            this._finalizer.Add(ForgetPickedFonts);
+            this._getGlyphHook = this._finalizer.Add(Plugin.GameInterop.HookFromAddress<GetGlyphDelegate>(getGlyph, this.GetGlyphDetour));
+            this._pickFontHook = this._finalizer.Add(Plugin.GameInterop.HookFromAddress<PickFontDelegate>(pickFont, this.PickFontDetour));
+            this._buildFontCacheHook = this._finalizer.Add(Plugin.GameInterop.HookFromAddress<FontCacheDelegate>(buildFontCache, this.BuildFontCacheDetour));
+            this._layOutCharacterHook = this._finalizer.Add(Plugin.GameInterop.HookFromAddress<LayOutCharacterDelegate>(layOutCharacter, this.LayOutCharacterDetour));
+            this._buildFontHook = this._finalizer.Add(Plugin.GameInterop.HookFromAddress<BuildFontDelegate>(buildFont, this.BuildFontDetour));
+            this._unloadFontsHook = this._finalizer.Add(Plugin.GameInterop.HookFromAddress<UnloadFontsDelegate>(unloadFonts, this.UnloadFontsDetour));
+            this._finalizer.Add(this._subpixelShaders);
+            this._finalizer.Add(this._edgeShader);
             this._getGlyphHook.Enable();
             this._pickFontHook.Enable();
             this._buildFontCacheHook.Enable();
@@ -149,12 +182,23 @@ internal sealed unsafe class FontReplacer : IDisposable
             this._buildFontHook.Enable();
             this._unloadFontsHook.Enable();
 
+            // First of all: the game's font caches come back while the hooks are still there to build them.
+            this._finalizer.Add(() => this.Enabled = false);
+
             // Caches built so far hold the game's glyphs.
             this.UpdateFontCaches();
         }
         catch
         {
-            this.Dispose();
+            try
+            {
+                this._finalizer.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Error(ex, "Undoing a failed font replacer setup failed");
+            }
+
             throw;
         }
     }
@@ -209,11 +253,23 @@ internal sealed unsafe class FontReplacer : IDisposable
     public ReplacementFace BuiltInFace => this._builtInFace;
 
     /// <summary>
-    /// Uses a preset's faces for the game fonts of their names (the game's glyphs for the others, or for all if null),
-    /// drawing characters they lack with system fonts if <paramref name="systemFallback"/>, else the game's. Framework
-    /// thread, between frames. Every glyph is made again.
+    /// Gets or sets the faces of the game fonts. Framework thread, between frames; setting it makes every glyph again, even
+    /// to the same value.
     /// </summary>
-    public void SetPreset(Preset? preset, bool systemFallback)
+    public FaceSettings Faces
+    {
+        get => this._faces;
+        set
+        {
+            Misc.DebugAssertMainThread();
+            this._faces = value;
+            this.ApplyFaces(value.Preset, value.SystemFallback);
+        }
+    }
+
+    private FaceSettings _faces = new();
+
+    private void ApplyFaces(Preset? preset, bool systemFallback)
     {
         this._shaper.ClearFormats();
         this.DisposePresetFaces();
@@ -314,7 +370,6 @@ internal sealed unsafe class FontReplacer : IDisposable
         return sized;
     }
 
-    /// <summary>Gets the face of a game font name: the preset's, or the game's.</summary>
     private ReplacementFace FaceOf(string faceName) => this._presetFaces.GetValueOrDefault(faceName) ?? this._gameFace;
 
     /// <summary>Gets the atlas of a game font family, made on its first use.</summary>
@@ -377,22 +432,30 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     private bool? _supports4444;
 
-    /// <summary>Gets the size and number of the atlas pages.</summary>
-    public AtlasSettings Atlas { get; private set; } = new AtlasSettings().Clamped();
-
-    /// <summary>Sets the size and number of the atlas pages. Framework thread, between frames; a change remakes the atlases and every glyph.</summary>
-    public void SetAtlas(AtlasSettings settings)
+    /// <summary>
+    /// Gets or sets the size and number of the atlas pages, clamped. Framework thread, between frames; a change remakes the
+    /// atlases and every glyph.
+    /// </summary>
+    public AtlasSettings Atlas
     {
-        settings = settings.Clamped();
-        if (settings == this.Atlas)
-            return;
-        this.Atlas = settings;
-        this.RemakeAtlases();
+        get => this._atlas;
+        set
+        {
+            Misc.DebugAssertMainThread();
+            value = value.Clamped();
+            if (value == this._atlas)
+                return;
+            this._atlas = value;
+            this.RemakeAtlases();
+        }
     }
+
+    private AtlasSettings _atlas = new AtlasSettings().Clamped();
 
     /// <summary>Remakes the atlases with the current settings, and every glyph. Framework thread, between frames.</summary>
     private void RemakeAtlases()
     {
+        Misc.DebugAssertMainThread();
         this.RebuildGlyphs();
 
         // Glyphs and copies refer to the old atlases' pages, so they go first.
@@ -414,35 +477,41 @@ internal sealed unsafe class FontReplacer : IDisposable
     }
 
     /// <summary>
-    /// Gets the edge outline's (FontEdgePS) width at each text size. A font's edge width is the step the shader samples
-    /// by, one texel of the texture width the font claims; above 1 px, glyph boxes get empty margins for it, as the edge
-    /// is only drawn within a glyph's box and one pixel around it.
+    /// Gets or sets the edge outline's (FontEdgePS) width at each text size. A font's edge width is the step the shader
+    /// samples by, one texel of the texture width the font claims; above 1 px, glyph boxes get empty margins for it, as
+    /// the edge is only drawn within a glyph's box and one pixel around it. Framework thread; glyphs are made again if a
+    /// size's margin changes.
     /// </summary>
-    public EdgeSettings Edge { get; private set; } = new();
-
-    /// <summary>Sets the edge outline's width at each text size. Framework thread; glyphs are made again if a size's margin changes.</summary>
-    public void SetEdge(EdgeSettings edge)
+    public EdgeSettings Edge
     {
-        edge = edge.Drawn();
-        if (edge == this.Edge)
+        get => this._edge;
+        set => this.ApplyEdge(value.Drawn());
+    }
+
+    private EdgeSettings _edge = new();
+
+    private void ApplyEdge(EdgeSettings edge)
+    {
+        Misc.DebugAssertMainThread();
+        if (edge == this._edge)
             return;
 
         // Glyphs made now show only from the frame after (Upload), so remaking them blanks text for a frame: only when a
         // size's margin changes.
-        var marginChanged = this._sizedFonts.Values.Any(s => GetEdgeMargin(edge, s.Px) != GetEdgeMargin(this.Edge, s.Px));
-        this.Edge = edge;
+        var marginChanged = this._sizedFonts.Values.Any(s => GetEdgeMargin(edge, s.Px) != GetEdgeMargin(this._edge, s.Px));
+        this._edge = edge;
 
         // The plugin's edge shader draws a round edge of any width, which each font sets by the texture width it claims;
         // unless edges are the game's own (1 px at every size). The game's draws a fixed pattern, made wider only by
         // claiming a narrower texture (blocky past about 1.5 px): the fallback if the plugin's can't be used.
         try
         {
-            this._edgeShader.Set(edge.Enabled && edge != new EdgeSettings { Enabled = true }, edge.Softness);
+            this._edgeShader.Softness = edge.Enabled && edge != new EdgeSettings { Enabled = true } ? edge.Softness : null;
         }
         catch (Exception ex)
         {
             Plugin.Log.Error(ex, "Using the plugin's edge shader failed; edges are widened with the game's");
-            this._edgeShader.Set(false);
+            this._edgeShader.Softness = null;
         }
 
         // Copies claim their texture width by the edge.
@@ -456,7 +525,7 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     private readonly EdgeShader _edgeShader = new();
 
-    private readonly SubpixelTextShaders _subpixelShaders = new();
+    private readonly SubpixelShaders _subpixelShaders = new();
 
     /// <summary>Between frames, after the UI's draw commands are processed; <see cref="Upload"/> does it too.</summary>
     public void EndFrame()
@@ -466,26 +535,32 @@ internal sealed unsafe class FontReplacer : IDisposable
         this._subpixelShaders.EndFrame();
     }
 
-    /// <summary>Gets the subpixel text settings.</summary>
-    public SubpixelSettings Subpixel { get; private set; } = new();
-
     /// <summary>
-    /// Sets the subpixel text settings. Framework thread, between frames; switching it on or off remakes the atlases and
-    /// every glyph.
+    /// Gets or sets the subpixel text settings. Framework thread, between frames; switching it on or off remakes the
+    /// atlases and every glyph.
     /// </summary>
-    public void SetSubpixel(SubpixelSettings settings)
+    public SubpixelShaders.SettingsRecord Subpixel
     {
-        if (settings == this.Subpixel)
+        get => this._subpixel;
+        set => this.ApplySubpixel(value);
+    }
+
+    private SubpixelShaders.SettingsRecord _subpixel = new();
+
+    private void ApplySubpixel(SubpixelShaders.SettingsRecord settings)
+    {
+        Misc.DebugAssertMainThread();
+        if (settings == this._subpixel)
             return;
-        this.Subpixel = settings;
+        this._subpixel = settings;
         try
         {
-            this._subpixelShaders.Set(settings);
+            this._subpixelShaders.Settings = settings;
         }
         catch (Exception ex)
         {
             Plugin.Log.Error(ex, "Subpixel text is off");
-            this._subpixelShaders.Set(new());
+            this._subpixelShaders.Settings = new();
         }
 
         var active = this._subpixelShaders.Active;
@@ -536,6 +611,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     public void RebuildGlyphs()
     {
+        Misc.DebugAssertMainThread();
         this._shaper.Clear();
         this._fullAtlases.Clear();
         this._gameReads.Clear();
@@ -559,6 +635,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         get => this._enabled;
         set
         {
+            Misc.DebugAssertMainThread();
             if (this._enabled == value)
                 return;
             this._enabled = value;
@@ -568,39 +645,11 @@ internal sealed unsafe class FontReplacer : IDisposable
         }
     }
 
+    /// <summary>Undoes everything; a step that fails is collected, and the others still run. Framework thread.</summary>
     public void Dispose()
     {
-        this.Enabled = false;
-        NullSafeDispose(this._edgeShader);
-        NullSafeDispose(this._subpixelShaders);
-        NullSafeDispose(this._unloadFontsHook);
-        NullSafeDispose(this._buildFontHook);
-        NullSafeDispose(this._layOutCharacterHook);
-        NullSafeDispose(this._buildFontCacheHook);
-        NullSafeDispose(this._pickFontHook);
-        NullSafeDispose(this._getGlyphHook);
-        ForgetPickedFonts();
-
-        foreach (var copy in this._copies.Keys)
-            NativeMemory.Free(copy.Value);
-        this._copies.Clear();
-        this._copiesByKey.Clear();
-        NullSafeDispose(this._shaper);
-        this.FreeGlyphs();
-        if (this._emptyGlyph is not null)
-        {
-            NativeMemory.Free(this._emptyGlyph);
-            this._emptyGlyph = null;
-        }
-
-        foreach (var atlas in this._atlases.Values)
-            NullSafeDispose(atlas);
-        this._atlases.Clear();
-        NullSafeDispose(this._blankTexture);
-        NullSafeDispose(this._gameTextures);
-        this.DisposePresetFaces();
-        NullSafeDispose(this._builtInFace);
-        NullSafeDispose(this._rasterizer);
+        Misc.DebugAssertMainThread();
+        this._finalizer.Dispose();
     }
 
     /// <summary>Makes every font set pick its font again on its next use.</summary>
@@ -864,13 +913,13 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// Gets how the character being laid out is in italics: by an italic macro (which measuring sees too), or by its text
     /// node (which only drawing sees: the bit is in the font set's own flags, before any macro changed the copy).
     /// </summary>
-    private ItalicMode GetItalicMode(AtkFontManager.FontSet* set)
+    private TextShaper.ItalicMode GetItalicMode(AtkFontManager.FontSet* set)
     {
         if (_current.State is null || (_current.State->Flags & AtkFontManager.DrawFlags.Italic) == 0)
-            return ItalicMode.Upright;
+            return TextShaper.ItalicMode.Upright;
         return set is not null && (set->DrawFlags & AtkFontManager.DrawFlags.Italic) != 0
-                   ? ItalicMode.Images
-                   : ItalicMode.Real;
+                   ? TextShaper.ItalicMode.Images
+                   : TextShaper.ItalicMode.Real;
     }
 
     /// <summary>Marks a cell as a real italic glyph, which the game must not shear.</summary>
@@ -922,7 +971,7 @@ internal sealed unsafe class FontReplacer : IDisposable
                 {
                     // A real italic glyph is drawn as it is: the italic bit is cleared while the character is laid out
                     // (the quad emitter runs after this lookup), and set again after (LayOutCharacterDetour).
-                    if (italic != ItalicMode.Upright && ((GlyphSlot*)shaped)->Id >= 0 && this.CellOf(shaped).RealItalic)
+                    if (italic != TextShaper.ItalicMode.Upright && ((GlyphSlot*)shaped)->Id >= 0 && this.CellOf(shaped).RealItalic)
                     {
                         _current.State->Flags &= ~AtkFontManager.DrawFlags.Italic;
                         _current.ItalicCleared = true;
@@ -1056,6 +1105,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     public void Upload()
     {
+        Misc.DebugAssertMainThread();
         this._frameTick = Environment.TickCount64;
         foreach (var g in this._gameReads)
         {
@@ -1169,6 +1219,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     private void ApplyPages(AtkFontManager.Font* copy, GlyphAtlas atlas)
     {
+        Misc.DebugAssertMainThread();
         var blank = this._blankTexture.Kernel;
         var pages = Math.Min(atlas.PageCount, AtkFontManager.Font.MaxTextures);
         for (var i = 0; i < AtkFontManager.Font.MaxTextures; i++)
@@ -1362,6 +1413,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// </summary>
     private void EvictPlane(GlyphAtlas atlas)
     {
+        Misc.DebugAssertMainThread();
         var now = Environment.TickCount64;
         var stale = new long[atlas.MaxPlanes];
         var oldest = new long[atlas.MaxPlanes];
@@ -1428,11 +1480,9 @@ internal sealed unsafe class FontReplacer : IDisposable
             moved.Count);
     }
 
-    /// <summary>Gets the atlas plane of a placed glyph (page * planes per page + channel).</summary>
     private static int PlaneOf(AtkFontManager.Glyph* glyph) =>
         (glyph->TextureIndex * GlyphAtlas.PlanesPerPage) + glyph->Channel;
 
-    /// <summary>Writes a placed glyph's pixels to its place in the atlas.</summary>
     private static void WriteCell(AtkFontManager.Glyph* glyph, in Cell cell)
     {
         var r = cell.Raster;
@@ -1515,7 +1565,6 @@ internal sealed unsafe class FontReplacer : IDisposable
     {
         public CellState State;
 
-        /// <summary>The atlas its pixels go to.</summary>
         public GlyphAtlas? Atlas;
 
         /// <summary>
@@ -1571,6 +1620,12 @@ internal sealed unsafe class FontReplacer : IDisposable
     }
 
     /// <summary>
+    /// The faces of the game fonts: a preset's for the game fonts of their names (the game's glyphs for the others, or for
+    /// all if null), drawing characters they lack with system fonts if <paramref name="SystemFallback"/>, else the game's.
+    /// </summary>
+    internal readonly record struct FaceSettings(Preset? Preset = null, bool SystemFallback = true);
+
+    /// <summary>
     /// Where a sized font's glyph of a codepoint comes from: <see cref="Face"/>'s <see cref="Element"/> (null for the
     /// system's fonts), with <see cref="Game"/> for the face's game glyphs.
     /// </summary>
@@ -1591,7 +1646,6 @@ internal sealed unsafe class FontReplacer : IDisposable
     {
         public ReplacementFace Face { get; } = face;
 
-        /// <summary>Gets the atlas of the font's family, which its glyphs go to.</summary>
         public GlyphAtlas Atlas { get; } = atlas;
 
         public Pointer<AtkFontManager.Font> GameFont { get; } = gameFont;

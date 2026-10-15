@@ -7,6 +7,8 @@ using System.Text;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Rendering.Faces;
+using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 
@@ -20,26 +22,6 @@ namespace FontChanger.DalamudPlugin.Rendering;
 
 // Inside the namespace, so that Pointer<T> is XIVCS's over TerraFX's.
 using FFXIVClientStructs.Interop;
-
-/// <summary>How a run of text the game draws in italics is shaped.</summary>
-internal enum ItalicMode
-{
-    /// <summary>Not in italics.</summary>
-    Upright,
-
-    /// <summary>
-    /// In italics by an italic macro, which the game also sees when it measures: shaped in the faces' italics, which are
-    /// drawn as they are; the game shears the glyphs of faces without (synthesized obliques are drawn upright for it).
-    /// </summary>
-    Real,
-
-    /// <summary>
-    /// In italics by the text node, which the game only sees when it draws, measuring the text upright: shaped in italics
-    /// as <see cref="Real"/>, spaced out evenly to the upright run's width. Where the two shapings differ, shaped upright
-    /// instead, each single-character cluster drawn with the italic of its font, where there is one.
-    /// </summary>
-    Images,
-}
 
 /// <summary>
 /// Shapes the game's text with DirectWrite (ligatures, contextual alternates, kerning, marks, fallback per script), and
@@ -167,20 +149,20 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         this._fallback.Dispose();
     }
 
-    void IGlyphRunSink.OnGlyphRun(float baselineX, DWRITE_GLYPH_RUN* run, DWRITE_GLYPH_RUN_DESCRIPTION* description)
+    void IGlyphRunSink.OnGlyphRun(float baselineX, in DWRITE_GLYPH_RUN run, in DWRITE_GLYPH_RUN_DESCRIPTION description)
     {
         // The game draws in logical order: right-to-left runs stay per character, and break the line's clusters.
         if (this._shapingGlyphs is null || this._shapingSized is null)
             return;
-        if ((run->bidiLevel & 1) != 0)
+        if ((run.bidiLevel & 1) != 0)
         {
             this._clusterGap = true;
             return;
         }
 
-        var clusterMap = description->clusterMap;
-        var length = (int)description->stringLength;
-        var start = (int)description->textPosition;
+        var clusterMap = description.clusterMap;
+        var length = (int)description.stringLength;
+        var start = (int)description.textPosition;
         var pen = baselineX + this._penShift;
         for (var k = 0; k < length;)
         {
@@ -188,7 +170,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             var k2 = k + 1;
             while (k2 < length && clusterMap[k2] == glyphStart)
                 k2++;
-            var glyphEnd = k2 < length ? clusterMap[k2] : (ushort)run->glyphCount;
+            var glyphEnd = k2 < length ? clusterMap[k2] : (ushort)run.glyphCount;
             var count = glyphEnd - glyphStart;
 
             // Characters the game draws (by the face, or as none of its elements has them), and those of elements not
@@ -202,24 +184,24 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
             // An element's glyphs are drawn from its own face (simulations, axis values), and FreeType's emboldening
             // advances them further.
-            var face = font is not null ? font.GetRunFace(run->fontFace, run->fontEmSize) : run->fontFace;
+            var face = font is not null ? font.GetRunFace(run.fontFace, run.fontEmSize) : run.fontFace;
             if (!this._keptFaces.ContainsKey(face))
                 this._keptFaces.Add(face, new(face));
-            var extra = font?.GetExtraAdvance(run->fontEmSize) ?? 0;
+            var extra = font?.GetExtraAdvance(run.fontEmSize) ?? 0;
             var advances = new float[count];
             var advance = 0f;
             var layoutAdvance = 0f;
             for (var g = glyphStart; g < glyphEnd; g++)
             {
-                advances[g - glyphStart] = run->glyphAdvances[g] + extra;
+                advances[g - glyphStart] = run.glyphAdvances[g] + extra;
                 advance += advances[g - glyphStart];
-                layoutAdvance += run->glyphAdvances[g];
-                missing |= run->glyphIndices[g] == 0;
+                layoutAdvance += run.glyphAdvances[g];
+                missing |= run.glyphIndices[g] == 0;
             }
 
             // Italics: a real italic stays, a synthesized oblique is drawn upright for the game to shear.
-            var glyphs = new ReadOnlySpan<ushort>(run->glyphIndices + glyphStart, count).ToArray();
-            var offsets = run->glyphOffsets is null ? null : new ReadOnlySpan<DWRITE_GLYPH_OFFSET>(run->glyphOffsets + glyphStart, count).ToArray();
+            var glyphs = new ReadOnlySpan<ushort>(run.glyphIndices + glyphStart, count).ToArray();
+            var offsets = run.glyphOffsets is null ? null : new ReadOnlySpan<DWRITE_GLYPH_OFFSET>(run.glyphOffsets + glyphStart, count).ToArray();
             var realItalic = false;
             if (!missing && this._shapingItalic == ItalicMode.Real && this._textItalic[start + k])
             {
@@ -251,7 +233,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             var cluster = new Cluster
             {
                 Face = face,
-                EmSize = run->fontEmSize,
+                EmSize = run.fontEmSize,
                 Glyphs = glyphs,
                 Advances = advances,
                 Offsets = offsets,
@@ -493,10 +475,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             icons.Dispose();
             var pua = new DWRITE_UNICODE_RANGE { first = 0xE000, last = 0xF8FF };
             fixed (char* name = IconFamily)
-            {
-                var names = name;
-                builder.Get()->AddMapping(&pua, 1, &names, 1, null, null, null, 1).ThrowOnError();
-            }
+                builder.Get()->AddMapping(&pua, 1, &name, 1, null, null, null).ThrowOnError();
         }
         else
         {
@@ -705,7 +684,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         this._penShift = 0;
         this._clusters.Clear();
         this._clusterGap = false;
-        this._rasterizer.RunCollector.Collect(layout.Get(), this);
+        layout.Get()->CollectTo(this);
     }
 
     /// <summary>
@@ -951,6 +930,26 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             this._replacer.MarkRealItalic(cell);
         this._cells.Add(key, cell);
         return cell;
+    }
+
+    /// <summary>How a run of text the game draws in italics is shaped.</summary>
+    internal enum ItalicMode
+    {
+        Upright,
+
+        /// <summary>
+        /// In italics by an italic macro, which the game also sees when it measures: shaped in the faces' italics, which
+        /// are drawn as they are; the game shears the glyphs of faces without (synthesized obliques are drawn upright for
+        /// it).
+        /// </summary>
+        Real,
+
+        /// <summary>
+        /// In italics by the text node, which the game only sees when it draws, measuring the text upright: shaped in
+        /// italics as <see cref="Real"/>, spaced out evenly to the upright run's width. Where the two shapings differ,
+        /// shaped upright instead, each single-character cluster drawn with the italic of its font, where there is one.
+        /// </summary>
+        Images,
     }
 
     /// <summary>A cluster of a layout: its glyphs and where they are, and the text it covers.</summary>

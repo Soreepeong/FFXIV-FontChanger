@@ -9,7 +9,7 @@ using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Utilities;
 
-namespace FontChanger.DalamudPlugin.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering.Game;
 
 /// <summary>
 /// Names the game's fonts as presets do (<c>AXIS_12</c>, <c>TrumpGothic_184</c>).
@@ -21,9 +21,9 @@ namespace FontChanger.DalamudPlugin.Rendering;
 /// </remarks>
 internal static unsafe class GameFontNames
 {
-    private static string[]? gameNames;
-    private static string[]? lobbyNamesA;
-    private static string[]? lobbyNamesB;
+    private static string[]? _gameNames;
+    private static string[]? _lobbyNamesA;
+    private static string[]? _lobbyNamesB;
 
     /// <summary>Gets the game's font families (<c>AXIS</c>, <c>JupiterN</c>, ...) in the order of its font table; none if it wasn't read.</summary>
     public static IReadOnlyList<string> Families { get; private set; } = [];
@@ -31,15 +31,15 @@ internal static unsafe class GameFontNames
     /// <summary>Reads the tables. Throws if they can't be found.</summary>
     public static void Initialize()
     {
-        lobbyNamesA = Read(AtkFontManager.LobbyFontTableStandardResolution());
-        lobbyNamesB = Read(AtkFontManager.LobbyFontTableHighResolution());
-        gameNames = Read(AtkFontManager.GameFontTable());
-        Families = gameNames.Select(Preset.FamilyOf).Where(f => f.Length != 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        _lobbyNamesA = Read(AtkFontManager.LobbyFontTableStandardResolution());
+        _lobbyNamesB = Read(AtkFontManager.LobbyFontTableHighResolution());
+        _gameNames = Read(AtkFontManager.GameFontTable());
+        Families = _gameNames.Select(Preset.FamilyOf).Where(f => f.Length != 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>Gets the faces of a family in the game's font table, with the sizes their names stand for.</summary>
     public static IReadOnlyList<(string Name, float Size)> FacesOf(string family) =>
-        (gameNames ?? [])
+        (_gameNames ?? [])
         .Where(n => string.Equals(Preset.FamilyOf(n), family, StringComparison.OrdinalIgnoreCase))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .Select(n => (n, SizeOf(n)))
@@ -51,13 +51,13 @@ internal static unsafe class GameFontNames
     {
         faceName = null;
         var manager = AtkStage.Instance()->AtkFontManager;
-        if (gameNames is null || manager->Fonts is null)
+        if (_gameNames is null || manager->Fonts is null)
             return false;
         var index = font - manager->Fonts;
         var count = Math.Min((int)manager->FontCount, AtkFontManager.FontTableEntry.Count);
         if (index < 0 || index >= count)
             return false;
-        faceName = IsLobby(font) ? LobbyNames(manager, count)[index] : gameNames[index];
+        faceName = IsLobby(font) ? LobbyNames(manager, count)[index] : _gameNames[index];
         return true;
     }
 
@@ -66,7 +66,7 @@ internal static unsafe class GameFontNames
     {
         font = null;
         var manager = AtkStage.Instance()->AtkFontManager;
-        if (gameNames is null || manager->Fonts is null)
+        if (_gameNames is null || manager->Fonts is null)
             return false;
         var count = Math.Min((int)manager->FontCount, AtkFontManager.FontTableEntry.Count);
         string[]? lobbyNames = null;
@@ -76,7 +76,7 @@ internal static unsafe class GameFontNames
             var lobby = IsLobby(candidate);
             if (lobby)
                 lobbyNames ??= LobbyNames(manager, count);
-            if (string.Equals((lobby ? lobbyNames! : gameNames)[i], faceName, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals((lobby ? lobbyNames! : _gameNames)[i], faceName, StringComparison.OrdinalIgnoreCase))
             {
                 font = candidate;
                 return true;
@@ -96,11 +96,11 @@ internal static unsafe class GameFontNames
             var f = manager->Fonts + i;
             if (!IsLobby(f))
                 continue;
-            a += SizeOf(lobbyNamesA![i]) == f->Size ? 1 : 0;
-            b += SizeOf(lobbyNamesB![i]) == f->Size ? 1 : 0;
+            a += SizeOf(_lobbyNamesA![i]) == f->Size ? 1 : 0;
+            b += SizeOf(_lobbyNamesB![i]) == f->Size ? 1 : 0;
         }
 
-        return b > a ? lobbyNamesB! : lobbyNamesA!;
+        return b > a ? _lobbyNamesB! : _lobbyNamesA!;
     }
 
     private static bool IsLobby(AtkFontManager.Font* font)

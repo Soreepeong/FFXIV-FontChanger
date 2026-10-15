@@ -37,17 +37,16 @@ public static unsafe class GameUtf8
 
     public static bool TryUnpack(uint value, out Rune rune)
     {
-        if (BitConverter.IsLittleEndian)
-            value = BinaryPrimitives.ReverseEndianness(value);
-        var buf = MemoryMarshal.Cast<uint, byte>(new Span<uint>(ref value));
-        buf = value switch
+        var valueReversed = BinaryPrimitives.ReverseEndianness(value);
+        var bytes = MemoryMarshal.Cast<uint, byte>(new Span<uint>(ref valueReversed));
+        bytes = value switch
         {
-            > 0xFFFFFF => buf,
-            > 0xFFFF => buf[1..],
-            > 0xFF => buf[2..],
-            _ => buf[3..],
+            > 0xFFFFFF => bytes,
+            > 0xFFFF => bytes[1..],
+            > 0xFF => bytes[2..],
+            _ => bytes[3..],
         };
-        return Rune.DecodeFromUtf8(buf, out rune, out var consumed) == OperationStatus.Done && consumed == buf.Length;
+        return Rune.DecodeFromUtf8(bytes, out rune, out var consumed) == OperationStatus.Done && consumed == bytes.Length;
     }
 
     public static int CharacterLength(byte* p) => *p switch

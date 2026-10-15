@@ -8,13 +8,11 @@ using System.Text.Json;
 using System.Xml;
 
 using FontChanger.DalamudPlugin.PluginInterface;
-using FontChanger.DalamudPlugin.Utilities;
-using FontChanger.Presets;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
 
-namespace FontChanger.DalamudPlugin.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering.Rasterization;
 
 /// <summary>
 /// The glyphs of a glyph images element (FontChanger GlyphFiles, xivres image_fixed_size_font): SVG documents and bitmaps
@@ -31,30 +29,29 @@ internal sealed class GlyphImages
     private const float DefaultUnitsPerEm = 1000;
     private const float DefaultBaselineY = 880;
 
-    private readonly Dictionary<Rune, Source> glyphs;
-    private readonly float unitsPerEm;
-    private readonly float baselineY;
-    private readonly bool unitsPerEmOverrides;
-    private readonly bool baselineYOverrides;
-    private readonly float? bitmapUnitsPerEm;
-    private readonly float? bitmapBaselineY;
-    private readonly ImageCoverageMode coverageMode;
-    private readonly Dictionary<(Rune, Rune), float> kerning = [];
+    private readonly Dictionary<Rune, Source> _glyphs;
+    private readonly float _unitsPerEm;
+    private readonly float _baselineY;
+    private readonly bool _unitsPerEmOverrides;
+    private readonly bool _baselineYOverrides;
+    private readonly float? _bitmapUnitsPerEm;
+    private readonly float? _bitmapBaselineY;
+    private readonly ImageCoverageMode _coverageMode;
+    private readonly Dictionary<(Rune, Rune), float> _kerning = [];
 
     private GlyphImages(GlyphImagesStruct def, Dictionary<Rune, Source> glyphs, JsonElement? metadata)
     {
-        this.glyphs = glyphs;
-        this.coverageMode = def.BitmapCoverage;
+        this._glyphs = glyphs;
+        this._coverageMode = def.BitmapCoverage;
 
-        // The element overrides font.json, which gives the units of files without attributes for them.
         var metadataUnitsPerEm = metadata.GetPropertyNumberOrDefault("unitsPerEm", DefaultUnitsPerEm);
-        this.unitsPerEm = def.UnitsPerEm ?? metadataUnitsPerEm;
-        this.baselineY = def.BaselineY ?? metadata.GetPropertyNumberOrDefault("baselineY", DefaultBaselineY);
-        this.unitsPerEmOverrides = def.UnitsPerEm is not null;
-        this.baselineYOverrides = def.BaselineY is not null;
-        var fromMetadata = this.unitsPerEm / metadataUnitsPerEm;
-        this.Ascent = def.Ascent ?? metadata.GetPropertyNumberOrDefault("ascent") * fromMetadata ?? this.baselineY;
-        this.LineHeight = def.LineHeight ?? metadata.GetPropertyNumberOrDefault("lineHeight") * fromMetadata ?? this.unitsPerEm;
+        this._unitsPerEm = def.UnitsPerEm ?? metadataUnitsPerEm;
+        this._baselineY = def.BaselineY ?? metadata.GetPropertyNumberOrDefault("baselineY", DefaultBaselineY);
+        this._unitsPerEmOverrides = def.UnitsPerEm is not null;
+        this._baselineYOverrides = def.BaselineY is not null;
+        var fromMetadata = this._unitsPerEm / metadataUnitsPerEm;
+        this.Ascent = def.Ascent ?? metadata.GetPropertyNumberOrDefault("ascent") * fromMetadata ?? this._baselineY;
+        this.LineHeight = def.LineHeight ?? metadata.GetPropertyNumberOrDefault("lineHeight") * fromMetadata ?? this._unitsPerEm;
 
         if (metadata is { ValueKind: JsonValueKind.Object } m && m.TryGetProperty("kerning", out var pairs) && pairs.ValueKind == JsonValueKind.Array)
         {
@@ -62,32 +59,40 @@ internal sealed class GlyphImages
             {
                 if (p.ValueKind != JsonValueKind.Array || p.GetArrayLength() != 3) continue;
                 if (!p[0].TryGetInt32(out var a) || !p[1].TryGetInt32(out var b) || !p[2].TryGetSingle(out var c)) continue;
-                this.kerning[(new(a), new(b))] = c * fromMetadata;
+                this._kerning[(new(a), new(b))] = c * fromMetadata;
             }
         }
 
-        // Bitmaps are in pixels at the size they were exported at; without font.json, drawn as they are at any size.
-        this.bitmapUnitsPerEm = def.UnitsPerEm ?? metadata.GetPropertyNumberOrDefault("exportedSize");
-        this.bitmapBaselineY = def.BaselineY ?? metadata.GetPropertyNumberOrDefault("ascentPx");
+        this._bitmapUnitsPerEm = def.UnitsPerEm ?? metadata.GetPropertyNumberOrDefault("exportedSize");
+        this._bitmapBaselineY = def.BaselineY ?? metadata.GetPropertyNumberOrDefault("ascentPx");
         if (metadata is { ValueKind: JsonValueKind.Object } md && md.TryGetProperty("glyphs", out var entries) && entries.ValueKind == JsonValueKind.Object)
         {
-            foreach (var (rune, source) in this.glyphs.ToList())
+            foreach (var (rune, source) in this._glyphs.ToList())
             {
                 if (source.Pixels is null || !entries.TryGetProperty($"U+{rune:X4}", out var entry) || entry.ValueKind != JsonValueKind.Object)
                     continue;
-                var origin = entry.TryGetProperty("pngOrigin", out var o) && o.ValueKind == JsonValueKind.Array && o.GetArrayLength() == 2 &&
-                             o[0].ValueKind == JsonValueKind.Number && o[1].ValueKind == JsonValueKind.Number
+                var origin = entry.TryGetProperty("pngOrigin", out var o)
+                             && o.ValueKind == JsonValueKind.Array
+                             && o.GetArrayLength() == 2
+                             && o[0].ValueKind == JsonValueKind.Number
+                             && o[1].ValueKind == JsonValueKind.Number
                                  ? ((int)o[0].GetSingle(), (int)o[1].GetSingle())
                                  : (0, 0);
-                this.glyphs[rune] = source with { Advance = entry.GetPropertyNumberOrDefault("advancePx"), OriginX = origin.Item1, OriginY = origin.Item2 };
+                this._glyphs[rune] = source with
+                {
+                    Advance = entry.GetPropertyNumberOrDefault("advancePx"),
+                    OriginX = origin.Item1,
+                    OriginY = origin.Item2,
+                };
             }
         }
     }
 
-    /// <summary>Gets the ascent and line height in <c>UnitsPerEm</c> units.</summary>
     public float Ascent { get; }
 
     public float LineHeight { get; }
+
+    public IEnumerable<Rune> Codepoints => this._glyphs.Keys;
 
     /// <summary>Loads the files of an element, from its folder or the preset. Files that can't be read are left out.</summary>
     public static GlyphImages Load(GlyphImagesStruct def, ImageRenderer? renderer)
@@ -159,28 +164,21 @@ internal sealed class GlyphImages
         return new(def, glyphs, metadata);
     }
 
-    public bool Has(Rune rune) => this.glyphs.ContainsKey(rune);
+    public bool Has(Rune rune) => this._glyphs.ContainsKey(rune);
 
-    public IEnumerable<Rune> Codepoints => this.glyphs.Keys;
-
-    /// <summary>Gets the kerning between two codepoints in pixels at a size, as the transformation scales advances.</summary>
     public int GetKerning(Rune left, Rune right, float px, Matrix2x2 transform) =>
-        this.kerning.TryGetValue((left, right), out var k) ? (int)Rounding.Round(k * px / this.unitsPerEm * transform.M11) : 0;
+        this._kerning.TryGetValue((left, right), out var k) ? (int)Rounding.Round((k * px * transform.M11) / this._unitsPerEm) : 0;
 
     /// <summary>Gets the line metrics at a size, scaled vertically as the glyphs are.</summary>
     public (int Ascent, int LineHeight) GetLineMetrics(float px, Matrix2x2 transform)
     {
-        var scale = px / this.unitsPerEm * MathF.Abs(transform.M22);
+        var scale = px / this._unitsPerEm * MathF.Abs(transform.M22);
         return ((int)Rounding.Round(this.Ascent * scale), (int)Rounding.Round(this.LineHeight * scale));
     }
 
-    /// <summary>
-    /// Draws a glyph at a size, transformed on screen, relative to the pen on the baseline; null if there is none, or it
-    /// can't be drawn.
-    /// </summary>
     public RasterGlyph? Rasterize(ImageRenderer renderer, Rune rune, float px, Matrix2x2 transform)
     {
-        if (!this.glyphs.TryGetValue(rune, out var source))
+        if (!this._glyphs.TryGetValue(rune, out var source))
             return null;
 
         try
@@ -189,8 +187,8 @@ internal sealed class GlyphImages
             if (source.Svg is not null)
             {
                 var metrics = source.SvgMetrics ?? throw new InvalidDataException("Not an SVG document.");
-                unitsPerEm = this.unitsPerEmOverrides ? this.unitsPerEm : metrics.UnitsPerEm ?? this.unitsPerEm;
-                baselineY = this.baselineYOverrides ? this.baselineY : metrics.BaselineY ?? this.baselineY;
+                unitsPerEm = this._unitsPerEmOverrides ? this._unitsPerEm : metrics.UnitsPerEm ?? this._unitsPerEm;
+                baselineY = this._baselineYOverrides ? this._baselineY : metrics.BaselineY ?? this._baselineY;
                 advance = metrics.Advance ?? unitsPerEm;
 
                 // Drawings may go past the line box: this much room is left around it, and the ink is trimmed afterwards.
@@ -198,8 +196,8 @@ internal sealed class GlyphImages
             }
             else
             {
-                unitsPerEm = this.bitmapUnitsPerEm ?? px;
-                baselineY = this.bitmapBaselineY ?? Rounding.Round(unitsPerEm * DefaultBaselineY / DefaultUnitsPerEm);
+                unitsPerEm = this._bitmapUnitsPerEm ?? px;
+                baselineY = this._bitmapBaselineY ?? Rounding.Round(unitsPerEm * DefaultBaselineY / DefaultUnitsPerEm);
                 advance = source.Advance ?? source.Width;
                 (x1, y1) = (-source.OriginX, -source.OriginY);
                 (x2, y2) = (x1 + source.Width, y1 + source.Height);
@@ -243,8 +241,9 @@ internal sealed class GlyphImages
             else
             {
                 // Pixel art keeps its pixels when it is only moved, or scaled by whole numbers.
-                var whole = transform.M12 == 0 && transform.M21 == 0 &&
-                            MathF.Abs(m[0] - Rounding.Round(m[0])) < 1e-4f && MathF.Abs(m[4] - Rounding.Round(m[4])) < 1e-4f;
+                var whole = transform is {M12: 0, M21: 0 }
+                            && MathF.Abs(m[0] - Rounding.Round(m[0])) < 1e-4f
+                            && MathF.Abs(m[4] - Rounding.Round(m[4])) < 1e-4f;
                 coverage = renderer.DrawCoverage(this.GetBitmapCoverage(source), source.Width, source.Height, (x1, y1, x2, y2), m, width, height, whole);
             }
 
@@ -336,7 +335,7 @@ internal sealed class GlyphImages
     private byte[] GetBitmapCoverage(Source source)
     {
         var pixels = source.Pixels!;
-        var mode = this.coverageMode;
+        var mode = this._coverageMode;
         if (mode == ImageCoverageMode.Auto)
             mode = pixels.Any(p => p >> 24 != 0xFF) ? ImageCoverageMode.Alpha : ImageCoverageMode.Darkness;
 

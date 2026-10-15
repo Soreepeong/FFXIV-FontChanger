@@ -1,84 +1,94 @@
 using System;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 
-using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using Dalamud.Utility;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Rendering;
+using FontChanger.DalamudPlugin.Rendering.Game;
 using FontChanger.DalamudPlugin.Rendering.Shaders;
-using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;
 
-public sealed class Plugin : IDalamudPlugin
+public sealed class Plugin : IAsyncDalamudPlugin
 {
-    private const string CommandName = "/customfonts";
-
-    private readonly WindowSystem windowSystem = new("FontChanger.DalamudPlugin");
-    private bool commandRegistered;
-    private bool disposed;
-
-    // How often Windows' ClearType settings are re-read for the game's monitor, which the window may move to.
+    private const string CommandName = "/fontchanger";
     private const long SubpixelRefreshMs = 2000;
-    private long lastSubpixelQuery;
+
+    private readonly WindowSystem _windowSystem = new(Assembly.GetExecutingAssembly().GetName().Name);
+    private readonly DisposeSafety.ScopedFinalizer _finalizer = new();
+
+    private long _lastSubpixelQuery;
 
     public Plugin()
     {
-        try
-        {
-            // The FFXIVClientStructs files the plugin compiles (see the project file) carry signatures of their own, which
-            // the resolver Dalamud ran at startup never saw: register them, and resolve them with it now.
-            FFXIVClientStructs.Interop.Generated.Addresses.Register();
-            InteropGenerator.Runtime.Resolver.GetInstance.Resolve();
+        this.Configuration = PluginInterface.GetPluginConfig() as Configuration.Configuration ?? new();
+        if (this.Configuration.Migrate())
+            PluginInterface.SavePluginConfig(this.Configuration);
+    }
 
-            this.Configuration = PluginInterface.GetPluginConfig() as Configuration.Configuration ?? new();
-            if (this.Configuration.Migrate())
-                PluginInterface.SavePluginConfig(this.Configuration);
+    public async Task LoadAsync(CancellationToken cancellationToken)
+    {
+        await using var disposeOnException = new DisposeSafety.ScopedFinalizer().With(_finalizer);
 
-            // On the framework thread: the hooked functions run there, and the replacer's state isn't locked against them.
-            // Without the nameplates and the line breaker, text is still drawn with the replaced fonts: nameplates as the
-            // game bakes them, and words split by the game's rules.
-            (this.Replacer, this.NamePlates, this.LineBreaker) = Framework.RunOnFrameworkThread(() =>
+        await Framework.RunOnFrameworkThread(() => {
+            this.Replacer = new();
+            Optional("Nameplate text", () => this.NamePlates = new(this.Replacer));
+            Optional("Line breaking", () => this.LineBreaker = new(this.Replacer));
+            this._finalizer.Add(() => Framework.RunOnFrameworkThread(() => {
+                this.LineBreaker?.Dispose();
+                this.NamePlates?.Dispose();
+                this.Replacer.Dispose();
+            }));
+
+            this.Replacer.Atlas = this.Configuration.Atlas;
+            this.Replacer.Edge = this.Configuration.Edge;
+            this.Replacer.Subpixel = SubpixelShaders.SettingsRecord.From(this.Configuration.Subpixel, this.Configuration.ClearType, PluginInterface.UiBuilder.WindowHandlePtr);
+            return;
+
+            static void Optional(string part, Action create)
             {
-                var replacer = new FontReplacer();
-                replacer.SetAtlas(this.Configuration.Atlas);
-                replacer.SetEdge(this.Configuration.Edge);
-                replacer.SetSubpixel(SubpixelSettings.Of(this.Configuration.Subpixel, this.Configuration.ClearType, GameWindow));
-                return (replacer,
-                           Optional("Nameplate text", () => new NamePlateText(replacer)),
-                           Optional("Line breaking", () => new LineBreaker(replacer)));
-            }).Result;
-            this.Presets = new(this.Configuration, this.Replacer);
-            this.ConfigWindow = new(this);
-            this.windowSystem.AddWindow(this.ConfigWindow);
-
-            // Draw runs in Present, after the frame's UI was drawn; glyphs added during it are uploaded here and show from
-            // the next frame. Dalamud skips Draw while it hides plugin UI (cutscenes, gpose, the game
-            // UI toggled off), yet the game still draws text then: Draw always runs, and the windows hide themselves.
-            PluginInterface.UiBuilder.DisableAutomaticUiHide = true;
-            PluginInterface.UiBuilder.Draw += this.Replacer.Upload;
-
-            // The subpixel state must be let go of every frame, also when nothing is drawn.
-            Framework.Update += this.OnFrameworkUpdate;
-            PluginInterface.UiBuilder.Draw += this.DrawWindows;
-            PluginInterface.UiBuilder.OpenMainUi += this.ConfigWindow.Toggle;
-            this.commandRegistered = CommandManager.AddHandler(
-                CommandName,
-                new(this.OnCommand)
+                try
                 {
-                    HelpMessage = "Open the Custom Fonts window.",
-                });
-        }
-        catch
-        {
-            // Dalamud doesn't call Dispose after a failed load; undo what was set up so far.
-            Log.Warning("Loading failed; undoing what was set up");
-            this.Dispose();
-            throw;
-        }
+                    create();
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "{Part} is off", part);
+                }
+            }
+        });
+
+        this.Presets = this._finalizer.Add<PresetController>(new(this.Configuration, this.Replacer));
+
+        this._windowSystem.AddWindow(this.ConfigWindow = new(this));
+        this._finalizer.Add(this._windowSystem.RemoveAllWindows);
+
+        PluginInterface.UiBuilder.Draw += this.Replacer.Upload;
+        this._finalizer.Add(() => PluginInterface.UiBuilder.Draw -= this.Replacer.Upload);
+
+        Framework.Update += this.OnFrameworkUpdate;
+        this._finalizer.Add(() => Framework.Update -= this.OnFrameworkUpdate);
+
+        // using IUiBuilder.Draw event as a way of being called back on IDXGISwapChain.Present calls
+        // so we're dealing with automatic UI hide by ourselves
+        PluginInterface.UiBuilder.DisableAutomaticUiHide = true;
+        PluginInterface.UiBuilder.Draw += this._windowSystem.Draw;
+        this._finalizer.Add(() => PluginInterface.UiBuilder.Draw -= this._windowSystem.Draw);
+
+        PluginInterface.UiBuilder.OpenConfigUi += this.ConfigWindow.Toggle;
+        this._finalizer.Add(() => PluginInterface.UiBuilder.OpenConfigUi -= this.ConfigWindow.Toggle);
+
+        CommandManager.AddHandler(CommandName, new(this.OnCommand) { HelpMessage = "Open the Custom Fonts window." });
+        this._finalizer.Add(() => CommandManager.RemoveHandler(CommandName));
+
+        disposeOnException.Cancel();
     }
 
     [PluginService]
@@ -99,119 +109,28 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService]
     internal static IPluginLog Log { get; private set; } = null!;
 
-    [PluginService]
-    internal static IClientState ClientState { get; private set; } = null!;
+    internal ConfigWindow ConfigWindow { get; private set; } = null!;
 
-    [PluginService]
-    internal static IGameGui GameGui { get; private set; } = null!;
+    internal FontReplacer Replacer { get; private set; } = null!;
 
-    internal ConfigWindow ConfigWindow { get; }
+    internal NamePlateText? NamePlates { get; private set; }
 
-    internal FontReplacer Replacer { get; }
+    internal LineBreaker? LineBreaker { get; private set; }
 
-    /// <summary>Gets the nameplate text, or null if it couldn't be set up for this version of the game.</summary>
-    internal NamePlateText? NamePlates { get; }
+    internal Configuration.Configuration Configuration { get; }
 
-    /// <summary>Gets the line breaker, or null if it couldn't be set up for this version of the game.</summary>
-    internal LineBreaker? LineBreaker { get; }
+    internal PresetController Presets { get; private set; } = null!;
 
-    internal Configuration.Configuration Configuration { get; } = null!;
-
-    internal PresetController Presets { get; } = null!;
-
-    /// <summary>
-    /// Undoes everything, one step at a time: a step that fails is logged and the others still run. Also the cleanup
-    /// after a failed constructor, when the fields it hadn't set yet are still null.
-    /// </summary>
-    public void Dispose()
-    {
-        if (this.disposed)
-            return;
-        this.disposed = true;
-
-        TearDown(
-            "command",
-            () =>
-            {
-                if (this.commandRegistered)
-                    CommandManager.RemoveHandler(CommandName);
-            });
-        TearDown(
-            "drawing",
-            () =>
-            {
-                PluginInterface.UiBuilder.Draw -= this.DrawWindows;
-                if (this.Replacer is not null)
-                    PluginInterface.UiBuilder.Draw -= this.Replacer.Upload;
-                Framework.Update -= this.OnFrameworkUpdate;
-                if (this.ConfigWindow is not null)
-                    PluginInterface.UiBuilder.OpenMainUi -= this.ConfigWindow.Toggle;
-            });
-        TearDown("windows", this.windowSystem.RemoveAllWindows);
-        TearDown("presets", () => this.Presets?.Dispose());
-
-        // Between frames on the framework thread: Dalamud calls Dispose there, so this runs inline.
-        TearDown(
-            "hooks",
-            () => Framework.RunOnFrameworkThread(() =>
-            {
-                TearDown("line breaker", () => this.LineBreaker?.Dispose());
-                TearDown("nameplate text", () => this.NamePlates?.Dispose());
-                TearDown("font replacer", () => this.Replacer?.Dispose());
-            }).Wait());
-
-        // So the resolver, which lives as long as Dalamud, keeps nothing of this assembly's addresses.
-        TearDown("signatures", FFXIVClientStructs.Interop.Generated.Addresses.Unregister);
-    }
-
-    /// <summary>Sets up a part the plugin works without; null, with why logged, if it can't be.</summary>
-    private static T? Optional<T>(string part, Func<T> create)
-        where T : class
-    {
-        try
-        {
-            return create();
-        }
-        catch (Exception ex)
-        {
-            var inner = ex is AggregateException { InnerExceptions: [var single] } ? single : ex;
-            Log.Warning(inner, "{Part} is off", part);
-            return null;
-        }
-    }
-
-    /// <summary>Runs one step of <see cref="Dispose"/>; what it throws is logged, and the steps after it still run.</summary>
-    private static void TearDown(string step, Action action)
-    {
-        try
-        {
-            action();
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Teardown step failed: {step}", step);
-        }
-    }
+    public ValueTask DisposeAsync() => this._finalizer.DisposeAsync();
 
     private void OnCommand(string command, string args) => this.ConfigWindow.Toggle();
 
-    /// <summary>Draws the windows, unless the game's UI is hidden, as Dalamud would have (see the constructor).</summary>
-    private void DrawWindows()
-    {
-        if (PluginInterface.UiBuilder.CutsceneActive || ClientState.IsGPosing || GameGui.GameUiHidden)
-            return;
-        this.windowSystem.Draw();
-    }
-
-    internal static nint GameWindow => PluginInterface.UiBuilder.WindowHandlePtr;
-
-    /// <summary>Applies the configured subpixel mode. Framework thread, between frames.</summary>
     internal void ApplySubpixel()
     {
-        this.lastSubpixelQuery = Environment.TickCount64;
+        this._lastSubpixelQuery = Environment.TickCount64;
         try
         {
-            this.Replacer.SetSubpixel(SubpixelSettings.Of(this.Configuration.Subpixel, this.Configuration.ClearType, GameWindow));
+            this.Replacer.Subpixel = SubpixelShaders.SettingsRecord.From(this.Configuration.Subpixel, this.Configuration.ClearType, PluginInterface.UiBuilder.WindowHandlePtr);
         }
         catch (Exception ex)
         {
@@ -222,7 +141,7 @@ public sealed class Plugin : IDalamudPlugin
     private void OnFrameworkUpdate(IFramework framework)
     {
         this.Replacer.EndFrame();
-        if (this.Configuration.Subpixel != SubpixelMode.Off && Environment.TickCount64 - this.lastSubpixelQuery >= SubpixelRefreshMs)
+        if (this.Configuration.Subpixel != SubpixelMode.Off && Environment.TickCount64 - this._lastSubpixelQuery >= SubpixelRefreshMs)
             this.ApplySubpixel();
     }
 }
