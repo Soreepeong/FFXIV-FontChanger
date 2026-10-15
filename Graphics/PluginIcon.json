@@ -1,0 +1,310 @@
+{
+	"exportMapChnAxisToFont": true,
+	"exportMapFontLobbyToFont": true,
+	"exportMapKrnAxisToFont": true,
+	"exportMapTcAxisToFont": true,
+	"fontSets": [
+		{
+			"discardStep": 1,
+			"expectedTexCount": 7,
+			"faces": [
+				{
+					"elements": [
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "Gigi",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 3,
+							"size": 320.0,
+							"transform": {
+								"rotation": 0.0,
+								"scaleX": 1.5,
+								"scaleY": 1.5,
+								"skew": 10.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 0,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										70,
+										70
+									]
+								],
+								"horizontalOffset": 295,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "OCR A",
+								"stretch": 7,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 3,
+							"size": 280.0,
+							"transform": {
+								"rotation": -30.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": 0.0
+							},
+							"wrapModifiers": {
+								"baselineShift": -15,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										79,
+										79
+									]
+								],
+								"horizontalOffset": 113,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "Trebuchet MS",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 700
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 3,
+							"size": 280.0,
+							"transform": {
+								"rotation": -9.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": -30.0
+							},
+							"wrapModifiers": {
+								"baselineShift": -14,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										78,
+										78
+									]
+								],
+								"horizontalOffset": 186,
+								"letterSpacing": 5
+							}
+						},
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "OpenDyslexic3",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 4
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 3,
+							"size": 320.0,
+							"transform": {
+								"rotation": 7.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": -12.0
+							},
+							"wrapModifiers": {
+								"baselineShift": 20,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										84,
+										84
+									],
+									[
+										116,
+										116
+									]
+								],
+								"horizontalOffset": 63,
+								"letterSpacing": 0
+							}
+						},
+						{
+							"gamma": 1.0,
+							"lookup": {
+								"features": [],
+								"name": "Comic Sans MS",
+								"stretch": 5,
+								"style": 0,
+								"synthesis": {
+									"allow": true
+								},
+								"weight": 400
+							},
+							"mergeMode": 0,
+							"renderSpecific": {
+								"directwrite": {
+									"gridFitMode": 2,
+									"measureMode": 1,
+									"renderMode": 5
+								},
+								"empty": {
+									"ascent": 0,
+									"lineHeight": 0
+								},
+								"freetype": {
+									"forceAutohint": false,
+									"noAutohint": false,
+									"noBitmap": false,
+									"noHinting": false,
+									"renderMode": 1
+								}
+							},
+							"renderer": 2,
+							"size": 160.0,
+							"transform": {
+								"rotation": -10.0,
+								"scaleX": 1.0,
+								"scaleY": 1.0,
+								"skew": -10.0
+							},
+							"wrapModifiers": {
+								"baselineShift": -520,
+								"codepointReplacements": {},
+								"codepoints": [
+									[
+										97,
+										97
+									],
+									[
+										99,
+										99
+									],
+									[
+										101,
+										101
+									],
+									[
+										103,
+										104
+									],
+									[
+										110,
+										110
+									],
+									[
+										114,
+										114
+									],
+									[
+										115,
+										115
+									]
+								],
+								"horizontalOffset": 360,
+								"letterSpacing": 0
+							}
+						}
+					],
+					"name": "PluginIcon",
+					"previewText": "FONT\r\nchanger"
+				}
+			],
+			"sideLength": 4096,
+			"texFilenameFormat": "dummy{}.tex"
+		}
+	]
+}

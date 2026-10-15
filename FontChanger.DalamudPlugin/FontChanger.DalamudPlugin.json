@@ -1,7 +1,9 @@
 {
   "Author": "Soreepeong",
   "Name": "Font Changer",
+  "InternalName": "FontChanger.DalamudPlugin",
   "Punchline": "comic sans",
-  "Description": "Provides expanded choices of fonts.",
-  "Tags": ["ui", "font"]
+  "Description": "Better support for fonts.",
+  "Tags": ["ui", "font"],
+  "RepoUrl": "https://github.com/Soreepeong/FFXIV-FontChanger"
 }
