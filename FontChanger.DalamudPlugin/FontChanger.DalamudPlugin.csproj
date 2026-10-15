@@ -26,31 +26,34 @@
 	<ItemGroup>
 		<Reference Include="TerraFX.Interop.Windows" Private="false"/>
 	</ItemGroup>
+	<PropertyGroup>
+		<CompileShaders Condition="'$(CompileShaders)' == ''">$([MSBuild]::IsOSPlatform('Windows'))</CompileShaders>
+	</PropertyGroup>
 	<ItemGroup>
+		<EmbeddedResource Include="Rendering\Shaders\FontEdgePS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontEdgePS.cso"/>
+		<EmbeddedResource Include="Rendering\Shaders\FontSubpixelPS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelPS.cso"/>
+		<EmbeddedResource Include="Rendering\Shaders\FontSubpixelHighlightPS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelHighlightPS.cso"/>
+	</ItemGroup>
+	<ItemGroup Condition="'$(CompileShaders)' == 'true'">
 		<ProjectReference Include="..\FontChanger.ShaderGen\FontChanger.ShaderGen.csproj" ReferenceOutputAssembly="false" Private="false" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained"/>
 	</ItemGroup>
-	<Target Name="ResolveShaderGen" DependsOnTargets="ResolveProjectReferences" Condition="'$(DesignTimeBuild)' != 'true'">
+	<Target Name="ResolveShaderGen" DependsOnTargets="ResolveProjectReferences" Condition="'$(DesignTimeBuild)' != 'true' And '$(CompileShaders)' == 'true'">
 		<MSBuild Projects="..\FontChanger.ShaderGen\FontChanger.ShaderGen.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)" RemoveProperties="RuntimeIdentifier;SelfContained">
 			<Output TaskParameter="TargetOutputs" PropertyName="ShaderGenPath"/>
 		</MSBuild>
 	</Target>
-	<Target Name="CompileEdgeShader" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'" Inputs="Rendering\Shaders\FontEdgePS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontEdgePS.cso">
+	<Target Name="CompileEdgeShader" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true' And '$(CompileShaders)' == 'true'" Inputs="Rendering\Shaders\FontEdgePS.hlsl;Rendering\Shaders\FontEdgeSquares.hlsli;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontEdgePS.cso;Rendering\Shaders\FontEdgePS.cso">
 		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; &quot;Rendering\Shaders\FontEdgePS.hlsl&quot; &quot;$(IntermediateOutputPath)FontEdgePS.cso&quot;"/>
-	</Target>
-	<Target Name="EmbedEdgeShader" AfterTargets="CompileEdgeShader" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
+		<Copy SourceFiles="$(IntermediateOutputPath)FontEdgePS.cso" DestinationFolder="Rendering\Shaders"/>
 		<ItemGroup>
-			<EmbeddedResource Include="$(IntermediateOutputPath)FontEdgePS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontEdgePS.cso"/>
 			<FileWrites Include="$(IntermediateOutputPath)FontEdgePS.cso;$(IntermediateOutputPath)FontEdgePS.hlsl;$(IntermediateOutputPath)FontEdgePS.asm"/>
 		</ItemGroup>
 	</Target>
-	<Target Name="CompileSubpixelShaders" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'" Inputs="Rendering\Shaders\FontSubpixelPS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso">
+	<Target Name="CompileSubpixelShaders" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true' And '$(CompileShaders)' == 'true'" Inputs="Rendering\Shaders\FontSubpixelPS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso;Rendering\Shaders\FontSubpixelPS.cso;Rendering\Shaders\FontSubpixelHighlightPS.cso">
 		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\Shaders\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelPS.cso&quot;"/>
 		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\Shaders\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso&quot; --highlight"/>
-	</Target>
-	<Target Name="EmbedSubpixelShaders" AfterTargets="CompileSubpixelShaders" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
+		<Copy SourceFiles="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso" DestinationFolder="Rendering\Shaders"/>
 		<ItemGroup>
-			<EmbeddedResource Include="$(IntermediateOutputPath)FontSubpixelPS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelPS.cso"/>
-			<EmbeddedResource Include="$(IntermediateOutputPath)FontSubpixelHighlightPS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelHighlightPS.cso"/>
 			<FileWrites Include="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelPS.asm;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.asm"/>
 		</ItemGroup>
 	</Target>
