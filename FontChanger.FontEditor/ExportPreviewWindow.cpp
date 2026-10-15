@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "resource.h"
 #include "ExportPreviewWindow.h"
 #include "FontChanger.Presets/Structs.h"
 
@@ -185,6 +186,7 @@ App::ExportPreviewWindow::ExportPreviewWindow(std::vector<std::pair<std::string,
 	wcex.cbSize = sizeof(WNDCLASSEX);
 	wcex.style = CS_HREDRAW | CS_VREDRAW;
 	wcex.hInstance = g_hInstance;
+	wcex.hIcon = LoadIconW(g_hInstance, MAKEINTRESOURCEW(IDI_FONTEDITOR));
 	wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
 	wcex.hbrBackground = GetStockBrush(WHITE_BRUSH);
 	wcex.lpszClassName = ClassName;

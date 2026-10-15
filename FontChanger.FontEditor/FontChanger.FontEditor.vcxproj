@@ -279,6 +279,9 @@
     <ResourceCompile Include="FontChanger.FontEditor.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="FontChanger.FontEditor.ico" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\FontChanger.Presets.Native\FontChanger.Presets.Native.vcxproj">
       <Project>{fe56ed18-3140-423b-8100-d2fd1ac9164e}</Project>
     </ProjectReference>

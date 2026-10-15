@@ -15,6 +15,7 @@ App::FontEditorWindow::FontEditorWindow(std::vector<std::wstring> args)
 		.style = CS_HREDRAW | CS_VREDRAW,
 		.lpfnWndProc = &WndProcInitial,
 		.hInstance = g_hInstance,
+		.hIcon = LoadIconW(g_hInstance, MAKEINTRESOURCEW(IDI_FONTEDITOR)),
 		.hCursor = LoadCursorW(nullptr, IDC_ARROW),
 		.hbrBackground = GetStockBrush(WHITE_BRUSH),
 		.lpszMenuName = nullptr,

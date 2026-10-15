@@ -181,4 +181,9 @@
       <Filter>Project Items</Filter>
     </ResourceCompile>
   </ItemGroup>
+  <ItemGroup>
+    <Image Include="FontChanger.FontEditor.ico">
+      <Filter>Project Items</Filter>
+    </Image>
+  </ItemGroup>
 </Project>

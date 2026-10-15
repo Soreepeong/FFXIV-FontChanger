@@ -8,6 +8,7 @@
 #define IDD_FACEELEMENTEDITOR_TYPOGRAPHY   192
 #define IDD_FACEELEMENTEDITOR_GLYPHMERGING 193
 #define IDD_SCALEFACE                   194
+#define IDI_FONTEDITOR                  100
 #define IDR_FONTEDITOR                  106
 #define IDR_ACCELERATOR_FACEELEMENTEDITOR 107
 #define IDD_PROGRESS                    108
