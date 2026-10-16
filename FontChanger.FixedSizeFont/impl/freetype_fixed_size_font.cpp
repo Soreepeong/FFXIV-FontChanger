@@ -744,9 +744,9 @@ FontChanger::FixedSizeFont::freetype_fixed_size_font::freetype_face_wrapper::fre
 	freetype_font_table gposDataRef(m_face, truetype::Gpos::DirectoryTableTag.ReverseNativeValue);
 	if (kernDataRef || gposDataRef) {
 		// Positioning is keyed by the glyphs that are actually drawn, which may be substituted by the selected features.
-		std::vector<std::set<char32_t>> glyphToCharMap(65536);
+		std::vector<std::set<char32_t>> glyphToCharMap((std::min<size_t>)(m_face->num_glyphs, 65536));
 		for (const auto c : info->Characters) {
-			if (const auto glyphIndex = resolve_glyph_index(m_face, m_hbFont, c, info->Params); glyphIndex > 0 && glyphIndex < 65536)
+			if (const auto glyphIndex = resolve_glyph_index(m_face, m_hbFont, c, info->Params); glyphIndex > 0 && glyphIndex < glyphToCharMap.size())
 				glyphToCharMap[glyphIndex].insert(c);
 		}
 

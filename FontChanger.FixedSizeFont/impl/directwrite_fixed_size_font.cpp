@@ -531,7 +531,7 @@ void FontChanger::FixedSizeFont::directwrite_fixed_size_font::load_font_data(inf
 		return;
 
 	// Positioning is keyed by the glyphs that are actually drawn, which may be substituted by the selected features.
-	std::vector<std::set<char32_t>> glyphToCharMap(65536);
+	std::vector<std::set<char32_t>> glyphToCharMap(dwrite.Face->GetGlyphCount());
 	if (info.Params.Features.empty() && info.Params.LanguageCode.empty()) {
 		const std::vector<UINT32> codepoints(info.Characters.begin(), info.Characters.end());
 		std::vector<UINT16> glyphIndices(codepoints.size());
@@ -542,7 +542,7 @@ void FontChanger::FixedSizeFont::directwrite_fixed_size_font::load_font_data(inf
 		}
 	} else {
 		for (const auto c : info.Characters) {
-			if (const auto glyphIndex = resolve_glyph_index(dwrite, c))
+			if (const auto glyphIndex = resolve_glyph_index(dwrite, c); glyphIndex && glyphIndex < glyphToCharMap.size())
 				glyphToCharMap[glyphIndex].insert(c);
 		}
 	}

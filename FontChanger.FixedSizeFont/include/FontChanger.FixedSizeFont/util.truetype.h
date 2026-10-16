@@ -1833,6 +1833,8 @@ namespace FontChanger::FixedSizeFont::truetype {
 					bool cumulative
 				) const {
 					for (auto pPair = m_obj->Pairs, pPair_ = m_obj->Pairs + m_obj->Header.PairCount; pPair < pPair_; pPair++) {
+						if (*pPair->Left >= glyphToCharMap.size() || *pPair->Right >= glyphToCharMap.size())
+							continue;
 						for (const auto l : glyphToCharMap[*pPair->Left]) {
 							for (const auto r : glyphToCharMap[*pPair->Right]) {
 								auto& target = result[std::make_pair(l, r)];
