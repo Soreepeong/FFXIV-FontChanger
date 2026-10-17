@@ -258,7 +258,7 @@ internal sealed unsafe class ReplacementFace : IDisposable
     /// </summary>
     public RasterGlyph RasterizeRun(
         ReplacementElement? element,
-        IDWriteFontFace* face,
+        IDWriteFontFace5* face,
         float size,
         ushort* glyphs,
         float* advances,

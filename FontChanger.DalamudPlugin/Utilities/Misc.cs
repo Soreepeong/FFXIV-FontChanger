@@ -59,6 +59,27 @@ public static unsafe class Misc
             Marshal.ThrowExceptionForHR(hr.Value);
     }
 
+    /// <summary>Makes a font's face as an IDWriteFontFace5 (IDWriteFont3 makes an IDWriteFontFace3).</summary>
+    public static HRESULT CreateFontFace(this ref IDWriteFont3 font, IDWriteFontFace5** face)
+    {
+        using var face3 = default(ComPtr<IDWriteFontFace3>);
+        var hr = font.CreateFontFace(face3.GetAddressOf());
+        return hr.FAILED ? hr : face3.CopyTo(face);
+    }
+
+    /// <summary>Finds the font of a family closest to a weight, stretch and style, as an IDWriteFont3.</summary>
+    public static HRESULT GetFirstMatchingFont(
+        this ref IDWriteFontFamily2 family,
+        DWRITE_FONT_WEIGHT weight,
+        DWRITE_FONT_STRETCH stretch,
+        DWRITE_FONT_STYLE style,
+        IDWriteFont3** font)
+    {
+        using var matched = default(ComPtr<IDWriteFont>);
+        var hr = family.GetFirstMatchingFont(weight, stretch, style, matched.GetAddressOf());
+        return hr.FAILED ? hr : matched.CopyTo(font);
+    }
+
     public static bool TryFind<T, TContext>(this List<T> list, TContext context, Func<T, TContext, bool> predicate, [MaybeNullWhen(false)] out T found)
     {
         foreach (var item in list)

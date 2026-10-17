@@ -20,7 +20,7 @@ internal unsafe ref struct FontFileKey : IDisposable
 
     public ReadOnlySpan<byte> Key { get; private set; }
 
-    public static FontFileKey Of(IDWriteFontFace* face)
+    public static FontFileKey Of(IDWriteFontFace5* face)
     {
         var res = default(FontFileKey);
         uint count = 1;

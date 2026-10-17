@@ -8,6 +8,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Faces;
+using FontChanger.DalamudPlugin.Rendering.Fonts;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
@@ -47,18 +48,18 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
     private readonly GlyphRasterizer _rasterizer;
     private readonly FontReplacer _replacer;
-    private readonly Dictionary<(ReplacementFace? Face, int HalfPx), ComPtr<IDWriteTextFormat1>> _formats = [];
+    private readonly Dictionary<(ReplacementFace? Face, int HalfPx), ComPtr<IDWriteTextFormat3>> _formats = [];
     private readonly Dictionary<(ulong Hash, int Length, FontReplacer.SizedFont Sized, ItalicMode Italic), ShapedRun> _runs = [];
 
     // Faces without their synthesized oblique, by face; and the italic face of a face's family (null for none), by face.
-    private readonly Dictionary<Pointer<IDWriteFontFace>, Pointer<IDWriteFontFace>> _uprightFaces = [];
-    private readonly Dictionary<Pointer<IDWriteFontFace>, Pointer<IDWriteFontFace>> _italicFaces = [];
+    private readonly Dictionary<Pointer<IDWriteFontFace5>, Pointer<IDWriteFontFace5>> _uprightFaces = [];
+    private readonly Dictionary<Pointer<IDWriteFontFace5>, Pointer<IDWriteFontFace5>> _italicFaces = [];
     // Cells by their sized font too: a cell is placed in its family's atlas, with its metrics, and families may share a face.
     private readonly Dictionary<(RasterKey Raster, FontReplacer.SizedFont Sized, int Pad, int Advance), Pointer<AtkFontManager.Glyph>> _cells = [];
     private readonly Dictionary<(FontReplacer.SizedFont Sized, int Advance), Pointer<AtkFontManager.Glyph>> _spacers = [];
 
     // The faces clusters are drawn from, each with a reference of the shaper's.
-    private readonly Dictionary<Pointer<IDWriteFontFace>, ComPtr<IDWriteFontFace>> _keptFaces = [];
+    private readonly Dictionary<Pointer<IDWriteFontFace5>, ComPtr<IDWriteFontFace5>> _keptFaces = [];
     private readonly List<ActiveRun> _active = [];
     private readonly List<(int Byte, int Owner)> _absorbed = [];
 
@@ -69,7 +70,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
     // The system's fallback, private-use characters to the game's icon font first. A face without system fallback lays
     // out each character in the font of its element only (GlyphRasterizer.NoFallback).
-    private ComPtr<IDWriteFontFallback> _fallback;
+    private ComPtr<IDWriteFontFallback1> _fallback;
 
     // The glyph of no width given to a cluster's characters after the first.
     private readonly Pointer<AtkFontManager.Glyph> _emptyGlyph;
@@ -149,7 +150,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         this._fallback.Dispose();
     }
 
-    void IGlyphRunSink.OnGlyphRun(float baselineX, in DWRITE_GLYPH_RUN run, in DWRITE_GLYPH_RUN_DESCRIPTION description)
+    void IGlyphRunSink.OnGlyphRun(float baselineX, IDWriteFontFace5* runFace, in DWRITE_GLYPH_RUN run, in DWRITE_GLYPH_RUN_DESCRIPTION description)
     {
         // The game draws in logical order: right-to-left runs stay per character, and break the line's clusters.
         if (this._shapingGlyphs is null || this._shapingSized is null)
@@ -184,7 +185,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
             // An element's glyphs are drawn from its own face (simulations, axis values), and FreeType's emboldening
             // advances them further.
-            var face = font is not null ? font.GetRunFace(run.fontFace, run.fontEmSize) : run.fontFace;
+            var face = font is not null ? font.GetRunFace(runFace, run.fontEmSize) : runFace;
             if (!this._keptFaces.ContainsKey(face))
                 this._keptFaces.Add(face, new(face));
             var extra = font?.GetExtraAdvance(run.fontEmSize) ?? 0;
@@ -277,25 +278,12 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     }
 
     /// <summary>Gets whether a face is a real italic (or oblique) style of its family, not one synthesized.</summary>
-    private static bool IsRealItalic(IDWriteFontFace* face)
-    {
-        if ((face->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) != 0)
-            return false;
-        using var face3 = AsFace3(face);
-        return !face3.IsNull && face3.Get()->GetStyle() != DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_NORMAL;
-    }
-
-    /// <summary>Gets a face as an IDWriteFontFace3, or null on systems without it.</summary>
-    private static ComPtr<IDWriteFontFace3> AsFace3(IDWriteFontFace* face)
-    {
-        var face3 = default(ComPtr<IDWriteFontFace3>);
-        var iid = IID.IID_IDWriteFontFace3;
-        face->QueryInterface(&iid, (void**)face3.GetAddressOf());
-        return face3;
-    }
+    private static bool IsRealItalic(IDWriteFontFace5* face) =>
+        (face->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0
+        && face->GetStyle() != DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_NORMAL;
 
     /// <summary>Gets a face without its synthesized oblique (the same glyphs, upright), or the face if it has none.</summary>
-    private IDWriteFontFace* GetUprightFace(IDWriteFontFace* face)
+    private IDWriteFontFace5* GetUprightFace(IDWriteFontFace5* face)
     {
         var simulations = face->GetSimulations();
         if ((simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0)
@@ -304,15 +292,9 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             return known;
 
         var upright = face;
-        using var face3 = AsFace3(face);
-        using var reference = default(ComPtr<IDWriteFontFaceReference>);
-        var made = default(ComPtr<IDWriteFontFace3>);
-        if (!face3.IsNull
-            && face3.Get()->GetFontFaceReference(reference.GetAddressOf()).SUCCEEDED
-            && reference.Get()->CreateFontFaceWithSimulations(
-                simulations & ~DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE,
-                made.GetAddressOf()).SUCCEEDED)
-            upright = this.Keep((IDWriteFontFace*)made.Detach());
+        var made = default(ComPtr<IDWriteFontFace5>);
+        if (LookupFont.WithSimulations(face, simulations & ~DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE, made.GetAddressOf()).SUCCEEDED)
+            upright = this.Keep(made.Detach());
 
         this._uprightFaces.Add(face, upright);
         return upright;
@@ -322,42 +304,38 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     /// Gets the italic face of a face's family among the system's fonts (by its family name, weight and stretch, as faces
     /// may be made from their files, with simulations or axis values), or null if the family has none of its own.
     /// </summary>
-    private IDWriteFontFace* GetItalicFace(IDWriteFontFace* face)
+    private IDWriteFontFace5* GetItalicFace(IDWriteFontFace5* face)
     {
         if (this._italicFaces.TryGetValue(face, out var known))
             return known;
 
-        IDWriteFontFace* italic = null;
-        using var face3 = AsFace3(face);
-        if (!face3.IsNull)
+        IDWriteFontFace5* italic = null;
+        string? name = null;
+        using var names = default(ComPtr<IDWriteLocalizedStrings>);
+        if (face->GetFamilyNames(names.GetAddressOf()).SUCCEEDED)
         {
-            string? name = null;
-            using var names = default(ComPtr<IDWriteLocalizedStrings>);
-            if (face3.Get()->GetFamilyNames(names.GetAddressOf()).SUCCEEDED)
+            uint length;
+            if (names.Get()->GetCount() != 0 && names.Get()->GetStringLength(0, &length).SUCCEEDED)
             {
-                uint length;
-                if (names.Get()->GetCount() != 0 && names.Get()->GetStringLength(0, &length).SUCCEEDED)
-                {
-                    var buffer = stackalloc char[(int)length + 1];
-                    if (names.Get()->GetString(0, buffer, length + 1).SUCCEEDED)
-                        name = new(buffer, 0, (int)length);
-                }
+                var buffer = stackalloc char[(int)length + 1];
+                if (names.Get()->GetString(0, buffer, length + 1).SUCCEEDED)
+                    name = new(buffer, 0, (int)length);
             }
+        }
 
-            var lookup = name is null
-                             ? null
-                             : LookupStruct.Of(name) with { Weight = (int)face3.Get()->GetWeight(), Stretch = (int)face3.Get()->GetStretch(), Style = 2 };
-            if (lookup is not null && this._rasterizer.TryFindFont(lookup, out var match))
+        var lookup = name is null
+                         ? null
+                         : LookupStruct.Of(name) with { Weight = (int)face->GetWeight(), Stretch = (int)face->GetStretch(), Style = 2 };
+        if (lookup is not null && this._rasterizer.TryFindFont(lookup, out var match))
+        {
+            using (match)
             {
-                using (match)
+                var made = default(ComPtr<IDWriteFontFace5>);
+                if (match.Get()->GetStyle() != DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_NORMAL &&
+                    (match.Get()->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0 &&
+                    match.Get()->CreateFontFace(made.GetAddressOf()).SUCCEEDED)
                 {
-                    var made = default(ComPtr<IDWriteFontFace>);
-                    if (match.Get()->GetStyle() != DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_NORMAL &&
-                        (match.Get()->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0 &&
-                        match.Get()->CreateFontFace(made.GetAddressOf()).SUCCEEDED)
-                    {
-                        italic = this.Keep(made.Detach());
-                    }
+                    italic = this.Keep(made.Detach());
                 }
             }
         }
@@ -367,7 +345,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     }
 
     /// <summary>Keeps a face made here (its reference becomes the shaper's) for as long as the shaper.</summary>
-    private IDWriteFontFace* Keep(IDWriteFontFace* face)
+    private IDWriteFontFace5* Keep(IDWriteFontFace5* face)
     {
         if (this._keptFaces.ContainsKey(face))
         {
@@ -375,7 +353,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         }
         else
         {
-            var kept = default(ComPtr<IDWriteFontFace>);
+            var kept = default(ComPtr<IDWriteFontFace5>);
             kept.Attach(face);
             this._keptFaces.Add(face, kept);
         }
@@ -465,7 +443,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     }
 
     /// <summary>Makes the system's font fallback, with private-use characters going to the game's icon font first.</summary>
-    private static ComPtr<IDWriteFontFallback> CreateSystemFallback(GlyphRasterizer rasterizer)
+    private static ComPtr<IDWriteFontFallback1> CreateSystemFallback(GlyphRasterizer rasterizer)
     {
         var factory = rasterizer.Factory;
         using var builder = default(ComPtr<IDWriteFontFallbackBuilder>);
@@ -485,8 +463,10 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         using var systemFallback = default(ComPtr<IDWriteFontFallback>);
         factory->GetSystemFontFallback(systemFallback.GetAddressOf()).ThrowOnError();
         builder.Get()->AddMappings(systemFallback.Get()).ThrowOnError();
-        var result = default(ComPtr<IDWriteFontFallback>);
-        builder.Get()->CreateFontFallback(result.GetAddressOf()).ThrowOnError();
+        using var created = default(ComPtr<IDWriteFontFallback>);
+        builder.Get()->CreateFontFallback(created.GetAddressOf()).ThrowOnError();
+        var result = default(ComPtr<IDWriteFontFallback1>);
+        created.CopyTo(result.GetAddressOf()).ThrowOnError();
         return result;
     }
 
@@ -646,27 +626,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         // A face measuring as GDI does (hinted, whole-pixel advances) is laid out so; its glyphs are drawn to match.
         var measureMode = sized.Face.MeasureMode;
         var format = this.GetFormat(sized.Face, sized.Px);
-        using var layout = default(ComPtr<IDWriteTextLayout>);
-        fixed (char* t = this._text)
-        {
-            if (measureMode is 1 or 2)
-            {
-                this._rasterizer.Factory->CreateGdiCompatibleTextLayout(
-                    t,
-                    (uint)count,
-                    (IDWriteTextFormat*)format,
-                    1e6f,
-                    1e6f,
-                    1,
-                    null,
-                    measureMode == 2 ? BOOL.TRUE : BOOL.FALSE,
-                    layout.GetAddressOf()).ThrowOnError();
-            }
-            else
-            {
-                this._rasterizer.Factory->CreateTextLayout(t, (uint)count, (IDWriteTextFormat*)format, 1e6f, 1e6f, layout.GetAddressOf()).ThrowOnError();
-            }
-        }
+        using var layout = this._rasterizer.CreateLayout(this._text.AsSpan(0, count), format, measureMode);
 
         this.ApplyElements(layout.Get(), sized, count);
         for (var start = 0; italic == ItalicMode.Real && start < count;)
@@ -773,9 +733,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
         // Clusters and break opportunities don't depend on the size (fallback fonts are picked the same way at any).
         var format = this.GetFormat(this._replacer.BuiltInFace, 16);
-        using var layout = default(ComPtr<IDWriteTextLayout>);
-        fixed (char* t = text)
-            this._rasterizer.Factory->CreateTextLayout(t, (uint)text.Length, (IDWriteTextFormat*)format, 1e6f, 1e6f, layout.GetAddressOf()).ThrowOnError();
+        using var layout = this._rasterizer.CreateLayout(text, format);
         uint count;
         layout.Get()->GetClusterMetrics(null, 0, &count);
         var metrics = count <= 256 ? stackalloc DWRITE_CLUSTER_METRICS[(int)count] : new DWRITE_CLUSTER_METRICS[count];
@@ -820,7 +778,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     /// Sets each element's font, size and features on the text it draws. Text no element draws keeps the format's: the
     /// face's first font, with the system's fallback if the face has it (and dropped otherwise).
     /// </summary>
-    private void ApplyElements(IDWriteTextLayout* layout, FontReplacer.SizedFont sized, int count)
+    private void ApplyElements(IDWriteTextLayout4* layout, FontReplacer.SizedFont sized, int count)
     {
         for (var start = 0; start < count;)
         {
@@ -845,7 +803,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     /// Gets the text format of a face at a size: its first font (Segoe UI if none) at that font's size, with the
     /// system's fallback or none as the face says.
     /// </summary>
-    private IDWriteTextFormat1* GetFormat(ReplacementFace face, float px)
+    private IDWriteTextFormat3* GetFormat(ReplacementFace face, float px)
     {
         var key = (face, (int)Rounding.Round(px * 2));
         if (this._formats.TryGetValue(key, out var existing))
@@ -956,7 +914,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     private sealed record Cluster
     {
         /// <summary>The face its glyphs are drawn from, kept by the shaper.</summary>
-        public Pointer<IDWriteFontFace> Face { get; init; }
+        public Pointer<IDWriteFontFace5> Face { get; init; }
 
         public float EmSize { get; init; }
 
@@ -1023,7 +981,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         private readonly ReplacementFace _face = sized.Face;
         private readonly float _px = sized.Px;
         private readonly ReplacementElement? _element = c.Element;
-        private readonly Pointer<IDWriteFontFace> _fontFace = c.Face;
+        private readonly Pointer<IDWriteFontFace5> _fontFace = c.Face;
         private readonly float _emSize = c.EmSize;
         private readonly float _origin = c.Origin;
         private readonly ushort[] _glyphs = c.Glyphs;

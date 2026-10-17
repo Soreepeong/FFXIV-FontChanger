@@ -82,7 +82,7 @@ internal sealed unsafe class OutlineTextFont(OutlineElementFont font, float size
         });
     }
 
-    void IGlyphRunSink.OnGlyphRun(float baselineX, in DWRITE_GLYPH_RUN run, in DWRITE_GLYPH_RUN_DESCRIPTION description)
+    void IGlyphRunSink.OnGlyphRun(float baselineX, IDWriteFontFace5* face, in DWRITE_GLYPH_RUN run, in DWRITE_GLYPH_RUN_DESCRIPTION description)
     {
         // Glyphs the font lacks are left out.
         var glyphs = new List<ushort>();
@@ -103,7 +103,7 @@ internal sealed unsafe class OutlineTextFont(OutlineElementFont font, float size
         }
 
         if (glyphs.Count != 0)
-            this._runs.Add(new(run.fontFace, run.fontEmSize, glyphs.ToArray(), advances.ToArray(), offsets?.ToArray()));
+            this._runs.Add(new(face, run.fontEmSize, glyphs.ToArray(), advances.ToArray(), offsets?.ToArray()));
     }
 
     private void Shape(string text, float letterSpacing)
@@ -115,21 +115,15 @@ internal sealed unsafe class OutlineTextFont(OutlineElementFont font, float size
             font.Font.LayoutStretch,
             size,
             rasterizer.NoFallback);
-        using var layout = default(ComPtr<IDWriteTextLayout>);
-        fixed (char* t = text)
-            rasterizer.Factory->CreateTextLayout(t, (uint)text.Length, (IDWriteTextFormat*)format.Get(), 1e6f, 1e6f, layout.GetAddressOf()).ThrowOnError();
+        using var layout = rasterizer.CreateLayout(text, format.Get());
 
         var range = new DWRITE_TEXT_RANGE { startPosition = 0, length = (uint)text.Length };
         font.ApplyTo(layout.Get(), range, size);
         if (letterSpacing != 0)
-        {
-            using var layout1 = default(ComPtr<IDWriteTextLayout1>);
-            if (layout.CopyTo(layout1.GetAddressOf()).SUCCEEDED)
-                layout1.Get()->SetCharacterSpacing(0, letterSpacing, 0, range);
-        }
+            layout.Get()->SetCharacterSpacing(0, letterSpacing, 0, range);
 
         layout.Get()->CollectTo(this);
     }
 
-    private sealed record TextRun(Pointer<IDWriteFontFace> Face, float EmSize, ushort[] Glyphs, float[] Advances, DWRITE_GLYPH_OFFSET[]? Offsets);
+    private sealed record TextRun(Pointer<IDWriteFontFace5> Face, float EmSize, ushort[] Glyphs, float[] Advances, DWRITE_GLYPH_OFFSET[]? Offsets);
 }

@@ -23,14 +23,16 @@ internal sealed partial class SubpixelShaders
             var geometry = DWRITE_PIXEL_GEOMETRY.DWRITE_PIXEL_GEOMETRY_RGB;
             try
             {
-                using var factory = default(ComPtr<IDWriteFactory>);
-                using var parameters = default(ComPtr<IDWriteRenderingParams>);
-                var iid = IID.IID_IDWriteFactory;
+                using var factory = default(ComPtr<IDWriteFactory7>);
+                using var created = default(ComPtr<IDWriteRenderingParams>);
+                using var parameters = default(ComPtr<IDWriteRenderingParams3>);
+                var iid = IID.IID_IDWriteFactory7;
                 DirectX.DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)factory.GetAddressOf()).ThrowOnError();
                 if (monitor != 0)
-                    factory.Get()->CreateMonitorRenderingParams((HMONITOR)monitor, parameters.GetAddressOf()).ThrowOnError();
+                    factory.Get()->CreateMonitorRenderingParams((HMONITOR)monitor, created.GetAddressOf()).ThrowOnError();
                 else
-                    factory.Get()->CreateRenderingParams(parameters.GetAddressOf()).ThrowOnError();
+                    factory.Get()->CreateRenderingParams(created.GetAddressOf()).ThrowOnError();
+                created.CopyTo(parameters.GetAddressOf()).ThrowOnError();
                 geometry = parameters.Get()->GetPixelGeometry();
                 res = res with
                 {

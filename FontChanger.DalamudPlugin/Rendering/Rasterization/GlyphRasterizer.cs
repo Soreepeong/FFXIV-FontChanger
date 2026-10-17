@@ -19,24 +19,27 @@ namespace FontChanger.DalamudPlugin.Rendering.Rasterization;
 /// <summary>Finds system fonts and rasterizes glyph runs with DirectWrite, grayscale antialiased.</summary>
 internal sealed unsafe class GlyphRasterizer : IDisposable
 {
-    private ComPtr<IDWriteFactory2> _factory;
-    private ComPtr<IDWriteFactory3> _factory3;
-    private ComPtr<IDWriteFontCollection> _systemFonts;
-    private ComPtr<IDWriteFontFallback> _noFallback;
+    private ComPtr<IDWriteFactory7> _factory;
+    private ComPtr<IDWriteFontCollection3> _systemFonts;
+    private ComPtr<IDWriteFontFallback1> _noFallback;
 
     public GlyphRasterizer()
     {
         try
         {
-            var iid = IID.IID_IDWriteFactory2;
+            var iid = IID.IID_IDWriteFactory7;
             DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)this._factory.GetAddressOf()).ThrowOnError();
 
-            this._factory.CopyTo(this._factory3.GetAddressOf()).ThrowOnError();
-            this._factory.Get()->GetSystemFontCollection(this._systemFonts.GetAddressOf(), BOOL.FALSE).ThrowOnError();
+            // Weight, stretch and style families, as the newer overloads (which take a family model) don't make by default.
+            using var systemFonts = default(ComPtr<IDWriteFontCollection>);
+            this._factory.Get()->GetSystemFontCollection(systemFonts.GetAddressOf(), BOOL.FALSE).ThrowOnError();
+            systemFonts.CopyTo(this._systemFonts.GetAddressOf()).ThrowOnError();
 
             using var builder = default(ComPtr<IDWriteFontFallbackBuilder>);
+            using var noFallback = default(ComPtr<IDWriteFontFallback>);
             this._factory.Get()->CreateFontFallbackBuilder(builder.GetAddressOf()).ThrowOnError();
-            builder.Get()->CreateFontFallback(this._noFallback.GetAddressOf()).ThrowOnError();
+            builder.Get()->CreateFontFallback(noFallback.GetAddressOf()).ThrowOnError();
+            noFallback.CopyTo(this._noFallback.GetAddressOf()).ThrowOnError();
 
             this.FreeType = FreeTypeFonts.Create();
             try
@@ -56,7 +59,10 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     }
 
     /// <summary>Gets the DirectWrite factory (shared; owned by this object).</summary>
-    public IDWriteFactory2* Factory => this._factory.Get();
+    public IDWriteFactory7* Factory => this._factory.Get();
+
+    /// <summary>Gets the system's font collection (owned by this object).</summary>
+    public IDWriteFontCollection3* SystemCollection => this._systemFonts.Get();
 
     /// <summary>Gets FreeType, or null if its native library can't be loaded.</summary>
     public FreeTypeFonts? FreeType { get; }
@@ -65,7 +71,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     public ImageRenderer? Images { get; }
 
     /// <summary>Gets a font fallback that falls back to nothing: text is laid out in its own font only.</summary>
-    public IDWriteFontFallback* NoFallback => this._noFallback.Get();
+    public IDWriteFontFallback1* NoFallback => this._noFallback.Get();
 
     /// <summary>
     /// Gets or sets whether <see cref="RasterizeRun"/> gives ClearType coverage too, in which order (FreeType's too).
@@ -93,7 +99,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     /// Finds the font of a family closest to a weight, stretch and style (simulated if the family lacks it); false if the
     /// family isn't installed. The caller releases it.
     /// </summary>
-    public bool TryFindFont(LookupStruct lookup, out ComPtr<IDWriteFont> match)
+    public bool TryFindFont(LookupStruct lookup, out ComPtr<IDWriteFont3> match)
     {
         match = default;
         uint index;
@@ -103,9 +109,9 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         if (!exists)
             return false;
 
-        using var fontFamily = default(ComPtr<IDWriteFontFamily>);
+        using var fontFamily = default(ComPtr<IDWriteFontFamily2>);
         this._systemFonts.Get()->GetFontFamily(index, fontFamily.GetAddressOf()).ThrowOnError();
-        var font = default(ComPtr<IDWriteFont>);
+        var font = default(ComPtr<IDWriteFont3>);
         fontFamily.Get()->GetFirstMatchingFont(
             (DWRITE_FONT_WEIGHT)lookup.Weight,
             (DWRITE_FONT_STRETCH)lookup.Stretch,
@@ -119,7 +125,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     /// Makes a text format that doesn't wrap, of a family at a weight, style and stretch (DWRITE_* values) and a size,
     /// with a font fallback. The caller releases it.
     /// </summary>
-    public ComPtr<IDWriteTextFormat1> CreateFormat(string family, int weight, int style, int stretch, float size, IDWriteFontFallback* fallback)
+    public ComPtr<IDWriteTextFormat3> CreateFormat(string family, int weight, int style, int stretch, float size, IDWriteFontFallback1* fallback)
     {
         using var format = default(ComPtr<IDWriteTextFormat>);
         fixed (char* name = family)
@@ -136,19 +142,52 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
                 format.GetAddressOf()).ThrowOnError();
         }
 
-        format.Get()->SetWordWrapping(DWRITE_WORD_WRAPPING.DWRITE_WORD_WRAPPING_NO_WRAP).ThrowOnError();
-        var format1 = default(ComPtr<IDWriteTextFormat1>);
+        var format3 = default(ComPtr<IDWriteTextFormat3>);
         try
         {
-            format.CopyTo(format1.GetAddressOf()).ThrowOnError();
-            format1.Get()->SetFontFallback(fallback).ThrowOnError();
-            return format1;
+            format.CopyTo(format3.GetAddressOf()).ThrowOnError();
+            format3.Get()->SetWordWrapping(DWRITE_WORD_WRAPPING.DWRITE_WORD_WRAPPING_NO_WRAP).ThrowOnError();
+            format3.Get()->SetFontFallback((IDWriteFontFallback*)fallback).ThrowOnError();
+            return format3;
         }
         catch
         {
-            format1.Dispose();
+            format3.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Lays a text out in a format, unbounded: measured as GDI does if <paramref name="measureMode"/> (DWRITE_MEASURING_MODE)
+    /// is one of its modes. The caller releases it.
+    /// </summary>
+    public ComPtr<IDWriteTextLayout4> CreateLayout(ReadOnlySpan<char> text, IDWriteTextFormat3* format, int measureMode = 0)
+    {
+        using var layout = default(ComPtr<IDWriteTextLayout>);
+        fixed (char* t = text)
+        {
+            if (measureMode is 1 or 2)
+            {
+                this._factory.Get()->CreateGdiCompatibleTextLayout(
+                    t,
+                    (uint)text.Length,
+                    (IDWriteTextFormat*)format,
+                    1e6f,
+                    1e6f,
+                    1,
+                    null,
+                    measureMode == 2 ? BOOL.TRUE : BOOL.FALSE,
+                    layout.GetAddressOf()).ThrowOnError();
+            }
+            else
+            {
+                this._factory.Get()->CreateTextLayout(t, (uint)text.Length, (IDWriteTextFormat*)format, 1e6f, 1e6f, layout.GetAddressOf()).ThrowOnError();
+            }
+        }
+
+        var layout4 = default(ComPtr<IDWriteTextLayout4>);
+        layout.CopyTo(layout4.GetAddressOf()).ThrowOnError();
+        return layout4;
     }
 
     /// <summary>
@@ -156,7 +195,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     /// pen at <paramref name="originX"/>, a fraction of a pixel, so the cluster lands where shaping put it.
     /// </summary>
     public RasterGlyph RasterizeRun(
-        IDWriteFontFace* face,
+        IDWriteFontFace5* face,
         float px,
         ushort* glyphs,
         float* advances,
@@ -246,7 +285,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
 
     /// <summary>Gets the pixels a run of glyphs covers with the pen at the origin, as <see cref="RasterizeRun"/> draws it.</summary>
     public RECT GetRunBounds(
-        IDWriteFontFace* face,
+        IDWriteFontFace5* face,
         float px,
         ushort* glyphs,
         float* advances,
@@ -277,7 +316,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     /// FreeType can't open it, or it has only bitmaps.
     /// </summary>
     private RasterGlyph? RasterizeWithFreeType(
-        IDWriteFontFace* face,
+        IDWriteFontFace5* face,
         float px,
         ushort* glyphs,
         float* advances,
@@ -328,20 +367,15 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     }
 
     /// <summary>Gets a variable font face's axis values (as DWRITE_FONT_AXIS_TAG); null if it isn't variable.</summary>
-    private static Dictionary<uint, float>? GetAxisValues(IDWriteFontFace* face)
+    private static Dictionary<uint, float>? GetAxisValues(IDWriteFontFace5* face)
     {
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19043))
+        if (!face->HasVariations())
             return null;
 
-        using var face5 = default(ComPtr<IDWriteFontFace5>);
-        var iid = IID.IID_IDWriteFontFace5;
-        if (face->QueryInterface(&iid, (void**)face5.GetAddressOf()).FAILED || !face5.Get()->HasVariations())
-            return null;
-
-        var values = new DWRITE_FONT_AXIS_VALUE[face5.Get()->GetFontAxisValueCount()];
+        var values = new DWRITE_FONT_AXIS_VALUE[face->GetFontAxisValueCount()];
         fixed (DWRITE_FONT_AXIS_VALUE* p = values)
         {
-            if (face5.Get()->GetFontAxisValues(p, (uint)values.Length).FAILED)
+            if (face->GetFontAxisValues(p, (uint)values.Length).FAILED)
                 return null;
         }
 
@@ -383,7 +417,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     /// the text.
     /// </summary>
     private ComPtr<IDWriteGlyphRunAnalysis> CreateAnalysis(
-        IDWriteFontFace* face,
+        IDWriteFontFace5* face,
         float px,
         ushort* glyphs,
         float* advances,
@@ -410,7 +444,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
 
         var run = new DWRITE_GLYPH_RUN
         {
-            fontFace = face,
+            fontFace = (IDWriteFontFace*)face,
             fontEmSize = px,
             glyphCount = count,
             glyphIndices = glyphs,
@@ -442,7 +476,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
 
         for (var attempt = 0;; attempt++)
         {
-            var hr = this._factory3.Get()->CreateGlyphRunAnalysis(
+            var hr = this._factory.Get()->CreateGlyphRunAnalysis(
                 &run,
                 &matrix,
                 renderingMode,
@@ -471,7 +505,6 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         this.FreeType?.Dispose();
         this._noFallback.Dispose();
         this._systemFonts.Dispose();
-        this._factory3.Dispose();
         this._factory.Dispose();
     }
 }

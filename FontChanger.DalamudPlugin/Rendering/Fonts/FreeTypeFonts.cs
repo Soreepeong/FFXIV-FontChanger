@@ -93,7 +93,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
     public SubpixelOrder SubpixelOrder { get; set; }
 
     /// <summary>Opens the font file of a DirectWrite font face (kept open, shared); null if it isn't a local file.</summary>
-    public FT_FaceRec_* Open(IDWriteFontFace* fontFace)
+    public FT_FaceRec_* Open(IDWriteFontFace5* fontFace)
     {
         var (path, index) = GetFile(fontFace);
         if (path is null)
@@ -307,7 +307,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
     }
 
     /// <summary>Gets the file and face index of a DirectWrite font face, if it is a local file.</summary>
-    private static (string? Path, uint Index) GetFile(IDWriteFontFace* fontFace)
+    private static (string? Path, uint Index) GetFile(IDWriteFontFace5* fontFace)
     {
         using var file = FontFileKey.Of(fontFace);
         using var local = default(ComPtr<IDWriteLocalFontFileLoader>);

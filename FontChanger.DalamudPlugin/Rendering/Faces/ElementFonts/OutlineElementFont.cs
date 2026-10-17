@@ -32,10 +32,10 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     private readonly GlyphRasterizer _rasterizer;
     private readonly FaceElement _def;
     private readonly byte[]? _gamma;
-    private readonly Dictionary<(FFXIVClientStructs.Interop.Pointer<IDWriteFontFace> A, FFXIVClientStructs.Interop.Pointer<IDWriteFontFace> B), bool> _sameFonts = [];
+    private readonly Dictionary<(FFXIVClientStructs.Interop.Pointer<IDWriteFontFace5> A, FFXIVClientStructs.Interop.Pointer<IDWriteFontFace5> B), bool> _sameFonts = [];
 
     // References to the faces compared in _sameFonts, so their pointers aren't reused.
-    private readonly List<ComPtr<IDWriteFontFace>> _comparedFaces = [];
+    private readonly List<ComPtr<IDWriteFontFace5>> _comparedFaces = [];
     private Dictionary<uint, int>? _baselines;
     private HashSet<int>? _codepoints;
     private ComPtr<IDWriteTypography> _typography;
@@ -101,17 +101,13 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     private HashSet<int> ReadCodepoints()
     {
         var res = new HashSet<int>();
-        using var face1 = default(ComPtr<IDWriteFontFace1>);
-        var iid = IID.IID_IDWriteFontFace1;
-        if (this.Font.Face->QueryInterface(&iid, (void**)face1.GetAddressOf()).FAILED)
-            return res;
-
+        var face = this.Font.Face;
         uint count;
-        face1.Get()->GetUnicodeRanges(0, null, &count);
+        face->GetUnicodeRanges(0, null, &count);
         var ranges = new DWRITE_UNICODE_RANGE[count];
         fixed (DWRITE_UNICODE_RANGE* p = ranges)
         {
-            if (face1.Get()->GetUnicodeRanges(count, p, &count).FAILED)
+            if (face->GetUnicodeRanges(count, p, &count).FAILED)
                 return res;
         }
 
@@ -173,7 +169,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     /// is on screen, after the transformation, and <paramref name="advance"/> is the advance the glyph is given.
     /// </summary>
     public RasterGlyph RasterizeRun(
-        IDWriteFontFace* face,
+        IDWriteFontFace5* face,
         float size,
         ushort* glyphs,
         float* advances,
@@ -219,7 +215,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     /// Gets the vertical extent in pixels of a glyph's ink, moved by its offset in a shaped run, as
     /// <see cref="RasterizeRun"/> would draw it; null if it has none.
     /// </summary>
-    public (int Top, int Bottom)? MeasureGlyph(IDWriteFontFace* face, float size, ushort glyph, DWRITE_GLYPH_OFFSET offset, Matrix2x2 transform)
+    public (int Top, int Bottom)? MeasureGlyph(IDWriteFontFace5* face, float size, ushort glyph, DWRITE_GLYPH_OFFSET offset, Matrix2x2 transform)
     {
         var advance = 0f;
         RECT bounds;
@@ -257,7 +253,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     }
 
     /// <summary>Gets a glyph's ink extent horizontally in pixels from its origin, from its outline's side bearings.</summary>
-    public (float Left, float Right) GetInkExtent(IDWriteFontFace* face, float size, ushort glyph, Matrix2x2 transform)
+    public (float Left, float Right) GetInkExtent(IDWriteFontFace5* face, float size, ushort glyph, Matrix2x2 transform)
     {
         DWRITE_GLYPH_METRICS gm;
         if (face->GetDesignGlyphMetrics(&glyph, 1, &gm, BOOL.FALSE).FAILED)
@@ -273,7 +269,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     /// Sets the font, size, language, features and axis values on a range of a text layout, asking for what matches the
     /// font with its simulations.
     /// </summary>
-    public void ApplyTo(IDWriteTextLayout* layout, DWRITE_TEXT_RANGE range, float emSize)
+    public void ApplyTo(IDWriteTextLayout4* layout, DWRITE_TEXT_RANGE range, float emSize)
     {
         var lookup = this._def.Lookup;
         var font = this.Font;
@@ -293,30 +289,22 @@ internal sealed unsafe class OutlineElementFont : IElementFont
             layout->SetTypography(typography, range).ThrowOnError();
 
         // A variable font's axes; the optical size follows the size unless set.
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+        var axes = font.LayoutAxes;
+        if (!axes.IsEmpty)
         {
-            using var layout4 = default(ComPtr<IDWriteTextLayout4>);
-            var iid = IID.IID_IDWriteTextLayout4;
-            if (layout->QueryInterface(&iid, (void**)layout4.GetAddressOf()).SUCCEEDED)
-            {
-                var axes = font.LayoutAxes;
-                if (!axes.IsEmpty)
-                {
-                    fixed (DWRITE_FONT_AXIS_VALUE* a = axes)
-                        layout4.Get()->SetFontAxisValues(a, (uint)axes.Length, range).ThrowOnError();
-                }
-
-                if (font.AutoOpticalSize)
-                    layout4.Get()->SetAutomaticFontAxes(DWRITE_AUTOMATIC_FONT_AXES.DWRITE_AUTOMATIC_FONT_AXES_OPTICAL_SIZE).ThrowOnError();
-            }
+            fixed (DWRITE_FONT_AXIS_VALUE* a = axes)
+                layout->SetFontAxisValues(a, (uint)axes.Length, range).ThrowOnError();
         }
+
+        if (font.AutoOpticalSize)
+            layout->SetAutomaticFontAxes(DWRITE_AUTOMATIC_FONT_AXES.DWRITE_AUTOMATIC_FONT_AXES_OPTICAL_SIZE).ThrowOnError();
     }
 
     /// <summary>
     /// Gets the face a glyph run of a layout is drawn from: the font's own (with its simulations and axis values at the
     /// size) if the layout picked the font, else the layout's.
     /// </summary>
-    public IDWriteFontFace* GetRunFace(IDWriteFontFace* runFace, float emSize)
+    public IDWriteFontFace5* GetRunFace(IDWriteFontFace5* runFace, float emSize)
     {
         var own = this.Font.GetFace(emSize);
         return this.SameFont(own, runFace) ? own : runFace;
@@ -337,7 +325,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     /// Reads the baselines of a font's BASE table (xivres read_baselines), in font units above the glyphs' origin: the
     /// roman baseline of Latin (or the default script), and the ideographic ones of Han, kana or Hangul (or the default).
     /// </summary>
-    private static Dictionary<uint, int> ReadBaselines(IDWriteFontFace* face)
+    private static Dictionary<uint, int> ReadBaselines(IDWriteFontFace5* face)
     {
         var result = new Dictionary<uint, int>();
         void* data;
@@ -444,7 +432,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     }
 
     /// <summary>Gets a codepoint's glyph in the face at a size and its advance (with emboldening; unscaled); false if none.</summary>
-    private bool TryGetGlyph(Rune rune, float px, out IDWriteFontFace* face, out ushort index, out float advance)
+    private bool TryGetGlyph(Rune rune, float px, out IDWriteFontFace5* face, out ushort index, out float advance)
     {
         face = this.Font.GetFace(px);
         ushort i;
@@ -502,11 +490,11 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     /// simulations and axis values. A family's styles often have the same glyph count, so the files are compared; the
     /// answer is kept, with a reference to the faces so their pointers aren't reused.
     /// </summary>
-    private bool SameFont(IDWriteFontFace* a, IDWriteFontFace* b)
+    private bool SameFont(IDWriteFontFace5* a, IDWriteFontFace5* b)
     {
         if (a == b)
             return true;
-        var key = ((FFXIVClientStructs.Interop.Pointer<IDWriteFontFace>)a, (FFXIVClientStructs.Interop.Pointer<IDWriteFontFace>)b);
+        var key = ((FFXIVClientStructs.Interop.Pointer<IDWriteFontFace5>)a, (FFXIVClientStructs.Interop.Pointer<IDWriteFontFace5>)b);
         if (this._sameFonts.TryGetValue(key, out var same))
             return same;
 

@@ -45,7 +45,7 @@ internal sealed partial class LookupFont
         /// axes where it has them (<paramref name="ranges"/>; those the lookup sets are left to it), then simulations,
         /// emboldening, slant and width. Without explicit synthesis, nothing is made.
         /// </summary>
-        public static unsafe SynthesizedFace Resolve(LookupStruct lookup, Renderer renderer, IDWriteFont* font, ReadOnlySpan<DWRITE_FONT_AXIS_RANGE> ranges)
+        public static unsafe SynthesizedFace Resolve(LookupStruct lookup, Renderer renderer, IDWriteFont3* font, ReadOnlySpan<DWRITE_FONT_AXIS_RANGE> ranges)
         {
             if (lookup.AllowSynthesis is not { } allow)
                 return None;

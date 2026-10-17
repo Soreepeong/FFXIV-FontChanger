@@ -3,6 +3,8 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Dalamud.Interface;
+using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
@@ -28,6 +30,17 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
     public Plugin()
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19043))
+        {
+            var errmsg = $"FontChanger needs Windows 10 21H1 (10.0.19043) or later; this is {Environment.OSVersion.Version}.";
+            NotificationManager.AddNotification(new()
+            {
+                Content = errmsg,
+                Icon = INotificationIcon.From(FontAwesomeIcon.ExclamationTriangle),
+            });
+            throw new PlatformNotSupportedException(errmsg);
+        }
+
         this.Configuration = PluginInterface.GetPluginConfig() as Configuration.Configuration ?? new();
         if (this.Configuration.Migrate())
             PluginInterface.SavePluginConfig(this.Configuration);
@@ -50,7 +63,8 @@ public sealed class Plugin : IAsyncDalamudPlugin
             this.Replacer.Atlas = this.Configuration.Atlas;
             this.Replacer.Edge = this.Configuration.Edge;
             this.Replacer.VerticalSubpixel = this.Configuration.VerticalSubpixel;
-            this.Replacer.Subpixel = SubpixelShaders.SettingsRecord.From(this.Configuration.Subpixel, this.Configuration.ClearType, PluginInterface.UiBuilder.WindowHandlePtr);
+            this.Replacer.Subpixel =
+                SubpixelShaders.SettingsRecord.From(this.Configuration.Subpixel, this.Configuration.ClearType, PluginInterface.UiBuilder.WindowHandlePtr);
             return;
 
             static void Optional(string part, Action create)
@@ -110,6 +124,9 @@ public sealed class Plugin : IAsyncDalamudPlugin
     [PluginService]
     internal static IPluginLog Log { get; private set; } = null!;
 
+    [PluginService]
+    internal static INotificationManager NotificationManager { get; private set; } = null!;
+
     internal ConfigWindow ConfigWindow { get; private set; } = null!;
 
     internal FontReplacer Replacer { get; private set; } = null!;
@@ -131,7 +148,8 @@ public sealed class Plugin : IAsyncDalamudPlugin
         this._lastSubpixelQuery = Environment.TickCount64;
         try
         {
-            this.Replacer.Subpixel = SubpixelShaders.SettingsRecord.From(this.Configuration.Subpixel, this.Configuration.ClearType, PluginInterface.UiBuilder.WindowHandlePtr);
+            this.Replacer.Subpixel =
+                SubpixelShaders.SettingsRecord.From(this.Configuration.Subpixel, this.Configuration.ClearType, PluginInterface.UiBuilder.WindowHandlePtr);
         }
         catch (Exception ex)
         {

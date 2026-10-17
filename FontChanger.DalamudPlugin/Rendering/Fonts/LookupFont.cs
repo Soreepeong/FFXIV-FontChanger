@@ -27,11 +27,11 @@ internal sealed unsafe partial class LookupFont : IDisposable
     private readonly DWRITE_FONT_AXIS_RANGE _opticalSizeRange;
 
     private ComPtr<IDWriteFontResource> _resource;
-    private ComPtr<IDWriteFont> _font;
-    private ComPtr<IDWriteFontFace> _face;
+    private ComPtr<IDWriteFont3> _font;
+    private ComPtr<IDWriteFontFace5> _face;
 
     /// <summary>Takes a reference of its own to the font.</summary>
-    private LookupFont(IDWriteFactory2* factory, IDWriteFont* font, LookupStruct lookup, Renderer renderer)
+    private LookupFont(IDWriteFont3* font, LookupStruct lookup, Renderer renderer)
     {
         this._font = new(font);
         try
@@ -44,19 +44,16 @@ internal sealed unsafe partial class LookupFont : IDisposable
 
             // A variable font starts from its instance (DirectWrite lists the named ones as fonts), less the optical size.
             var ranges = Array.Empty<DWRITE_FONT_AXIS_RANGE>();
-            using var face5 = default(ComPtr<IDWriteFontFace5>);
-            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19043)
-                && this._face.CopyTo(face5.GetAddressOf()).SUCCEEDED
-                && face5.Get()->HasVariations())
+            if (face->HasVariations())
             {
-                face5.Get()->GetFontResource(this._resource.GetAddressOf()).ThrowOnError();
+                face->GetFontResource(this._resource.GetAddressOf()).ThrowOnError();
                 var r = this._resource.Get();
                 ranges = new DWRITE_FONT_AXIS_RANGE[r->GetFontAxisCount()];
                 fixed (DWRITE_FONT_AXIS_RANGE* p = ranges)
                     r->GetFontAxisRanges(p, (uint)ranges.Length).ThrowOnError();
-                this._axes = new DWRITE_FONT_AXIS_VALUE[face5.Get()->GetFontAxisValueCount()];
+                this._axes = new DWRITE_FONT_AXIS_VALUE[face->GetFontAxisValueCount()];
                 fixed (DWRITE_FONT_AXIS_VALUE* p = this._axes)
-                    face5.Get()->GetFontAxisValues(p, (uint)this._axes.Length).ThrowOnError();
+                    face->GetFontAxisValues(p, (uint)this._axes.Length).ThrowOnError();
             }
 
             var axisValues = new Dictionary<uint, float>();
@@ -99,8 +96,9 @@ internal sealed unsafe partial class LookupFont : IDisposable
             }
             else if (this._simulations != face->GetSimulations())
             {
-                // The face of the font comes with the font's simulations; one with others is made from the file.
-                var simulated = WithSimulations(factory, face, this._simulations);
+                // The face of the font comes with the font's simulations; one with others is made from its resource.
+                var simulated = default(ComPtr<IDWriteFontFace5>);
+                WithSimulations(face, this._simulations, simulated.GetAddressOf()).ThrowOnError();
                 this._face.Dispose();
                 this._face = simulated;
             }
@@ -112,13 +110,13 @@ internal sealed unsafe partial class LookupFont : IDisposable
         }
     }
 
-    public IDWriteFont* Font => this._font.Get();
+    public IDWriteFont3* Font => this._font.Get();
 
     /// <summary>
     /// Gets the face: with the simulations, but for a variable font, the matched instance (for its file and metrics;
     /// glyphs are drawn from <see cref="GetFace"/>'s).
     /// </summary>
-    public IDWriteFontFace* Face => this._face.Get();
+    public IDWriteFontFace5* Face => this._face.Get();
 
     public DWRITE_FONT_METRICS Metrics { get; }
 
@@ -159,12 +157,12 @@ internal sealed unsafe partial class LookupFont : IDisposable
             // DirectWrite may match a simulated font: with explicit synthesis, the real face it is made from is taken.
             if (lookup.AllowSynthesis is not null && font.Get()->GetSimulations() != DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_NONE)
             {
-                var real = GetRealFont(rasterizer.Factory, font.Get());
+                var real = GetRealFont(rasterizer, font.Get());
                 font.Dispose();
                 font = real;
             }
 
-            return new(rasterizer.Factory, font.Get(), lookup, renderer);
+            return new(font.Get(), lookup, renderer);
         }
         finally
         {
@@ -173,14 +171,14 @@ internal sealed unsafe partial class LookupFont : IDisposable
     }
 
     /// <summary>Gets the face at a text size: the optical size set to it, if it follows. Owned by this object.</summary>
-    public IDWriteFontFace* GetFace(float px)
+    public IDWriteFontFace5* GetFace(float px)
     {
         if (!this.IsVariable)
             return this.Face;
 
         var key = this.AutoOpticalSize ? Rounding.Round(px * 4) / 4 : 0;
         if (this._sizedFaces.TryGetValue(key, out var existing))
-            return (IDWriteFontFace*)existing.Get();
+            return existing.Get();
 
         var values = new DWRITE_FONT_AXIS_VALUE[this._axes.Length + (this.AutoOpticalSize ? 1 : 0)];
         this._axes.CopyTo(values, 0);
@@ -194,7 +192,7 @@ internal sealed unsafe partial class LookupFont : IDisposable
         fixed (DWRITE_FONT_AXIS_VALUE* p = values)
             this._resource.Get()->CreateFontFace(this._simulations, p, (uint)values.Length, face.GetAddressOf()).ThrowOnError();
         this._sizedFaces.Add(key, face);
-        return (IDWriteFontFace*)face.Get();
+        return face.Get();
     }
 
     /// <summary>Gets the axis values FreeType sets at a text size (as DWRITE_FONT_AXIS_TAG).</summary>
@@ -215,29 +213,33 @@ internal sealed unsafe partial class LookupFont : IDisposable
         this._font.Dispose();
     }
 
-    /// <summary>Makes a face of the same file and index as a face, with other simulations.</summary>
-    public static ComPtr<IDWriteFontFace> WithSimulations(IDWriteFactory2* factory, IDWriteFontFace* face, DWRITE_FONT_SIMULATIONS simulations)
+    /// <summary>Makes a face of the same font resource and axis values as a face, with other simulations.</summary>
+    public static HRESULT WithSimulations(IDWriteFontFace5* face, DWRITE_FONT_SIMULATIONS simulations, IDWriteFontFace5** made)
     {
-        uint count = 1;
-        using var file = default(ComPtr<IDWriteFontFile>);
-        face->GetFiles(&count, file.GetAddressOf()).ThrowOnError();
-        var made = default(ComPtr<IDWriteFontFace>);
-        factory->CreateFontFace(face->GetType(), 1, file.GetAddressOf(), face->GetIndex(), simulations, made.GetAddressOf()).ThrowOnError();
-        return made;
+        using var resource = default(ComPtr<IDWriteFontResource>);
+        var hr = face->GetFontResource(resource.GetAddressOf());
+        if (hr.FAILED)
+            return hr;
+
+        var axes = new DWRITE_FONT_AXIS_VALUE[face->GetFontAxisValueCount()];
+        fixed (DWRITE_FONT_AXIS_VALUE* p = axes)
+        {
+            hr = face->GetFontAxisValues(p, (uint)axes.Length);
+            return hr.FAILED ? hr : resource.Get()->CreateFontFace(simulations, p, (uint)axes.Length, made);
+        }
     }
 
-    /// <summary>Gets the font without simulations a simulated font is made from.</summary>
-    private static ComPtr<IDWriteFont> GetRealFont(IDWriteFactory2* factory, IDWriteFont* font)
+    /// <summary>Gets the font without simulations a simulated font (of the system's) is made from.</summary>
+    private static ComPtr<IDWriteFont3> GetRealFont(GlyphRasterizer rasterizer, IDWriteFont3* font)
     {
-        using var face = default(ComPtr<IDWriteFontFace>);
+        using var face = default(ComPtr<IDWriteFontFace5>);
         font->CreateFontFace(face.GetAddressOf()).ThrowOnError();
-        using var realFace = WithSimulations(factory, face.Get(), DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_NONE);
-        using var family = default(ComPtr<IDWriteFontFamily>);
-        font->GetFontFamily(family.GetAddressOf()).ThrowOnError();
-        using var collection = default(ComPtr<IDWriteFontCollection>);
-        family.Get()->GetFontCollection(collection.GetAddressOf()).ThrowOnError();
-        var real = default(ComPtr<IDWriteFont>);
-        collection.Get()->GetFontFromFontFace(realFace.Get(), real.GetAddressOf()).ThrowOnError();
-        return real;
+        using var realFace = default(ComPtr<IDWriteFontFace5>);
+        WithSimulations(face.Get(), DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_NONE, realFace.GetAddressOf()).ThrowOnError();
+        using var real = default(ComPtr<IDWriteFont>);
+        rasterizer.SystemCollection->GetFontFromFontFace((IDWriteFontFace*)realFace.Get(), real.GetAddressOf()).ThrowOnError();
+        var real3 = default(ComPtr<IDWriteFont3>);
+        real.CopyTo(real3.GetAddressOf()).ThrowOnError();
+        return real3;
     }
 }

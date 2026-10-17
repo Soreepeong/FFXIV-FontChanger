@@ -12,7 +12,7 @@ namespace FontChanger.DalamudPlugin.Rendering.Rasterization;
 
 internal static unsafe class GlyphRunCollector
 {
-    public static void CollectTo(this ref IDWriteTextLayout layout, IGlyphRunSink sink)
+    public static void CollectTo(this ref IDWriteTextLayout4 layout, IGlyphRunSink sink)
     {
         var obj = new Native
         {
@@ -85,7 +85,10 @@ internal static unsafe class GlyphRunCollector
     {
         try
         {
-            Unsafe.AsRef<IGlyphRunSink>(context).OnGlyphRun(baselineX, in *run, in *description);
+            using var face = default(ComPtr<IDWriteFontFace5>);
+            var iid = IID.IID_IDWriteFontFace5;
+            run->fontFace->QueryInterface(&iid, (void**)face.GetAddressOf()).ThrowOnError();
+            Unsafe.AsRef<IGlyphRunSink>(context).OnGlyphRun(baselineX, face.Get(), in *run, in *description);
             return S.S_OK;
         }
         catch (Exception ex)
