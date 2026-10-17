@@ -9,6 +9,7 @@ using System.Xml;
 
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
 

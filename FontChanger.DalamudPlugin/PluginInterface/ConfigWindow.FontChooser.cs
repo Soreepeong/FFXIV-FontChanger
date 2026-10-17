@@ -10,7 +10,6 @@ using FontChanger.DalamudPlugin.Configuration;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;
 
-// Choosing a system font, and finding the system's fonts by family.
 internal sealed partial class ConfigWindow
 {
     private void OpenFontChooser(string title, FamilyFont? current, Action<FamilyFont> apply)

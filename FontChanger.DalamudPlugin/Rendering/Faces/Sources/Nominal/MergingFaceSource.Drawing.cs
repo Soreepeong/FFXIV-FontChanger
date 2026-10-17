@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text.Json;
 
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
+using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
 
@@ -121,7 +123,7 @@ internal sealed partial class MergingFaceSource
         IMergeTextFont GetTextFont(float s, float c)
         {
             // Sizes in steps of 1/20 pixel, scales of 1/1000.
-            var key = ((int)Rounding.Round(s * 20), (int)Rounding.Round(c * 1000));
+            var key = ((int)Misc.StdRound(s * 20), (int)Misc.StdRound(c * 1000));
             if (!cache.TryGetValue(key, out var font))
                 cache.Add(key, font = this.CreateTextFont(key.Item1 / 20f, key.Item2 / 1000f));
             return font;
@@ -165,7 +167,7 @@ internal sealed partial class MergingFaceSource
         var layout = this.LayOut(font, lines, pixelScale, hasArea);
         float textX;
         int textY;
-        var advance = (int)Rounding.Round(shape.Advance * scale);
+        var advance = (int)Misc.StdRound(shape.Advance * scale);
         if (mapping.Shape == MergeShape.Glyph && baseGlyph is { } bg)
             advance = bg.Advance;
         if (hasArea)
@@ -177,14 +179,14 @@ internal sealed partial class MergingFaceSource
             // Letters and digits are centered by the capitals' height, so they line up across glyphs; symbols such as +
             // sit around the middle of lowercase letters instead, and are centered by themselves.
             textY = IsSymbolsOnly(text) && layout.InkY1 < layout.InkY2
-                        ? (int)Rounding.Round(centerY - ((layout.InkY1 + layout.InkY2) / 2f))
-                        : (int)Rounding.Round(centerY - ((layout.CapTop + layout.LastBaseline) / 2f));
+                        ? (int)Misc.StdRound(centerY - ((layout.InkY1 + layout.InkY2) / 2f))
+                        : (int)Misc.StdRound(centerY - ((layout.CapTop + layout.LastBaseline) / 2f));
         }
         else
         {
             // Without a shape, the text sits on the element's baseline.
             textX = merging.TextOffsetX * pixelScale;
-            textY = (int)Rounding.Round(baselineY - font.Ascent + (merging.TextOffsetY * pixelScale));
+            textY = (int)Misc.StdRound(baselineY - font.Ascent + (merging.TextOffsetY * pixelScale));
             if (!hasShape)
                 advance = layout.AdvanceWidth;
         }
@@ -291,7 +293,7 @@ internal sealed partial class MergingFaceSource
     /// </summary>
     private TextLayout LayOut(IMergeTextFont font, string[] lines, float pixelScale, bool alignByInk)
     {
-        var letterSpacing = (int)Rounding.Round(merging.LetterSpacing * pixelScale);
+        var letterSpacing = (int)Misc.StdRound(merging.LetterSpacing * pixelScale);
         var laidOut = new List<MergeTextLine>();
         var maxInkWidth = 0f;
         var res = new TextLayout();
@@ -306,8 +308,8 @@ internal sealed partial class MergingFaceSource
 
         // The capitals' height, from H's ink.
         var h = font.Has(new('H')) ? font.LayOut("H", 0) : null;
-        var capHeight = h is not null && h.InkY1 < h.InkY2 ? font.Ascent - h.InkY1 : (int)Rounding.Round(font.Ascent * 0.7f);
-        var lineAdvance = (int)Rounding.Round((capHeight * StackedLineAdvance) + (merging.LineSpacing * pixelScale));
+        var capHeight = h is not null && h.InkY1 < h.InkY2 ? font.Ascent - h.InkY1 : (int)Misc.StdRound(font.Ascent * 0.7f);
+        var lineAdvance = (int)Misc.StdRound((capHeight * StackedLineAdvance) + (merging.LineSpacing * pixelScale));
 
         (res.InkX1, res.InkX2, res.InkY1, res.InkY2) = (float.MaxValue, float.MinValue, int.MaxValue, int.MinValue);
         for (var i = 0; i < laidOut.Count; i++)
@@ -324,7 +326,7 @@ internal sealed partial class MergingFaceSource
                 _ => 0,
             };
             if (!line.Shaped)
-                shift = Rounding.Round(shift);
+                shift = Misc.StdRound(shift);
 
             var y = i * lineAdvance;
             res.Lines.Add((line, shift, y));

@@ -6,6 +6,8 @@ using System.Text;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Faces.Sources.Outline;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
+using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
@@ -125,7 +127,7 @@ internal abstract unsafe partial class OutlineFaceSource : IFaceSource
         var size = px / m.designUnitsPerEm * MathF.Abs(transform.M22);
         var ascent = (int)MathF.Ceiling(m.ascent * size);
         var descent = (int)MathF.Ceiling(m.descent * size);
-        return (ascent, ascent + descent + (int)Rounding.Round(m.lineGap * size));
+        return (ascent, ascent + descent + (int)Misc.StdRound(m.lineGap * size));
     }
 
     /// <summary>
@@ -179,7 +181,7 @@ internal abstract unsafe partial class OutlineFaceSource : IFaceSource
             advances[i] = run.Advances[i] + extra;
         }
 
-        var advance = options.Advance ?? (int)Rounding.Round(this.GetScreenAdvance(px, run));
+        var advance = options.Advance ?? (int)Misc.StdRound(this.GetScreenAdvance(px, run));
         var offsetSpan = MemoryMarshal.Cast<GlyphOffset, DWRITE_GLYPH_OFFSET>(run.Offsets);
         fixed (ushort* g = glyphs)
         fixed (float* a = advances)

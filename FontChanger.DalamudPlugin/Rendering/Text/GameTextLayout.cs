@@ -5,8 +5,8 @@ using System.Text;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
-using FontChanger.DalamudPlugin.Rendering.Faces;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
 using FontChanger.DalamudPlugin.Utilities;
 
 using Lumina.Text.Payloads;

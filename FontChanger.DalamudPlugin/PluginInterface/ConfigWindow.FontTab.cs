@@ -16,7 +16,6 @@ using FontChanger.Presets.Records;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;
 
-// The Font tab: each game font family's chain of presets and system fonts.
 internal sealed partial class ConfigWindow
 {
     private static void DrawFontTab(ConfigWindow t)

@@ -1,5 +1,6 @@
 using System;
 
+using FontChanger.DalamudPlugin.Rendering.Enums;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Rendering.Text;
 using FontChanger.DalamudPlugin.Utilities;
@@ -13,8 +14,8 @@ using static TerraFX.Interop.DirectX.DirectX;
 namespace FontChanger.DalamudPlugin.Rendering;
 
 /// <summary>
-/// What fonts are found, laid out and drawn with: DirectWrite (its factory, the system's fonts, text formats, layouts and
-/// analysis), and the rasterizers of DirectWrite, FreeType and Direct2D, which share its subpixel settings.
+/// What fonts are found, shaped, and drawn with: DirectWrite (its factory, the system's fonts and analysis), and the
+/// rasterizers of DirectWrite, FreeType, and Direct2D, which share its subpixel settings.
 /// </summary>
 internal sealed unsafe class FontServices : IDisposable
 {
@@ -49,11 +50,10 @@ internal sealed unsafe class FontServices : IDisposable
         }
     }
 
-    /// <summary>Gets the DirectWrite factory (shared; owned by this object).</summary>
-    public IDWriteFactory7* Factory => this._factory.Value;
+    public ref IDWriteFactory7 Factory => ref *this._factory.Value;
 
     /// <summary>Gets DirectWrite's text analyzer, which finds scripts and shapes text (owned by this object).</summary>
-    public IDWriteTextAnalyzer* Analyzer => this._analyzer.Value;
+    public ref IDWriteTextAnalyzer Analyzer => ref *this._analyzer.Value;
 
     /// <summary>Gets the cutting of lines into runs of a script.</summary>
     public DirectWriteTextAnalyzer TextAnalyzer { get; }
@@ -86,7 +86,7 @@ internal sealed unsafe class FontServices : IDisposable
     }
 
     /// <summary>
-    /// Finds the font of a family closest to a weight, stretch and style (simulated if the family lacks it); false if the
+    /// Finds the font of a family closest to a weight, stretch, and style (simulated if the family lacks it); false if the
     /// family isn't installed. The caller releases it.
     /// </summary>
     public bool TryFindFont(LookupStruct lookup, out MyComPtr<IDWriteFont3> match)
@@ -111,60 +111,15 @@ internal sealed unsafe class FontServices : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Makes a text format that doesn't wrap, of a family at a weight, style and stretch (DWRITE_* values) and a size,
-    /// with a font fallback. The caller releases it.
-    /// </summary>
-    public MyComPtr<IDWriteTextFormat3> CreateFormat(string family, int weight, int style, int stretch, float size, IDWriteFontFallback1* fallback)
-    {
-        using var format = default(MyComPtr<IDWriteTextFormat>);
-        fixed (char* name = family)
-        fixed (char* locale = "en-us")
-        {
-            this._factory.Value->CreateTextFormat(
-                name,
-                null,
-                (DWRITE_FONT_WEIGHT)weight,
-                (DWRITE_FONT_STYLE)style,
-                (DWRITE_FONT_STRETCH)stretch,
-                size,
-                locale,
-                format.GetAddressOf()).ThrowOnError();
-        }
-
-        var format3 = default(MyComPtr<IDWriteTextFormat3>);
-        try
-        {
-            format.CopyTo(format3.GetAddressOf()).ThrowOnError();
-            format3.Value->SetWordWrapping(DWRITE_WORD_WRAPPING.DWRITE_WORD_WRAPPING_NO_WRAP).ThrowOnError();
-            format3.Value->SetFontFallback((IDWriteFontFallback*)fallback).ThrowOnError();
-            return format3;
-        }
-        catch
-        {
-            format3.Dispose();
-            throw;
-        }
-    }
-
-    /// <summary>Lays a text out in a format, unbounded. The caller releases it.</summary>
-    public MyComPtr<IDWriteTextLayout4> CreateLayout(ReadOnlySpan<char> text, IDWriteTextFormat3* format)
-    {
-        using var layout = default(MyComPtr<IDWriteTextLayout>);
-        fixed (char* t = text)
-            this._factory.Value->CreateTextLayout(t, (uint)text.Length, (IDWriteTextFormat*)format, 1e6f, 1e6f, layout.GetAddressOf()).ThrowOnError();
-
-        var layout4 = default(MyComPtr<IDWriteTextLayout4>);
-        layout.CopyTo(layout4.GetAddressOf()).ThrowOnError();
-        return layout4;
-    }
-
     public void Dispose()
     {
-        this.Images?.Dispose();
-        this.FreeType?.Dispose();
+        ForceNullableDispose(this.Images);
+        ForceNullableDispose(this.FreeType);
         this._analyzer.Dispose();
         this._systemFonts.Dispose();
         this._factory.Dispose();
+        return;
+
+        static void ForceNullableDispose(IDisposable? d) => d?.Dispose();
     }
 }

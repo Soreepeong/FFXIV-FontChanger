@@ -24,10 +24,8 @@ internal static unsafe class FontNames
     private static string[]? _lobbyNamesA;
     private static string[]? _lobbyNamesB;
 
-    /// <summary>Gets the game's font families (<c>AXIS</c>, <c>JupiterN</c>, ...) in the order of its font table; none if it wasn't read.</summary>
     public static IReadOnlyList<string> Families { get; private set; } = [];
 
-    /// <summary>Reads the tables. Throws if they can't be found.</summary>
     public static void Initialize()
     {
         _lobbyNamesA = Read(AtkFontManager.LobbyFontTableStandardResolution());
@@ -36,16 +34,14 @@ internal static unsafe class FontNames
         Families = _gameNames.Select(Preset.FamilyOf).Where(f => f.Length != 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    /// <summary>Gets the faces of a family in the game's font table, with the sizes their names stand for.</summary>
     public static IReadOnlyList<(string Name, float Size)> FaceNamesOf(string family) =>
         (_gameNames ?? [])
         .Where(n => string.Equals(Preset.FamilyOf(n), family, StringComparison.OrdinalIgnoreCase))
         .Distinct(StringComparer.OrdinalIgnoreCase)
-        .Select(n => (n, SizeOf(n)))
+        .Select(n => (n, SizeFromFdtFileName(n)))
         .Where(f => f.Item2 > 0)
         .ToList();
 
-    /// <summary>Gets the face name of a font of the font manager; false if it isn't one.</summary>
     public static bool TryGetFaceName(AtkFontManager.Font* font, [NotNullWhen(true)] out string? faceName)
     {
         faceName = null;
@@ -100,8 +96,8 @@ internal static unsafe class FontNames
             var f = manager->Fonts + i;
             if (!IsLobby(f))
                 continue;
-            a += SizeOf(_lobbyNamesA![i]) == f->Size ? 1 : 0;
-            b += SizeOf(_lobbyNamesB![i]) == f->Size ? 1 : 0;
+            a += SizeFromFdtFileName(_lobbyNamesA![i]) == f->Size ? 1 : 0;
+            b += SizeFromFdtFileName(_lobbyNamesB![i]) == f->Size ? 1 : 0;
         }
 
         return b > a ? _lobbyNamesB! : _lobbyNamesA!;
@@ -116,10 +112,8 @@ internal static unsafe class FontNames
         return fileName.Contains("font_lobby", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Gets the size of a game font by its name (FontChanger.FixedSizeFont's data/game_fonts.json); 0 if it isn't one.</summary>
-    private static float SizeOf(string name) => GameFonts.TryFind(name, out var font) ? font.Size : 0;
+    private static float SizeFromFdtFileName(string name) => GameFonts.TryFind(name, out var font) ? font.Size : 0;
 
-    /// <summary>Reads a table's FDT names as face names: without the extension, nor the lobby suffix.</summary>
     private static string[] Read(AtkFontManager.FontTableEntry* table)
     {
         var names = new string[AtkFontManager.FontTableEntry.Count];

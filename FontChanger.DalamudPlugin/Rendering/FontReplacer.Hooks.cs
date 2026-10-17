@@ -5,7 +5,6 @@ using System.Linq;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.PluginInterface;
-using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Rendering.Text;
 using FontChanger.DalamudPlugin.Utilities;
 
@@ -230,7 +229,7 @@ internal sealed unsafe partial class FontReplacer
             // Picked for the on-screen size, even where the game picked for another (the unscaled size of a node with a
             // fixed font resolution, or a pick scale of its own), so the renderer doesn't scale the glyphs.
             var size = set->ScaledSizeY;
-            var halfPx = Math.Clamp((int)Rounding.Round(size * 2), MinHalfPx, MaxHalfPx);
+            var halfPx = Math.Clamp((int)Misc.StdRound(size * 2), MinHalfPx, MaxHalfPx);
             var copy = this.GetOrCreateCopy(font, halfPx);
 
             // Rasterized at half-pixel sizes, but the copy claims the exact size: any renderer scale but exactly 1 resamples

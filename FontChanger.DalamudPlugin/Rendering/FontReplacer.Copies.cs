@@ -8,7 +8,6 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Rendering.Faces;
-using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.Rendering;
@@ -47,9 +46,8 @@ internal sealed unsafe partial class FontReplacer
     private SizedFont GetSized(Pointer<AtkFontManager.Font> original, int halfPx)
     {
         var px = halfPx / 2f;
-        FontNames.TryGetFaceName(original, out var originalName);
         var faces = new List<(string Name, float Size, MaterializedFont Face, Pointer<AtkFontManager.Font> Game)>();
-        if (originalName is not null)
+        if (FontNames.TryGetFaceName(original, out var originalName))
         {
             foreach (var (name, size) in FontNames.FaceNamesOf(Preset.FamilyOf(originalName)).OrderByDescending(f => f.Size))
             {
@@ -141,7 +139,7 @@ internal sealed unsafe partial class FontReplacer
         // game font's textures may not share (the lobby fonts' are smaller), else outlines sample several texels apart.
         // Claiming a narrower width makes the step, and so the edge, that many times wider; the plugin's edge shader takes
         // the step as its radius.
-        var width = (ushort)Math.Clamp(Rounding.Round(sized.Atlas.Width / this.Edge.GetWidth(sized.Px)), 256, ushort.MaxValue);
+        var width = (ushort)Math.Clamp(Misc.StdRound(sized.Atlas.Width / this.Edge.GetWidth(sized.Px)), 256, ushort.MaxValue);
         copy->TextureWidth = width;
         copy->TextureHeight = width;
 

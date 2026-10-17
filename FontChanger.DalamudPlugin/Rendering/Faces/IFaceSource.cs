@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
+using FontChanger.DalamudPlugin.Rendering.Enums;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
 
 namespace FontChanger.DalamudPlugin.Rendering.Faces;
 
@@ -39,16 +41,12 @@ internal interface IFaceSource : IDisposable
     /// <summary>Gets a baseline of the BASE table, in pixels above the glyphs' origin; false if it has none.</summary>
     bool TryGetBaseline(float px, Baseline baseline, out float y);
 
-    /// <summary>
-    /// Gets the source that draws its text in italics: its family's italic (<c>Real</c>), or itself, for the game to
-    /// shear.
-    /// </summary>
+    /// <summary>Gets the source that draws its text in italics.</summary>
+    /// <returns>Italicized version if available, and whether the source is the italicized version.</returns>
     (IFaceSource Source, bool Real) GetItalic() => (this, false);
 
-    /// <summary>
-    /// Shapes text from its start into clusters of its glyphs, in logical order; stops before the first cluster it lacks a
-    /// glyph of. Returns how many code units it shaped, always at a cluster boundary.
-    /// </summary>
+    /// <summary>Shapes text from its start into clusters of its glyphs, in logical order; stops before the first cluster it lacks a glyph of.</summary>
+    /// <returns>Number of <see langword="char"/>s it shaped. Always at a cluster boundary.</returns>
     int Shape(float px, ReadOnlySpan<char> text, ScriptToken script, List<ShapedCluster> clusters);
 
     /// <summary>Rasterizes a run (one glyph, or a shaped cluster) into one image; null if the source has none of its glyphs.</summary>

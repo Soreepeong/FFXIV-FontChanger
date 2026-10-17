@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 
+using FontChanger.DalamudPlugin.Rendering.Enums;
 using FontChanger.DalamudPlugin.Rendering.Faces.Sources.Outline;
+using FontChanger.DalamudPlugin.Rendering.Records;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
@@ -47,12 +49,12 @@ internal sealed unsafe class DirectWriteGlyphRasterizer(IDWriteFactory7* factory
     {
         // Grayscale is the mean of the three subpixels; aliased text has no ClearType.
         var subpixel = this.UsesSubpixel(parameters);
-        if (subpixel && this.SubpixelOrder.IsVertical() && this.VerticalWithFreeType &&
+        if (subpixel && this.SubpixelOrder.IsVertical && this.VerticalWithFreeType &&
             this.RasterizeWithFreeType(face, px, glyphs, advances, offsets, count, originX, advance, parameters, transform) is { } drawn)
             return drawn;
 
         // ClearType's stripes are horizontal: for vertical ones, the glyphs are drawn turned a quarter and turned back.
-        var turned = subpixel && this.SubpixelOrder.IsVertical();
+        var turned = subpixel && this.SubpixelOrder.IsVertical;
         using var analysis = this.CreateAnalysis(
             face,
             px,
@@ -84,7 +86,7 @@ internal sealed unsafe class DirectWriteGlyphRasterizer(IDWriteFactory7* factory
                     (lcd, bounds, cw, ch) = (TurnBack(lcd, cw, ch, 3), TurnBack(bounds), ch, cw);
 
                 var mean = new byte[cw * ch];
-                var blueFirst = this.SubpixelOrder.IsBlueFirst();
+                var blueFirst = this.SubpixelOrder.IsBlueFirst;
                 for (var i = 0; i < mean.Length; i++)
                 {
                     mean[i] = (byte)((lcd[i * 3] + lcd[(i * 3) + 1] + lcd[(i * 3) + 2] + 1) / 3);
@@ -134,7 +136,7 @@ internal sealed unsafe class DirectWriteGlyphRasterizer(IDWriteFactory7* factory
         Matrix2x2 transform)
     {
         var subpixel = this.UsesSubpixel(parameters);
-        var vertical = subpixel && this.SubpixelOrder.IsVertical();
+        var vertical = subpixel && this.SubpixelOrder.IsVertical;
         if (vertical && this.VerticalWithFreeType &&
             this.RasterizeWithFreeType(face, px, glyphs, advances, offsets, count, 0, 0, parameters, transform) is { } g)
             return new() { left = g.Left, top = g.Top, right = g.Left + g.Width, bottom = g.Top + g.Height };

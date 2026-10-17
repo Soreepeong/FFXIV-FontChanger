@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Text;
 
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
+using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources.Nominal;
 
@@ -15,7 +17,7 @@ internal sealed class EmptyFaceSource(float size, float ascent, float lineHeight
     public override float GetAdvance(float px, uint glyphId) => 0;
 
     public override (int Ascent, int LineHeight) GetLineMetrics(float px) =>
-        size > 0 ? ((int)Rounding.Round(ascent * px / size), (int)Rounding.Round(lineHeight * px / size)) : (0, 0);
+        size > 0 ? ((int)Misc.StdRound(ascent * px / size), (int)Misc.StdRound(lineHeight * px / size)) : (0, 0);
 
     protected override RasterGlyph? RasterizeGlyph(float px, uint glyphId) => null;
 }

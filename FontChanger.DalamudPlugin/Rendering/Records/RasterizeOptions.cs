@@ -1,4 +1,4 @@
-﻿namespace FontChanger.DalamudPlugin.Rendering.Faces;
+﻿namespace FontChanger.DalamudPlugin.Rendering.Records;
 
 /// <param name="OriginX">The fraction of a pixel the pen is at.</param>
 /// <param name="Advance">The advance the glyph is given; null for its own, rounded.</param>

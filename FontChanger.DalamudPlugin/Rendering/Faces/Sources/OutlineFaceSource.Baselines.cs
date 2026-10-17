@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using FontChanger.DalamudPlugin.Rendering.Enums;
+
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 

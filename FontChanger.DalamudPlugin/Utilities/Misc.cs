@@ -28,6 +28,8 @@ public static unsafe class Misc
             throw new InvalidOperationException("Lock was expected to be held by current thread, but was not.");
     }
 
+    public static float StdRound(float value) => MathF.Round(value, MidpointRounding.AwayFromZero);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static AtkFontManager.Glyph* FindGlyph(this ref AtkFontManager.Font font, Rune rune) =>
         !rune.IsBmp

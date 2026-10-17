@@ -6,12 +6,12 @@ using FontChanger.DalamudPlugin.Utilities;
 
 using TerraFX.Interop.DirectX;
 
-using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
-
 using static TerraFX.Interop.DirectX.D3D11_CPU_ACCESS_FLAG;
 using static TerraFX.Interop.DirectX.D3D11_MAP;
 using static TerraFX.Interop.DirectX.D3D11_USAGE;
 using static TerraFX.Interop.DirectX.DXGI_FORMAT;
+
+using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
 
 namespace FontChanger.DalamudPlugin.Game;
 
@@ -72,7 +72,6 @@ internal sealed unsafe class TextureReader : IDisposable
             {
                 var src = (byte*)mapped.pData + (row * mapped.RowPitch);
                 var dst = alpha.AsSpan(row * stride, width);
-                // Planes are the R, G, B and A channels, as in the atlas.
                 if (bytes == 2)
                 {
                     for (var col = 0; col < width; col++)

@@ -2,6 +2,7 @@ using System;
 using System.Text;
 
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
 
 namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources.Nominal;
 

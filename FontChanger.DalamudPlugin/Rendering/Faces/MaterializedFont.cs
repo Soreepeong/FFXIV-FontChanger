@@ -9,6 +9,7 @@ using FFXIVClientStructs.Interop;
 using FontChanger.DalamudPlugin.Rendering.Faces.Sources;
 using FontChanger.DalamudPlugin.Rendering.Faces.Sources.Nominal;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
 using FontChanger.DalamudPlugin.Rendering.Text;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Enums;
@@ -260,7 +261,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
         if (game is null || game->Size <= 0)
             return (0, 0);
         var scale = element.GetPx(px) / game->Size;
-        return ((int)Rounding.Round(game->Ascent * scale), (int)Rounding.Round(game->LineHeight * scale));
+        return ((int)Misc.StdRound(game->Ascent * scale), (int)Misc.StdRound(game->LineHeight * scale));
     }
 
     /// <summary>Gets whether an element has every rune of a grapheme: with its source, or in the game font for the game's glyphs.</summary>

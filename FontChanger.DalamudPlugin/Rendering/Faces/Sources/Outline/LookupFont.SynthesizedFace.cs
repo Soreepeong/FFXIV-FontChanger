@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
@@ -69,7 +69,7 @@ internal sealed partial class LookupFont
                         {
                             var value = Math.Clamp(lookup.Weight, range.minValue, range.maxValue);
                             axisValues[tag] = value;
-                            realWeight = (int)Rounding.Round(value);
+                            realWeight = (int)Misc.StdRound(value);
                         }
 
                         break;

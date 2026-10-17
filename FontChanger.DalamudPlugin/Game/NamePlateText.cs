@@ -11,7 +11,6 @@ using FFXIVClientStructs.Interop;
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering;
-using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 
 using static FFXIVClientStructs.FFXIV.Client.UI.AddonNamePlate;
@@ -311,9 +310,9 @@ internal sealed unsafe class NamePlateText : IDisposable
         for (var i = 0; i < 4; i++)
             Transform(node, i) = exact ? i is 0 or 3 ? 1 : 0 : transform[i] / scale;
 
-        node->Width = (ushort)Math.Min(ushort.MaxValue, Rounding.Round(width * scale));
-        node->Height = (ushort)Math.Min(ushort.MaxValue, Rounding.Round(height * scale));
-        bake->TextYOffset = (short)Rounding.Round(textYOffset * scale);
+        node->Width = (ushort)Math.Min(ushort.MaxValue, Misc.StdRound(width * scale));
+        node->Height = (ushort)Math.Min(ushort.MaxValue, Misc.StdRound(height * scale));
+        bake->TextYOffset = (short)Misc.StdRound(textYOffset * scale);
         try
         {
             this._drawBakedHook.Original(renderer, node, bake);

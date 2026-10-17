@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
+using FontChanger.DalamudPlugin.Rendering.Enums;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
+using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources;
 
@@ -92,15 +95,15 @@ internal abstract class NominalFaceSource : IFaceSource
                     var offset = i < run.Offsets.Length ? run.Offsets[i] : default;
                     pieces.Add(g with
                     {
-                        Left = g.Left + (int)Rounding.Round(pen + offset.Advance),
-                        Top = g.Top - (int)Rounding.Round(offset.Ascender),
+                        Left = g.Left + (int)Misc.StdRound(pen + offset.Advance),
+                        Top = g.Top - (int)Misc.StdRound(offset.Ascender),
                     });
                 }
 
                 pen += run.Advances[i];
             }
 
-            glyph = pieces.Count == 0 ? null : RasterGlyph.Merge(pieces, (int)Rounding.Round(pen));
+            glyph = pieces.Count == 0 ? null : RasterGlyph.Merge(pieces, (int)Misc.StdRound(pen));
         }
 
         if (glyph is not { } r)

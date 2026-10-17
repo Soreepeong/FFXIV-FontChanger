@@ -43,8 +43,6 @@ public sealed class Plugin : IAsyncDalamudPlugin
         }
 
         this.Configuration = PluginInterface.GetPluginConfig() as Configuration.Configuration ?? new();
-        if (this.Configuration.Migrate())
-            PluginInterface.SavePluginConfig(this.Configuration);
     }
 
     public async Task LoadAsync(CancellationToken cancellationToken)

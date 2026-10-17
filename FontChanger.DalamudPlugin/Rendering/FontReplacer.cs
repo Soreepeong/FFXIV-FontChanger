@@ -6,18 +6,17 @@ using System.Runtime.InteropServices;
 using Dalamud.Hooking;
 using Dalamud.Utility;
 
-using FontChanger.Presets.Records;
-
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Rendering.Enums;
 using FontChanger.DalamudPlugin.Rendering.Faces;
-using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Rendering.Shaders;
 using FontChanger.DalamudPlugin.Rendering.Text;
 using FontChanger.DalamudPlugin.Utilities;
+using FontChanger.Presets.Records;
 
 using TerraFX.Interop.DirectX;
 
@@ -26,13 +25,7 @@ namespace FontChanger.DalamudPlugin.Rendering;
 // Inside the namespace, so that Pointer<T> is XIVCS's and FontNames is ours, over TerraFX's.
 using FFXIVClientStructs.Interop;
 
-/// <summary>
-/// Makes the game's text renderer draw glyphs rasterized at the size they are drawn at.
-/// </summary>
-/// <remarks>
-/// PickFont is swapped for a copy sized exactly as requested, so the renderer's scale is 1; GetGlyph is answered for a copy
-/// from its own glyphs, rasterized on first use. Nothing keeps glyph pointers between frames.
-/// </remarks>
+/// <summary>Makes the game's text renderer draw glyphs rasterized at the size they are drawn at.</summary>
 internal sealed unsafe partial class FontReplacer : IDisposable
 {
     // Sizes in half pixels: below 4 px nothing is legible; a request over 255 px uses the 255 px copy, scaled up by the renderer.
@@ -438,7 +431,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             if (withFreeType == this._services.DirectWrite.VerticalWithFreeType)
                 return;
             this._services.DirectWrite.VerticalWithFreeType = withFreeType;
-            if (this._services.SubpixelOrder.IsVertical())
+            if (this._services.SubpixelOrder.IsVertical)
                 this.RebuildGlyphs();
         }
     }

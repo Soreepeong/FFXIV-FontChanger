@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
+using FontChanger.DalamudPlugin.Rendering.Enums;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
+using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
 
@@ -84,7 +87,7 @@ internal sealed class MaterializedFontElement(FaceElement def, IFaceSource? sour
     public void Dispose() => this.Source?.Dispose();
 
     /// <summary>Gets a pixel value of the face (at its reference size) at a drawn size, rounded.</summary>
-    private int ScalePixels(float value, float facePx) => (int)Rounding.Round(value * facePx / referenceSize);
+    private int ScalePixels(float value, float facePx) => (int)Misc.StdRound(value * facePx / referenceSize);
 
     /// <summary>
     /// Gets how far its glyphs are moved down from the face's baseline at a drawn size: by the face's vertical alignment
@@ -99,8 +102,8 @@ internal sealed class MaterializedFontElement(FaceElement def, IFaceSource? sour
             VerticalAlignment.Top => 0,
             VerticalAlignment.Middle => (face.LineHeight - lineHeight) / 2,
             VerticalAlignment.Bottom => face.LineHeight - lineHeight,
-            VerticalAlignment.RomanBaseline => (int)Rounding.Round(face.RomanBaselineY - this.GetRomanBaselineY(facePx, ascent)),
-            VerticalAlignment.IdeographicCenter => (int)Rounding.Round(face.IdeographicCenterY - this.GetIdeographicCenterY(facePx, ascent, lineHeight)),
+            VerticalAlignment.RomanBaseline => (int)Misc.StdRound(face.RomanBaselineY - this.GetRomanBaselineY(facePx, ascent)),
+            VerticalAlignment.IdeographicCenter => (int)Misc.StdRound(face.IdeographicCenterY - this.GetIdeographicCenterY(facePx, ascent, lineHeight)),
             _ => face.Ascent - ascent,
         };
         return ascent + adjustment - face.Ascent + this.ScalePixels(this.Def.BaselineShift, facePx);
@@ -125,8 +128,8 @@ internal sealed class MaterializedFontElement(FaceElement def, IFaceSource? sour
         if (unit is not > 0)
             return glyph;
 
-        var min = mono.Min is { } a ? Math.Max(0, (int)Rounding.Round(a * unit)) : 0;
-        var max = mono.Max is { } b ? Math.Max(0, (int)Rounding.Round(b * unit)) : int.MaxValue;
+        var min = mono.Min is { } a ? Math.Max(0, (int)Misc.StdRound(a * unit)) : 0;
+        var max = mono.Max is { } b ? Math.Max(0, (int)Misc.StdRound(b * unit)) : int.MaxValue;
         min = Math.Min(min, max);
         var cell = Math.Clamp(glyph.Advance, min, max);
         if (glyph.Width == 0)

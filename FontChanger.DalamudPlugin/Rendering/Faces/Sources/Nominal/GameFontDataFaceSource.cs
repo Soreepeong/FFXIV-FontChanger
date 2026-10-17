@@ -7,6 +7,8 @@ using Dalamud.Interface.GameFonts;
 
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
+using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 
 using Lumina.Data.Files;
@@ -71,7 +73,7 @@ internal sealed class GameFontDataFaceSource : NominalFaceSource
     {
         var scale = this.GetScale(px);
         var header = this._fdt.FontHeader;
-        return ((int)Rounding.Round(header.Ascent * scale), (int)Rounding.Round(header.LineHeight * scale));
+        return ((int)Misc.StdRound(header.Ascent * scale), (int)Misc.StdRound(header.LineHeight * scale));
     }
 
     public override void Dispose()
@@ -98,7 +100,7 @@ internal sealed class GameFontDataFaceSource : NominalFaceSource
 
         var glyph = new RasterGlyph(g.AdvanceWidth, 0, g.CurrentOffsetY - this._fdt.FontHeader.Ascent, g.BoundingWidth, g.BoundingHeight, alpha);
         var scale = this.GetScale(px);
-        return scale == 1 ? glyph : glyph.Scaled(scale, 0, 0) with { Advance = (int)Rounding.Round(g.AdvanceWidth * scale) };
+        return scale == 1 ? glyph : glyph.Scaled(scale, 0, 0) with { Advance = (int)Misc.StdRound(g.AdvanceWidth * scale) };
     }
 
     /// <summary>Gets the scale from the face's glyphs to a size of the element: 1 within the half-pixel rounding of copy sizes.</summary>

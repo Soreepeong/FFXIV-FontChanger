@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Utilities;
+
+namespace FontChanger.DalamudPlugin.Rendering.Records;
 
 /// <summary>
 /// A rasterized glyph: 8-bit coverage, placed relative to the pen on the baseline. <paramref name="Lcd"/> is null, or R, G,
@@ -57,7 +59,7 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
                     var sum = 0f;
                     foreach (var (j, weight) in rows[y])
                         sum += weight * horizontal[(j * w) + x];
-                    alpha[(y * w) + x] = (byte)Math.Clamp(Rounding.Round(sum * norm), 0, 255);
+                    alpha[(y * w) + x] = (byte)Math.Clamp(Misc.StdRound(sum * norm), 0, 255);
                 }
             }
 
@@ -81,7 +83,7 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
                     }
                 }
 
-                alpha[(y * w) + x] = (byte)Rounding.Round(sum / (Samples * Samples));
+                alpha[(y * w) + x] = (byte)Misc.StdRound(sum / (Samples * Samples));
             }
         }
 
@@ -140,7 +142,7 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
                 var sum = 0f;
                 foreach (var (i, weight) in columns[x])
                     sum += weight * src[i];
-                alpha[(y * w) + x] = (byte)Math.Clamp(Rounding.Round(sum * scale), 0, 255);
+                alpha[(y * w) + x] = (byte)Math.Clamp(Misc.StdRound(sum * scale), 0, 255);
             }
         }
 
@@ -248,12 +250,12 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
     /// <summary>Makes the table an element's gamma maps coverage through; null for a gamma of 1 (or none).</summary>
     public static byte[]? GammaTable(float gamma) => gamma != 1 && gamma > 0 ? CoverageTable(1 / gamma) : null;
 
-    /// <summary>Makes a table mapping coverage to coverage to the power of <paramref name="exponent"/>.</summary>
+    /// <summary>Makes a table mapping coverage to the power of <paramref name="exponent"/>.</summary>
     public static byte[] CoverageTable(float exponent)
     {
         var table = new byte[256];
         for (var i = 0; i < 256; i++)
-            table[i] = (byte)Rounding.Round(255 * MathF.Pow(i / 255f, exponent));
+            table[i] = (byte)Misc.StdRound(255 * MathF.Pow(i / 255f, exponent));
         return table;
     }
 

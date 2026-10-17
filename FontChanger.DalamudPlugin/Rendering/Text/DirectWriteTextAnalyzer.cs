@@ -1,26 +1,19 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.Unicode;
 
-using FontChanger.DalamudPlugin.Rendering.Faces;
+using FontChanger.DalamudPlugin.Rendering.Records;
 using FontChanger.DalamudPlugin.Utilities;
-using FontChanger.Presets.Records;
 
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
 namespace FontChanger.DalamudPlugin.Rendering.Text;
 
-/// <summary>
-/// Cuts a line into runs of one script and direction: the scripts found with DirectWrite (AnalyzeScript), for the
-/// shaping that pairs with it, and right to left by the character's block, as the game draws only left to right and
-/// such runs are left to it.
-/// </summary>
+/// <summary>Splits a line into runs of one script/direction.</summary>
 internal sealed unsafe class DirectWriteTextAnalyzer(FontServices services)
 {
     private DWRITE_SCRIPT_ANALYSIS[] _scripts = new DWRITE_SCRIPT_ANALYSIS[256];
@@ -40,14 +33,13 @@ internal sealed unsafe class DirectWriteTextAnalyzer(FontServices services)
         {
             var source = new TextAnalysisSource(t, (uint)length);
             var sink = new ScriptSink(scripts, (uint)length);
-            services.Analyzer->AnalyzeScript(source.Get(), 0, (uint)length, sink.Get()).ThrowOnError();
+            services.Analyzer.AnalyzeScript(source.Get(), 0, (uint)length, sink.Get()).ThrowOnError();
         }
 
         var start = 0;
         var rtl = false;
         for (var i = 0; i < length; i++)
         {
-            // A low surrogate goes with its high one.
             var unitRtl = char.IsLowSurrogate(text[i]) && i > 0 ? rtl : IsRightToLeft(text, i);
             if (i != 0 && (unitRtl != rtl || ToToken(this._scripts[i]) != ToToken(this._scripts[start])))
             {
@@ -63,55 +55,9 @@ internal sealed unsafe class DirectWriteTextAnalyzer(FontServices services)
 
     private static ScriptToken ToToken(DWRITE_SCRIPT_ANALYSIS a) => new(a.script, (int)a.shapes);
 
-    /// <summary>
-    /// The blocks of scripts written right to left. UnicodeRanges has the BMP's; Alphabetic Presentation Forms only from
-    /// its Hebrew ones (before them are Latin and Armenian ligatures), and those of the supplementary planes (Phoenician,
-    /// Kharoshthi, Adlam, ...) by their areas.
-    /// </summary>
-    private static readonly RuneRange[] RightToLeftRanges = RuneRangeExtensions.Coalesce(
-    [
-        UnicodeRanges.Hebrew,
-        UnicodeRanges.Arabic,
-        UnicodeRanges.Syriac,
-        UnicodeRanges.ArabicSupplement,
-        UnicodeRanges.Thaana,
-        UnicodeRanges.NKo,
-        UnicodeRanges.Samaritan,
-        UnicodeRanges.Mandaic,
-        UnicodeRanges.SyriacSupplement,
-        UnicodeRanges.ArabicExtendedB,
-        UnicodeRanges.ArabicExtendedA,
-        UnicodeRanges.ArabicPresentationFormsA,
-        UnicodeRanges.ArabicPresentationFormsB,
+    private static bool IsRightToLeft(ReadOnlySpan<char> text, int index) =>
+        Rune.DecodeFromUtf16(text[index..], out var rune, out _) == OperationStatus.Done && RuneRanges.RightToLeft.Contains(rune);
 
-        // Hebrew part of Alphabetic Presentation Forms
-        .. RuneRange.From(0xFB1D, 0xFB4F),
-
-        // Cypriot Syllabary, Imperial Aramaic, Palmyrene, Nabataean, Hatran, Phoenician, Lydian, Sidetic, Meroitic
-        // Hieroglyphs, Meroitic Cursive, Kharoshthi, Old South Arabian, Old North Arabian, Manichaean, Avestan,
-        // Inscriptional Parthian, Inscriptional Pahlavi, Psalter Pahlavi, Old Turkic, Old Hungarian, Hanifi Rohingya,
-        // Garay, Rumi Numeral Symbols, Yezidi, Arabic Extended-C, Old Sogdian, Sogdian, Old Uyghur, Chorasmian, Elymaic
-        .. RuneRange.From(0x10800, 0x10FFF),
-
-        // Mende Kikakui, Adlam, Indic Siyaq Numbers, Ottoman Siyaq Numbers, Arabic Mathematical Alphabetic Symbols
-        .. RuneRange.From(0x1E800, 0x1EFFF),
-    ]).ToArray();
-
-    /// <summary>Gets whether the character at a code unit is of a right-to-left block (Hebrew, Arabic, Syriac, Thaana, ...).</summary>
-    private static bool IsRightToLeft(ReadOnlySpan<char> text, int index)
-    {
-        if (Rune.DecodeFromUtf16(text[index..], out var rune, out _) != OperationStatus.Done)
-            return false;
-        foreach (var range in RightToLeftRanges)
-        {
-            if (rune >= range.First && rune <= range.Last)
-                return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>An IDWriteTextAnalysisSink that keeps the script of each code unit. It lives where it is declared.</summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct ScriptSink
     {
@@ -141,9 +87,8 @@ internal sealed unsafe class DirectWriteTextAnalyzer(FontServices services)
 
         public IDWriteTextAnalysisSink* Get()
         {
-            // The vtable is the function pointers right after it.
-            var self = (void**)Unsafe.AsPointer(ref this);
-            *self = self + 1;
+            var self = (ScriptSink*)Unsafe.AsPointer(ref this);
+            _vtable = &self->_queryInterface;
             return (IDWriteTextAnalysisSink*)self;
         }
 

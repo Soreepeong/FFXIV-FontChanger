@@ -5,6 +5,8 @@ using System.Text;
 
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
+using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Utilities;
 
@@ -50,7 +52,7 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
     private (int Ascent, int LineHeight) GetLineMetrics(float px, Matrix2x2 transform)
     {
         var scale = px / this._unitsPerEm * MathF.Abs(transform.M22);
-        return ((int)Rounding.Round(this._ascent * scale), (int)Rounding.Round(this._lineHeight * scale));
+        return ((int)Misc.StdRound(this._ascent * scale), (int)Misc.StdRound(this._lineHeight * scale));
     }
 
     protected override RasterGlyph? RasterizeGlyph(float px, uint glyphId) =>
@@ -61,7 +63,7 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
 
     /// <summary>Gets the kerning between two codepoints' glyphs at a size, transformed by <paramref name="transform"/>.</summary>
     private int GetKerning(Rune left, Rune right, float px, Matrix2x2 transform) =>
-        this._kerning.TryGetValue((left, right), out var k) ? (int)Rounding.Round(k * px * transform.M11 / this._unitsPerEm) : 0;
+        this._kerning.TryGetValue((left, right), out var k) ? (int)Misc.StdRound(k * px * transform.M11 / this._unitsPerEm) : 0;
 
     /// <summary>Draws a codepoint's glyph at a size, transformed by <paramref name="transform"/>, with the gamma; null if there is none.</summary>
     private RasterGlyph? Rasterize(Rune rune, float px, Matrix2x2 transform)
@@ -85,7 +87,7 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
             else
             {
                 unitsPerEm = this._bitmapUnitsPerEm ?? px;
-                baselineY = this._bitmapBaselineY ?? Rounding.Round(unitsPerEm * DefaultBaselineY / DefaultUnitsPerEm);
+                baselineY = this._bitmapBaselineY ?? Misc.StdRound(unitsPerEm * DefaultBaselineY / DefaultUnitsPerEm);
                 advance = source.Advance ?? source.Width;
                 (x1, y1) = (-source.OriginX, -source.OriginY);
                 (x2, y2) = (x1 + source.Width, y1 + source.Height);
@@ -101,7 +103,7 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
                 transform.M11 * s, transform.M12 * s, -transform.M12 * s * baselineY,
                 transform.M21 * s, transform.M22 * s, -transform.M22 * s * baselineY,
             ];
-            var advancePx = (int)Rounding.Round(advance * s * transform.M11);
+            var advancePx = (int)Misc.StdRound(advance * s * transform.M11);
 
             // The pixels the rectangle covers, with one to spare for antialiasing.
             float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
@@ -130,8 +132,8 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
             {
                 // Pixel art keeps its pixels when it is only moved, or scaled by whole numbers.
                 var whole = transform is { M12: 0, M21: 0 }
-                            && MathF.Abs(m[0] - Rounding.Round(m[0])) < 1e-4f
-                            && MathF.Abs(m[4] - Rounding.Round(m[4])) < 1e-4f;
+                            && MathF.Abs(m[0] - Misc.StdRound(m[0])) < 1e-4f
+                            && MathF.Abs(m[4] - Misc.StdRound(m[4])) < 1e-4f;
                 coverage = this._renderer.DrawCoverage(this.GetBitmapCoverage(source), source.Width, source.Height, (x1, y1, x2, y2), m, width, height, whole);
             }
 

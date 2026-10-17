@@ -4,15 +4,12 @@ using System.Linq;
 using System.Text;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Rendering.Faces;
 
 namespace FontChanger.DalamudPlugin.Rendering;
 
-// Inside the namespace, so that Pointer<T> is XIVCS's and FontNames is ours, over TerraFX's.
-using FFXIVClientStructs.Interop;
-
-// A family's glyphs at a size, and where each grapheme's come from.
 internal sealed unsafe partial class FontReplacer
 {
     /// <summary>

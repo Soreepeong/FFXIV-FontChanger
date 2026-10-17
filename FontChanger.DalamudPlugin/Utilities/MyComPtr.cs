@@ -10,7 +10,7 @@ using static TerraFX.Interop.Windows.Windows;
 
 namespace FontChanger.DalamudPlugin.Utilities;
 
-/// <summary>Modified version of <see cref="ComPtr{T}"/> to make ownership clearer.</summary>
+/// <summary>Modified version of <see cref="ComPtr{T}"/> to clarify ownership.</summary>
 /// <typeparam name="T"></typeparam>
 [SuppressMessage("ReSharper", "InconsistentNaming")]
 [SuppressMessage("ReSharper", "UnusedMember.Global")]

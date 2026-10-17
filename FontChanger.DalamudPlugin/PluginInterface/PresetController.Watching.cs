@@ -1,30 +1,28 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 
+using FontChanger.DalamudPlugin.Utilities;
+
 namespace FontChanger.DalamudPlugin.PluginInterface;
 
-// Watching the presets and glyph image folders used, to load them again when they change.
 internal sealed partial class PresetController
 {
     /// <summary>Watches the folders of the presets used, for changes to them.</summary>
     private void WatchPresets(IEnumerable<string> paths)
     {
-        lock (this._sync)
-        {
-            var wanted = paths.ToList();
-            this._watchedPresets.Clear();
-            this._watchedPresets.UnionWith(wanted);
-            WatchFolders(this._presetWatchers, wanted.Select(Path.GetDirectoryName).OfType<string>(), this.OnPresetChanged);
-        }
+        this._loadSync.DebugAssertLockHeld();
+        this._watchedPresets = paths.ToImmutableHashSet(StringComparer.OrdinalIgnoreCase);
+        WatchFolders(this._presetWatchers, this._watchedPresets.Select(Path.GetDirectoryName).OfType<string>(), this.OnPresetChanged);
     }
 
     /// <summary>Watches the folders glyph images are read from.</summary>
     private void WatchFolders(IEnumerable<string> folders)
     {
-        lock (this._sync)
-            WatchFolders(this._folderWatchers, folders, this.OnGlyphImageChanged);
+        this._loadSync.DebugAssertLockHeld();
+        WatchFolders(this._folderWatchers, folders, this.OnGlyphImageChanged);
     }
 
     /// <summary>Makes <paramref name="watchers"/> watch the folders that are there of <paramref name="folders"/>, and only those.</summary>
@@ -52,10 +50,7 @@ internal sealed partial class PresetController
     private void OnPresetChanged(object sender, FileSystemEventArgs e)
     {
         var paths = e is RenamedEventArgs r ? new[] { e.FullPath, r.OldFullPath } : [e.FullPath];
-        bool used;
-        lock (this._sync)
-            used = paths.Any(this._watchedPresets.Contains);
-        if (used)
+        if (paths.Any(this._watchedPresets.Contains))
             this.Schedule(true);
     }
 

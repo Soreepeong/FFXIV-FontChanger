@@ -69,4 +69,12 @@ internal sealed partial class ConfigWindow : Window
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(text);
     }
+
+    private static T? TakeWhenReleased<T>(ref T? pending, bool active) where T : struct
+    {
+        if (active || pending is not { } value)
+            return null;
+        pending = null;
+        return value;
+    }
 }

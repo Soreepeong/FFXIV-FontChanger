@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 
+using FontChanger.DalamudPlugin.Rendering.Records;
 using FontChanger.DalamudPlugin.Utilities;
 
 using TerraFX.Interop.DirectX;
@@ -33,7 +34,6 @@ internal abstract unsafe partial class OutlineFaceSource
             return 0;
 
         var face = (IDWriteFontFace*)this.Font.GetFace(px);
-        var analyzer = this.Services.Analyzer;
         var analysis = new DWRITE_SCRIPT_ANALYSIS { script = script.Script, shapes = (DWRITE_SCRIPT_SHAPES)script.Shapes };
         var clusterMap = new ushort[length];
         var textProps = new DWRITE_SHAPING_TEXT_PROPERTIES[length];
@@ -66,7 +66,7 @@ internal abstract unsafe partial class OutlineFaceSource
                 fixed (ushort* g = glyphs)
                 fixed (DWRITE_SHAPING_GLYPH_PROPERTIES* gp = glyphProps)
                 {
-                    hr = analyzer->GetGlyphs(
+                    hr = this.Services.Analyzer.GetGlyphs(
                         t,
                         (uint)length,
                         face,
@@ -108,7 +108,7 @@ internal abstract unsafe partial class OutlineFaceSource
                 // A face measuring as GDI does (hinted, whole-pixel advances) is shaped so; its glyphs are drawn to match.
                 if (measureMode is 1 or 2)
                 {
-                    analyzer->GetGdiCompatibleGlyphPlacements(
+                    this.Services.Analyzer.GetGdiCompatibleGlyphPlacements(
                         t,
                         cm,
                         tp,
@@ -133,7 +133,7 @@ internal abstract unsafe partial class OutlineFaceSource
                 }
                 else
                 {
-                    analyzer->GetGlyphPlacements(
+                    this.Services.Analyzer.GetGlyphPlacements(
                         t,
                         cm,
                         tp,

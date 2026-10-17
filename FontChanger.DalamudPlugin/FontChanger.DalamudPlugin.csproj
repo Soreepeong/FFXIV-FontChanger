@@ -29,6 +29,11 @@
 	</PropertyGroup>
 	<ItemGroup>
 		<Reference Include="TerraFX.Interop.Windows" Private="false"/>
+		<Reference Include="JetBrains.Annotations" Private="false"/>
+	</ItemGroup>
+	<ItemGroup Label="Unicode Character Database files, which UnicodeData's tables are generated from">
+		<ProjectReference Include="..\FontChanger.UnicodeDataGenerator\FontChanger.UnicodeDataGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained"/>
+		<AdditionalFiles Include="Utilities\Unicode\*.txt"/>
 	</ItemGroup>
 	<PropertyGroup>
 		<CompileShaders Condition="'$(CompileShaders)' == ''">$([MSBuild]::IsOSPlatform('Windows'))</CompileShaders>

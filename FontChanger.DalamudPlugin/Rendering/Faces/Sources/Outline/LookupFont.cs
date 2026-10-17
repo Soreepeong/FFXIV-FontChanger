@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 
-using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
@@ -158,7 +157,7 @@ internal sealed unsafe partial class LookupFont : IDisposable
         if (!this.IsVariable)
             return this.Face;
 
-        var key = this.AutoOpticalSize ? Rounding.Round(px * 4) / 4 : 0;
+        var key = this.AutoOpticalSize ? Misc.StdRound(px * 4) / 4 : 0;
         if (this._sizedFaces.TryGetValue(key, out var existing))
             return existing.Value;
 

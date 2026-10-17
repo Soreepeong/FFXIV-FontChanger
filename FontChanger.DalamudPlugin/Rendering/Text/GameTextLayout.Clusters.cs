@@ -3,7 +3,8 @@ using System.Text;
 
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Faces;
-using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
+using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.Rendering.Text;
 
@@ -128,19 +129,19 @@ internal sealed unsafe partial class GameTextLayout
 
         var width = source.GetScreenAdvance(px, new(glyphs, shaped.Advances, offsets));
         var mono = element.Def.Monospacing;
-        var rawAdvance = mono is null ? 0 : (int)Rounding.Round(width - kerning);
+        var rawAdvance = mono is null ? 0 : (int)Misc.StdRound(width - kerning);
         if (mono is { DropKerning: true } && rawAdvance > 0)
         {
             kerning = 0;
             if (this._clusters is [.., var previous] && previous.TextEnd == textStart && previous.GlyphSource == glyphSource && previous.Kerning != 0)
             {
                 pen -= previous.Kerning;
-                previous.X1 = (int)Rounding.Round(pen);
+                previous.X1 = (int)Misc.StdRound(pen);
                 previous.Kerning = 0;
             }
         }
 
-        var x0 = Rounding.Round(pen);
+        var x0 = Misc.StdRound(pen);
         var cluster = new Cluster
         {
             Source = source,
@@ -151,7 +152,7 @@ internal sealed unsafe partial class GameTextLayout
             RealItalic = real,
             RawAdvance = rawAdvance,
             Kerning = kerning,
-            Origin = Rounding.Round((pen - x0) * SubpixelSteps) / SubpixelSteps,
+            Origin = Misc.StdRound((pen - x0) * SubpixelSteps) / SubpixelSteps,
             X0 = (int)x0,
             TextStart = textStart,
             TextEnd = textEnd,
@@ -162,12 +163,12 @@ internal sealed unsafe partial class GameTextLayout
         {
             // The cell's advance, kerning (unless dropped) after it.
             pen = cluster.X0 + this.GetRaster(cluster).Advance + kerning;
-            cluster.X1 = (int)Rounding.Round(pen);
+            cluster.X1 = (int)Misc.StdRound(pen);
         }
         else
         {
             var spacing = element.GetLetterSpacing(this._shapingSized!.Px);
-            cluster.X1 = (int)Rounding.Round(pen + width) + spacing;
+            cluster.X1 = (int)Misc.StdRound(pen + width) + spacing;
             pen += width + spacing;
         }
 
@@ -186,7 +187,7 @@ internal sealed unsafe partial class GameTextLayout
     /// <summary>Adds the graphemes of a piece left to the per-character path, at the pen (which they don't advance).</summary>
     private void AddMissing(int start, int end, float pen)
     {
-        var x = (int)Rounding.Round(pen);
+        var x = (int)Misc.StdRound(pen);
         for (var t = start; t < end;)
         {
             var length = this.NextGrapheme(t, end);
@@ -280,13 +281,13 @@ internal sealed unsafe partial class GameTextLayout
         public Cluster MovedBy(float start, float end)
         {
             var pen = this.X0 + this.Origin + start;
-            var x0 = Rounding.Round(pen);
+            var x0 = Misc.StdRound(pen);
             return this with
             {
                 RasterKey = null,
-                Origin = Rounding.Round((pen - x0) * SubpixelSteps) / SubpixelSteps,
+                Origin = Misc.StdRound((pen - x0) * SubpixelSteps) / SubpixelSteps,
                 X0 = (int)x0,
-                X1 = (int)Rounding.Round(this.X1 + end),
+                X1 = (int)Misc.StdRound(this.X1 + end),
             };
         }
     }

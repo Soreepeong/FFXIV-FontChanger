@@ -5,7 +5,9 @@ using System.Text;
 
 using FontChanger.DalamudPlugin.Rendering.Faces.Sources.Nominal;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
 using FontChanger.DalamudPlugin.Rendering.Text;
+using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Utilities;
 
 using TerraFX.Interop.DirectX;
@@ -37,7 +39,7 @@ internal abstract unsafe partial class OutlineFaceSource
             var spacing = transform.M11 != 0 ? letterSpacing / transform.M11 : 0;
             var (glyphs, advances, offsets) = this.Shape(text, spacing);
             var width = glyphs.Length != 0 ? advances.Sum() - spacing : 0;
-            var advance = (int)Rounding.Round(width * transform.M11);
+            var advance = (int)Misc.StdRound(width * transform.M11);
 
             float inkX1 = float.MaxValue, inkX2 = float.MinValue;
             int inkY1 = int.MaxValue, inkY2 = int.MinValue;

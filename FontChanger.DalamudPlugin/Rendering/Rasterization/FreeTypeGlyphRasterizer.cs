@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Rendering.Enums;
+using FontChanger.DalamudPlugin.Rendering.Records;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
@@ -130,23 +132,23 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
     {
         this.SetAxes(face, axes);
         var scale = this.SetSize(face, px);
-        var strength = (nint)Rounding.Round(embolden * px * 64);
+        var strength = (nint)Misc.StdRound(embolden * px * 64);
 
         // Emboldening needs outlines.
         var loadFlags = (FT_LOAD)(parameters.LoadFlags | ((parameters.RenderMode & 15) << LoadTargetShift) | (strength != 0 ? 0x8 : 0));
 
         // For vertical stripes, antialiased modes give per-subpixel coverage; hinted as the parameters' mode is.
         var renderMode = (FT_Render_Mode_)parameters.RenderMode;
-        if (this.SubpixelOrder.IsVertical() && renderMode is not (FT_Render_Mode_.FT_RENDER_MODE_MONO or FT_Render_Mode_.FT_RENDER_MODE_SDF))
+        if (this.SubpixelOrder.IsVertical && renderMode is not (FT_Render_Mode_.FT_RENDER_MODE_MONO or FT_Render_Mode_.FT_RENDER_MODE_SDF))
             renderMode = FT_Render_Mode_.FT_RENDER_MODE_LCD_V;
 
         // FreeType transforms column vectors with y growing upwards (16.16 fixed point).
         var matrix = new FT_Matrix_
         {
-            xx = (nint)Rounding.Round(transform.M11 * 65536),
-            xy = (nint)Rounding.Round(-transform.M12 * 65536),
-            yx = (nint)Rounding.Round(-transform.M21 * 65536),
-            yy = (nint)Rounding.Round(transform.M22 * 65536),
+            xx = (nint)Misc.StdRound(transform.M11 * 65536),
+            xy = (nint)Misc.StdRound(-transform.M12 * 65536),
+            yx = (nint)Misc.StdRound(-transform.M21 * 65536),
+            yy = (nint)Misc.StdRound(transform.M22 * 65536),
         };
 
         // The glyphs' coverage, placed relative to the pen, merged into one box.
@@ -172,7 +174,7 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
                 if (strength != 0)
                     FT.FT_Outline_EmboldenXY(&slot->outline, strength, strength);
                 FT.FT_Outline_Transform(&slot->outline, &matrix);
-                FT.FT_Outline_Translate(&slot->outline, (nint)Rounding.Round((gx - MathF.Floor(gx)) * 64), (nint)Rounding.Round(gy * 64));
+                FT.FT_Outline_Translate(&slot->outline, (nint)Misc.StdRound((gx - MathF.Floor(gx)) * 64), (nint)Misc.StdRound(gy * 64));
                 if (FT.FT_Render_Glyph(slot, renderMode) != FT_Error.FT_Err_Ok)
                     continue;
             }
@@ -186,7 +188,7 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
             if (scale != 1)
                 piece = piece.Scaled(scale, fraction, -gy);
             else if (bitmapGlyph)
-                piece = piece with { Left = piece.Left + (int)Rounding.Round(fraction), Top = piece.Top - (int)Rounding.Round(gy) };
+                piece = piece with { Left = piece.Left + (int)Misc.StdRound(fraction), Top = piece.Top - (int)Misc.StdRound(gy) };
             pieces.Add(piece with { Left = piece.Left + (int)MathF.Floor(gx) });
         }
 
@@ -206,7 +208,7 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
 
         var ftPoints = new FT_Vector_[points.Length];
         for (var i = 0; i < points.Length; i++)
-            ftPoints[i] = new() { x = (nint)Rounding.Round(points[i].X * 64), y = (nint)Rounding.Round((height - points[i].Y) * 64) };
+            ftPoints[i] = new() { x = (nint)Misc.StdRound(points[i].X * 64), y = (nint)Misc.StdRound((height - points[i].Y) * 64) };
         var ftTags = tags.ToArray();
         var ends = contourEnds.ToArray();
         fixed (FT_Vector_* p = ftPoints)
@@ -282,7 +284,7 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         for (var i = 0; i < axes.Length; i++)
         {
             var (tag, min, def, max) = axes[i];
-            coordinates[i] = values is not null && values.TryGetValue(tag, out var v) ? Math.Clamp((nint)Rounding.Round(v * 65536), min, max) : def;
+            coordinates[i] = values is not null && values.TryGetValue(tag, out var v) ? Math.Clamp((nint)Misc.StdRound(v * 65536), min, max) : def;
         }
 
         if (this._faceCoordinates.TryGetValue(face, out var current) && current.AsSpan().SequenceEqual(coordinates))
@@ -328,7 +330,7 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         {
             if (!this._faceSizes.TryGetValue(face, out var current) || current != px)
             {
-                Check(FT.FT_Set_Char_Size(face, 0, (nint)Rounding.Round(px * 64), 72, 72));
+                Check(FT.FT_Set_Char_Size(face, 0, (nint)Misc.StdRound(px * 64), 72, 72));
                 this._faceSizes[face] = px;
             }
 
@@ -371,7 +373,7 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
             // Subpixels follow each other in a row (LCD) or in three rows (LCD_V), in the stripes' order.
             var vertical = bitmap->pixel_mode == FT_Pixel_Mode_.FT_PIXEL_MODE_LCD_V;
             var lcd = new byte[w * h * 3];
-            var blueFirst = this.SubpixelOrder.IsBlueFirst();
+            var blueFirst = this.SubpixelOrder.IsBlueFirst;
             for (var y = 0; y < h; y++)
             {
                 for (var x = 0; x < w; x++)

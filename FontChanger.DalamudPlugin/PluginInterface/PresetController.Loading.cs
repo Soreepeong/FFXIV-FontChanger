@@ -13,7 +13,6 @@ using FontChanger.Presets.Records;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;
 
-// Loading the presets and system fonts the settings name, and applying them.
 internal sealed partial class PresetController
 {
     /// <summary>
@@ -22,11 +21,17 @@ internal sealed partial class PresetController
     /// </summary>
     private void Schedule(bool edited)
     {
-        lock (this._sync)
+        if (!edited)
+            Volatile.Write(ref this._pendingSettingsLoad, true);
+        if (this._disposed)
+            return;
+        try
         {
-            this._pendingSettingsLoad |= !edited;
-            if (!this._disposed)
-                this._timer.Change(edited ? ReloadDelay : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+            this._timer.Change(edited ? ReloadDelay : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Disposed meanwhile.
         }
     }
 
@@ -37,13 +42,7 @@ internal sealed partial class PresetController
             if (this._disposed)
                 return;
 
-            bool keepOnFailure;
-            lock (this._sync)
-            {
-                keepOnFailure = !this._pendingSettingsLoad;
-                this._pendingSettingsLoad = false;
-            }
-
+            var keepOnFailure = !Interlocked.Exchange(ref this._pendingSettingsLoad, false);
             try
             {
                 this.Load(keepOnFailure);
@@ -59,17 +58,14 @@ internal sealed partial class PresetController
     private void Load(bool keepOnFailure)
     {
         this._loadSync.DebugAssertLockHeld();
-        List<(string Family, List<FontSource> Sources)> families;
-        bool systemFallback;
-        lock (this._sync)
-        {
-            systemFallback = this._configuration.SystemFallback;
-            families = this._configuration.FamilySources
-                           .Where(f => !this._configuration.DisabledFamilies.Contains(f.Key))
-                           .Select(f => (f.Key, f.Value.Where(s => s.Enabled).ToList()))
-                           .Where(f => f.Item2.Count != 0)
+        // Each is read once: a change of the settings replaces them, from another thread.
+        var systemFallback = this._configuration.SystemFallback;
+        var disabled = this._configuration.DisabledFamilies;
+        var families = this._configuration.FamilySources
+                           .Where(f => !disabled.Contains(f.Key))
+                           .Select(f => (Family: f.Key, Sources: f.Value.Where(s => s.Enabled).ToList()))
+                           .Where(f => f.Sources.Count != 0)
                            .ToList();
-        }
 
         var loaded = new Dictionary<string, Preset?>(StringComparer.OrdinalIgnoreCase);
         var failures = new List<string>();

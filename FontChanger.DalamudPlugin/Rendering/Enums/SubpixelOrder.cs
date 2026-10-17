@@ -1,4 +1,4 @@
-﻿namespace FontChanger.DalamudPlugin.Rendering.Rasterization;
+﻿namespace FontChanger.DalamudPlugin.Rendering.Enums;
 
 /// <summary>
 /// The order of a pixel's color stripes: left to right, or top to bottom for the vertical ones (a panel turned to portrait,

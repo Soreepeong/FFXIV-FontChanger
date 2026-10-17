@@ -9,6 +9,7 @@ using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Records;
 using FontChanger.DalamudPlugin.Utilities;
 
 using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
@@ -72,7 +73,7 @@ internal sealed unsafe partial class FontReplacer
         var glyph = this.PlaceGameGlyph(sized, font, game, utf8Value);
         if (glyph.IsNull)
         {
-            var advance = (int)Rounding.Round((game.Value->Width + game.Value->OffsetX) * GetGameScale(sized, font));
+            var advance = (int)Misc.StdRound((game.Value->Width + game.Value->OffsetX) * GetGameScale(sized, font));
             glyph = this.PlaceCell(sized, new(advance, 0, 0, 0, 0, []), utf8Value);
         }
 
@@ -92,7 +93,7 @@ internal sealed unsafe partial class FontReplacer
         var scale = GetGameScale(sized, font);
         var top = game.Value->OffsetY - font.Value->Ascent;
         var (left, t, w, h) = RasterGlyph.ScaledBounds(0, top, game.Value->Width, game.Value->Height, scale, 0, 0);
-        var r = new RasterGlyph((int)Rounding.Round((game.Value->Width + game.Value->OffsetX) * scale), left, t, w, h, new byte[w * h]);
+        var r = new RasterGlyph((int)Misc.StdRound((game.Value->Width + game.Value->OffsetX) * scale), left, t, w, h, new byte[w * h]);
         var pixels = new GameTextureSource(texture, game.Value->X, game.Value->Y, game.Value->Width, game.Value->Height, game.Value->Channel, top, scale);
         return this.PlaceCell(sized, this.FinishGlyph(sized, r), utf8Value, pixels);
     }

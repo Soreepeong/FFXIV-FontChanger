@@ -36,9 +36,8 @@ internal sealed unsafe class SystemFallbackFonts : IDisposable
     public SystemFallbackFonts(FontServices services)
     {
         this._services = services;
-        var factory = services.Factory;
         using var builder = default(MyComPtr<IDWriteFontFallbackBuilder>);
-        factory->CreateFontFallbackBuilder(builder.GetAddressOf()).ThrowOnError();
+        services.Factory.CreateFontFallbackBuilder(builder.GetAddressOf()).ThrowOnError();
 
         if (services.TryFindFont(LookupStruct.Of(IconFamily), out var icons))
         {
@@ -61,7 +60,7 @@ internal sealed unsafe class SystemFallbackFonts : IDisposable
             AddMapping(builder.Value, new() { first = 0, last = 0x10FFFF }, installed);
 
         using var systemFallback = default(MyComPtr<IDWriteFontFallback>);
-        factory->GetSystemFontFallback(systemFallback.GetAddressOf()).ThrowOnError();
+        services.Factory.GetSystemFontFallback(systemFallback.GetAddressOf()).ThrowOnError();
         builder.Value->AddMappings(systemFallback.Value).ThrowOnError();
         using var created = default(MyComPtr<IDWriteFontFallback>);
         builder.Value->CreateFontFallback(created.GetAddressOf()).ThrowOnError();
