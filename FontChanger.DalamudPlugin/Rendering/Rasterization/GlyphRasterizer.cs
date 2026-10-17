@@ -22,6 +22,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
     private ComPtr<IDWriteFactory7> _factory;
     private ComPtr<IDWriteFontCollection3> _systemFonts;
     private ComPtr<IDWriteFontFallback1> _noFallback;
+    private ComPtr<IDWriteTextAnalyzer> _analyzer;
 
     public GlyphRasterizer()
     {
@@ -29,6 +30,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         {
             var iid = IID.IID_IDWriteFactory7;
             DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)this._factory.GetAddressOf()).ThrowOnError();
+            this._factory.Get()->CreateTextAnalyzer(this._analyzer.GetAddressOf()).ThrowOnError();
 
             // Weight, stretch and style families, as the newer overloads (which take a family model) don't make by default.
             using var systemFonts = default(ComPtr<IDWriteFontCollection>);
@@ -60,6 +62,9 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
 
     /// <summary>Gets the DirectWrite factory (shared; owned by this object).</summary>
     public IDWriteFactory7* Factory => this._factory.Get();
+
+    /// <summary>Gets DirectWrite's text analyzer, which finds scripts and shapes text (owned by this object).</summary>
+    public IDWriteTextAnalyzer* Analyzer => this._analyzer.Get();
 
     /// <summary>Gets the system's font collection (owned by this object).</summary>
     public IDWriteFontCollection3* SystemCollection => this._systemFonts.Get();
@@ -504,6 +509,7 @@ internal sealed unsafe class GlyphRasterizer : IDisposable
         this.Images?.Dispose();
         this.FreeType?.Dispose();
         this._noFallback.Dispose();
+        this._analyzer.Dispose();
         this._systemFonts.Dispose();
         this._factory.Dispose();
     }

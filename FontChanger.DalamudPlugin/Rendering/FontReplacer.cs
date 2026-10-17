@@ -17,6 +17,7 @@ using FontChanger.DalamudPlugin.Rendering.Faces;
 using FontChanger.DalamudPlugin.Rendering.Game;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Rendering.Shaders;
+using FontChanger.DalamudPlugin.Rendering.Text;
 using FontChanger.DalamudPlugin.Utilities;
 
 using TerraFX.Interop.DirectX;
@@ -61,7 +62,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     private readonly Hook<LayOutCharacterDelegate> _layOutCharacterHook;
     private readonly Hook<BuildFontDelegate> _buildFontHook;
     private readonly Hook<UnloadFontsDelegate> _unloadFontsHook;
-    private readonly TextShaper _shaper;
+    private readonly GameTextLayout _layout;
 
     // The character the game is laying out on this thread (LayOutCharacter).
     [ThreadStatic]
@@ -100,14 +101,15 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     private readonly Dictionary<(Pointer<AtkFontManager.Font> Original, int HalfPx), Pointer<AtkFontManager.Font>> _copiesByKey = [];
     private readonly Dictionary<Pointer<AtkFontManager.Font>, CopyInfo> _copies = [];
-    private readonly Dictionary<(ReplacementFace Face, int HalfPx, string FontName), SizedFont> _sizedFonts = [];
+    private readonly Dictionary<(MaterializedFont Face, int HalfPx, string FontName), SizedFont> _sizedFonts = [];
 
-    // The faces glyphs come from: the preset's by game font name, or the built-in one.
-    private readonly ReplacementFace _builtInFace;
+    // The system fonts faces draw what they lack with.
+    private readonly SystemFallbackFonts _fallbackFonts;
 
-    // The face of game fonts no preset gives one: their own glyphs, with fallbacks for what they lack.
-    private ReplacementFace _gameFace;
-    private readonly Dictionary<string, ReplacementFace> _presetFaces = new(StringComparer.OrdinalIgnoreCase);
+    // The faces glyphs come from: the preset's by game font name. The face of game fonts no preset gives one: their own
+    // glyphs, with system fonts for what they lack.
+    private MaterializedFont _gameFace;
+    private readonly Dictionary<string, MaterializedFont> _presetFaces = new(StringComparer.OrdinalIgnoreCase);
     private bool _enabled = true;
 
     /// <summary>
@@ -131,9 +133,9 @@ internal sealed unsafe class FontReplacer : IDisposable
             this._renderCountVtbl = AtkFontAnalyzerRenderCount.Addresses.StaticVirtualTable.Value;
 
             this._rasterizer = this._finalizer.Add(new GlyphRasterizer());
-            this._builtInFace = this._finalizer.Add(ReplacementFace.CreateBuiltIn(this._rasterizer));
+            this._fallbackFonts = this._finalizer.Add(new SystemFallbackFonts(this._rasterizer));
             this._finalizer.Add(this.DisposePresetFaces);
-            this._gameFace = ReplacementFace.CreateGame(this._rasterizer, true, this._builtInFace);
+            this._gameFace = MaterializedFont.CreateGame(this._rasterizer, true, this._fallbackFonts);
             try
             {
                 GameFontNames.Initialize();
@@ -157,7 +159,7 @@ internal sealed unsafe class FontReplacer : IDisposable
                 this._emptyGlyph = null;
             });
             this._finalizer.Add(this.FreeGlyphs);
-            this._shaper = this._finalizer.Add(new TextShaper(this._rasterizer, this, &this._emptyGlyph->Glyph));
+            this._layout = this._finalizer.Add(new GameTextLayout(this._rasterizer, this, &this._emptyGlyph->Glyph));
             this._finalizer.Add(() => {
                 foreach (var copy in this._copies.Keys)
                     NativeMemory.Free(copy.Value);
@@ -240,17 +242,14 @@ internal sealed unsafe class FontReplacer : IDisposable
         }
     }
 
-    /// <summary>Gets the shaper, which also finds line breaks.</summary>
-    public TextShaper Shaper => this._shaper;
+    /// <summary>Gets the rasterizer: the DirectWrite factory and the system's fonts the glyphs are drawn with.</summary>
+    public GlyphRasterizer Rasterizer => this._rasterizer;
 
     /// <summary>
     /// Raised on the framework thread when text drawn earlier no longer matches (the replacement was switched, or the
     /// glyphs were rebuilt), for what keeps drawn text around (the nameplate bakes).
     /// </summary>
     public event Action? TextInvalidated;
-
-    /// <summary>Gets the built-in face: system fonts, which draw what faces lack glyph by glyph.</summary>
-    public ReplacementFace BuiltInFace => this._builtInFace;
 
     /// <summary>
     /// Gets or sets the faces of the game fonts. Framework thread, between frames; setting it makes every glyph again, even
@@ -271,15 +270,15 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     private void ApplyFaces(Preset? preset, bool systemFallback)
     {
-        this._shaper.ClearFormats();
+        this._layout.Clear();
         this.DisposePresetFaces();
         this._sizedFonts.Clear();
-        this._gameFace = ReplacementFace.CreateGame(this._rasterizer, systemFallback, this._builtInFace);
+        this._gameFace = MaterializedFont.CreateGame(this._rasterizer, systemFallback, this._fallbackFonts);
         foreach (var (name, def) in preset?.Faces ?? new Dictionary<string, Face>())
         {
             try
             {
-                this._presetFaces[name] = new(this._rasterizer, def, systemFallback, this._builtInFace);
+                this._presetFaces[name] = new(this._rasterizer, def, systemFallback, this._fallbackFonts);
             }
             catch (Exception ex)
             {
@@ -316,7 +315,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         var px = halfPx / 2f;
         GameFontNames.TryGetFaceName(original, out var originalName);
         var names = new List<(string Name, float Size)>();
-        var faces = new List<(ReplacementFace Face, Pointer<AtkFontManager.Font> Game)>();
+        var faces = new List<(MaterializedFont Face, Pointer<AtkFontManager.Font> Game)>();
         if (originalName is not null)
         {
             foreach (var (name, size) in GameFontNames.FacesOf(Preset.FamilyOf(originalName)).OrderByDescending(f => f.Size))
@@ -332,7 +331,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         }
 
         string fontName;
-        ReplacementFace face;
+        MaterializedFont face;
         Pointer<AtkFontManager.Font> game;
         if (faces.Count == 0)
         {
@@ -370,7 +369,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         return sized;
     }
 
-    private ReplacementFace FaceOf(string faceName) => this._presetFaces.GetValueOrDefault(faceName) ?? this._gameFace;
+    private MaterializedFont FaceOf(string faceName) => this._presetFaces.GetValueOrDefault(faceName) ?? this._gameFace;
 
     /// <summary>Gets the atlas of a game font family, made on its first use.</summary>
     private GlyphAtlas GetAtlas(string family)
@@ -631,7 +630,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     public void RebuildGlyphs()
     {
         Misc.DebugAssertMainThread();
-        this._shaper.Clear();
+        this._layout.Clear();
         this._fullAtlases.Clear();
         this._gameReads.Clear();
         foreach (var sized in this._sizedFonts.Values)
@@ -932,13 +931,13 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// Gets how the character being laid out is in italics: by an italic macro (which measuring sees too), or by its text
     /// node (which only drawing sees: the bit is in the font set's own flags, before any macro changed the copy).
     /// </summary>
-    private TextShaper.ItalicMode GetItalicMode(AtkFontManager.FontSet* set)
+    private GameTextLayout.ItalicMode GetItalicMode(AtkFontManager.FontSet* set)
     {
         if (_current.State is null || (_current.State->Flags & AtkFontManager.DrawFlags.Italic) == 0)
-            return TextShaper.ItalicMode.Upright;
+            return GameTextLayout.ItalicMode.Upright;
         return set is not null && (set->DrawFlags & AtkFontManager.DrawFlags.Italic) != 0
-                   ? TextShaper.ItalicMode.Images
-                   : TextShaper.ItalicMode.Real;
+                   ? GameTextLayout.ItalicMode.Images
+                   : GameTextLayout.ItalicMode.Real;
     }
 
     /// <summary>Marks a cell as a real italic glyph, which the game must not shear.</summary>
@@ -985,12 +984,12 @@ internal sealed unsafe class FontReplacer : IDisposable
             try
             {
                 var italic = this.GetItalicMode(set);
-                var shaped = this._shaper.TryGetGlyph(sized, p, italic).Value;
+                var shaped = this._layout.TryGetGlyph(sized, p, italic).Value;
                 if (shaped is not null)
                 {
                     // A real italic glyph is drawn as it is: the italic bit is cleared while the character is laid out
                     // (the quad emitter runs after this lookup), and set again after (LayOutCharacterDetour).
-                    if (italic != TextShaper.ItalicMode.Upright && ((GlyphSlot*)shaped)->Id >= 0 && this.CellOf(shaped).RealItalic)
+                    if (italic != GameTextLayout.ItalicMode.Upright && ((GlyphSlot*)shaped)->Id >= 0 && this.CellOf(shaped).RealItalic)
                     {
                         _current.State->Flags &= ~AtkFontManager.DrawFlags.Italic;
                         _current.ItalicCleared = true;
@@ -1283,7 +1282,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     {
         if (!GameUtf8.TryUnpack(utf8Value, out var rune))
             return null;
-        var pick = sized.Pick(rune);
+        var pick = sized.Pick([rune]);
         if (pick.Element is { DrawsGame: true })
             return null;
         return pick.Face.TryRasterize(rune, sized.Px, pick.Game, out var r)
@@ -1648,22 +1647,22 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// Where a sized font's glyph of a codepoint comes from: <see cref="Face"/>'s <see cref="Element"/> (null for the
     /// system's fonts), with <see cref="Game"/> for the face's game glyphs.
     /// </summary>
-    internal sealed record GlyphSource(ReplacementFace Face, Pointer<AtkFontManager.Font> Game, ReplacementElement? Element);
+    internal sealed record GlyphSource(MaterializedFont Face, Pointer<AtkFontManager.Font> Game, MaterializedFontElement? Element);
 
     /// <summary>
     /// A family's glyphs at one pixel size, shared by the copies of its fonts of that size (a font and its lobby version).
     /// <see cref="Face"/>, with <see cref="GameFont"/> (its game font), gives the line metrics and how text is laid out.
     /// </summary>
     internal sealed class SizedFont(
-        ReplacementFace face,
+        MaterializedFont face,
         float px,
         int ascent,
         int lineHeight,
         Pointer<AtkFontManager.Font> gameFont,
         GlyphAtlas atlas,
-        IReadOnlyList<(ReplacementFace Face, Pointer<AtkFontManager.Font> Game)> faces)
+        IReadOnlyList<(MaterializedFont Face, Pointer<AtkFontManager.Font> Game)> faces)
     {
-        public ReplacementFace Face { get; } = face;
+        public MaterializedFont Face { get; } = face;
 
         public GlyphAtlas Atlas { get; } = atlas;
 
@@ -1679,7 +1678,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         /// Gets the faces glyphs may come from with their game fonts, largest first: only <see cref="Face"/> at the size of
         /// one of the family's faces.
         /// </summary>
-        public IReadOnlyList<(ReplacementFace Face, Pointer<AtkFontManager.Font> Game)> Faces { get; } = faces;
+        public IReadOnlyList<(MaterializedFont Face, Pointer<AtkFontManager.Font> Game)> Faces { get; } = faces;
 
         /// <summary>Gets the game fonts the game's glyphs are copied from, largest first.</summary>
         public IReadOnlyList<Pointer<AtkFontManager.Font>> Sources { get; } = faces.Select(f => f.Game).ToList();
@@ -1694,25 +1693,25 @@ internal sealed unsafe class FontReplacer : IDisposable
         public Dictionary<(Pointer<AtkFontManager.Font> Font, Pointer<AtkFontManager.Glyph> Glyph), Pointer<AtkFontManager.Glyph>> ConvertedGlyphs { get; } =
             [];
 
-        /// <summary><see cref="Pick"/>'s, by codepoint.</summary>
+        /// <summary><see cref="Pick"/>'s of single codepoints.</summary>
         public Dictionary<Rune, GlyphSource> Picks { get; } = [];
 
         /// <summary>
-        /// Gets where a codepoint's glyph comes from: of several faces, the largest whose element other than the game's
-        /// has it, else one leaving it to the system's fonts, else the game's.
+        /// Gets where a grapheme's glyphs come from (one codepoint for the per-character path): of several faces, the
+        /// largest whose element other than the game's has it, else the game's, else one that has none for it.
         /// </summary>
-        public GlyphSource Pick(Rune rune)
+        public GlyphSource Pick(ReadOnlySpan<Rune> grapheme)
         {
-            if (this.Picks.TryGetValue(rune, out var known))
+            if (grapheme.Length == 1 && this.Picks.TryGetValue(grapheme[0], out var known))
                 return known;
-            this.Face.TryGetElement(rune, this.GameFont, out var gameElement);
+            this.Face.TryGetElement(grapheme, this.GameFont, out var gameElement);
             var pick = new GlyphSource(this.Face, this.GameFont, gameElement);
             if (this.Faces.Count > 1)
             {
-                GlyphSource? system = null, game = null, own = null;
+                GlyphSource? none = null, game = null, own = null;
                 foreach (var (face, font) in this.Faces)
                 {
-                    face.TryGetElement(rune, font, out var element);
+                    face.TryGetElement(grapheme, font, out var element);
                     if (element is { DrawsGame: false })
                     {
                         own = new(face, font, element);
@@ -1720,15 +1719,16 @@ internal sealed unsafe class FontReplacer : IDisposable
                     }
 
                     if (element is null)
-                        system ??= new(face, font, null);
+                        none ??= new(face, font, null);
                     else
                         game ??= new(face, font, element);
                 }
 
-                pick = own ?? system ?? game ?? pick;
+                pick = own ?? game ?? none ?? pick;
             }
 
-            this.Picks.Add(rune, pick);
+            if (grapheme.Length == 1)
+                this.Picks.Add(grapheme[0], pick);
             return pick;
         }
     }

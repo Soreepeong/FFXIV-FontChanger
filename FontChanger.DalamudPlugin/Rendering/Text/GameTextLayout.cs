@@ -8,10 +8,9 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Faces;
-using FontChanger.DalamudPlugin.Rendering.Fonts;
+using FontChanger.DalamudPlugin.Rendering.Faces.Sources;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
-using FontChanger.Presets.Records;
 
 using Lumina.Text.Payloads;
 using Lumina.Text.ReadOnly;
@@ -19,58 +18,54 @@ using Lumina.Text.ReadOnly;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
-namespace FontChanger.DalamudPlugin.Rendering;
+namespace FontChanger.DalamudPlugin.Rendering.Text;
 
 // Inside the namespace, so that Pointer<T> is XIVCS's over TerraFX's.
 using FFXIVClientStructs.Interop;
 
 /// <summary>
-/// Shapes the game's text with DirectWrite (ligatures, contextual alternates, kerning, marks, fallback per script), and
-/// answers the game's per-character glyph lookups from the result.
+/// Shapes the game's text (ligatures, contextual alternates, kerning, marks), and answers the game's per-character glyph
+/// lookups from the result.
 /// </summary>
 /// <remarks>
-/// The game lays text out one character at a time (LayOutCharacter); the run a character starts is shaped once, to the end
-/// of the line. Each shaped cluster becomes one cell, advancing by the whole-pixel difference of its rounded start and end;
-/// right-to-left runs and glyphs a font lacks are left to the per-character path. A run ends at an italic macro (<see cref="ItalicMode"/>).
+/// <para>The game lays text out one character at a time (LayOutCharacter); the run a character starts is shaped once,
+/// to the end of the line. Each grapheme goes to the element its face picks; the line is cut into runs of one element,
+/// script and direction (<see cref="DirectWriteTextAnalyzer"/>), and each run's source shapes it. Each shaped cluster becomes one
+/// cell, advancing by the whole-pixel difference of its rounded start and end; right-to-left runs, the game's own
+/// glyphs, and glyphs a source lacks are left to the per-character path. A run ends at an italic macro
+/// (<see cref="ItalicMode"/>).</para>
+/// <para>Clusters are placed one after another by their advances on screen (with the elements' transformations,
+/// emboldening, letter spacing and monospacing), not as shaping laid them out.</para>
 /// </remarks>
-internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
+internal sealed unsafe class GameTextLayout : IDisposable
 {
-    // The game's icon font: private-use characters go to it before the system fallback, which would pick an icon font
-    // of Windows' own (Segoe Fluent Icons) for them.
-    internal const string IconFamily = "XIV AXIS Std ATK";
-
     private const int MaxRunBytes = 4096;
     private const int MaxActiveRuns = 8;
     private const int MaxCachedRuns = 8192;
 
+    // Graphemes longer than this are picked an element by their first runes.
+    private const int MaxGraphemeRunes = 16;
+
     // Cells are made at a quarter-pixel resolution of the cluster's position.
     private const float SubpixelSteps = 4;
 
-    private readonly GlyphRasterizer _rasterizer;
     private readonly FontReplacer _replacer;
-    private readonly Dictionary<(ReplacementFace? Face, int HalfPx), ComPtr<IDWriteTextFormat3>> _formats = [];
+    private readonly DirectWriteTextAnalyzer _analyzer;
     private readonly Dictionary<(ulong Hash, int Length, FontReplacer.SizedFont Sized, ItalicMode Italic), ShapedRun> _runs = [];
 
-    // Faces without their synthesized oblique, by face; and the italic face of a face's family (null for none), by face.
-    private readonly Dictionary<Pointer<IDWriteFontFace5>, Pointer<IDWriteFontFace5>> _uprightFaces = [];
-    private readonly Dictionary<Pointer<IDWriteFontFace5>, Pointer<IDWriteFontFace5>> _italicFaces = [];
     // Cells by their sized font too: a cell is placed in its family's atlas, with its metrics, and families may share a face.
     private readonly Dictionary<(RasterKey Raster, FontReplacer.SizedFont Sized, int Pad, int Advance), Pointer<AtkFontManager.Glyph>> _cells = [];
     private readonly Dictionary<(FontReplacer.SizedFont Sized, int Advance), Pointer<AtkFontManager.Glyph>> _spacers = [];
 
-    // The faces clusters are drawn from, each with a reference of the shaper's.
-    private readonly Dictionary<Pointer<IDWriteFontFace5>, ComPtr<IDWriteFontFace5>> _keptFaces = [];
     private readonly List<ActiveRun> _active = [];
     private readonly List<(int Byte, int Owner)> _absorbed = [];
 
-    // The clusters of the layout being shaped, and coverage of clusters by glyphs and position.
+    // The clusters of the line being shaped, the analyzer's runs of it, and coverage of clusters by glyphs and position.
     private readonly List<Cluster> _clusters = [];
+    private readonly List<TextRun> _textRuns = [];
+    private readonly List<ShapedCluster> _shaped = [];
     private readonly Dictionary<RasterKey, RasterGlyph> _rasters = [];
     private bool _clusterGap;
-
-    // The system's fallback, private-use characters to the game's icon font first. A face without system fallback lays
-    // out each character in the font of its element only (GlyphRasterizer.NoFallback).
-    private ComPtr<IDWriteFontFallback1> _fallback;
 
     // The glyph of no width given to a cluster's characters after the first.
     private readonly Pointer<AtkFontManager.Glyph> _emptyGlyph;
@@ -78,32 +73,18 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     // While shaping a run: its text, and each code unit's byte offset, glyph source and whether it is in italics.
     private char[] _text = new char[256];
     private int[] _textToByte = new int[256];
-    private FontReplacer.GlyphSource[] _textSource = new FontReplacer.GlyphSource[256];
+    private FontReplacer.GlyphSource?[] _textSource = new FontReplacer.GlyphSource?[256];
     private bool[] _textItalic = new bool[256];
     private readonly bool[] _byteItalic = new bool[MaxRunBytes];
     private byte* _shapingBytes;
     private Pointer<AtkFontManager.Glyph>[]? _shapingGlyphs;
     private FontReplacer.SizedFont? _shapingSized;
-    private ItalicMode _shapingItalic;
 
-    // How far the pen has moved from where the layout put it: by the difference of each cell's advance and the layout's,
-    // as elements' emboldening, transformations, monospacing and letter spacing make it, which DirectWrite doesn't know of.
-    private float _penShift;
-
-    public TextShaper(GlyphRasterizer rasterizer, FontReplacer replacer, Pointer<AtkFontManager.Glyph> emptyGlyph)
+    public GameTextLayout(GlyphRasterizer rasterizer, FontReplacer replacer, Pointer<AtkFontManager.Glyph> emptyGlyph)
     {
-        this._rasterizer = rasterizer;
         this._replacer = replacer;
         this._emptyGlyph = emptyGlyph;
-        this._fallback = CreateSystemFallback(rasterizer);
-    }
-
-    /// <summary>Releases the text formats, which depend on the faces (before the faces change).</summary>
-    public void ClearFormats()
-    {
-        foreach (var format in this._formats.Values)
-            format.Get()->Release();
-        this._formats.Clear();
+        this._analyzer = new(rasterizer);
     }
 
     /// <summary>
@@ -128,7 +109,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         return reused!.Glyphs[0];
     }
 
-    /// <summary>Forgets every shaped run and cell (their glyphs are about to be freed).</summary>
+    /// <summary>Forgets every shaped run and cell (their glyphs are about to be freed, or their faces replaced).</summary>
     public void Clear()
     {
         this._active.Clear();
@@ -138,233 +119,12 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         this._rasters.Clear();
     }
 
-    public void Dispose()
-    {
-        this.Clear();
-        this.ClearFormats();
-        this._uprightFaces.Clear();
-        this._italicFaces.Clear();
-        foreach (var face in this._keptFaces.Values)
-            face.Get()->Release();
-        this._keptFaces.Clear();
-        this._fallback.Dispose();
-    }
-
-    void IGlyphRunSink.OnGlyphRun(float baselineX, IDWriteFontFace5* runFace, in DWRITE_GLYPH_RUN run, in DWRITE_GLYPH_RUN_DESCRIPTION description)
-    {
-        // The game draws in logical order: right-to-left runs stay per character, and break the line's clusters.
-        if (this._shapingGlyphs is null || this._shapingSized is null)
-            return;
-        if ((run.bidiLevel & 1) != 0)
-        {
-            this._clusterGap = true;
-            return;
-        }
-
-        var clusterMap = description.clusterMap;
-        var length = (int)description.stringLength;
-        var start = (int)description.textPosition;
-        var pen = baselineX + this._penShift;
-        for (var k = 0; k < length;)
-        {
-            var glyphStart = clusterMap[k];
-            var k2 = k + 1;
-            while (k2 < length && clusterMap[k2] == glyphStart)
-                k2++;
-            var glyphEnd = k2 < length ? clusterMap[k2] : (ushort)run.glyphCount;
-            var count = glyphEnd - glyphStart;
-
-            // Characters the game draws (by the face, or as none of its elements has them), and those of elements not
-            // drawn from their fonts (merged glyphs, glyph images), stay per character. Others are an element's whose
-            // glyphs are shaped, or the system fonts' (no element).
-            var sized = this._shapingSized;
-            var source = this._textSource[start + k];
-            var element = source.Element;
-            var font = element?.Shaped;
-            var missing = element is not null && font is null;
-
-            // An element's glyphs are drawn from its own face (simulations, axis values), and FreeType's emboldening
-            // advances them further.
-            var face = font is not null ? font.GetRunFace(runFace, run.fontEmSize) : runFace;
-            if (!this._keptFaces.ContainsKey(face))
-                this._keptFaces.Add(face, new(face));
-            var extra = font?.GetExtraAdvance(run.fontEmSize) ?? 0;
-            var advances = new float[count];
-            var advance = 0f;
-            var layoutAdvance = 0f;
-            for (var g = glyphStart; g < glyphEnd; g++)
-            {
-                advances[g - glyphStart] = run.glyphAdvances[g] + extra;
-                advance += advances[g - glyphStart];
-                layoutAdvance += run.glyphAdvances[g];
-                missing |= run.glyphIndices[g] == 0;
-            }
-
-            // Italics: a real italic stays, a synthesized oblique is drawn upright for the game to shear.
-            var glyphs = new ReadOnlySpan<ushort>(run.glyphIndices + glyphStart, count).ToArray();
-            var offsets = run.glyphOffsets is null ? null : new ReadOnlySpan<DWRITE_GLYPH_OFFSET>(run.glyphOffsets + glyphStart, count).ToArray();
-            var realItalic = false;
-            if (!missing && this._shapingItalic == ItalicMode.Real && this._textItalic[start + k])
-            {
-                realItalic = IsRealItalic(face);
-                if (!realItalic)
-                    face = this.GetUprightFace(face);
-            }
-            else if (!missing && this._shapingItalic == ItalicMode.Images && count == 1 &&
-                     Rune.DecodeFromUtf16(this._text.AsSpan(start + k, k2 - k), out var rune, out var used) == System.Buffers.OperationStatus.Done &&
-                     used == k2 - k)
-            {
-                var italic = this.GetItalicFace(face);
-                var codepoint = (uint)rune.Value;
-                ushort index = 0;
-                if (italic is not null)
-                    italic->GetGlyphIndices(&codepoint, 1, &index).ThrowOnError();
-                if (index != 0)
-                {
-                    face = italic;
-                    glyphs = [index];
-                    offsets = null;
-                    realItalic = true;
-                }
-            }
-
-            var x0 = Rounding.Round(pen);
-            var width = advance * (font?.Transform.M11 ?? 1);
-            var spacing = source.Face.GetLetterSpacing(element is { DrawsGame: false } ? element : null, sized.Px);
-            var cluster = new Cluster
-            {
-                Face = face,
-                EmSize = run.fontEmSize,
-                Glyphs = glyphs,
-                Advances = advances,
-                Offsets = offsets,
-                RealItalic = realItalic,
-                Origin = Rounding.Round((pen - x0) * SubpixelSteps) / SubpixelSteps,
-                X0 = (int)x0,
-                TextStart = start + k,
-                TextEnd = start + k2,
-                Source = source,
-                Element = element,
-                Missing = missing,
-                AfterGap = this._clusterGap,
-            };
-
-            float next;
-            if (!missing && font is not null && element!.Def.Monospacing is not null)
-            {
-                var rawAdvance = (int)Rounding.Round(width);
-                cluster.Cell = source.Face.Wrap(
-                    element,
-                    this.RasterizeCluster(cluster, rawAdvance, 1),
-                    sized.Px,
-                    source.Game,
-                    s => this.RasterizeCluster(cluster, rawAdvance, s));
-                cluster.X1 = cluster.X0 + cluster.Cell.Value.Advance;
-                next = cluster.X1;
-            }
-            else
-            {
-                cluster.X1 = (int)Rounding.Round(pen + width) + spacing;
-                next = pen + width + spacing;
-            }
-
-            this._clusters.Add(cluster);
-            this._clusterGap = false;
-
-            this._penShift += next - pen - layoutAdvance;
-            pen = next;
-            k = k2;
-        }
-    }
-
-    /// <summary>Gets whether a face is a real italic (or oblique) style of its family, not one synthesized.</summary>
-    private static bool IsRealItalic(IDWriteFontFace5* face) =>
-        (face->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0
-        && face->GetStyle() != DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_NORMAL;
-
-    /// <summary>Gets a face without its synthesized oblique (the same glyphs, upright), or the face if it has none.</summary>
-    private IDWriteFontFace5* GetUprightFace(IDWriteFontFace5* face)
-    {
-        var simulations = face->GetSimulations();
-        if ((simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0)
-            return face;
-        if (this._uprightFaces.TryGetValue(face, out var known))
-            return known;
-
-        var upright = face;
-        var made = default(ComPtr<IDWriteFontFace5>);
-        if (LookupFont.WithSimulations(face, simulations & ~DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE, made.GetAddressOf()).SUCCEEDED)
-            upright = this.Keep(made.Detach());
-
-        this._uprightFaces.Add(face, upright);
-        return upright;
-    }
+    public void Dispose() => this.Clear();
 
     /// <summary>
-    /// Gets the italic face of a face's family among the system's fonts (by its family name, weight and stretch, as faces
-    /// may be made from their files, with simulations or axis values), or null if the family has none of its own.
-    /// </summary>
-    private IDWriteFontFace5* GetItalicFace(IDWriteFontFace5* face)
-    {
-        if (this._italicFaces.TryGetValue(face, out var known))
-            return known;
-
-        IDWriteFontFace5* italic = null;
-        string? name = null;
-        using var names = default(ComPtr<IDWriteLocalizedStrings>);
-        if (face->GetFamilyNames(names.GetAddressOf()).SUCCEEDED)
-        {
-            uint length;
-            if (names.Get()->GetCount() != 0 && names.Get()->GetStringLength(0, &length).SUCCEEDED)
-            {
-                var buffer = stackalloc char[(int)length + 1];
-                if (names.Get()->GetString(0, buffer, length + 1).SUCCEEDED)
-                    name = new(buffer, 0, (int)length);
-            }
-        }
-
-        var lookup = name is null
-                         ? null
-                         : LookupStruct.Of(name) with { Weight = (int)face->GetWeight(), Stretch = (int)face->GetStretch(), Style = 2 };
-        if (lookup is not null && this._rasterizer.TryFindFont(lookup, out var match))
-        {
-            using (match)
-            {
-                var made = default(ComPtr<IDWriteFontFace5>);
-                if (match.Get()->GetStyle() != DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_NORMAL &&
-                    (match.Get()->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0 &&
-                    match.Get()->CreateFontFace(made.GetAddressOf()).SUCCEEDED)
-                {
-                    italic = this.Keep(made.Detach());
-                }
-            }
-        }
-
-        this._italicFaces.Add(face, italic);
-        return italic;
-    }
-
-    /// <summary>Keeps a face made here (its reference becomes the shaper's) for as long as the shaper.</summary>
-    private IDWriteFontFace5* Keep(IDWriteFontFace5* face)
-    {
-        if (this._keptFaces.ContainsKey(face))
-        {
-            face->Release();
-        }
-        else
-        {
-            var kept = default(ComPtr<IDWriteFontFace5>);
-            kept.Attach(face);
-            this._keptFaces.Add(face, kept);
-        }
-
-        return face;
-    }
-
-    /// <summary>
-    /// Makes the cells of the clusters a layout drew, in order. The game has no left bearing: a cell's box starts at its
-    /// pen, so ink left of a cluster's pen (a j's hook, a kerned pair's overhang) would be moved right. Instead the cell
-    /// starts that much earlier, up to the previous cell's start, and the previous cell advances that much less; the
+    /// Makes the cells of the clusters a line was shaped into, in order. The game has no left bearing: a cell's box starts
+    /// at its pen, so ink left of a cluster's pen (a j's hook, a kerned pair's overhang) would be moved right. Instead the
+    /// cell starts that much earlier, up to the previous cell's start, and the previous cell advances that much less; the
     /// line's width stays the same, and the ink lands where shaping put it.
     /// </summary>
     private void PlaceClusters()
@@ -394,7 +154,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             for (var t = c.TextStart; t < c.TextEnd; t += StringInfo.GetNextTextElementLength(this._text.AsSpan(t, c.TextEnd - t)))
                 elements++;
 
-            // A glyph the font lacks (.notdef) stays the per-character path's (the game's own font, at worst).
+            // A glyph left to the per-character path stays its (the game's own font, at worst).
             var cell = default(Pointer<AtkFontManager.Glyph>);
             var advance = 0;
             if (!c.Missing)
@@ -440,34 +200,6 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         }
 
         return cell;
-    }
-
-    /// <summary>Makes the system's font fallback, with private-use characters going to the game's icon font first.</summary>
-    private static ComPtr<IDWriteFontFallback1> CreateSystemFallback(GlyphRasterizer rasterizer)
-    {
-        var factory = rasterizer.Factory;
-        using var builder = default(ComPtr<IDWriteFontFallbackBuilder>);
-        factory->CreateFontFallbackBuilder(builder.GetAddressOf()).ThrowOnError();
-        if (rasterizer.TryFindFont(LookupStruct.Of(IconFamily), out var icons))
-        {
-            icons.Dispose();
-            var pua = new DWRITE_UNICODE_RANGE { first = 0xE000, last = 0xF8FF };
-            fixed (char* name = IconFamily)
-                builder.Get()->AddMapping(&pua, 1, &name, 1, null, null, null).ThrowOnError();
-        }
-        else
-        {
-            Plugin.Log.Warning("{family} isn't installed; private-use characters are left to the game", IconFamily);
-        }
-
-        using var systemFallback = default(ComPtr<IDWriteFontFallback>);
-        factory->GetSystemFontFallback(systemFallback.GetAddressOf()).ThrowOnError();
-        builder.Get()->AddMappings(systemFallback.Get()).ThrowOnError();
-        using var created = default(ComPtr<IDWriteFontFallback>);
-        builder.Get()->CreateFontFallback(created.GetAddressOf()).ThrowOnError();
-        var result = default(ComPtr<IDWriteFontFallback1>);
-        created.CopyTo(result.GetAddressOf()).ThrowOnError();
-        return result;
     }
 
     /// <summary>
@@ -555,7 +287,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         var key = (hash, i, sized, italic);
         if (!this._runs.TryGetValue(key, out var shaped))
         {
-            shaped = new(new Pointer<AtkFontManager.Glyph>[i],italic == ItalicMode.Images ? null : this._byteItalic.AsSpan(0, i).ToArray());
+            shaped = new(new Pointer<AtkFontManager.Glyph>[i], italic == ItalicMode.Images ? null : this._byteItalic.AsSpan(0, i).ToArray());
             if (count != 0)
                 this.Shape(sized, p, count, shaped.Glyphs, italic);
             if (this._runs.Count >= MaxCachedRuns)
@@ -582,7 +314,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     {
         this._absorbed.Clear();
         count = this.ComposeHangul(count);
-        this.AssignElements(sized, count);
+        this.AssignSources(sized, count);
 
         // Each code unit is in italics as its character's byte is (a low surrogate or control character as the one before).
         for (var t = 0; t < count; t++)
@@ -597,7 +329,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         try
         {
             // A run in a node's italics is spaced to its upright width (or drawn per character at its upright places);
-            // the others are laid out whole, in italics where their italic macros say.
+            // the others are shaped whole, in italics where their italic macros say.
             if (italic != ItalicMode.Images)
                 this.Collect(sized, count, ItalicMode.Real);
             else if (!this.CollectSpreadItalics(sized, count))
@@ -617,34 +349,172 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     }
 
     /// <summary>
-    /// Lays the text being shaped out, and collects its clusters as <paramref name="italic"/> says (OnGlyphRun). With
-    /// <see cref="ItalicMode.Real"/>, the code units in italics (<see cref="_textItalic"/>) are laid out in the faces'
-    /// italics, which the system's fallback picks too.
+    /// Shapes the text being shaped into clusters as <paramref name="italic"/> says: with
+    /// <see cref="ItalicMode.Real"/>, the code units in italics (<see cref="_textItalic"/>) are shaped with their
+    /// sources' italics; with <see cref="ItalicMode.Images"/>, upright, each single glyph then drawn with its font's
+    /// italic, where there is one.
     /// </summary>
     private void Collect(FontReplacer.SizedFont sized, int count, ItalicMode italic)
     {
-        // A face measuring as GDI does (hinted, whole-pixel advances) is laid out so; its glyphs are drawn to match.
-        var measureMode = sized.Face.MeasureMode;
-        var format = this.GetFormat(sized.Face, sized.Px);
-        using var layout = this._rasterizer.CreateLayout(this._text.AsSpan(0, count), format, measureMode);
-
-        this.ApplyElements(layout.Get(), sized, count);
-        for (var start = 0; italic == ItalicMode.Real && start < count;)
-        {
-            var end = start + 1;
-            while (end < count && this._textItalic[end] == this._textItalic[start])
-                end++;
-            if (this._textItalic[start])
-                layout.Get()->SetFontStyle(DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_ITALIC, new() { startPosition = (uint)start, length = (uint)(end - start) })
-                    .ThrowOnError();
-            start = end;
-        }
-
-        this._shapingItalic = italic;
-        this._penShift = 0;
         this._clusters.Clear();
         this._clusterGap = false;
-        layout.Get()->CollectTo(this);
+        this._analyzer.Itemize(this._text.AsSpan(0, count), this._textRuns);
+
+        var pen = 0f;
+        foreach (var run in this._textRuns)
+        {
+            for (var start = run.Start; start < run.End;)
+            {
+                // A piece of one glyph source, in italics or not.
+                var source = this._textSource[start];
+                var inItalic = italic == ItalicMode.Real && this._textItalic[start];
+                var end = start + 1;
+                while (end < run.End && this._textSource[end] == source && (italic == ItalicMode.Real && this._textItalic[end]) == inItalic)
+                    end++;
+
+                this.CollectPiece(sized, source, start, end, run, inItalic, italic == ItalicMode.Images, ref pen);
+                start = end;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Shapes a piece of the text whose characters go to one glyph source, of one script run, into clusters at
+    /// <paramref name="pen"/> on: those its source lacks, and all of those the game draws or right-to-left ones, left to
+    /// the per-character path.
+    /// </summary>
+    private void CollectPiece(
+        FontReplacer.SizedFont sized, FontReplacer.GlyphSource? glyphSource, int start, int end, TextRun run, bool inItalic, bool italicImages, ref float pen)
+    {
+        var element = glyphSource?.Element;
+        var source = element?.Source;
+        var realItalic = false;
+        if (source is not null && inItalic)
+            (source, realItalic) = source.GetItalic();
+        if (glyphSource is null || element is null || source is null || run.RightToLeft)
+        {
+            this.AddMissing(start, end, pen);
+            return;
+        }
+
+        var px = element.GetPx(sized.Px);
+        for (var position = start; position < end;)
+        {
+            this._shaped.Clear();
+            int shapedLength;
+            try
+            {
+                shapedLength = source.Shape(px, this._text.AsSpan(position, end - position), run.Script, this._shaped);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Error(ex, "Shaping with {family} failed; the text is laid out per character", element.Def.Lookup.Name);
+                this._shaped.Clear();
+                shapedLength = 0;
+            }
+
+            foreach (var shaped in this._shaped)
+                this.AddCluster(sized, glyphSource, element, px, shaped, position, realItalic, italicImages, ref pen);
+            position += shapedLength;
+
+            // What the source lacks: a grapheme left to the per-character path.
+            if (position < end)
+            {
+                var length = Math.Min(StringInfo.GetNextTextElementLength(this._text.AsSpan(position, end - position)), end - position);
+                this.AddMissing(position, position + length, pen);
+                position += length;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adds a shaped cluster at the pen, which it advances by its advance on screen: with its element's letter spacing,
+    /// or its monospaced cell (made now, as its advance is).
+    /// </summary>
+    private void AddCluster(
+        FontReplacer.SizedFont sized,
+        FontReplacer.GlyphSource glyphSource,
+        MaterializedFontElement element,
+        float px,
+        ShapedCluster shaped,
+        int textOffset,
+        bool realItalic,
+        bool italicImages,
+        ref float pen)
+    {
+        var source = shaped.Source;
+        var glyphs = shaped.GlyphIds;
+        var offsets = shaped.Offsets;
+        var real = realItalic || shaped.RealItalic;
+        var textStart = textOffset + shaped.TextStart;
+        var textEnd = textOffset + shaped.TextEnd;
+
+        // In a node's italics, shaped upright: a glyph of one character is drawn with its font's italic, if it has one.
+        if (italicImages && glyphs.Length == 1 &&
+            Rune.DecodeFromUtf16(this._text.AsSpan(textStart, textEnd - textStart), out var rune, out var used) == System.Buffers.OperationStatus.Done &&
+            used == textEnd - textStart &&
+            source.GetItalic() is (var italic, true) &&
+            italic.GetGlyphId(rune) is var id and not 0)
+        {
+            source = italic;
+            glyphs = [id];
+            offsets = null;
+            real = true;
+        }
+
+        var width = source.GetScreenAdvance(px, new(glyphs, shaped.Advances, offsets));
+        var x0 = Rounding.Round(pen);
+        var cluster = new Cluster
+        {
+            Source = source,
+            Px = px,
+            GlyphIds = glyphs,
+            Advances = shaped.Advances,
+            Offsets = offsets,
+            RealItalic = real,
+            Origin = Rounding.Round((pen - x0) * SubpixelSteps) / SubpixelSteps,
+            X0 = (int)x0,
+            TextStart = textStart,
+            TextEnd = textEnd,
+            GlyphSource = glyphSource,
+            Element = element,
+            AfterGap = this._clusterGap,
+        };
+
+        if (element.Def.Monospacing is not null)
+        {
+            var rawAdvance = (int)Rounding.Round(width);
+            cluster.Cell = element.Wrap(
+                RasterizeCluster(cluster, rawAdvance, 1),
+                sized.Px,
+                glyphSource.Face.GetAlignment(sized.Px, glyphSource.Game),
+                new ClusterSqueeze(cluster, rawAdvance));
+            cluster.X1 = cluster.X0 + cluster.Cell.Value.Advance;
+            pen = cluster.X1;
+        }
+        else
+        {
+            var spacing = element.GetLetterSpacing(sized.Px);
+            cluster.X1 = (int)Rounding.Round(pen + width) + spacing;
+            pen += width + spacing;
+        }
+
+        this._clusters.Add(cluster);
+        this._clusterGap = false;
+    }
+
+    /// <summary>Adds the graphemes of a piece left to the per-character path, at the pen (which they don't advance).</summary>
+    private void AddMissing(int start, int end, float pen)
+    {
+        var x = (int)Rounding.Round(pen);
+        for (var t = start; t < end;)
+        {
+            var length = Math.Min(StringInfo.GetNextTextElementLength(this._text.AsSpan(t, end - t)), end - t);
+            this._clusters.Add(new() { TextStart = t, TextEnd = t + length, X0 = x, X1 = x, Missing = true, AfterGap = this._clusterGap });
+            t += length;
+        }
+
+        this._clusterGap = true;
     }
 
     /// <summary>
@@ -720,122 +590,67 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     }
 
     /// <summary>
-    /// Gets where a text may be split: <paramref name="clusterEnd"/>[i] is set when a cluster ends after the first i
-    /// code units, and <paramref name="wrapAfter"/>[i] when a line may also break there (UAX #14, dictionary breaks for
-    /// Thai and the like). Both spans are one longer than <paramref name="text"/>.
+    /// Finds the glyph source of each grapheme of the text (all its code units get it), and puts in the characters an
+    /// element draws with another's glyph (its codepoint replacements), where the UTF-16 length allows.
     /// </summary>
-    public void GetBreaks(ReadOnlySpan<char> text, Span<bool> clusterEnd, Span<bool> wrapAfter)
+    private void AssignSources(FontReplacer.SizedFont sized, int count)
     {
-        clusterEnd.Clear();
-        wrapAfter.Clear();
-        if (text.IsEmpty)
-            return;
-
-        // Clusters and break opportunities don't depend on the size (fallback fonts are picked the same way at any).
-        var format = this.GetFormat(this._replacer.BuiltInFace, 16);
-        using var layout = this._rasterizer.CreateLayout(text, format);
-        uint count;
-        layout.Get()->GetClusterMetrics(null, 0, &count);
-        var metrics = count <= 256 ? stackalloc DWRITE_CLUSTER_METRICS[(int)count] : new DWRITE_CLUSTER_METRICS[count];
-        fixed (DWRITE_CLUSTER_METRICS* m = metrics)
-            layout.Get()->GetClusterMetrics(m, count, &count).ThrowOnError();
-
-        var position = 0;
-        foreach (ref readonly var cluster in metrics)
+        Span<Rune> runes = stackalloc Rune[MaxGraphemeRunes];
+        for (var t = 0; t < count;)
         {
-            position += cluster.length;
-            clusterEnd[position] = true;
-            wrapAfter[position] = cluster.canWrapLineAfter != 0;
-        }
-    }
-
-    /// <summary>
-    /// Finds the glyph source of each code unit of the text (a low surrogate gets its high one's), and puts in the
-    /// characters an element draws with another's glyph (its codepoint replacements), where the UTF-16 length allows.
-    /// </summary>
-    private void AssignElements(FontReplacer.SizedFont sized, int count)
-    {
-        for (var i = 0; i < count;)
-        {
-            var n = char.IsHighSurrogate(this._text[i]) && i + 1 < count && char.IsLowSurrogate(this._text[i + 1]) ? 2 : 1;
-            var rune = n == 2 ? new(this._text[i], this._text[i + 1]) : Rune.TryCreate(this._text[i], out var single) ? single : Rune.ReplacementChar;
-            var source = sized.Pick(rune);
-            var element = source.Element;
-            if (element is { DrawsGame: false })
+            var length = Math.Min(StringInfo.GetNextTextElementLength(this._text.AsSpan(t, count - t)), count - t);
+            var n = 0;
+            for (var u = t; u < t + length && n < MaxGraphemeRunes;)
             {
-                var drawn = ReplacementFace.GetDrawnCodepoint(element, rune);
-                if (drawn != rune && drawn.Utf16SequenceLength == n)
-                    drawn.EncodeToUtf16(this._text.AsSpan(i, n));
+                if (Rune.DecodeFromUtf16(this._text.AsSpan(u, t + length - u), out var rune, out var used) != System.Buffers.OperationStatus.Done)
+                    (rune, used) = (Rune.ReplacementChar, 1);
+                runes[n++] = rune;
+                u += used;
             }
 
-            for (var j = 0; j < n; j++)
-                this._textSource[i + j] = source;
-            i += n;
-        }
-    }
-
-    /// <summary>
-    /// Sets each element's font, size and features on the text it draws. Text no element draws keeps the format's: the
-    /// face's first font, with the system's fallback if the face has it (and dropped otherwise).
-    /// </summary>
-    private void ApplyElements(IDWriteTextLayout4* layout, FontReplacer.SizedFont sized, int count)
-    {
-        for (var start = 0; start < count;)
-        {
-            var source = this._textSource[start];
-            var element = source.Element;
-            var end = start + 1;
-            while (end < count && this._textSource[end].Element == element)
-                end++;
-
-            // Elements not drawn from their fonts are left per character anyway.
-            if (element?.Shaped is { } font)
+            var source = sized.Pick(runes[..n]);
+            if (source.Element is { DrawsGame: false } element)
             {
-                var range = new DWRITE_TEXT_RANGE { startPosition = (uint)start, length = (uint)(end - start) };
-                font.ApplyTo(layout, range, source.Face.GetElementPx(element, sized.Px));
+                for (var u = t; u < t + length;)
+                {
+                    if (Rune.DecodeFromUtf16(this._text.AsSpan(u, t + length - u), out var rune, out var used) != System.Buffers.OperationStatus.Done)
+                    {
+                        u++;
+                        continue;
+                    }
+
+                    var drawn = element.GetDrawnCodepoint(rune);
+                    if (drawn != rune && drawn.Utf16SequenceLength == used)
+                        drawn.EncodeToUtf16(this._text.AsSpan(u, used));
+                    u += used;
+                }
             }
 
-            start = end;
+            this._textSource.AsSpan(t, length).Fill(source);
+            t += length;
         }
     }
 
     /// <summary>
-    /// Gets the text format of a face at a size: its first font (Segoe UI if none) at that font's size, with the
-    /// system's fallback or none as the face says.
-    /// </summary>
-    private IDWriteTextFormat3* GetFormat(ReplacementFace face, float px)
-    {
-        var key = (face, (int)Rounding.Round(px * 2));
-        if (this._formats.TryGetValue(key, out var existing))
-            return existing.Get();
-
-        var primary = face.Primary;
-        var lookup = primary?.Def.Lookup ?? LookupStruct.Of("Segoe UI");
-        var format = this._rasterizer.CreateFormat(
-            lookup.Name,
-            lookup.Weight,
-            lookup.Style,
-            lookup.Stretch,
-            primary is not null ? face.GetElementPx(primary, px) : px,
-            face.SystemFallback ? this._fallback.Get() : this._rasterizer.NoFallback);
-        this._formats.Add(key, format);
-        return format.Get();
-    }
-
-    /// <summary>
-    /// Gets a cluster's coverage, relative to its pen, adjusted as its element says (ReplacementFace.Wrap) and finished
+    /// Gets a cluster's coverage, relative to its pen, adjusted as its element says (MaterializedFontElement.Wrap) and finished
     /// (FinishGlyph). Its advance is set when its cell is made.
     /// </summary>
     private RasterGlyph GetRaster(Cluster c)
     {
-        var key = c.RasterKey ??= new(this._shapingSized!, c);
+        var sized = this._shapingSized!;
+        var key = c.RasterKey ??= new(sized, c);
         if (this._rasters.TryGetValue(key, out var raster))
             return raster;
 
-        var sized = this._shapingSized!;
-        raster = c.Cell ?? this.RasterizeCluster(c, 0, 1);
-        if (c.Cell is null && c.Element is { } element)
-            raster = c.Source!.Face.Wrap(element, raster, sized.Px, c.Source.Game, s => this.RasterizeCluster(c, 0, s));
+        raster = c.Cell ?? RasterizeCluster(c, 0, 1);
+        if (c.Cell is null && c.Element is { } element && c.GlyphSource is { } glyphSource)
+        {
+            raster = element.Wrap(
+                raster,
+                sized.Px,
+                glyphSource.Face.GetAlignment(sized.Px, glyphSource.Game),
+                new ClusterSqueeze(c, 0));
+        }
 
         // An edge margin makes ink left of the pen: the cell then starts earlier (PlaceClusters), keeping the spacing.
         raster = this._replacer.FinishGlyph(sized, raster);
@@ -843,26 +658,9 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         return raster;
     }
 
-    /// <summary>Rasterizes a cluster as its element draws it, squeezed horizontally by <paramref name="squeezeX"/>.</summary>
-    private RasterGlyph RasterizeCluster(Cluster c, int advance, float squeezeX)
-    {
-        fixed (ushort* glyphs = c.Glyphs)
-        fixed (float* advances = c.Advances)
-        fixed (DWRITE_GLYPH_OFFSET* offsets = c.Offsets)
-        {
-            return this._shapingSized!.Face.RasterizeRun(
-                c.Element,
-                c.Face,
-                c.EmSize,
-                glyphs,
-                advances,
-                offsets,
-                (uint)c.Glyphs.Length,
-                c.Origin,
-                advance,
-                squeezeX);
-        }
-    }
+    /// <summary>Rasterizes a cluster as its source draws it, given an advance, squeezed horizontally by <paramref name="squeezeX"/>.</summary>
+    private static RasterGlyph RasterizeCluster(Cluster c, int advance, float squeezeX) =>
+        c.Source!.Rasterize(c.Px, new(c.GlyphIds, c.Advances, c.Offsets), new(c.Origin, advance, squeezeX)) ?? new(advance, 0, 0, 0, 0, []);
 
     /// <summary>
     /// Gets the cell of a cluster whose box starts <paramref name="pad"/> pixels left of its pen and advances by
@@ -896,9 +694,8 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         Upright,
 
         /// <summary>
-        /// In italics by an italic macro, which the game also sees when it measures: shaped in the faces' italics, which
-        /// are drawn as they are; the game shears the glyphs of faces without (synthesized obliques are drawn upright for
-        /// it).
+        /// In italics by an italic macro, which the game also sees when it measures: shaped with the sources' italics,
+        /// which are drawn as they are; the game shears the glyphs of sources without (drawn upright).
         /// </summary>
         Real,
 
@@ -910,19 +707,26 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         Images,
     }
 
-    /// <summary>A cluster of a layout: its glyphs and where they are, and the text it covers.</summary>
+    /// <summary>Draws a cluster again narrower, given an advance.</summary>
+    private readonly struct ClusterSqueeze(Cluster cluster, int advance) : IGlyphSqueeze
+    {
+        public RasterGlyph Squeeze(float scale) => RasterizeCluster(cluster, advance, scale);
+    }
+
+    /// <summary>A cluster of a line: its glyphs and where they are, and the text it covers.</summary>
     private sealed record Cluster
     {
-        /// <summary>The face its glyphs are drawn from, kept by the shaper.</summary>
-        public Pointer<IDWriteFontFace5> Face { get; init; }
+        /// <summary>The source its glyphs are drawn from; null if it is left to the per-character path.</summary>
+        public IFaceSource? Source { get; init; }
 
-        public float EmSize { get; init; }
+        /// <summary>The size its source draws at: its element's.</summary>
+        public float Px { get; init; }
 
-        public ushort[] Glyphs { get; init; } = [];
+        public uint[] GlyphIds { get; init; } = [];
 
         public float[] Advances { get; init; } = [];
 
-        public DWRITE_GLYPH_OFFSET[]? Offsets { get; init; }
+        public GlyphOffset[]? Offsets { get; init; }
 
         /// <summary>The key of the cluster's coverage, once made (GetRaster).</summary>
         public RasterKey? RasterKey { get; set; }
@@ -935,7 +739,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
 
         public int X1 { get; set; }
 
-        /// <summary>The cluster's coverage in its cell (ReplacementFace.Wrap), made as it is laid out if its element is monospaced.</summary>
+        /// <summary>The cluster's coverage in its cell (MaterializedFontElement.Wrap), made as it is laid out if its element is monospaced.</summary>
         public RasterGlyph? Cell { get; set; }
 
         public int TextStart { get; init; }
@@ -943,18 +747,18 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         public int TextEnd { get; init; }
 
         /// <summary>Where the cluster's first character's glyph comes from.</summary>
-        public FontReplacer.GlyphSource? Source { get; init; }
+        public FontReplacer.GlyphSource? GlyphSource { get; init; }
 
-        /// <summary>The face element of the cluster's first character, or null for the system's fonts.</summary>
-        public ReplacementElement? Element { get; init; }
+        /// <summary>The face element of the cluster's first character.</summary>
+        public MaterializedFontElement? Element { get; init; }
 
-        /// <summary>Whether a glyph is missing from the font, or the game draws it (the cluster is left per character).</summary>
+        /// <summary>Whether it is left to the per-character path: the game draws it, or its source lacks it.</summary>
         public bool Missing { get; init; }
 
-        /// <summary>Whether something not shaped here (a right-to-left run) comes right before it.</summary>
+        /// <summary>Whether something not shaped here (a right-to-left run, a missing glyph) comes right before it.</summary>
         public bool AfterGap { get; init; }
 
-        /// <summary>Whether its glyphs are a face's real italics, which the game must not shear.</summary>
+        /// <summary>Whether its glyphs are a real italic, which the game must not shear.</summary>
         public bool RealItalic { get; init; }
 
         /// <summary>Gets the cluster moved right: its start by <paramref name="start"/> pixels, its end by <paramref name="end"/>.</summary>
@@ -973,27 +777,27 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     }
 
     /// <summary>
-    /// The key of a cluster's coverage: its face, size and element, and its glyphs at its position. Glyphs are compared
-    /// by value.
+    /// The key of a cluster's coverage: its face, size and element, and its source's glyphs at its position. Glyphs are
+    /// compared by value.
     /// </summary>
     private sealed class RasterKey(FontReplacer.SizedFont sized, Cluster c) : IEquatable<RasterKey>
     {
-        private readonly ReplacementFace _face = sized.Face;
+        private readonly MaterializedFont _face = sized.Face;
         private readonly float _px = sized.Px;
-        private readonly ReplacementElement? _element = c.Element;
-        private readonly Pointer<IDWriteFontFace5> _fontFace = c.Face;
-        private readonly float _emSize = c.EmSize;
+        private readonly MaterializedFontElement? _element = c.Element;
+        private readonly IFaceSource? _source = c.Source;
+        private readonly float _emSize = c.Px;
         private readonly float _origin = c.Origin;
-        private readonly ushort[] _glyphs = c.Glyphs;
+        private readonly uint[] _glyphs = c.GlyphIds;
         private readonly float[] _advances = c.Advances;
-        private readonly DWRITE_GLYPH_OFFSET[]? _offsets = c.Offsets;
+        private readonly GlyphOffset[]? _offsets = c.Offsets;
 
         public bool Equals(RasterKey? other) =>
             ReferenceEquals(this, other) ||
             (other is not null &&
              this._face == other._face &&
              this._element == other._element &&
-             this._fontFace == other._fontFace &&
+             this._source == other._source &&
              this._px.Equals(other._px) &&
              this._emSize.Equals(other._emSize) &&
              this._origin.Equals(other._origin) &&
@@ -1009,7 +813,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
             hash.Add(this._face);
             hash.Add(this._px);
             hash.Add(this._element);
-            hash.Add(this._fontFace);
+            hash.Add(this._source);
             hash.Add(this._emSize);
             hash.Add(this._origin);
             hash.AddBytes(MemoryMarshal.AsBytes(this._glyphs.AsSpan()));
@@ -1032,6 +836,7 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
     {
         private byte[] _bytes = new byte[64];
         private int _compareLength;
+        private bool[]? _italicBytes;
 
         public byte* Start { get; private set; }
 
@@ -1042,8 +847,6 @@ internal sealed unsafe class TextShaper : IDisposable, IGlyphRunSink
         public ItalicMode Italic { get; private set; }
 
         public Pointer<AtkFontManager.Glyph>[] Glyphs { get; private set; } = [];
-
-        private bool[]? _italicBytes;
 
         public void Set(byte* start, int length, int endBytes, FontReplacer.SizedFont sized, ItalicMode italic, ShapedRun shaped)
         {

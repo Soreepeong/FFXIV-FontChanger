@@ -15,7 +15,6 @@ using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 using FontChanger.DalamudPlugin.Configuration;
-using FontChanger.DalamudPlugin.Rendering;
 using FontChanger.DalamudPlugin.Rendering.Game;
 using FontChanger.DalamudPlugin.Rendering.Shaders;
 using FontChanger.DalamudPlugin.Utilities;

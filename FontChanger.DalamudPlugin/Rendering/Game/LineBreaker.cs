@@ -8,10 +8,14 @@ using Dalamud.Hooking;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Rendering.Text;
 using FontChanger.DalamudPlugin.Utilities;
 
 using Lumina.Text.Payloads;
 using Lumina.Text.ReadOnly;
+
+using TerraFX.Interop.DirectX;
+using TerraFX.Interop.Windows;
 
 namespace FontChanger.DalamudPlugin.Rendering.Game;
 
@@ -49,11 +53,23 @@ internal sealed unsafe class LineBreaker : IDisposable
     // The decision for the word being split, made at its first split.
     private bool _splittingOwnWord;
 
+    // The format line breaks are found with: Segoe UI with the system's fallback (breaks don't depend on the font).
+    private ComPtr<IDWriteTextFormat3> _breakFormat;
+
     public LineBreaker(FontReplacer replacer)
     {
         this._replacer = replacer;
         try
         {
+            var rasterizer = replacer.Rasterizer;
+            using (var systemFallback = default(ComPtr<IDWriteFontFallback>))
+            using (var fallback = default(ComPtr<IDWriteFontFallback1>))
+            {
+                rasterizer.Factory->GetSystemFontFallback(systemFallback.GetAddressOf()).ThrowOnError();
+                systemFallback.CopyTo(fallback.GetAddressOf()).ThrowOnError();
+                this._breakFormat = rasterizer.CreateFormat(SystemFallbackFonts.DefaultBaseFamily, 400, 0, 5, 16, fallback.Get());
+            }
+
             var splitWord = AtkFontCodeModule.Addresses.SplitWord.Value;
             this._splitWordHook = Plugin.GameInterop.HookFromAddress<SplitWordDelegate>(splitWord, this.SplitWordDetour);
             this._splitWordHook.Enable();
@@ -67,7 +83,11 @@ internal sealed unsafe class LineBreaker : IDisposable
 
     private delegate uint SplitWordDelegate(AtkFontCodeModule* wrapper, int width, int unused, byte* word, byte* measuredWord, byte lineStart);
 
-    public void Dispose() => this._splitWordHook?.Dispose();
+    public void Dispose()
+    {
+        this._splitWordHook?.Dispose();
+        this._breakFormat.Dispose();
+    }
 
     /// <summary>
     /// Gets whether a word needs clusters or dictionary breaks: it has combining marks, conjoining jamo, joiners, or
@@ -159,10 +179,7 @@ internal sealed unsafe class LineBreaker : IDisposable
 
         var chars = this._text.Length <= 512 ? stackalloc char[this._text.Length] : new char[this._text.Length];
         this._text.CopyTo(0, chars, chars.Length);
-        this._replacer.Shaper.GetBreaks(
-            chars,
-            this._clusterEnd.AsSpan(0, chars.Length + 1),
-            this._wrapAfter.AsSpan(0, chars.Length + 1));
+        this.GetBreaks(chars, this._clusterEnd.AsSpan(0, chars.Length + 1), this._wrapAfter.AsSpan(0, chars.Length + 1));
 
         // The last break opportunity among the units that fit. A break right after a unit is at the end of its text; a
         // macro has none of its own.
@@ -199,6 +216,34 @@ internal sealed unsafe class LineBreaker : IDisposable
         return (uint)best;
 
         bool EndsAt(bool[] breaks, int k) => this._units[k - 1].TextEnd is var end and > 0 && breaks[end];
+    }
+
+    /// <summary>
+    /// Gets where a text may be split: <paramref name="clusterEnd"/>[i] is set when a cluster ends after the first i
+    /// code units, and <paramref name="wrapAfter"/>[i] when a line may also break there (UAX #14, dictionary breaks for
+    /// Thai and the like). Both spans are one longer than <paramref name="text"/>.
+    /// </summary>
+    private void GetBreaks(ReadOnlySpan<char> text, Span<bool> clusterEnd, Span<bool> wrapAfter)
+    {
+        clusterEnd.Clear();
+        wrapAfter.Clear();
+        if (text.IsEmpty)
+            return;
+
+        using var layout = this._replacer.Rasterizer.CreateLayout(text, this._breakFormat.Get());
+        uint count;
+        layout.Get()->GetClusterMetrics(null, 0, &count);
+        var metrics = count <= 256 ? stackalloc DWRITE_CLUSTER_METRICS[(int)count] : new DWRITE_CLUSTER_METRICS[count];
+        fixed (DWRITE_CLUSTER_METRICS* m = metrics)
+            layout.Get()->GetClusterMetrics(m, count, &count).ThrowOnError();
+
+        var position = 0;
+        foreach (ref readonly var cluster in metrics)
+        {
+            position += cluster.length;
+            clusterEnd[position] = true;
+            wrapAfter[position] = cluster.canWrapLineAfter != 0;
+        }
     }
 
     /// <summary>

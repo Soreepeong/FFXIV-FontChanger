@@ -5,24 +5,20 @@ using System.Text;
 
 using Dalamud.Interface.GameFonts;
 
-using FFXIVClientStructs.FFXIV.Component.GUI;
-
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
-using FontChanger.DalamudPlugin.Utilities;
-using FontChanger.Presets;
 using FontChanger.Presets.Records;
 
 using Lumina.Data.Files;
 
-namespace FontChanger.DalamudPlugin.Rendering.Faces.ElementFonts;
+namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources.Nominal;
 
 /// <summary>
 /// A game font's glyphs read from the game's files (xivres fontdata_fixed_size_font, as FontChanger's elements of game
 /// fonts draw them): of the face of the family the element's lookup names whose size is closest to the element's, drawn
-/// at the element's size as if it were the face's.
+/// at the element's size as if it were the face's. Glyph IDs are codepoints.
 /// </summary>
-internal sealed unsafe class FontDataElementFont : IElementFont
+internal sealed class GameFontDataFaceSource : NominalFaceSource
 {
     // The game's font textures (B8G8R8A8, with their width and height) by path, shared by the fonts drawn from them; null
     // for those that can't be read.
@@ -32,17 +28,17 @@ internal sealed unsafe class FontDataElementFont : IElementFont
     private readonly string _textures;
     private readonly float _size;
 
-    private FontDataElementFont(FdtReader fdt, string textures, float size)
+    private GameFontDataFaceSource(FdtReader fdt, string textures, float size)
     {
         this._fdt = fdt;
         this._textures = textures;
         this._size = size;
     }
 
-    public IEnumerable<Rune> Codepoints => this._fdt.Glyphs.Where(g => Rune.IsValid(g.CharInt)).Select(g => new Rune(g.CharInt));
+    public override IEnumerable<Rune> Codepoints => this._fdt.Glyphs.Where(g => Rune.IsValid(g.CharInt)).Select(g => new Rune(g.CharInt));
 
     /// <summary>Reads the face of an element's game font family closest to its size; null if there is none, or it can't be read.</summary>
-    public static FontDataElementFont? Create(FaceElement def, string faceName)
+    public static GameFontDataFaceSource? Create(FaceElement def, string faceName)
     {
         // On a tie, the smaller: faces are listed smallest first.
         var face = GameFonts.FacesOf(def.Lookup.Name).MinBy(f => MathF.Abs(f.Size - def.Size));
@@ -64,24 +60,20 @@ internal sealed unsafe class FontDataElementFont : IElementFont
         }
     }
 
-    public bool Has(Rune rune, AtkFontManager.Font* game) => this._fdt.FindGlyph(rune.Value) is not null;
+    public override uint GetGlyphId(Rune rune) => this._fdt.FindGlyph(rune.Value) is not null ? (uint)rune.Value : 0;
 
-    public (int Ascent, int LineHeight) GetLineMetrics(float px, AtkFontManager.Font* game)
+    public override float GetAdvance(float px, uint glyphId) => this._fdt.FindGlyph((int)glyphId) is { } g ? g.AdvanceWidth * this.GetScale(px) : 0;
+
+    public override (int Ascent, int LineHeight) GetLineMetrics(float px)
     {
         var scale = this.GetScale(px);
         var header = this._fdt.FontHeader;
         return ((int)Rounding.Round(header.Ascent * scale), (int)Rounding.Round(header.LineHeight * scale));
     }
 
-    public bool TryGetBaseline(uint tag, float px, out float baseline)
+    public override RasterGlyph? RasterizeGlyph(float px, uint glyphId)
     {
-        baseline = 0;
-        return false;
-    }
-
-    public RasterGlyph? Rasterize(Rune rune, float px)
-    {
-        if (this._fdt.FindGlyph(rune.Value) is not { } g ||
+        if (this._fdt.FindGlyph((int)glyphId) is not { } g ||
             GetTexture(this._textures.Replace("{}", (g.TextureFileIndex + 1).ToString())) is not (var pixels, var width, var height))
             return null;
 
@@ -95,12 +87,6 @@ internal sealed unsafe class FontDataElementFont : IElementFont
         var glyph = new RasterGlyph(g.AdvanceWidth, 0, g.CurrentOffsetY - this._fdt.FontHeader.Ascent, g.BoundingWidth, g.BoundingHeight, alpha);
         var scale = this.GetScale(px);
         return scale == 1 ? glyph : glyph.Scaled(scale, 0, 0) with { Advance = (int)Rounding.Round(g.AdvanceWidth * scale) };
-    }
-
-    public float GetAdvance(Rune rune, float px) => this._fdt.FindGlyph(rune.Value) is { } g ? g.AdvanceWidth * this.GetScale(px) : 0;
-
-    public void Dispose()
-    {
     }
 
     /// <summary>Gets the scale from the face's glyphs to a size of the element: 1 within the half-pixel rounding of copy sizes.</summary>

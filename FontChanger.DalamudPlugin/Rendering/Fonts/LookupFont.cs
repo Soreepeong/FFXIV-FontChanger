@@ -110,8 +110,6 @@ internal sealed unsafe partial class LookupFont : IDisposable
         }
     }
 
-    public IDWriteFont3* Font => this._font.Get();
-
     /// <summary>
     /// Gets the face: with the simulations, but for a variable font, the matched instance (for its file and metrics;
     /// glyphs are drawn from <see cref="GetFace"/>'s).

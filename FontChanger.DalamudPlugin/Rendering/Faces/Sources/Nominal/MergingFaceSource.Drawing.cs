@@ -9,14 +9,12 @@ using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
 
-namespace FontChanger.DalamudPlugin.Rendering.Faces.ElementFonts.MergingHelpers;
+namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources.Nominal;
 
-/// <summary>
-/// Draws merged glyphs (xivres glyph_merging_fixed_size_font): a text put in a shape, the text cut out of the shape (or
-/// drawn inside a hollow one), or alone, smaller, on the baseline. Shapes are in units of 1/1000 em with y growing
-/// downwards and the baseline at y = 880; the built-in ones follow the Lodestone web font (FFXIV_Lodestone_SSF).
-/// </summary>
-internal static class GlyphMerger
+// Drawing merged glyphs (xivres glyph_merging_fixed_size_font): a text put in a shape, the text cut out of the shape (or
+// drawn inside a hollow one), or alone, smaller, on the baseline. Shapes are in units of 1/1000 em with y growing
+// downwards and the baseline at y = 880; the built-in ones follow the Lodestone web font (FFXIV_Lodestone_SSF).
+internal sealed partial class MergingFaceSource
 {
     private const float ShapeUnitsPerEm = 1000;
     private const float ShapeBaselineY = 880;
@@ -32,26 +30,18 @@ internal static class GlyphMerger
     private const byte TagCubic = 2;
 
     /// <summary>
-    /// Draws a merged glyph of an element whose font is <paramref name="size"/> pixels with an ascent of
-    /// <paramref name="ascent"/>, relative to the pen on the baseline. <paramref name="textFont"/> makes the text's font at
-    /// a size and horizontal scale; <paramref name="baseGlyph"/> is the element's own glyph of the codepoint (for
-    /// <see cref="MergeShape.Glyph"/>). Both draw with the element's gamma; shapes are drawn without. Pixel values of
-    /// <paramref name="def"/> are scaled by <paramref name="pixelScale"/>. Built-in shapes are placed as the game's glyphs
-    /// are at its font sizes, by the element's size in the preset (<paramref name="designSize"/>).
+    /// Draws a merged glyph at a size, relative to the pen on the baseline. <paramref name="baseGlyph"/> is the
+    /// source's own glyph of the codepoint (for <see cref="MergeShape.Glyph"/>). It and the texts draw with the element's
+    /// gamma; shapes are drawn without. The merging's pixel values are scaled by the size relative to the element's in
+    /// the preset, by which built-in shapes are placed as the game's glyphs are at its font sizes.
     /// </summary>
-    public static RasterGlyph Draw(
-        GlyphMergeMapping mapping,
-        string mappedText,
-        GlyphMergingStruct def,
-        float pixelScale,
-        float size,
-        float designSize,
-        int ascent,
-        Func<float, float, IMergeTextFont> textFont,
-        RasterGlyph? baseGlyph,
-        ImageRenderer? images,
-        FreeTypeFonts? freeType)
+    private RasterGlyph Draw(GlyphMergeMapping mapping, string mappedText, float size, RasterGlyph? baseGlyph)
     {
+        var designSize = def.Size;
+        var pixelScale = designSize > 0 ? size / designSize : 1;
+        var ascent = inner.GetLineMetrics(size).Ascent;
+        var images = rasterizer.Images;
+        var freeType = rasterizer.FreeType;
         var scale = size / ShapeUnitsPerEm;
         float baselineY = ascent;
 
@@ -128,7 +118,7 @@ internal static class GlyphMerger
 
         // The text's size and horizontal scale, from its layout at the element's size.
         var lines = text.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
-        var textScale = def.TextSize is { } textSize ? textSize * pixelScale / size : 1;
+        var textScale = merging.TextSize is { } textSize ? textSize * pixelScale / size : 1;
         var condense = 1f;
         var cache = new Dictionary<(int, int), IMergeTextFont>();
 
@@ -137,14 +127,14 @@ internal static class GlyphMerger
             // Sizes in steps of 1/20 pixel, scales of 1/1000.
             var key = ((int)Rounding.Round(s * 20), (int)Rounding.Round(c * 1000));
             if (!cache.TryGetValue(key, out var font))
-                cache.Add(key, font = textFont(key.Item1 / 20f, key.Item2 / 1000f));
+                cache.Add(key, font = this.CreateTextFont(key.Item1 / 20f, key.Item2 / 1000f));
             return font;
         }
 
-        if (!hasShape && def.TextSize is null)
+        if (!hasShape && merging.TextSize is null)
         {
             // Without a shape, the text is smaller than the element's, as the game's level digits and units are.
-            var reference = LayOut(GetTextFont(size, 1), lines, def, pixelScale, false);
+            var reference = this.LayOut(GetTextFont(size, 1), lines, pixelScale, false);
             if (reference.CapHeight > 0)
                 textScale = ShapelessCapHeight * scale / reference.CapHeight;
         }
@@ -153,15 +143,15 @@ internal static class GlyphMerger
         {
             var areaWidth = (shape.Area.X2 - shape.Area.X1) * scale;
             var areaHeight = (shape.Area.Y2 - shape.Area.Y1) * scale;
-            var reference = LayOut(GetTextFont(size, 1), lines, def, pixelScale, true);
+            var reference = this.LayOut(GetTextFont(size, 1), lines, pixelScale, true);
             var referenceHeight = (float)(reference.LastBaseline - reference.CapTop);
-            if (def.TextSize is null && referenceHeight > 0)
+            if (merging.TextSize is null && referenceHeight > 0)
                 textScale = areaHeight / referenceHeight;
 
             var width = (reference.InkX2 - reference.InkX1) * textScale;
             if (width > areaWidth && width > 0)
             {
-                switch (def.FitMode)
+                switch (merging.FitMode)
                 {
                     case MergeFitMode.CondenseThenShrink:
                         condense = Math.Max(0.7f, areaWidth / width);
@@ -176,7 +166,7 @@ internal static class GlyphMerger
         }
 
         var font = GetTextFont(size * textScale, condense);
-        var layout = LayOut(font, lines, def, pixelScale, hasArea);
+        var layout = this.LayOut(font, lines, pixelScale, hasArea);
         float textX;
         int textY;
         var advance = (int)Rounding.Round(shape.Advance * scale);
@@ -184,8 +174,8 @@ internal static class GlyphMerger
             advance = bg.Advance;
         if (hasArea)
         {
-            var centerX = ((shape.Area.X1 + shape.Area.X2) / 2 * scale) + (def.TextOffsetX * pixelScale);
-            var centerY = baselineY - ((ShapeBaselineY - ((shape.Area.Y1 + shape.Area.Y2) / 2)) * scale) + (def.TextOffsetY * pixelScale);
+            var centerX = ((shape.Area.X1 + shape.Area.X2) / 2 * scale) + (merging.TextOffsetX * pixelScale);
+            var centerY = baselineY - ((ShapeBaselineY - ((shape.Area.Y1 + shape.Area.Y2) / 2)) * scale) + (merging.TextOffsetY * pixelScale);
             textX = centerX - ((layout.InkX1 + layout.InkX2) / 2);
 
             // Letters and digits are centered by the capitals' height, so they line up across glyphs; symbols such as +
@@ -197,8 +187,8 @@ internal static class GlyphMerger
         else
         {
             // Without a shape, the text sits on the element's baseline.
-            textX = def.TextOffsetX * pixelScale;
-            textY = (int)Rounding.Round(baselineY - font.Ascent + (def.TextOffsetY * pixelScale));
+            textX = merging.TextOffsetX * pixelScale;
+            textY = (int)Rounding.Round(baselineY - font.Ascent + (merging.TextOffsetY * pixelScale));
             if (!hasShape)
                 advance = layout.AdvanceWidth;
         }
@@ -212,12 +202,12 @@ internal static class GlyphMerger
     /// </summary>
     private static RasterGlyph Compose(
         GlyphMergeMapping mapping,
-        Shape shape,
+        GlyphShape shape,
         RasterGlyph? raster,
         bool hasShape,
         float scale,
         float baselineY,
-        Layout layout,
+        TextLayout layout,
         IMergeTextFont font,
         float textX,
         int textY,
@@ -304,12 +294,12 @@ internal static class GlyphMerger
     /// Lines are aligned by their ink when the text is put in a shape, else by their advances, keeping the side bearings
     /// as they are in text of the font. Coordinates are from the top of the first line.
     /// </summary>
-    private static Layout LayOut(IMergeTextFont font, string[] lines, GlyphMergingStruct def, float pixelScale, bool alignByInk)
+    private TextLayout LayOut(IMergeTextFont font, string[] lines, float pixelScale, bool alignByInk)
     {
-        var letterSpacing = (int)Rounding.Round(def.LetterSpacing * pixelScale);
+        var letterSpacing = (int)Rounding.Round(merging.LetterSpacing * pixelScale);
         var laidOut = new List<MergeTextLine>();
         var maxInkWidth = 0f;
-        var res = new Layout();
+        var res = new TextLayout();
         foreach (var text in lines)
         {
             var available = string.Concat(text.EnumerateRunes().Where(font.Has).Select(r => r.ToString()));
@@ -322,7 +312,7 @@ internal static class GlyphMerger
         // The capitals' height, from H's ink.
         var h = font.Has(new('H')) ? font.LayOut("H", 0) : null;
         var capHeight = h is not null && h.InkY1 < h.InkY2 ? font.Ascent - h.InkY1 : (int)Rounding.Round(font.Ascent * 0.7f);
-        var lineAdvance = (int)Rounding.Round((capHeight * StackedLineAdvance) + (def.LineSpacing * pixelScale));
+        var lineAdvance = (int)Rounding.Round((capHeight * StackedLineAdvance) + (merging.LineSpacing * pixelScale));
 
         (res.InkX1, res.InkX2, res.InkY1, res.InkY2) = (float.MaxValue, float.MinValue, int.MaxValue, int.MinValue);
         for (var i = 0; i < laidOut.Count; i++)
@@ -332,7 +322,7 @@ internal static class GlyphMerger
             var lineWidth = alignByInk ? ix2 - ix1 : line.Width;
             var maxWidth = alignByInk ? maxInkWidth : res.AdvanceWidth;
             var shift = alignByInk ? -ix1 : 0;
-            shift += def.LineAlignment switch
+            shift += merging.LineAlignment switch
             {
                 MergeLineAlignment.Center => (maxWidth - lineWidth) / 2,
                 MergeLineAlignment.Right => maxWidth - lineWidth,
@@ -363,9 +353,9 @@ internal static class GlyphMerger
     /// text, which some shapes are sized by; <paramref name="size"/> is the font's, at which the game's glyphs may say
     /// where the shape goes; and an underlined IME box has a bar cut out at its lower left, with the text right of it.
     /// </summary>
-    private static Shape MakeShape(MergeShape kind, int characters, float size, bool underline)
+    private static GlyphShape MakeShape(MergeShape kind, int characters, float size, bool underline)
     {
-        var s = new Shape();
+        var s = new GlyphShape();
         var specs = GlyphMergeShapes.Shapes;
         if (!specs.TryGetProperty(GlyphMergeShapes.NameOf(kind), out var spec))
             return s;
@@ -670,7 +660,7 @@ internal static class GlyphMerger
     }
 
     /// <summary>A shape: its advance, outline, the area its text is fitted and centered in, and whether it draws the text.</summary>
-    private sealed class Shape
+    private sealed class GlyphShape
     {
         public float Advance { get; set; }
 
@@ -682,7 +672,7 @@ internal static class GlyphMerger
     }
 
     /// <summary>A laid out text: its lines and where they go (x shift, top), and its ink and capital lines from the first line's top.</summary>
-    private sealed class Layout
+    private sealed class TextLayout
     {
         public List<(MergeTextLine Line, float Shift, int Y)> Lines { get; } = [];
 

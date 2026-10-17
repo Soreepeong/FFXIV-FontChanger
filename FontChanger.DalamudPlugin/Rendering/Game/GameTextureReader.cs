@@ -34,9 +34,9 @@ internal sealed unsafe class GameTextureReader : IDisposable
     private ComPtr<ID3D11DeviceContext> _context;
 
     /// <summary>Gets whether a texture's pixels can be read: it has a format game font textures use.</summary>
-    public static bool CanRead(FFXIVClientStructs.Interop.Pointer<KernelTexture> texture)
+    public static bool CanRead(KernelTexture* texture)
     {
-        var resource = (ID3D11Texture2D*)texture.Value->D3D11Texture2D;
+        var resource = (ID3D11Texture2D*)texture->D3D11Texture2D;
         if (resource is null)
             return false;
         D3D11_TEXTURE2D_DESC desc;
@@ -45,11 +45,11 @@ internal sealed unsafe class GameTextureReader : IDisposable
     }
 
     /// <summary>Reads a rectangle of a plane of a texture as 8-bit coverage.</summary>
-    public byte[] Read(FFXIVClientStructs.Interop.Pointer<KernelTexture> texture, int x, int y, int width, int height, int plane)
+    public byte[] Read(KernelTexture* texture, int x, int y, int width, int height, int plane)
     {
         var alpha = new byte[width * height];
         var stride = width;
-        var resource = (ID3D11Texture2D*)texture.Value->D3D11Texture2D;
+        var resource = (ID3D11Texture2D*)texture->D3D11Texture2D;
         D3D11_TEXTURE2D_DESC desc;
         resource->GetDesc(&desc);
         width = Math.Min(width, (int)desc.Width - x);

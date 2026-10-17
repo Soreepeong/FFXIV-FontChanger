@@ -88,7 +88,7 @@ internal static unsafe class GlyphRunCollector
             using var face = default(ComPtr<IDWriteFontFace5>);
             var iid = IID.IID_IDWriteFontFace5;
             run->fontFace->QueryInterface(&iid, (void**)face.GetAddressOf()).ThrowOnError();
-            Unsafe.AsRef<IGlyphRunSink>(context).OnGlyphRun(baselineX, face.Get(), in *run, in *description);
+            Unsafe.AsRef<IGlyphRunSink>(context).OnGlyphRun(face.Get(), in *run, in *description);
             return S.S_OK;
         }
         catch (Exception ex)
