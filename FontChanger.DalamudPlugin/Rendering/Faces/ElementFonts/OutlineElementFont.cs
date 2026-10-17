@@ -37,7 +37,7 @@ internal sealed unsafe class OutlineElementFont : IElementFont
     // References to the faces compared in _sameFonts, so their pointers aren't reused.
     private readonly List<ComPtr<IDWriteFontFace5>> _comparedFaces = [];
     private Dictionary<uint, int>? _baselines;
-    private HashSet<int>? _codepoints;
+    private HashSet<Rune>? _codepoints;
     private ComPtr<IDWriteTypography> _typography;
     private bool _typographyMade;
 
@@ -96,11 +96,11 @@ internal sealed unsafe class OutlineElementFont : IElementFont
         return this.Font.Font->HasCharacter((uint)rune.Value, &exists).SUCCEEDED && exists;
     }
 
-    public IEnumerable<int> Codepoints => this._codepoints ??= this.ReadCodepoints();
+    public IEnumerable<Rune> Codepoints => this._codepoints ??= this.ReadCodepoints();
 
-    private HashSet<int> ReadCodepoints()
+    private HashSet<Rune> ReadCodepoints()
     {
-        var res = new HashSet<int>();
+        var res = new HashSet<Rune>();
         var face = this.Font.Face;
         uint count;
         face->GetUnicodeRanges(0, null, &count);
@@ -114,7 +114,10 @@ internal sealed unsafe class OutlineElementFont : IElementFont
         foreach (var r in ranges.AsSpan(0, (int)count))
         {
             for (var c = r.first; c <= r.last; c++)
-                res.Add((int)c);
+            {
+                if (Rune.IsValid(c))
+                    res.Add(new(c));
+            }
         }
 
         return res;

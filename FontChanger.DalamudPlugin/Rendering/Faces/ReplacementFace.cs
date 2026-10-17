@@ -284,6 +284,12 @@ internal sealed unsafe class ReplacementFace : IDisposable
         IElementFont font;
         switch (def.Renderer)
         {
+            // FontChanger's game font elements name a family, drawn from the game's files (an empty font if they can't be
+            // read); those made here name none, and use the game font being replaced.
+            case Renderer.Game when def.Lookup.Name.Length != 0:
+                font = (IElementFont?)FontDataElementFont.Create(def, faceName) ?? new EmptyElementFont(def.Size, def.EmptyAscent, def.EmptyLineHeight);
+                break;
+
             case Renderer.Game:
                 font = GameElementFont.Instance;
                 break;
@@ -303,7 +309,8 @@ internal sealed unsafe class ReplacementFace : IDisposable
                 break;
         }
 
-        if (def.GlyphMerging is not { } merging)
+        // As in FontChanger, glyphs are merged only around fonts that draw outlines or images.
+        if (def.GlyphMerging is not { } merging || def.Renderer is not (Renderer.DirectWrite or Renderer.FreeType or Renderer.GlyphImages))
             return font;
 
         // Texts are drawn with the element's font; glyph images draw them with the font the lookup names, if any, else

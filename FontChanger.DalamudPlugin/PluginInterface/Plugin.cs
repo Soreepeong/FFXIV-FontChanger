@@ -122,6 +122,9 @@ public sealed class Plugin : IAsyncDalamudPlugin
     internal static ITextureProvider TextureProvider { get; private set; } = null!;
 
     [PluginService]
+    internal static IDataManager DataManager { get; private set; } = null!;
+
+    [PluginService]
     internal static IPluginLog Log { get; private set; } = null!;
 
     [PluginService]
