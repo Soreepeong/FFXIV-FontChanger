@@ -14,26 +14,35 @@ namespace FontChanger.DalamudPlugin.Utilities;
 
 public static unsafe class GameUtf8
 {
-    public static uint Pack(Rune c) => Pack((uint)c.Value);
-
-    public static uint Pack(uint c) => c switch
+    public static uint Pack(Rune rune)
     {
-        < 0x80 => c,
-        < 0x800 => 0xC080u | ((c << 2) & 0x1F00) | (c & 0x3F),
-        < 0x10000 => 0xE08080u | ((c << 4) & 0x0F0000) | ((c << 2) & 0x3F00) | (c & 0x3F),
-        _ => 0xF0808080u | ((c << 6) & 0x07000000) | ((c << 4) & 0x3F0000) | ((c << 2) & 0x3F00) | (c & 0x3F),
-    };
+        var c = (uint)rune.Value;
+        return c switch
+        {
+            < 0x80 => c,
+            < 0x800 => 0xC080u | ((c << 2) & 0x1F00) | (c & 0x3F),
+            < 0x10000 => 0xE08080u | ((c << 4) & 0x0F0000) | ((c << 2) & 0x3F00) | (c & 0x3F),
+            < 0x110000 => 0xF0808080u | ((c << 6) & 0x07000000) | ((c << 4) & 0x3F0000) | ((c << 2) & 0x3F00) | (c & 0x3F),
+            _ => Pack(Rune.ReplacementChar),
+        };
+    }
 
-    public static uint Pack(byte* p) => p[0] switch
+    public static uint Pack(byte* p)
     {
-        0 => 0,
-        < 0x80 => p[0],
-        < 0xC0 => (uint)Rune.ReplacementChar.Value,
-        < 0xE0 => BinaryPrimitives.ReadUInt16BigEndian(new(p, 2)),
-        < 0xF0 => ((uint)p[0] << 16) | ((uint)p[1] << 8) | p[2],
-        < 0xF8 => BinaryPrimitives.ReadUInt32BigEndian(new(p, 4)),
-        _ => (uint)Rune.ReplacementChar.Value,
-    };
+        if (*p < 0x80)
+            return *p;
+        var length = CharacterLength(p);
+        if (*p is < 0xC0 or >= 0xF8 || length == 0)
+            return Pack(Rune.ReplacementChar);
+
+        var value = 0u;
+        for (var i = 0; i < length; i++)
+            value = (value << 8) | p[i];
+        return value;
+    }
+
+    public static bool TryDecode(byte* p, int length, out Rune rune) =>
+        Rune.DecodeFromUtf8(new(p, length), out rune, out var consumed) == OperationStatus.Done && consumed == length;
 
     public static bool TryUnpack(uint value, out Rune rune)
     {
@@ -58,8 +67,13 @@ public static unsafe class GameUtf8
         _ => 1,
     };
 
-    public static bool TryReadInteger(byte* p, out int value, out int length) =>
-        SeExpressionUtilities.TryDecodeInt(new ReadOnlySpan<byte>(p, 5), out value, out length);
+    public static bool TryReadInteger(byte* p, out int value, out int length)
+    {
+        var available = 0;
+        while (available < 5 && p[available] != 0)
+            available++;
+        return SeExpressionUtilities.TryDecodeInt(new ReadOnlySpan<byte>(p, available), out value, out length);
+    }
 
     public static int MacroLength(byte* p)
     {

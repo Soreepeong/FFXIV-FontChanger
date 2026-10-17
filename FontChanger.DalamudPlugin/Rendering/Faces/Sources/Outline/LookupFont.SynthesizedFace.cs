@@ -8,7 +8,7 @@ using FontChanger.Presets.Utilities;
 
 using TerraFX.Interop.DirectX;
 
-namespace FontChanger.DalamudPlugin.Rendering.Fonts;
+namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources.Outline;
 
 internal sealed partial class LookupFont
 {

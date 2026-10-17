@@ -10,7 +10,6 @@ using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Utilities;
 
 using TerraFX.Interop.DirectX;
-using TerraFX.Interop.Windows;
 
 namespace FontChanger.DalamudPlugin.Rendering.Shaders;
 
@@ -27,45 +26,38 @@ internal sealed unsafe partial class EdgeShader : IDisposable
 
     private delegate byte LoadShadersDelegate(AtkServer* server);
 
-    public float? Softness
+    /// <summary>Uses the plugin's edge shader with a softness, or (null) the game's.</summary>
+    public void SetSoftness(float? value)
     {
-        get
+        Misc.DebugAssertMainThread();
+
+        this._used = value.HasValue;
+        if (value is not { } softness)
         {
-            Misc.DebugAssertMainThread();
-            return this._used ? this._softness : null;
+            this.Restore();
+            return;
         }
-        set
+
+        if (this._loadShadersHook is null)
         {
-            Misc.DebugAssertMainThread();
-
-            this._used = value.HasValue;
-            if (value is not { } softness)
-            {
-                this.Restore();
-                return;
-            }
-
-            if (this._loadShadersHook is null)
-            {
-                var loadShaders = AtkServer.Addresses.LoadShaders.Value;
-                this._loadShadersHook = Plugin.GameInterop.HookFromAddress<LoadShadersDelegate>(loadShaders, this.LoadShadersDetour);
-                this._loadShadersHook.Enable();
-            }
-
-            if (this._swap.HasPluginShader && softness != this._softness)
-            {
-                this.Restore();
-                this._swap.ReleaseShader();
-            }
-
-            this._softness = softness;
-
-            // Before the game has loaded its shaders, LoadShadersDetour installs it once it does.
-            if (!this.CreateFromGame())
-                return;
-
-            this.Install();
+            var loadShaders = AtkServer.Addresses.LoadShaders.Value;
+            this._loadShadersHook = Plugin.GameInterop.HookFromAddress<LoadShadersDelegate>(loadShaders, this.LoadShadersDetour);
+            this._loadShadersHook.Enable();
         }
+
+        if (this._swap.PluginShader && softness != this._softness)
+        {
+            this.Restore();
+            this._swap.PluginShader.Reset();
+        }
+
+        this._softness = softness;
+
+        // Before the game has loaded its shaders, LoadShadersDetour installs it once it does.
+        if (!this.CreateFromGame())
+            return;
+
+        this.Install();
     }
 
     public void Dispose()
@@ -73,14 +65,6 @@ internal sealed unsafe partial class EdgeShader : IDisposable
         this._loadShadersHook?.Dispose();
         this.Restore();
         this._swap.Dispose();
-    }
-
-    private static ComPtr<ID3D11PixelShader> Create(ID3D11PixelShader* game, float softness)
-    {
-        var code = PixelShaderSwap.ReadShaderCode("FontChanger.DalamudPlugin.Rendering.Shaders.FontEdgePS.cso");
-        if (!PixelShaderSwap.PatchConstants(code, (Sentinel, softness)))
-            Plugin.Log.Error(null, "Missing placeholder variables");
-        return PixelShaderSwap.CreateShader(game, code);
     }
 
     private static PixelShader* GetEdgeShaderObjectOrNull(bool checkFontEdgePs)
@@ -97,12 +81,16 @@ internal sealed unsafe partial class EdgeShader : IDisposable
 
     private bool CreateFromGame()
     {
-        if (this._swap.HasPluginShader)
+        if (this._swap.PluginShader)
             return true;
         var target = GetEdgeShaderObjectOrNull(true);
         if (target is null)
             return false;
-        this._swap.PluginShader = Create((ID3D11PixelShader*)target->DirectXObject, this._softness);
+
+        var code = PixelShaderSwap.ReadShaderCode("FontChanger.DalamudPlugin.Rendering.Shaders.FontEdgePS.cso");
+        if (!PixelShaderSwap.PatchConstants(code, (Sentinel, this._softness)))
+            Plugin.Log.Error(null, "Missing placeholder variables");
+        this._swap.PluginShader.Attach(PixelShaderSwap.CreateShader((ID3D11PixelShader*)target->DirectXObject, code).Detach());
         return true;
     }
 

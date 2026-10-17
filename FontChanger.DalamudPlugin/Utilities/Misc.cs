@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -10,8 +8,6 @@ using System.Threading;
 
 using Dalamud.Utility;
 
-using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
-using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.STD;
 
@@ -42,12 +38,6 @@ public static unsafe class Misc
             : found.Value;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string GetFileName(this in ResourceHandle handle) =>
-        handle.FileName.Length is > 0 and <= 4096
-            ? Encoding.UTF8.GetString(handle.FileName.AsSpan(0, (int)handle.FileName.Length))
-            : string.Empty;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static nint FieldOffsetOf(this Type type, string fieldName) =>
         type.GetField(fieldName)?.GetCustomAttribute<FieldOffsetAttribute>()?.Value
         ?? throw new InvalidOperationException($"{type.Name}.{fieldName} has no FieldOffset attribute.");
@@ -59,15 +49,16 @@ public static unsafe class Misc
             Marshal.ThrowExceptionForHR(hr.Value);
     }
 
-    /// <summary>Makes a font's face as an IDWriteFontFace5 (IDWriteFont3 makes an IDWriteFontFace3).</summary>
+    public static bool EndsWithAsciiIgnoreCase(this in StdString str, ReadOnlySpan<char> other) =>
+        str.Length >= (ulong)other.Length && Ascii.EqualsIgnoreCase(str.AsSpan((long)str.Length - other.Length, other.Length), other);
+
     public static HRESULT CreateFontFace(this ref IDWriteFont3 font, IDWriteFontFace5** face)
     {
-        using var face3 = default(ComPtr<IDWriteFontFace3>);
+        using var face3 = default(MyComPtr<IDWriteFontFace3>);
         var hr = font.CreateFontFace(face3.GetAddressOf());
         return hr.FAILED ? hr : face3.CopyTo(face);
     }
 
-    /// <summary>Finds the font of a family closest to a weight, stretch and style, as an IDWriteFont3.</summary>
     public static HRESULT GetFirstMatchingFont(
         this ref IDWriteFontFamily2 family,
         DWRITE_FONT_WEIGHT weight,
@@ -75,85 +66,26 @@ public static unsafe class Misc
         DWRITE_FONT_STYLE style,
         IDWriteFont3** font)
     {
-        using var matched = default(ComPtr<IDWriteFont>);
+        using var matched = default(MyComPtr<IDWriteFont>);
         var hr = family.GetFirstMatchingFont(weight, stretch, style, matched.GetAddressOf());
         return hr.FAILED ? hr : matched.CopyTo(font);
     }
 
-    public static bool TryFind<T, TContext>(this List<T> list, TContext context, Func<T, TContext, bool> predicate, [MaybeNullWhen(false)] out T found)
+    extension<T>(ref T child) where T : unmanaged, ID3D11DeviceChild.Interface
     {
-        foreach (var item in list)
+        public MyComPtr<ID3D11Device> GetDevice()
         {
-            if (predicate(item, context))
-            {
-                found = item;
-                return true;
-            }
+            var device = default(MyComPtr<ID3D11Device>);
+            child.GetDevice(device.GetAddressOf());
+            return device;
         }
 
-        found = default;
-        return false;
-    }
-
-    public static bool EndsWithAsciiIgnoreCase(this in StdString str, ReadOnlySpan<char> other) =>
-        str.Length >= (ulong)other.Length && Ascii.EqualsIgnoreCase(str.AsSpan((long)str.Length - other.Length, other.Length), other);
-
-    extension<T>(ComPtr<T> ptr) where T : unmanaged, IUnknown.Interface
-    {
-        public bool IsNull
+        public MyComPtr<ID3D11DeviceContext> GetImmediateContext()
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ptr.Get() is null;
+            using var device = child.GetDevice();
+            var context = default(MyComPtr<ID3D11DeviceContext>);
+            device.Value->GetImmediateContext(context.GetAddressOf());
+            return context;
         }
-    }
-
-    public static string Describe(this D3D11_BLEND_OP op) => op switch
-    {
-        D3D11_BLEND_OP.D3D11_BLEND_OP_ADD => "ADD",
-        D3D11_BLEND_OP.D3D11_BLEND_OP_SUBTRACT => "SUBTRACT",
-        D3D11_BLEND_OP.D3D11_BLEND_OP_REV_SUBTRACT => "REV_SUBTRACT",
-        D3D11_BLEND_OP.D3D11_BLEND_OP_MIN => "MIN",
-        D3D11_BLEND_OP.D3D11_BLEND_OP_MAX => "MAX",
-        _ => $"unknown(0x{(uint)op:08X})",
-    };
-
-    public static string Describe(this D3D11_BLEND blend) => blend switch
-    {
-        D3D11_BLEND.D3D11_BLEND_ZERO => "ZERO",
-        D3D11_BLEND.D3D11_BLEND_ONE => "ONE",
-        D3D11_BLEND.D3D11_BLEND_SRC_COLOR => "SRC_COLOR",
-        D3D11_BLEND.D3D11_BLEND_INV_SRC_COLOR => "INV_SRC_COLOR",
-        D3D11_BLEND.D3D11_BLEND_SRC_ALPHA => "SRC_ALPHA",
-        D3D11_BLEND.D3D11_BLEND_INV_SRC_ALPHA => "INV_SRC_ALPHA",
-        D3D11_BLEND.D3D11_BLEND_DEST_ALPHA => "DEST_ALPHA",
-        D3D11_BLEND.D3D11_BLEND_INV_DEST_ALPHA => "INV_DEST_ALPHA",
-        D3D11_BLEND.D3D11_BLEND_DEST_COLOR => "DEST_COLOR",
-        D3D11_BLEND.D3D11_BLEND_INV_DEST_COLOR => "INV_DEST_COLOR",
-        D3D11_BLEND.D3D11_BLEND_SRC_ALPHA_SAT => "SRC_ALPHA_SAT",
-        D3D11_BLEND.D3D11_BLEND_BLEND_FACTOR => "BLEND_FACTOR",
-        D3D11_BLEND.D3D11_BLEND_INV_BLEND_FACTOR => "INV_BLEND_FACTOR",
-        D3D11_BLEND.D3D11_BLEND_SRC1_COLOR => "SRC1_COLOR",
-        D3D11_BLEND.D3D11_BLEND_INV_SRC1_COLOR => "INV_SRC1_COLOR",
-        D3D11_BLEND.D3D11_BLEND_SRC1_ALPHA => "SRC1_ALPHA",
-        D3D11_BLEND.D3D11_BLEND_INV_SRC1_ALPHA => "INV_SRC1_ALPHA",
-        _ => $"unknown(0x{(uint)blend:08X})",
-    };
-
-    extension(PackedBlendStateDesc desc)
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool ByteEquals(PackedBlendStateDesc other) =>
-            Unsafe.As<PackedBlendStateDesc, uint>(ref Unsafe.AsRef(in desc))
-            == Unsafe.As<PackedBlendStateDesc, uint>(ref Unsafe.AsRef(in other));
-
-        public string Describe() =>
-            $"BlendState({(desc.BlendEnable ? "enabled" : "disabled")}" +
-            $", op={((D3D11_BLEND_OP)desc.BlendOp).Describe()}" +
-            $"(src={((D3D11_BLEND)desc.SrcBlend).Describe()}" +
-            $", desc={((D3D11_BLEND)desc.DestBlend).Describe()}" +
-            $"), alpha={desc.BlendOpAlpha}" +
-            $"(src={((D3D11_BLEND)desc.SrcBlendAlpha).Describe()}" +
-            $", desc={((D3D11_BLEND)desc.DestBlendAlpha).Describe()}" +
-            $"))";
     }
 }

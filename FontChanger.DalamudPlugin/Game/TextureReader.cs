@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 
+using FontChanger.DalamudPlugin.Rendering;
 using FontChanger.DalamudPlugin.Utilities;
 
 using TerraFX.Interop.DirectX;
-using TerraFX.Interop.Windows;
 
 using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
 
@@ -13,25 +13,19 @@ using static TerraFX.Interop.DirectX.D3D11_MAP;
 using static TerraFX.Interop.DirectX.D3D11_USAGE;
 using static TerraFX.Interop.DirectX.DXGI_FORMAT;
 
-namespace FontChanger.DalamudPlugin.Rendering.Game;
+namespace FontChanger.DalamudPlugin.Game;
 
 /// <summary>
 /// Reads glyph coverage out of the game's font textures on the GPU, through a staging texture per texture format. On the
 /// thread that calls Present.
 /// </summary>
-internal sealed unsafe class GameTextureReader : IDisposable
+internal sealed unsafe class TextureReader : IDisposable
 {
     // A game glyph's fields are bytes, so a glyph fits.
     private const int StagingSize = 256;
 
-    // A plane's bit shift in a B4G4R4A4 texel, and its byte offset in a B8G8R8A8 or R8G8B8A8 texel: planes are the R, G,
-    // B and A channels, as in the atlas.
-    private static readonly int[] Shifts4444 = [8, 4, 0, 12];
-    private static readonly int[] OffsetsBgra = [2, 1, 0, 3];
-    private static readonly int[] OffsetsRgba = [0, 1, 2, 3];
-
-    private readonly Dictionary<DXGI_FORMAT, ComPtr<ID3D11Texture2D>> _staging = [];
-    private ComPtr<ID3D11DeviceContext> _context;
+    private readonly Dictionary<DXGI_FORMAT, MyComPtr<ID3D11Texture2D>> _staging = [];
+    private MyComPtr<ID3D11DeviceContext> _context;
 
     /// <summary>Gets whether a texture's pixels can be read: it has a format game font textures use.</summary>
     public static bool CanRead(KernelTexture* texture)
@@ -68,25 +62,25 @@ internal sealed unsafe class GameTextureReader : IDisposable
             bottom = (uint)(y + height),
             back = 1,
         };
-        this._context.Get()->CopySubresourceRegion(staging, 0, 0, 0, 0, (ID3D11Resource*)resource, 0, &box);
+        this._context.Value->CopySubresourceRegion(staging, 0, 0, 0, 0, (ID3D11Resource*)resource, 0, &box);
 
         D3D11_MAPPED_SUBRESOURCE mapped;
-        this._context.Get()->Map(staging, 0, D3D11_MAP_READ, 0, &mapped).ThrowOnError();
+        this._context.Value->Map(staging, 0, D3D11_MAP_READ, 0, &mapped).ThrowOnError();
         try
         {
             for (var row = 0; row < height; row++)
             {
                 var src = (byte*)mapped.pData + (row * mapped.RowPitch);
                 var dst = alpha.AsSpan(row * stride, width);
+                // Planes are the R, G, B and A channels, as in the atlas.
                 if (bytes == 2)
                 {
-                    var shift = Shifts4444[plane];
                     for (var col = 0; col < width; col++)
-                        dst[col] = (byte)(((((ushort*)src)[col] >> shift) & 0xF) * 17);
+                        dst[col] = GlyphAtlas.Get4444(((ushort*)src)[col], plane);
                 }
                 else
                 {
-                    var offset = (desc.Format is DXGI_FORMAT_R8G8B8A8_UNORM ? OffsetsRgba : OffsetsBgra)[plane];
+                    var offset = desc.Format is DXGI_FORMAT_R8G8B8A8_UNORM ? plane : GlyphAtlas.BgraOffset(plane);
                     for (var col = 0; col < width; col++)
                         dst[col] = src[(col * 4) + offset];
                 }
@@ -94,7 +88,7 @@ internal sealed unsafe class GameTextureReader : IDisposable
         }
         finally
         {
-            this._context.Get()->Unmap(staging, 0);
+            this._context.Value->Unmap(staging, 0);
         }
 
         return alpha;
@@ -103,7 +97,7 @@ internal sealed unsafe class GameTextureReader : IDisposable
     public void Dispose()
     {
         foreach (var texture in this._staging.Values)
-            texture.Get()->Release();
+            texture.Value->Release();
         this._staging.Clear();
         this._context.Dispose();
     }
@@ -118,12 +112,14 @@ internal sealed unsafe class GameTextureReader : IDisposable
     private ID3D11Resource* GetStaging(ID3D11Texture2D* source, DXGI_FORMAT format)
     {
         if (this._staging.TryGetValue(format, out var existing))
-            return (ID3D11Resource*)existing.Get();
+            return (ID3D11Resource*)existing.Value;
 
-        using var device = default(ComPtr<ID3D11Device>);
-        source->GetDevice(device.GetAddressOf());
-        if (this._context.IsNull)
-            device.Get()->GetImmediateContext(this._context.GetAddressOf());
+        using var device = source->GetDevice();
+        if (!this._context)
+        {
+            fixed (ID3D11DeviceContext** context = this._context)
+                device.Value->GetImmediateContext(context);
+        }
 
         var desc = new D3D11_TEXTURE2D_DESC
         {
@@ -136,9 +132,9 @@ internal sealed unsafe class GameTextureReader : IDisposable
             Usage = D3D11_USAGE_STAGING,
             CPUAccessFlags = (uint)D3D11_CPU_ACCESS_READ,
         };
-        var texture = default(ComPtr<ID3D11Texture2D>);
-        device.Get()->CreateTexture2D(&desc, null, texture.GetAddressOf()).ThrowOnError();
+        var texture = default(MyComPtr<ID3D11Texture2D>);
+        device.Value->CreateTexture2D(&desc, null, texture.GetAddressOf()).ThrowOnError();
         this._staging.Add(format, texture);
-        return (ID3D11Resource*)texture.Get();
+        return (ID3D11Resource*)texture.Value;
     }
 }

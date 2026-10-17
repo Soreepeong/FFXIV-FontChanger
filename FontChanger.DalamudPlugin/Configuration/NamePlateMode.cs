@@ -1,6 +1,6 @@
 namespace FontChanger.DalamudPlugin.Configuration;
 
-internal enum NamePlateMode
+public enum NamePlateMode
 {
     Game,
     BakedAtFullSize,

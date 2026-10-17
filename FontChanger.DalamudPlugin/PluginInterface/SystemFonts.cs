@@ -12,7 +12,7 @@ using TerraFX.Interop.Windows;
 
 using static TerraFX.Interop.DirectX.DirectX;
 
-namespace FontChanger.DalamudPlugin.Rendering.Fonts;
+namespace FontChanger.DalamudPlugin.PluginInterface;
 
 /// <summary>
 /// The system's fonts, measured for <see cref="FaceFromFont"/>. Its own DirectWrite factory, made when first used, is
@@ -21,8 +21,8 @@ namespace FontChanger.DalamudPlugin.Rendering.Fonts;
 internal sealed unsafe class SystemFonts : IDisposable
 {
     private readonly Lock _sync = new();
-    private ComPtr<IDWriteFactory7> _factory;
-    private ComPtr<IDWriteFontCollection3> _collection;
+    private MyComPtr<IDWriteFactory7> _factory;
+    private MyComPtr<IDWriteFontCollection3> _collection;
 
     /// <summary>Gets measurements of the font of a family closest to a weight, stretch and style; false if it isn't installed.</summary>
     public bool TryOpen(LookupStruct lookup, [NotNullWhen(true)] out Probe? probe)
@@ -30,39 +30,41 @@ internal sealed unsafe class SystemFonts : IDisposable
         probe = null;
         lock (this._sync)
         {
-            if (this._collection.IsNull)
+            if (!this._collection)
             {
                 var iid = IID.IID_IDWriteFactory7;
-                DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)this._factory.ReleaseAndGetAddressOf()).ThrowOnError();
+                this._factory.Reset();
+                fixed (IDWriteFactory7** factory = this._factory)
+                    DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)factory).ThrowOnError();
 
-                // Weight, stretch and style families, as GlyphRasterizer's.
-                using var collection = default(ComPtr<IDWriteFontCollection>);
-                this._factory.Get()->GetSystemFontCollection(collection.GetAddressOf(), BOOL.TRUE).ThrowOnError();
-                collection.CopyTo(this._collection.GetAddressOf()).ThrowOnError();
+                // Weight, stretch and style families, as FontServices's.
+                using var collection = default(MyComPtr<IDWriteFontCollection>);
+                this._factory.Value->GetSystemFontCollection(collection.GetAddressOf(), BOOL.TRUE).ThrowOnError();
+                collection.CopyTo(ref this._collection).ThrowOnError();
             }
 
             uint index;
             fixed (char* name = lookup.Name)
             {
                 BOOL exists;
-                if (this._collection.Get()->FindFamilyName(name, &index, &exists).FAILED || !exists)
+                if (this._collection.Value->FindFamilyName(name, &index, &exists).FAILED || !exists)
                     return false;
             }
 
-            using var family = default(ComPtr<IDWriteFontFamily2>);
-            if (this._collection.Get()->GetFontFamily(index, family.GetAddressOf()).FAILED)
+            using var family = default(MyComPtr<IDWriteFontFamily2>);
+            if (this._collection.Value->GetFontFamily(index, family.GetAddressOf()).FAILED)
                 return false;
-            using var font = default(ComPtr<IDWriteFont3>);
-            if (family.Get()->GetFirstMatchingFont(
+            using var font = default(MyComPtr<IDWriteFont3>);
+            if (family.Value->GetFirstMatchingFont(
                     (DWRITE_FONT_WEIGHT)lookup.Weight,
                     (DWRITE_FONT_STRETCH)lookup.Stretch,
                     (DWRITE_FONT_STYLE)lookup.Style,
                     font.GetAddressOf()).FAILED)
                 return false;
-            using var face = default(ComPtr<IDWriteFontFace5>);
-            if (font.Get()->CreateFontFace(face.GetAddressOf()).FAILED)
+            using var face = default(MyComPtr<IDWriteFontFace5>);
+            if (font.Value->CreateFontFace(face.GetAddressOf()).FAILED)
                 return false;
-            probe = new(face.Get());
+            probe = new(face.Value);
             return true;
         }
     }
@@ -81,12 +83,12 @@ internal sealed unsafe class SystemFonts : IDisposable
     {
         private readonly HashSet<int> _bitmapSizes = [];
         private readonly ushort _unitsPerEm;
-        private ComPtr<IDWriteFontFace5> _face;
+        private MyComPtr<IDWriteFontFace5> _face;
 
         /// <summary>Takes a reference of its own to the face.</summary>
         public Probe(IDWriteFontFace5* face)
         {
-            this._face = new(face);
+            this._face = new(face, true);
             DWRITE_FONT_METRICS metrics;
             face->GetMetrics(&metrics);
             this._unitsPerEm = metrics.designUnitsPerEm;
@@ -116,7 +118,8 @@ internal sealed unsafe class SystemFonts : IDisposable
         {
             ushort glyph;
             DWRITE_GLYPH_METRICS gm;
-            if (this._face.Get()->GetGlyphIndices((uint*)&rune, 1, &glyph).FAILED || glyph == 0 || this._face.Get()->GetDesignGlyphMetrics(&glyph, 1, &gm, BOOL.FALSE).FAILED)
+            if (this._face.Value->GetGlyphIndices((uint*)&rune, 1, &glyph).FAILED || glyph == 0 ||
+                this._face.Value->GetDesignGlyphMetrics(&glyph, 1, &gm, BOOL.FALSE).FAILED)
             {
                 box = default;
                 return false;
@@ -143,7 +146,7 @@ internal sealed unsafe class SystemFonts : IDisposable
             uint size;
             void* context;
             BOOL exists;
-            if (this._face.Get()->TryGetFontTable(table, &data, &size, &context, &exists).FAILED || !exists)
+            if (this._face.Value->TryGetFontTable(table, &data, &size, &context, &exists).FAILED || !exists)
                 return false;
             try
             {
@@ -167,7 +170,7 @@ internal sealed unsafe class SystemFonts : IDisposable
             }
             finally
             {
-                this._face.Get()->ReleaseFontTable(context);
+                this._face.Value->ReleaseFontTable(context);
             }
         }
     }

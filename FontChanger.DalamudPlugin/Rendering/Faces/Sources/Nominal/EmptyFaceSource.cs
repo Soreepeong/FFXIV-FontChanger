@@ -17,5 +17,5 @@ internal sealed class EmptyFaceSource(float size, float ascent, float lineHeight
     public override (int Ascent, int LineHeight) GetLineMetrics(float px) =>
         size > 0 ? ((int)Rounding.Round(ascent * px / size), (int)Rounding.Round(lineHeight * px / size)) : (0, 0);
 
-    public override RasterGlyph? RasterizeGlyph(float px, uint glyphId) => null;
+    protected override RasterGlyph? RasterizeGlyph(float px, uint glyphId) => null;
 }

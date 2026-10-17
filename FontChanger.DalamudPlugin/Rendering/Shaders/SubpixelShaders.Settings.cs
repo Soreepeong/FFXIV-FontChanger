@@ -17,28 +17,28 @@ internal sealed partial class SubpixelShaders
         public static SettingsRecord FromWindow(nint window) =>
             FromMonitor(window == 0 ? default : TerraFX.Interop.Windows.Windows.MonitorFromWindow((HWND)window, MONITOR.MONITOR_DEFAULTTONEAREST));
 
-        public static unsafe SettingsRecord FromMonitor(nint monitor)
+        private static unsafe SettingsRecord FromMonitor(nint monitor)
         {
             var res = new SettingsRecord();
             var geometry = DWRITE_PIXEL_GEOMETRY.DWRITE_PIXEL_GEOMETRY_RGB;
             try
             {
-                using var factory = default(ComPtr<IDWriteFactory7>);
-                using var created = default(ComPtr<IDWriteRenderingParams>);
-                using var parameters = default(ComPtr<IDWriteRenderingParams3>);
+                using var factory = default(MyComPtr<IDWriteFactory7>);
+                using var created = default(MyComPtr<IDWriteRenderingParams>);
+                using var parameters = default(MyComPtr<IDWriteRenderingParams3>);
                 var iid = IID.IID_IDWriteFactory7;
                 DirectX.DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)factory.GetAddressOf()).ThrowOnError();
                 if (monitor != 0)
-                    factory.Get()->CreateMonitorRenderingParams((HMONITOR)monitor, created.GetAddressOf()).ThrowOnError();
+                    factory.Value->CreateMonitorRenderingParams((HMONITOR)monitor, created.GetAddressOf()).ThrowOnError();
                 else
-                    factory.Get()->CreateRenderingParams(created.GetAddressOf()).ThrowOnError();
+                    factory.Value->CreateRenderingParams(created.GetAddressOf()).ThrowOnError();
                 created.CopyTo(parameters.GetAddressOf()).ThrowOnError();
-                geometry = parameters.Get()->GetPixelGeometry();
+                geometry = parameters.Value->GetPixelGeometry();
                 res = res with
                 {
-                    Level = Math.Clamp(parameters.Get()->GetClearTypeLevel(), 0, 1),
-                    Contrast = Math.Max(parameters.Get()->GetEnhancedContrast(), 0),
-                    Gamma = Math.Max(parameters.Get()->GetGamma(), 1),
+                    Level = Math.Clamp(parameters.Value->GetClearTypeLevel(), 0, 1),
+                    Contrast = Math.Max(parameters.Value->GetEnhancedContrast(), 0),
+                    Gamma = Math.Max(parameters.Value->GetGamma(), 1),
                 };
             }
             catch (Exception ex)

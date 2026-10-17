@@ -130,22 +130,16 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
     {
         var x0 = (int)MathF.Floor(this.Left * scale);
         var w = Math.Max(1, (int)MathF.Ceiling((this.Left + this.Width) * scale) - x0);
+        var columns = AreaWeights(x0, w, this.Left * scale, scale, this.Width);
         var alpha = new byte[w * this.Height];
         for (var y = 0; y < this.Height; y++)
         {
+            var src = this.Alpha.AsSpan(y * this.Width, this.Width);
             for (var x = 0; x < w; x++)
             {
-                var u0 = ((x0 + x) / scale) - this.Left;
-                var u1 = ((x0 + x + 1) / scale) - this.Left;
                 var sum = 0f;
-                for (var u = (int)MathF.Floor(u0); u < MathF.Ceiling(u1); u++)
-                {
-                    if (u < 0 || u >= this.Width)
-                        continue;
-                    var cover = Math.Min(u + 1, u1) - Math.Max(u, u0);
-                    sum += this.Alpha[(y * this.Width) + u] * cover;
-                }
-
+                foreach (var (i, weight) in columns[x])
+                    sum += weight * src[i];
                 alpha[(y * w) + x] = (byte)Math.Clamp(Rounding.Round(sum * scale), 0, 255);
             }
         }
@@ -168,19 +162,28 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
 
         if (x1 >= x2 || y1 >= y2)
             return this with { Left = 0, Top = 0, Width = 0, Height = 0, Alpha = [], Lcd = null };
-        var w = x2 - x1;
-        var alpha = new byte[w * (y2 - y1)];
-        for (var y = y1; y < y2; y++)
-            this.Alpha.AsSpan((y * this.Width) + x1, w).CopyTo(alpha.AsSpan((y - y1) * w));
-        byte[]? lcd = null;
-        if (this.Lcd is { } source)
+        return this.Reboxed(this.Left + x1, this.Top + y1, x2 - x1, y2 - y1);
+    }
+
+    /// <summary>
+    /// Gets the glyph's coverage in another box (relative to the pen): what is outside it cut off, and the room it adds
+    /// empty.
+    /// </summary>
+    public RasterGlyph Reboxed(int left, int top, int width, int height)
+    {
+        var alpha = new byte[width * height];
+        var lcd = this.Lcd is null ? null : new byte[width * height * 3];
+        int x1 = Math.Max(left, this.Left), x2 = Math.Min(left + width, this.Left + this.Width);
+        for (var y = Math.Max(top, this.Top); y < Math.Min(top + height, this.Top + this.Height) && x1 < x2; y++)
         {
-            lcd = new byte[alpha.Length * 3];
-            for (var y = y1; y < y2; y++)
-                source.AsSpan(((y * this.Width) + x1) * 3, w * 3).CopyTo(lcd.AsSpan((y - y1) * w * 3));
+            var from = ((y - this.Top) * this.Width) + x1 - this.Left;
+            var to = ((y - top) * width) + x1 - left;
+            this.Alpha.AsSpan(from, x2 - x1).CopyTo(alpha.AsSpan(to));
+            if (lcd is not null)
+                this.Lcd!.AsSpan(from * 3, (x2 - x1) * 3).CopyTo(lcd.AsSpan(to * 3));
         }
 
-        return this with { Left = this.Left + x1, Top = this.Top + y1, Width = w, Height = y2 - y1, Alpha = alpha, Lcd = lcd };
+        return this with { Left = left, Top = top, Width = width, Height = height, Alpha = alpha, Lcd = lcd };
     }
 
     /// <summary>
@@ -228,7 +231,7 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
     }
 
     /// <summary>As <see cref="BlitMax"/>, into 3 bytes a pixel; a glyph without Lcd gives its Alpha to all three.</summary>
-    public static void BlitMaxLcd(byte[] buffer, int width, int height, RasterGlyph g, int x, int y)
+    private static void BlitMaxLcd(byte[] buffer, int width, int height, RasterGlyph g, int x, int y)
     {
         for (var row = Math.Max(0, -y); row < g.Height && row + y < height; row++)
         {
@@ -241,6 +244,9 @@ internal readonly record struct RasterGlyph(int Advance, int Left, int Top, int 
             }
         }
     }
+
+    /// <summary>Makes the table an element's gamma maps coverage through; null for a gamma of 1 (or none).</summary>
+    public static byte[]? GammaTable(float gamma) => gamma != 1 && gamma > 0 ? CoverageTable(1 / gamma) : null;
 
     /// <summary>Makes a table mapping coverage to coverage to the power of <paramref name="exponent"/>.</summary>
     public static byte[] CoverageTable(float exponent)

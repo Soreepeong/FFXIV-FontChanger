@@ -4,7 +4,6 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 
-using FontChanger.DalamudPlugin.Rendering.Fonts;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
@@ -40,8 +39,6 @@ internal sealed partial class MergingFaceSource
         var designSize = def.Size;
         var pixelScale = designSize > 0 ? size / designSize : 1;
         var ascent = inner.GetLineMetrics(size).Ascent;
-        var images = rasterizer.Images;
-        var freeType = rasterizer.FreeType;
         var scale = size / ShapeUnitsPerEm;
         float baselineY = ascent;
 
@@ -89,20 +86,19 @@ internal sealed partial class MergingFaceSource
         else if (mapping.Shape == MergeShape.Custom && mapping.CustomSvg.Length != 0)
         {
             shape.Advance = mapping.CustomAdvance;
-            if (images is not null)
+
+            // Drawn with room around the line box, and trimmed to the ink.
+            var bx1 = (int)MathF.Floor(-ShapeUnitsPerEm * scale);
+            var bx2 = (int)MathF.Ceiling((Math.Max(0, mapping.CustomAdvance) + ShapeUnitsPerEm) * scale);
+            var by1 = (int)MathF.Floor(baselineY - (2 * ShapeUnitsPerEm * scale));
+            var by2 = (int)MathF.Ceiling(baselineY + (ShapeUnitsPerEm * scale));
+            var coverage = services.Images.DrawSvg(mapping.CustomSvg, [scale, 0, -bx1, 0, scale, baselineY - (ShapeBaselineY * scale) - by1], bx2 - bx1,
+                by2 - by1);
+            var trimmed = new RasterGlyph(0, bx1, by1, bx2 - bx1, by2 - by1, coverage).Trimmed();
+            if (trimmed.Width != 0)
             {
-                // Drawn with room around the line box, and trimmed to the ink.
-                var bx1 = (int)MathF.Floor(-ShapeUnitsPerEm * scale);
-                var bx2 = (int)MathF.Ceiling((Math.Max(0, mapping.CustomAdvance) + ShapeUnitsPerEm) * scale);
-                var by1 = (int)MathF.Floor(baselineY - (2 * ShapeUnitsPerEm * scale));
-                var by2 = (int)MathF.Ceiling(baselineY + (ShapeUnitsPerEm * scale));
-                var coverage = images.DrawSvg(mapping.CustomSvg, [scale, 0, -bx1, 0, scale, baselineY - (ShapeBaselineY * scale) - by1], bx2 - bx1, by2 - by1);
-                var trimmed = new RasterGlyph(0, bx1, by1, bx2 - bx1, by2 - by1, coverage).Trimmed();
-                if (trimmed.Width != 0)
-                {
-                    raster = trimmed;
-                    SetAreaFromPixels(trimmed);
-                }
+                raster = trimmed;
+                SetAreaFromPixels(trimmed);
             }
         }
         else if (mapping.Shape == MergeShape.Custom)
@@ -193,14 +189,14 @@ internal sealed partial class MergingFaceSource
                 advance = layout.AdvanceWidth;
         }
 
-        return Compose(mapping, shape, raster, hasShape, scale, baselineY, layout, font, textX, textY, advance, freeType);
+        return this.Compose(mapping, shape, raster, hasShape, scale, baselineY, layout, font, textX, textY, advance);
     }
 
     /// <summary>
     /// Draws the shape and the text, and combines them: the text over a shape that draws it, cut out of others (and drawn
     /// where it goes past the shape, by its text mode), or alone. Returned relative to the pen on the baseline.
     /// </summary>
-    private static RasterGlyph Compose(
+    private RasterGlyph Compose(
         GlyphMergeMapping mapping,
         GlyphShape shape,
         RasterGlyph? raster,
@@ -211,8 +207,7 @@ internal sealed partial class MergingFaceSource
         IMergeTextFont font,
         float textX,
         int textY,
-        int advance,
-        FreeTypeFonts? freeType)
+        int advance)
     {
         // The glyph's bounds: the shape's, and the text's where it can be seen.
         int x1 = int.MaxValue, y1 = int.MaxValue, x2 = int.MinValue, y2 = int.MinValue;
@@ -246,10 +241,10 @@ internal sealed partial class MergingFaceSource
         {
             RasterGlyph.BlitMax(shapeCoverage, width, height, shapeRaster, shapeRaster.Left - x1, shapeRaster.Top - y1);
         }
-        else if (hasShape && freeType is not null)
+        else if (hasShape)
         {
             var points = shape.Path.Points.Select(p => ((p.X * scale) - x1, baselineY - ((ShapeBaselineY - p.Y) * scale) - y1)).ToArray();
-            shapeCoverage = freeType.FillOutline(points, shape.Path.Tags.ToArray(), shape.Path.Ends.ToArray(), width, height);
+            shapeCoverage = services.FreeType.FillOutline(points, shape.Path.Tags.ToArray(), shape.Path.Ends.ToArray(), width, height);
         }
 
         foreach (var (line, shift, y) in layout.Lines)

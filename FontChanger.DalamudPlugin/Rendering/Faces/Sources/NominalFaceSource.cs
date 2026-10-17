@@ -12,11 +12,27 @@ namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources;
 /// </summary>
 internal abstract class NominalFaceSource : IFaceSource
 {
+    // Advances are those of the drawn glyphs, unless a source knows them otherwise: kept by size and glyph, with the
+    // glyphs drawn to measure them until they are drawn for good.
+    private readonly Dictionary<(float Px, uint Id), float> _advances = [];
+    private readonly Dictionary<(float Px, uint Id), RasterGlyph?> _measured = [];
+
     public abstract IEnumerable<Rune> Codepoints { get; }
 
     public abstract uint GetGlyphId(Rune rune);
 
-    public abstract float GetAdvance(float px, uint glyphId);
+    public virtual float GetAdvance(float px, uint glyphId)
+    {
+        if (!this._advances.TryGetValue((px, glyphId), out var advance))
+        {
+            var glyph = this.RasterizeGlyph(px, glyphId);
+            this._measured[(px, glyphId)] = glyph;
+            advance = glyph?.Advance ?? 0;
+            this._advances.Add((px, glyphId), advance);
+        }
+
+        return advance;
+    }
 
     public abstract (int Ascent, int LineHeight) GetLineMetrics(float px);
 
@@ -26,19 +42,12 @@ internal abstract class NominalFaceSource : IFaceSource
         return false;
     }
 
-    /// <summary>Draws a glyph at a size, relative to the pen on the baseline; null if there is none.</summary>
-    public abstract RasterGlyph? RasterizeGlyph(float px, uint glyphId);
-
-    /// <summary>Gets the kerning between two glyphs at a size, in pixels.</summary>
-    public virtual float GetKerning(float px, uint leftGlyphId, uint rightGlyphId) => 0;
-
     /// <summary>
     /// Shapes text one glyph per codepoint, each a cluster, at its advance and the kerning with the next; stops before a
     /// codepoint it has no glyph of.
     /// </summary>
     public int Shape(float px, ReadOnlySpan<char> text, ScriptToken script, List<ShapedCluster> clusters)
     {
-        var pen = 0f;
         var position = 0;
         ShapedCluster? last = null;
         while (position < text.Length)
@@ -51,16 +60,10 @@ internal abstract class NominalFaceSource : IFaceSource
 
             // The kerning with this glyph goes to the last one's advance.
             if (last is not null)
-            {
-                var k = this.GetKerning(px, last.GlyphIds[0], id);
-                last.Advances[0] += k;
-                pen += k;
-            }
+                last.Advances[0] += this.GetKerning(px, last.GlyphIds[0], id);
 
-            var advance = this.GetAdvance(px, id);
-            last = new(this, [id], [advance], null, pen, position, position + length);
+            last = new([id], [this.GetAdvance(px, id)], null, position, position + length);
             clusters.Add(last);
-            pen += advance;
             position += length;
         }
 
@@ -76,7 +79,7 @@ internal abstract class NominalFaceSource : IFaceSource
         RasterGlyph? glyph;
         if (run.GlyphIds.Length == 1)
         {
-            glyph = this.RasterizeGlyph(px, run.GlyphIds[0]);
+            glyph = this.DrawGlyph(px, run.GlyphIds[0]);
         }
         else
         {
@@ -84,7 +87,7 @@ internal abstract class NominalFaceSource : IFaceSource
             var pen = 0f;
             for (var i = 0; i < run.GlyphIds.Length; i++)
             {
-                if (this.RasterizeGlyph(px, run.GlyphIds[i]) is { } g)
+                if (this.DrawGlyph(px, run.GlyphIds[i]) is { } g)
                 {
                     var offset = i < run.Offsets.Length ? run.Offsets[i] : default;
                     pieces.Add(g with
@@ -110,4 +113,14 @@ internal abstract class NominalFaceSource : IFaceSource
     public virtual void Dispose()
     {
     }
+
+    /// <summary>Draws a glyph at a size, relative to the pen on the baseline; null if there is none.</summary>
+    protected abstract RasterGlyph? RasterizeGlyph(float px, uint glyphId);
+
+    /// <summary>Gets the kerning between two glyphs at a size, in pixels.</summary>
+    protected virtual float GetKerning(float px, uint leftGlyphId, uint rightGlyphId) => 0;
+
+    /// <summary>Draws a glyph, or takes it as it was drawn to measure its advance.</summary>
+    private RasterGlyph? DrawGlyph(float px, uint glyphId) =>
+        this._measured.Remove((px, glyphId), out var glyph) ? glyph : this.RasterizeGlyph(px, glyphId);
 }

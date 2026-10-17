@@ -32,15 +32,13 @@ public static class GameFonts
         using var document = JsonDocument.Parse(stream);
         var root = document.RootElement;
 
-        var subfamilies = root.GetProperty("families").EnumerateObject().ToDictionary(f => f.Name, f => f.Value.GetProperty("subfamily").GetString()!);
         var res = new List<GameFontDataDefinition>();
         foreach (var type in root.GetProperty("fontTypes").EnumerateObject())
         {
             var textures = type.Value.GetProperty("textures").GetString()!;
             foreach (var face in type.Value.GetProperty("faces").EnumerateArray())
             {
-                var family = face[1].GetString()!;
-                res.Add(new(type.Name, face[0].GetString()!, family, subfamilies[family], face[2].GetSingle(), textures));
+                res.Add(new(type.Name, face[0].GetString()!, face[1].GetString()!, face[2].GetSingle(), textures));
             }
         }
 

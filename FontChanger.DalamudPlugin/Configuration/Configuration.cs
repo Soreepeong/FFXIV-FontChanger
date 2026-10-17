@@ -26,6 +26,8 @@ public sealed class Configuration : IPluginConfiguration
 
     public AtlasSettings Atlas { get; set; } = new();
 
+    public NamePlateMode NamePlates { get; set; } = NamePlateMode.BakedAtFullSize;
+
     public bool ConfigWindowOpen { get; set; } = true;
 
     /// <summary>Updates what an older version saved; true if anything changed.</summary>

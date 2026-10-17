@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using System.Text;
-using System.Text.Json.Serialization;
 
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Utilities;
@@ -19,10 +18,8 @@ public sealed record FaceElement
 
     public LookupStruct Lookup { get; init; } = LookupStruct.Of(string.Empty);
 
-    [JsonConverter(typeof(RuneToIntConverter))]
     public IReadOnlyList<RuneRange> Ranges { get; init; } = [];
 
-    [JsonConverter(typeof(RuneToIntConverter))]
     public IReadOnlyDictionary<Rune, Rune> Replacements { get; init; } = new Dictionary<Rune, Rune>();
 
     public float LetterSpacing { get; init; }

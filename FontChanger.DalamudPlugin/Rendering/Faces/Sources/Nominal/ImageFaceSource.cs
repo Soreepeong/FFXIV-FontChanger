@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -27,7 +26,7 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
     private const float DefaultBaselineY = 880;
 
     private readonly Dictionary<Rune, Source> _glyphs;
-    private readonly ImageRenderer? _renderer;
+    private readonly ImageRenderer _renderer;
     private readonly Matrix2x2 _transform;
     private readonly byte[]? _gamma;
     private readonly float _unitsPerEm;
@@ -41,26 +40,9 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
     private readonly ImageCoverageMode _coverageMode;
     private readonly Dictionary<(Rune, Rune), float> _kerning = [];
 
-    // Advances are those of the drawn glyphs, which drawing finds: kept by size and codepoint.
-    private readonly Dictionary<(float Px, uint Id), float> _advances = [];
-
-    /// <summary>Gets whether it draws anything: Direct2D is there.</summary>
-    private bool CanDraw => this._renderer is not null;
-
     public override IEnumerable<Rune> Codepoints => this._glyphs.Keys;
 
-    public override uint GetGlyphId(Rune rune) => this.CanDraw && this._glyphs.ContainsKey(rune) ? (uint)rune.Value : 0;
-
-    public override float GetAdvance(float px, uint glyphId)
-    {
-        if (!this._advances.TryGetValue((px, glyphId), out var advance))
-        {
-            advance = this.RasterizeGlyph(px, glyphId)?.Advance ?? 0;
-            this._advances.Add((px, glyphId), advance);
-        }
-
-        return advance;
-    }
+    public override uint GetGlyphId(Rune rune) => this._glyphs.ContainsKey(rune) ? (uint)rune.Value : 0;
 
     public override (int Ascent, int LineHeight) GetLineMetrics(float px) => this.GetLineMetrics(px, this._transform);
 
@@ -71,10 +53,10 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
         return ((int)Rounding.Round(this._ascent * scale), (int)Rounding.Round(this._lineHeight * scale));
     }
 
-    public override RasterGlyph? RasterizeGlyph(float px, uint glyphId) =>
+    protected override RasterGlyph? RasterizeGlyph(float px, uint glyphId) =>
         Rune.IsValid(glyphId) ? this.Rasterize(new((int)glyphId), px, this._transform) : null;
 
-    public override float GetKerning(float px, uint leftGlyphId, uint rightGlyphId) =>
+    protected override float GetKerning(float px, uint leftGlyphId, uint rightGlyphId) =>
         Rune.IsValid(leftGlyphId) && Rune.IsValid(rightGlyphId) ? this.GetKerning(new((int)leftGlyphId), new((int)rightGlyphId), px, this._transform) : 0;
 
     /// <summary>Gets the kerning between two codepoints' glyphs at a size, transformed by <paramref name="transform"/>.</summary>
@@ -84,7 +66,7 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
     /// <summary>Draws a codepoint's glyph at a size, transformed by <paramref name="transform"/>, with the gamma; null if there is none.</summary>
     private RasterGlyph? Rasterize(Rune rune, float px, Matrix2x2 transform)
     {
-        if (this._renderer is not { } renderer || !this._glyphs.TryGetValue(rune, out var source))
+        if (!this._glyphs.TryGetValue(rune, out var source))
             return null;
 
         try
@@ -92,7 +74,7 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
             float unitsPerEm, baselineY, advance, x1, y1, x2, y2;
             if (source.Svg is not null)
             {
-                var metrics = source.SvgMetrics ?? throw new InvalidDataException("Not an SVG document.");
+                var metrics = source.SvgMetrics!;
                 unitsPerEm = this._unitsPerEmOverrides ? this._unitsPerEm : metrics.UnitsPerEm ?? this._unitsPerEm;
                 baselineY = this._baselineYOverrides ? this._baselineY : metrics.BaselineY ?? this._baselineY;
                 advance = metrics.Advance ?? unitsPerEm;
@@ -142,7 +124,7 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
             byte[] coverage;
             if (source.Svg is not null)
             {
-                coverage = renderer.DrawSvg(source.Svg, m, width, height);
+                coverage = this._renderer.DrawSvg(source.Svg, m, width, height);
             }
             else
             {
@@ -150,7 +132,7 @@ internal sealed partial class ImageFaceSource : NominalFaceSource
                 var whole = transform is { M12: 0, M21: 0 }
                             && MathF.Abs(m[0] - Rounding.Round(m[0])) < 1e-4f
                             && MathF.Abs(m[4] - Rounding.Round(m[4])) < 1e-4f;
-                coverage = renderer.DrawCoverage(this.GetBitmapCoverage(source), source.Width, source.Height, (x1, y1, x2, y2), m, width, height, whole);
+                coverage = this._renderer.DrawCoverage(this.GetBitmapCoverage(source), source.Width, source.Height, (x1, y1, x2, y2), m, width, height, whole);
             }
 
             var glyph = new RasterGlyph(advancePx, left, top, width, height, coverage).Trimmed();

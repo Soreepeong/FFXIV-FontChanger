@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 
 using Dalamud.Hooking;
@@ -13,7 +12,6 @@ using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 
 using TerraFX.Interop.DirectX;
-using TerraFX.Interop.Windows;
 
 namespace FontChanger.DalamudPlugin.Rendering.Shaders;
 
@@ -21,15 +19,19 @@ namespace FontChanger.DalamudPlugin.Rendering.Shaders;
 internal sealed unsafe partial class SubpixelShaders : IDisposable
 {
     private readonly Lock _lock = new();
-    private readonly List<PassShader> _passes = [];
 
-    private bool _resolved;
+    private readonly PassShader[] _passes =
+    [
+        new(AtkServer.ShaderPass.Font, "FontPS.shcd"),
+        new(AtkServer.ShaderPass.FontHighlight, "FontHighlightPS.shcd"),
+        new(AtkServer.ShaderPass.FontEmboss, "FontEmbossPS.shcd"),
+    ];
 
     private Hook<BindShadersDelegate>? _bindShadersHook;
     private Hook<SetDrawStateDelegate>? _setDrawStateHook;
 
     private volatile bool _enabled;
-    private SettingsRecord _settings = new();
+    private SettingsRecord _settings;
 
     // From the last BindShaders.
     private AtkServer* _server;
@@ -58,31 +60,24 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         }
     }
 
-    public SettingsRecord Settings
+    /// <summary>Applies the subpixel text settings; the hooks are made the first time it is on.</summary>
+    public void Apply(SettingsRecord value)
     {
-        get
-        {
-            Misc.DebugAssertMainThread();
-            return this._settings;
-        }
-        set
-        {
-            Misc.DebugAssertMainThread();
-            if (this._settings.Equals(value))
-                return;
+        Misc.DebugAssertMainThread();
+        if (this._settings.Equals(value))
+            return;
 
-            if (value.Order != SubpixelOrder.None && !this._resolved)
-                this.Resolve();
+        if (value.Order != SubpixelOrder.None && this._bindShadersHook is null)
+            this.Resolve();
 
-            using var _ = this._lock.EnterScope();
-            var shaderChanged = value.Level != this._settings.Level || value.Contrast != this._settings.Contrast || value.Gamma != this._settings.Gamma;
-            this._settings = value;
-            this._enabled = value.Order != SubpixelOrder.None;
+        using var _ = this._lock.EnterScope();
+        var shaderChanged = value.Level != this._settings.Level || value.Contrast != this._settings.Contrast || value.Gamma != this._settings.Gamma;
+        this._settings = value;
+        this._enabled = value.Order != SubpixelOrder.None;
 
-            // Next call to BindShaders(Detour) sets up our shaders
-            if (!this._enabled || shaderChanged)
-                this.RestoreAndReleaseAllInLock();
-        }
+        // Next call to BindShaders(Detour) sets up our shaders
+        if (!this._enabled || shaderChanged)
+            this.RestoreAndReleaseAllInLock();
     }
 
     public void EndFrame()
@@ -107,19 +102,21 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
     {
         var setDrawState = AtkServer.Addresses.SetDrawState.Value;
         var bindShaders = AtkServer.Addresses.BindShaders.Value;
-        lock (this._lock)
-        {
-            this._passes.Clear();
-            this._passes.Add(new(AtkServer.ShaderPass.Font, "FontPS.shcd", false));
-            this._passes.Add(new(AtkServer.ShaderPass.FontHighlight, "FontHighlightPS.shcd", true));
-            this._passes.Add(new(AtkServer.ShaderPass.FontEmboss, "FontEmbossPS.shcd", false));
-        }
-
         this._setDrawStateHook = Plugin.GameInterop.HookFromAddress<SetDrawStateDelegate>(setDrawState, this.SetDrawStateDetour);
         this._bindShadersHook = Plugin.GameInterop.HookFromAddress<BindShadersDelegate>(bindShaders, this.BindShadersDetour);
         this._setDrawStateHook.Enable();
         this._bindShadersHook.Enable();
-        this._resolved = true;
+    }
+
+    private PassShader? FindPass(AtkServer.ShaderPass pass)
+    {
+        foreach (var p in this._passes)
+        {
+            if (p.Pass == pass)
+                return p;
+        }
+
+        return null;
     }
 
     private void BindShadersDetour(AtkServer* server, AtkServer.ShaderPass pass, byte alternate)
@@ -131,14 +128,14 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             this._server = server;
             this._alternate = alternate != 0;
             this._passActive = false;
-            if (this._enabled && !this._alternate && this._passes.TryFind(pass, static (p, cmp) => p.Pass == cmp, out var p))
+            if (this._enabled && !this._alternate && this.FindPass(pass) is { } p)
                 this._passActive = this.EnsureShaderSwap(server, p);
 
             // SetDrawState isn't called when only the pass changes.
             if (this._hasState && this._lastServer == server)
             {
                 var blend = this.Decide(server, this._lastState, this._lastSubpixelTexture);
-                if (!blend.ByteEquals(this._stagedBlend))
+                if (!SameBlend(blend, this._stagedBlend))
                 {
                     var state = this._lastState;
                     state.BlendState = blend;
@@ -169,7 +166,7 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             this._stagedBlend = blend;
         }
 
-        if (blend.ByteEquals(state->BlendState))
+        if (SameBlend(blend, state->BlendState))
         {
             this._setDrawStateHook!.Original(server, state, divisor);
             return;
@@ -193,7 +190,7 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             if (!this._warnedBlend)
             {
                 this._warnedBlend = true;
-                Plugin.Log.Warning("Subpixel text: a glyph is drawn with blend state 0x{Blend:X8}, which can't take subpixel coverage", value.Describe());
+                Plugin.Log.Warning("Subpixel text: a glyph is drawn with blend state 0x{Blend:X8}, which can't take subpixel coverage", Describe(value));
             }
 
             return value;
@@ -222,8 +219,8 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         if (game is null || GetShaderObjectOrNull(server, p.Pass, p.File) is null)
             return false;
 
-        if (!p.Swap.HasPluginShader)
-            p.Swap.PluginShader = this.CreateShader(game, p.Highlight);
+        if (!p.Swap.PluginShader)
+            p.Swap.PluginShader.Attach(this.CreateShader(game, p.Pass == AtkServer.ShaderPass.FontHighlight).Detach());
         p.Swap.Install(current);
         return true;
     }
@@ -256,7 +253,7 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         return file is null || (resource is not null && resource->FileName.EndsWithAsciiIgnoreCase(file)) ? shader : null;
     }
 
-    private ComPtr<ID3D11PixelShader> CreateShader(ID3D11PixelShader* game, bool highlight)
+    private MyComPtr<ID3D11PixelShader> CreateShader(ID3D11PixelShader* game, bool highlight)
     {
         var name = highlight
                        ? "FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelHighlightPS.cso"
@@ -277,19 +274,17 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         {
             if (p.Swap.Target is not null)
                 p.Swap.Restore(GetShaderObjectOrNull(this._server, p.Pass, null));
-            p.Swap.ReleaseShader();
+            p.Swap.PluginShader.Reset();
         }
 
         this._passActive = false;
     }
 
-    private sealed class PassShader(AtkServer.ShaderPass pass, string file, bool highlight)
+    private sealed class PassShader(AtkServer.ShaderPass pass, string file)
     {
         public AtkServer.ShaderPass Pass { get; } = pass;
 
         public string File { get; } = file;
-
-        public bool Highlight { get; } = highlight;
 
         public PixelShaderSwap Swap { get; } = new();
     }

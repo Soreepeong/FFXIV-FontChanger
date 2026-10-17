@@ -35,7 +35,8 @@ internal sealed partial class ImageFaceSource
             var merged = RasterGlyph.Merge(pieces, pen);
             var (inkX1, inkX2, inkY1, inkY2) = merged.Width == 0
                                                    ? (0f, 0f, 0, 0)
-                                                   : (merged.Left, merged.Left + merged.Width, this.Ascent + merged.Top, this.Ascent + merged.Top + merged.Height);
+                                                   : (merged.Left, merged.Left + merged.Width, this.Ascent + merged.Top,
+                                                         this.Ascent + merged.Top + merged.Height);
             return new(pen, false, inkX1, inkX2, inkY1, inkY2, x => merged with { Left = merged.Left + (int)Rounding.Round(x) });
         }
     }

@@ -3,7 +3,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 
 using FontChanger.DalamudPlugin.PluginInterface;
-using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 
@@ -19,7 +18,7 @@ namespace FontChanger.DalamudPlugin.Rendering.Text;
 internal sealed unsafe class SystemFallbackFonts : IDisposable
 {
     /// <summary>The game's icon font, for private-use characters before the system's fallback (which would pick Segoe Fluent Icons).</summary>
-    public const string IconFamily = "XIV AXIS Std ATK";
+    private const string IconFamily = "XIV AXIS Std ATK";
 
     /// <summary>The family fallback fonts are matched against when a face has no font of its own.</summary>
     public const string DefaultBaseFamily = "Segoe UI";
@@ -31,21 +30,21 @@ internal sealed unsafe class SystemFallbackFonts : IDisposable
         "Segoe UI Symbol", "Segoe UI Emoji",
     ];
 
-    private readonly GlyphRasterizer _rasterizer;
-    private ComPtr<IDWriteFontFallback1> _fallback;
+    private readonly FontServices _services;
+    private MyComPtr<IDWriteFontFallback1> _fallback;
 
-    public SystemFallbackFonts(GlyphRasterizer rasterizer)
+    public SystemFallbackFonts(FontServices services)
     {
-        this._rasterizer = rasterizer;
-        var factory = rasterizer.Factory;
-        using var builder = default(ComPtr<IDWriteFontFallbackBuilder>);
+        this._services = services;
+        var factory = services.Factory;
+        using var builder = default(MyComPtr<IDWriteFontFallbackBuilder>);
         factory->CreateFontFallbackBuilder(builder.GetAddressOf()).ThrowOnError();
 
-        if (rasterizer.TryFindFont(LookupStruct.Of(IconFamily), out var icons))
+        if (services.TryFindFont(LookupStruct.Of(IconFamily), out var icons))
         {
             icons.Dispose();
             var pua = new DWRITE_UNICODE_RANGE { first = 0xE000, last = 0xF8FF };
-            AddMapping(builder.Get(), pua, [IconFamily]);
+            AddMapping(builder.Value, pua, [IconFamily]);
         }
         else
         {
@@ -53,20 +52,20 @@ internal sealed unsafe class SystemFallbackFonts : IDisposable
         }
 
         var installed = UiFamilies.Where(f => {
-            if (!rasterizer.TryFindFont(LookupStruct.Of(f), out var font))
+            if (!services.TryFindFont(LookupStruct.Of(f), out var font))
                 return false;
             font.Dispose();
             return true;
         }).ToArray();
         if (installed.Length != 0)
-            AddMapping(builder.Get(), new() { first = 0, last = 0x10FFFF }, installed);
+            AddMapping(builder.Value, new() { first = 0, last = 0x10FFFF }, installed);
 
-        using var systemFallback = default(ComPtr<IDWriteFontFallback>);
+        using var systemFallback = default(MyComPtr<IDWriteFontFallback>);
         factory->GetSystemFontFallback(systemFallback.GetAddressOf()).ThrowOnError();
-        builder.Get()->AddMappings(systemFallback.Get()).ThrowOnError();
-        using var created = default(ComPtr<IDWriteFontFallback>);
-        builder.Get()->CreateFontFallback(created.GetAddressOf()).ThrowOnError();
-        created.CopyTo(this._fallback.GetAddressOf()).ThrowOnError();
+        builder.Value->AddMappings(systemFallback.Value).ThrowOnError();
+        using var created = default(MyComPtr<IDWriteFontFallback>);
+        builder.Value->CreateFontFallback(created.GetAddressOf()).ThrowOnError();
+        created.CopyTo(ref this._fallback).ThrowOnError();
     }
 
     /// <summary>
@@ -80,17 +79,16 @@ internal sealed unsafe class SystemFallbackFonts : IDisposable
 
         uint mapped;
         float scale;
-        using var face = default(ComPtr<IDWriteFontFace5>);
+        using var face = default(MyComPtr<IDWriteFontFace5>);
         fixed (char* t = text)
-        fixed (char* locale = "en-us")
         fixed (char* family = baseFamily)
         {
-            var source = new TextAnalysisSource(t, (uint)text.Length, locale);
-            this._fallback.Get()->MapCharacters(
+            var source = new TextAnalysisSource(t, (uint)text.Length);
+            this._fallback.Value->MapCharacters(
                 source.Get(),
                 0,
                 (uint)text.Length,
-                (IDWriteFontCollection*)this._rasterizer.SystemCollection,
+                (IDWriteFontCollection*)this._services.SystemCollection,
                 family,
                 null,
                 0,
@@ -99,14 +97,14 @@ internal sealed unsafe class SystemFallbackFonts : IDisposable
                 face.GetAddressOf()).ThrowOnError();
         }
 
-        if (face.Get() == null || mapped == 0 || GetFamilyName(face.Get()) is not { } name)
+        if (face.Value == null || mapped == 0 || GetFamilyName(face.Value) is not { } name)
             return null;
 
         var lookup = LookupStruct.Of(name) with
         {
-            Weight = (int)face.Get()->GetWeight(),
-            Stretch = (int)face.Get()->GetStretch(),
-            Style = (int)face.Get()->GetStyle(),
+            Weight = (int)face.Value->GetWeight(),
+            Stretch = (int)face.Value->GetStretch(),
+            Style = (int)face.Value->GetStyle(),
         };
         return (lookup, scale > 0 ? scale : 1);
     }
@@ -133,22 +131,22 @@ internal sealed unsafe class SystemFallbackFonts : IDisposable
     /// <summary>Gets a face's family name: its English one, else its first; null if it has none.</summary>
     private static string? GetFamilyName(IDWriteFontFace5* face)
     {
-        using var names = default(ComPtr<IDWriteLocalizedStrings>);
-        if (face->GetFamilyNames(names.GetAddressOf()).FAILED || names.Get()->GetCount() == 0)
+        using var names = default(MyComPtr<IDWriteLocalizedStrings>);
+        if (face->GetFamilyNames(names.GetAddressOf()).FAILED || names.Value->GetCount() == 0)
             return null;
 
         uint index;
         BOOL exists;
         fixed (char* english = "en-us")
         {
-            if (names.Get()->FindLocaleName(english, &index, &exists).FAILED || !exists)
+            if (names.Value->FindLocaleName(english, &index, &exists).FAILED || !exists)
                 index = 0;
         }
 
         uint length;
-        if (names.Get()->GetStringLength(index, &length).FAILED)
+        if (names.Value->GetStringLength(index, &length).FAILED)
             return null;
         var buffer = stackalloc char[(int)length + 1];
-        return names.Get()->GetString(index, buffer, length + 1).SUCCEEDED ? new(buffer, 0, (int)length) : null;
+        return names.Value->GetString(index, buffer, length + 1).SUCCEEDED ? new(buffer, 0, (int)length) : null;
     }
 }

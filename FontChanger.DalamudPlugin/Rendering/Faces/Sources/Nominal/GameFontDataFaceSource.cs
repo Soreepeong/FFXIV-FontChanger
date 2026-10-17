@@ -20,9 +20,10 @@ namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources.Nominal;
 /// </summary>
 internal sealed class GameFontDataFaceSource : NominalFaceSource
 {
-    // The game's font textures (B8G8R8A8, with their width and height) by path, shared by the fonts drawn from them; null
-    // for those that can't be read.
+    // The game's font textures (B8G8R8A8, with their width and height) by path, shared by the fonts drawn from them while
+    // any is there; null for those that can't be read.
     private static readonly Dictionary<string, (byte[] Pixels, int Width, int Height)?> Textures = [];
+    private static int instances;
 
     private readonly FdtReader _fdt;
     private readonly string _textures;
@@ -33,6 +34,8 @@ internal sealed class GameFontDataFaceSource : NominalFaceSource
         this._fdt = fdt;
         this._textures = textures;
         this._size = size;
+        lock (Textures)
+            instances++;
     }
 
     public override IEnumerable<Rune> Codepoints => this._fdt.Glyphs.Where(g => Rune.IsValid(g.CharInt)).Select(g => new Rune(g.CharInt));
@@ -71,7 +74,16 @@ internal sealed class GameFontDataFaceSource : NominalFaceSource
         return ((int)Rounding.Round(header.Ascent * scale), (int)Rounding.Round(header.LineHeight * scale));
     }
 
-    public override RasterGlyph? RasterizeGlyph(float px, uint glyphId)
+    public override void Dispose()
+    {
+        lock (Textures)
+        {
+            if (--instances == 0)
+                Textures.Clear();
+        }
+    }
+
+    protected override RasterGlyph? RasterizeGlyph(float px, uint glyphId)
     {
         if (this._fdt.FindGlyph((int)glyphId) is not { } g ||
             GetTexture(this._textures.Replace("{}", (g.TextureFileIndex + 1).ToString())) is not (var pixels, var width, var height))

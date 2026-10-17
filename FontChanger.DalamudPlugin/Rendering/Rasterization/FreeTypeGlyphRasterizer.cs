@@ -5,7 +5,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 using FontChanger.DalamudPlugin.PluginInterface;
-using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
@@ -15,14 +14,17 @@ using FreeTypeSharp;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 
-namespace FontChanger.DalamudPlugin.Rendering.Fonts;
+namespace FontChanger.DalamudPlugin.Rendering.Rasterization;
+
+// Inside the namespace, so that Pointer<T> is XIVCS's over TerraFX's.
+using FFXIVClientStructs.Interop;
 
 /// <summary>
 /// Rasterizes glyphs with FreeType: for elements a preset draws with FreeType, and for fonts with only bitmaps (which
 /// DirectWrite doesn't draw), whose nearest bitmap size is scaled to the size asked for. Fonts are opened from the files
 /// of DirectWrite's font faces, so glyph indices from DirectWrite's shaping are FreeType's.
 /// </summary>
-internal sealed unsafe class FreeTypeFonts : IDisposable
+internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
 {
     // FT_LOAD_TARGET_(mode): the hinting the render mode is for.
     private const int LoadTargetShift = 16;
@@ -32,42 +34,32 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
     // FT_LcdFilter.
     private const int LcdFilterDefault = 1;
 
-    private readonly Dictionary<(string Path, uint Index), FFXIVClientStructs.Interop.Pointer<FT_FaceRec_>> _faces = [];
+    private readonly Dictionary<(string Path, uint Index), Pointer<FT_FaceRec_>> _faces = [];
     private FT_LibraryRec_* _library;
 
     // The size each outline face was last set to.
-    private readonly Dictionary<FFXIVClientStructs.Interop.Pointer<FT_FaceRec_>, float> _faceSizes = [];
+    private readonly Dictionary<Pointer<FT_FaceRec_>, float> _faceSizes = [];
 
     // A variable face's axes (tag, minimum, default, maximum; 16.16), and the design coordinates it was last set to.
-    private readonly Dictionary<FFXIVClientStructs.Interop.Pointer<FT_FaceRec_>, (uint Tag, nint Min, nint Default, nint Max)[]> _faceAxes = [];
-    private readonly Dictionary<FFXIVClientStructs.Interop.Pointer<FT_FaceRec_>, nint[]> _faceCoordinates = [];
+    private readonly Dictionary<Pointer<FT_FaceRec_>, (uint Tag, nint Min, nint Default, nint Max)[]> _faceAxes = [];
+    private readonly Dictionary<Pointer<FT_FaceRec_>, nint[]> _faceCoordinates = [];
 
-    private FreeTypeFonts(FT_LibraryRec_* library) => this._library = library;
-
-    /// <summary>Starts FreeType; null if its native library can't be loaded.</summary>
-    public static FreeTypeFonts? Create()
+    /// <summary>Starts FreeType, from the plugin's copy of its native library.</summary>
+    public FreeTypeGlyphRasterizer()
     {
-        try
-        {
-            // FreeTypeSharp looks for freetype.dll from the application's directory (the game's): the plugin's copy is
-            // loaded first, which the system then gives it by name.
-            var directory = Plugin.PluginInterface.AssemblyLocation.DirectoryName!;
-            NativeLibrary.TryLoad(Path.Combine(directory, "freetype.dll"), out _);
+        // FreeTypeSharp looks for freetype.dll from the application's directory (the game's): the plugin's copy is
+        // loaded first, which the system then gives it by name.
+        var directory = Plugin.PluginInterface.AssemblyLocation.DirectoryName!;
+        NativeLibrary.Load(Path.Combine(directory, "freetype.dll"));
 
-            FT_LibraryRec_* library;
-            Check(FT.FT_Init_FreeType(&library));
+        FT_LibraryRec_* library;
+        Check(FT.FT_Init_FreeType(&library));
+        this._library = library;
 
-            // A library built for ClearType-style rendering filters subpixel coverage across neighbors, against color
-            // fringes; one rendering the Harmony way (the bundled one) samples each color at its stripe's place instead,
-            // and has no filter to set.
-            FT_Library_SetLcdFilter(library, LcdFilterDefault);
-            return new(library);
-        }
-        catch (Exception ex)
-        {
-            Plugin.Log.Warning(ex, "FreeType can't be used; its elements are drawn with DirectWrite");
-            return null;
-        }
+        // A library built for ClearType-style rendering filters subpixel coverage across neighbors, against color
+        // fringes; one rendering the Harmony way (the bundled one) samples each color at its stripe's place instead,
+        // and has no filter to set.
+        FT_Library_SetLcdFilter(library, LcdFilterDefault);
     }
 
     public void Dispose()
@@ -118,7 +110,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
 
     /// <summary>
     /// Rasterizes a run of glyphs (a glyph, or a shaped cluster) with the pen at <paramref name="originX"/>, each glyph at
-    /// its advance and offset, as <see cref="GlyphRasterizer.RasterizeRun"/> does with DirectWrite. A variable face is set
+    /// its advance and offset, as <see cref="DirectWriteGlyphRasterizer.RasterizeRun"/> does with DirectWrite. A variable face is set
     /// to <paramref name="axes"/> (as DWRITE_FONT_AXIS_TAG; others at their defaults), and outlines are emboldened by
     /// <paramref name="embolden"/> ems before they are transformed.
     /// </summary>
@@ -133,8 +125,8 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         int advance,
         FreeTypeParams parameters,
         Matrix2x2 transform,
-        IReadOnlyDictionary<uint, float>? axes = null,
-        float embolden = 0)
+        IReadOnlyDictionary<uint, float>? axes,
+        float embolden)
     {
         this.SetAxes(face, axes);
         var scale = this.SetSize(face, px);
@@ -310,7 +302,7 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
     private static (string? Path, uint Index) GetFile(IDWriteFontFace5* fontFace)
     {
         using var file = FontFileKey.Of(fontFace);
-        using var local = default(ComPtr<IDWriteLocalFontFileLoader>);
+        using var local = default(MyComPtr<IDWriteLocalFontFileLoader>);
         var iid = IID.IID_IDWriteLocalFontFileLoader;
         if (file.Loader is null || file.Loader->QueryInterface(&iid, (void**)local.GetAddressOf()).FAILED)
             return (null, 0);
@@ -318,10 +310,10 @@ internal sealed unsafe class FreeTypeFonts : IDisposable
         fixed (byte* key = file.Key)
         {
             uint length;
-            local.Get()->GetFilePathLengthFromKey(key, (uint)file.Key.Length, &length).ThrowOnError();
+            local.Value->GetFilePathLengthFromKey(key, (uint)file.Key.Length, &length).ThrowOnError();
             var path = new char[length + 1];
             fixed (char* p = path)
-                local.Get()->GetFilePathFromKey(key, (uint)file.Key.Length, p, length + 1).ThrowOnError();
+                local.Value->GetFilePathFromKey(key, (uint)file.Key.Length, p, length + 1).ThrowOnError();
             return (new(path, 0, (int)length), fontFace->GetIndex());
         }
     }

@@ -3,7 +3,6 @@
 using FontChanger.DalamudPlugin.Utilities;
 
 using TerraFX.Interop.DirectX;
-using TerraFX.Interop.Windows;
 
 namespace FontChanger.DalamudPlugin.Rendering.Rasterization;
 
@@ -13,10 +12,10 @@ namespace FontChanger.DalamudPlugin.Rendering.Rasterization;
 /// </summary>
 internal unsafe ref struct FontFileKey : IDisposable
 {
-    private ComPtr<IDWriteFontFile> _file;
-    private ComPtr<IDWriteFontFileLoader> _loader;
+    private MyComPtr<IDWriteFontFile> _file;
+    private MyComPtr<IDWriteFontFileLoader> _loader;
 
-    public readonly IDWriteFontFileLoader* Loader => this._loader.Get();
+    public readonly IDWriteFontFileLoader* Loader => this._loader.Value;
 
     public ReadOnlySpan<byte> Key { get; private set; }
 
@@ -27,9 +26,9 @@ internal unsafe ref struct FontFileKey : IDisposable
         void* key;
         uint size;
         if (face->GetFiles(&count, res._file.GetAddressOf()).FAILED
-            || res._file.IsNull
-            || res._file.Get()->GetReferenceKey(&key, &size).FAILED
-            || res._file.Get()->GetLoader(res._loader.GetAddressOf()).FAILED)
+            || !res._file
+            || res._file.Value->GetReferenceKey(&key, &size).FAILED
+            || res._file.Value->GetLoader(res._loader.GetAddressOf()).FAILED)
         {
             res.Dispose();
             return default;

@@ -18,13 +18,12 @@ namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources.Nominal;
 // font.json's units, line metrics and kerning.
 internal sealed partial class ImageFaceSource
 {
-    private ImageFaceSource(
-        GlyphImagesStruct def, Dictionary<Rune, Source> glyphs, JsonElement? metadata, ImageRenderer? renderer, Matrix2x2 transform, byte[]? gamma)
+    private ImageFaceSource(FaceElement element, GlyphImagesStruct def, Dictionary<Rune, Source> glyphs, JsonElement? metadata, ImageRenderer renderer)
     {
         this._glyphs = glyphs;
         this._renderer = renderer;
-        this._transform = transform;
-        this._gamma = gamma;
+        this._transform = element.Transform;
+        this._gamma = RasterGlyph.GammaTable(element.Gamma);
         this._coverageMode = def.BitmapCoverage;
 
         var metadataUnitsPerEm = metadata.GetPropertyNumberOrDefault("unitsPerEm", DefaultUnitsPerEm);
@@ -73,11 +72,12 @@ internal sealed partial class ImageFaceSource
 
     /// <summary>
     /// Loads the glyph files of an element, from its folder or the preset, drawn with <paramref name="renderer"/>
-    /// (bitmaps aren't read without it), transformed by <paramref name="transform"/> and with <paramref name="gamma"/>.
-    /// Files that can't be read are left out.
+    /// (which decodes the bitmaps), transformed and with the gamma as the element says. Files that can't be read are
+    /// left out.
     /// </summary>
-    public static ImageFaceSource Create(GlyphImagesStruct def, ImageRenderer? renderer, Matrix2x2 transform, byte[]? gamma)
+    public static ImageFaceSource Create(FaceElement element, ImageRenderer renderer)
     {
+        var def = element.GlyphImages ?? new();
         var glyphs = new Dictionary<Rune, Source>();
         JsonElement? metadata = def.EmbeddedMetadata;
         if (def.Embedded.Count != 0)
@@ -87,8 +87,8 @@ internal sealed partial class ImageFaceSource
                 try
                 {
                     if (svg is not null)
-                        glyphs[rune] = new(svg, ReadSvgMetrics(svg), null, 0, 0);
-                    else if (png is not null && renderer is not null)
+                        glyphs[rune] = Svg(svg);
+                    else if (png is not null)
                         glyphs[rune] = Bitmap(renderer, Convert.FromBase64String(png));
                 }
                 catch (Exception ex)
@@ -121,15 +121,7 @@ internal sealed partial class ImageFaceSource
 
                     if (extension is not (".svg" or ".png") || !TryParseFileName(name, out var rune) || glyphs.ContainsKey(rune))
                         continue;
-                    if (extension == ".svg")
-                    {
-                        var svg = File.ReadAllText(file);
-                        glyphs[rune] = new(svg, ReadSvgMetrics(svg) ?? throw new InvalidDataException("Not an SVG document."), null, 0, 0);
-                    }
-                    else if (renderer is not null)
-                    {
-                        glyphs[rune] = Bitmap(renderer, File.ReadAllBytes(file));
-                    }
+                    glyphs[rune] = extension == ".svg" ? Svg(File.ReadAllText(file)) : Bitmap(renderer, File.ReadAllBytes(file));
                 }
                 catch (Exception ex)
                 {
@@ -142,7 +134,7 @@ internal sealed partial class ImageFaceSource
             Plugin.Log.Warning("Glyph images folder {folder} isn't there", def.Folder);
         }
 
-        return new(def, glyphs, metadata, renderer, transform, gamma);
+        return new(element, def, glyphs, metadata, renderer);
     }
 
     /// <summary>Gets the character of a glyph file's name: uniXXXX, uXXXXX or u+XXXX, with an optional suffix after an underscore.</summary>
@@ -160,6 +152,8 @@ internal sealed partial class ImageFaceSource
             return false;
         return Rune.TryCreate(value, out rune);
     }
+
+    private static Source Svg(string svg) => new(svg, ReadSvgMetrics(svg) ?? throw new InvalidDataException("Not an SVG document."), null, 0, 0);
 
     private static Source Bitmap(ImageRenderer renderer, byte[] data)
     {

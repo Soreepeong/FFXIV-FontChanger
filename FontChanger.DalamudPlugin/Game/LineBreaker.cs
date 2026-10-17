@@ -8,6 +8,7 @@ using Dalamud.Hooking;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Rendering;
 using FontChanger.DalamudPlugin.Rendering.Text;
 using FontChanger.DalamudPlugin.Utilities;
 
@@ -15,9 +16,8 @@ using Lumina.Text.Payloads;
 using Lumina.Text.ReadOnly;
 
 using TerraFX.Interop.DirectX;
-using TerraFX.Interop.Windows;
 
-namespace FontChanger.DalamudPlugin.Rendering.Game;
+namespace FontChanger.DalamudPlugin.Game;
 
 /// <summary>
 /// Splits words that don't fit on a line where DirectWrite allows a line break, never inside a cluster.
@@ -54,20 +54,20 @@ internal sealed unsafe class LineBreaker : IDisposable
     private bool _splittingOwnWord;
 
     // The format line breaks are found with: Segoe UI with the system's fallback (breaks don't depend on the font).
-    private ComPtr<IDWriteTextFormat3> _breakFormat;
+    private MyComPtr<IDWriteTextFormat3> _breakFormat;
 
     public LineBreaker(FontReplacer replacer)
     {
         this._replacer = replacer;
         try
         {
-            var rasterizer = replacer.Rasterizer;
-            using (var systemFallback = default(ComPtr<IDWriteFontFallback>))
-            using (var fallback = default(ComPtr<IDWriteFontFallback1>))
+            var services = replacer.Services;
+            using (var systemFallback = default(MyComPtr<IDWriteFontFallback>))
+            using (var fallback = default(MyComPtr<IDWriteFontFallback1>))
             {
-                rasterizer.Factory->GetSystemFontFallback(systemFallback.GetAddressOf()).ThrowOnError();
+                services.Factory->GetSystemFontFallback(systemFallback.GetAddressOf()).ThrowOnError();
                 systemFallback.CopyTo(fallback.GetAddressOf()).ThrowOnError();
-                this._breakFormat = rasterizer.CreateFormat(SystemFallbackFonts.DefaultBaseFamily, 400, 0, 5, 16, fallback.Get());
+                this._breakFormat = services.CreateFormat(SystemFallbackFonts.DefaultBaseFamily, 400, 0, 5, 16, fallback.Value);
             }
 
             var splitWord = AtkFontCodeModule.Addresses.SplitWord.Value;
@@ -85,7 +85,7 @@ internal sealed unsafe class LineBreaker : IDisposable
 
     public void Dispose()
     {
-        this._splitWordHook?.Dispose();
+        ((IDisposable?)this._splitWordHook)?.Dispose();
         this._breakFormat.Dispose();
     }
 
@@ -109,7 +109,7 @@ internal sealed unsafe class LineBreaker : IDisposable
             var n = GameUtf8.CharacterLength(p);
             if (n == 0)
                 return false;
-            if (Rune.DecodeFromUtf8(new(p, n), out var rune, out _) == System.Buffers.OperationStatus.Done)
+            if (GameUtf8.TryDecode(p, n, out var rune))
             {
                 var c = rune.Value;
                 if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark
@@ -230,12 +230,12 @@ internal sealed unsafe class LineBreaker : IDisposable
         if (text.IsEmpty)
             return;
 
-        using var layout = this._replacer.Rasterizer.CreateLayout(text, this._breakFormat.Get());
+        using var layout = this._replacer.Services.CreateLayout(text, this._breakFormat.Value);
         uint count;
-        layout.Get()->GetClusterMetrics(null, 0, &count);
+        layout.Value->GetClusterMetrics(null, 0, &count);
         var metrics = count <= 256 ? stackalloc DWRITE_CLUSTER_METRICS[(int)count] : new DWRITE_CLUSTER_METRICS[count];
         fixed (DWRITE_CLUSTER_METRICS* m = metrics)
-            layout.Get()->GetClusterMetrics(m, count, &count).ThrowOnError();
+            layout.Value->GetClusterMetrics(m, count, &count).ThrowOnError();
 
         var position = 0;
         foreach (ref readonly var cluster in metrics)
@@ -277,10 +277,7 @@ internal sealed unsafe class LineBreaker : IDisposable
             {
                 NonBreakingSpaceChar => new(0xA0),
                 HyphenChar => new('-'),
-                _ => Rune.DecodeFromUtf8(new(p, n), out var r, out var consumed) ==
-                     System.Buffers.OperationStatus.Done && consumed == n
-                         ? r
-                         : Rune.ReplacementChar,
+                _ => GameUtf8.TryDecode(p, n, out var r) ? r : Rune.ReplacementChar,
             };
 
             this._text.Append(utf16[..rune.EncodeToUtf16(utf16)]);

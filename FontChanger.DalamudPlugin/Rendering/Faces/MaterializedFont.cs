@@ -6,7 +6,6 @@ using System.Text;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.Interop;
 
-using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Rendering.Faces.Sources;
 using FontChanger.DalamudPlugin.Rendering.Faces.Sources.Nominal;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
@@ -26,14 +25,27 @@ namespace FontChanger.DalamudPlugin.Rendering.Faces;
 /// the line metrics.</para>
 /// <para>A codepoint goes to the elements in order: an element has it if it is in its ranges and its source has the
 /// glyph it draws it with; AddNew takes it if no element has yet, AddAll always, Replace only from an earlier element.
-/// Characters no element has are the game's, or with <see cref="SystemFallback"/>, a system font's: an element is made
-/// for each font the system's fallback picks, at the primary element's size.</para>
+/// Characters no element has are the game's, or with system fallback, a system font's: an element is made for each font
+/// the system's fallback picks, at the primary element's size.</para>
 /// </remarks>
 internal sealed unsafe class MaterializedFont : IDisposable
 {
-    private readonly GlyphRasterizer _rasterizer;
+    private readonly FontServices _services;
     private readonly Face _def;
-    private readonly SystemFallbackFonts? _fallbackFonts;
+    private readonly SystemFallbackFonts _fallbackFonts;
+
+    // Whether characters no element has are drawn with the system's fonts (as elements made for them) instead of the
+    // game's glyphs.
+    private readonly bool _systemFallback;
+
+    // The size the face's sizes are relative to: its first element's.
+    private readonly float _referenceSize;
+
+    // The first element drawn from a font: its family is what system fonts are matched against, and its measuring mode
+    // (DWRITE_MEASURING_MODE) is the face's, for all its glyphs.
+    private readonly MaterializedFontElement? _primary;
+    private readonly int _measureMode;
+
     private readonly MaterializedFontElement[] _elements;
     private readonly MaterializedFontElement _gameElement;
     private readonly Dictionary<(string Family, int Weight, int Stretch, int Style, float Scale), MaterializedFontElement> _fallbackElements = [];
@@ -44,20 +56,20 @@ internal sealed unsafe class MaterializedFont : IDisposable
     /// Sets a face up. With <paramref name="systemFallback"/>, characters no element has are drawn with the system fonts
     /// <paramref name="fallbackFonts"/> finds.
     /// </summary>
-    public MaterializedFont(GlyphRasterizer rasterizer, Face def, bool systemFallback, SystemFallbackFonts? fallbackFonts)
+    public MaterializedFont(FontServices services, Face def, bool systemFallback, SystemFallbackFonts fallbackFonts)
     {
-        this._rasterizer = rasterizer;
+        this._services = services;
         this._def = def;
-        this.SystemFallback = systemFallback && fallbackFonts is not null;
+        this._systemFallback = systemFallback;
         this._fallbackFonts = fallbackFonts;
-        this.ReferenceSize = def.Elements.Count != 0 && def.Elements[0].Size > 0 ? def.Elements[0].Size : 1;
-        this._gameElement = new(new() { Size = this.ReferenceSize, Renderer = Renderer.Game }, null, this.ReferenceSize);
+        this._referenceSize = def.Elements.Count != 0 && def.Elements[0].Size > 0 ? def.Elements[0].Size : 1;
+        this._gameElement = new(new() { Size = this._referenceSize, Renderer = Renderer.Game }, null, this._referenceSize);
 
         var elements = new List<MaterializedFontElement>();
         try
         {
             foreach (var e in def.Elements)
-                elements.Add(new(e, CreateSource(e, rasterizer, def.Name), this.ReferenceSize));
+                elements.Add(new(e, CreateSource(e, services, def.Name), this._referenceSize));
         }
         catch
         {
@@ -67,25 +79,17 @@ internal sealed unsafe class MaterializedFont : IDisposable
         }
 
         this._elements = elements.ToArray();
-        this.Primary = Array.Find(this._elements, e => e.Source is OutlineFaceSource);
-        this.MeasureMode = this.Primary?.Def.DirectWrite.MeasureMode ?? 0;
+
+        // A font that is installed, with glyph merging around it or not.
+        this._primary = Array.Find(
+            this._elements,
+            e => e.Def.Renderer is Renderer.DirectWrite or Renderer.FreeType && e.Source is not EmptyFaceSource);
+        this._measureMode = this._primary?.Def.DirectWrite.MeasureMode ?? 0;
 
         // The face's text is measured one way, its primary element's; every font of it draws glyphs measured so.
         foreach (var e in this._elements)
             this.SetMeasureMode(e.Source);
     }
-
-    /// <summary>Gets whether characters no element has are drawn with the system's fonts (as elements made for them) instead of the game's glyphs.</summary>
-    public bool SystemFallback { get; }
-
-    /// <summary>Gets the size the face's sizes are relative to: its first element's.</summary>
-    public float ReferenceSize { get; }
-
-    /// <summary>Gets the first element drawn from a font: its family is what system fonts are matched against.</summary>
-    public MaterializedFontElement? Primary { get; }
-
-    /// <summary>Gets how the face's text is measured (DWRITE_MEASURING_MODE): its primary element's, for all its glyphs.</summary>
-    public int MeasureMode { get; }
 
     /// <summary>Gets how many codepoints the face's elements draw themselves (not with the game's glyphs); kept once counted.</summary>
     public int OwnGlyphCount
@@ -97,9 +101,9 @@ internal sealed unsafe class MaterializedFont : IDisposable
             var drawn = new HashSet<Rune>();
             foreach (var e in this._elements)
             {
-                if (e.Source?.Codepoints is not { } codepoints)
+                if (e.Source is not { } source)
                     continue;
-                foreach (var c in codepoints)
+                foreach (var c in source.Codepoints)
                 {
                     if (e.Def.Contains(c))
                         drawn.Add(c);
@@ -115,10 +119,10 @@ internal sealed unsafe class MaterializedFont : IDisposable
     /// Makes the face of game fonts no preset gives one: the game's glyphs, and for characters the game font lacks, with
     /// <paramref name="systemFallback"/>, system fonts.
     /// </summary>
-    public static MaterializedFont CreateGame(GlyphRasterizer rasterizer, bool systemFallback, SystemFallbackFonts fallbackFonts)
+    public static MaterializedFont CreateGame(FontServices services, bool systemFallback, SystemFallbackFonts fallbackFonts)
     {
         var element = new FaceElement { Size = 1, Renderer = Renderer.Game, Ranges = RuneRange.From(0, 0x10FFFF) };
-        return new(rasterizer, new() { Name = "(game)", Elements = [element] }, systemFallback, fallbackFonts);
+        return new(services, new() { Name = "(game)", Elements = [element] }, systemFallback, fallbackFonts);
     }
 
     public void Dispose()
@@ -206,7 +210,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
         if (source.Rasterize(elementPx, run) is not { } raw)
             return false;
 
-        glyph = element.Wrap(raw, px, this.GetAlignment(px, game), new RunSqueeze(source, elementPx, run, raw));
+        glyph = element.Wrap(raw, px, this.GetAlignment(px, game), source, run);
         return true;
     }
 
@@ -215,9 +219,8 @@ internal sealed unsafe class MaterializedFont : IDisposable
     /// renderer, with its gamma, and glyph merging around it; null for the game font being replaced. A font that isn't
     /// installed has no glyphs.
     /// </summary>
-    private static IFaceSource? CreateSource(FaceElement def, GlyphRasterizer rasterizer, string faceName)
+    private static IFaceSource? CreateSource(FaceElement def, FontServices services, string faceName)
     {
-        var gamma = def.Gamma != 1 && def.Gamma > 0 ? RasterGlyph.CoverageTable(1 / def.Gamma) : null;
         IFaceSource source;
         switch (def.Renderer)
         {
@@ -231,13 +234,11 @@ internal sealed unsafe class MaterializedFont : IDisposable
                 return null;
 
             case Renderer.DirectWrite or Renderer.FreeType:
-                source = (IFaceSource?)OutlineFaceSource.Create(rasterizer, def, def.Renderer, gamma, faceName) ?? new EmptyFaceSource(0, 0, 0);
+                source = (IFaceSource?)OutlineFaceSource.Create(services, def, faceName) ?? new EmptyFaceSource(0, 0, 0);
                 break;
 
             case Renderer.GlyphImages:
-                if (rasterizer.Images is null)
-                    Plugin.Log.Warning("{face}: glyph images can't be drawn without Direct2D", faceName);
-                source = ImageFaceSource.Create(def.GlyphImages ?? new(), rasterizer.Images, def.Transform, gamma);
+                source = ImageFaceSource.Create(def, services.Images);
                 break;
 
             default:
@@ -248,7 +249,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
         // As in FontChanger, glyphs are merged only around fonts that draw outlines or images.
         if (def.GlyphMerging is not { } merging || def.Renderer is not (Renderer.DirectWrite or Renderer.FreeType or Renderer.GlyphImages))
             return source;
-        return MergingFaceSource.Create(source, def, merging, rasterizer, gamma, faceName);
+        return MergingFaceSource.Create(source, def, merging, services, faceName);
     }
 
     /// <summary>Gets an element's line metrics at a drawn size: its source's, or the game font's for the game's glyphs.</summary>
@@ -287,7 +288,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
             _ => [],
         };
         foreach (var outline in outlines)
-            outline.MeasureMode = this.MeasureMode;
+            outline.MeasureMode = this._measureMode;
     }
 
     /// <summary>Finds the element of a grapheme: the one assigned it, else a system font's or the game's.</summary>
@@ -295,7 +296,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
     {
         if (this.FindAssigned(grapheme, game) is { } assigned)
             return assigned;
-        return this.SystemFallback ? this.GetFallbackElement(grapheme) : this._gameElement;
+        return this._systemFallback ? this.GetFallbackElement(grapheme) : this._gameElement;
     }
 
     /// <summary>Gets the element the face's elements assign a grapheme to, in order by their merge modes; null if none.</summary>
@@ -325,36 +326,28 @@ internal sealed unsafe class MaterializedFont : IDisposable
         foreach (var rune in grapheme)
             length += rune.EncodeToUtf16(text[length..]);
 
-        var baseFamily = this.Primary?.Def.Lookup.Name ?? SystemFallbackFonts.DefaultBaseFamily;
-        if (this._fallbackFonts?.Find(text[..length], baseFamily) is not (var lookup, var scale))
+        var baseFamily = this._primary?.Def.Lookup.Name ?? SystemFallbackFonts.DefaultBaseFamily;
+        if (this._fallbackFonts.Find(text[..length], baseFamily) is not (var lookup, var scale))
             return null;
 
         var key = (lookup.Name.ToLowerInvariant(), lookup.Weight, lookup.Stretch, lookup.Style, scale);
         if (!this._fallbackElements.TryGetValue(key, out var element))
         {
-            var primary = this.Primary?.Def;
+            var primary = this._primary?.Def;
             var def = new FaceElement
             {
-                Size = (primary?.Size ?? this.ReferenceSize) * scale,
+                Size = (primary?.Size ?? this._referenceSize) * scale,
                 Renderer = Renderer.DirectWrite,
                 Lookup = lookup,
                 Ranges = RuneRange.From(0, 0x10FFFF),
                 DirectWrite = primary?.DirectWrite ?? DirectWriteParams.Default,
             };
-            var source = OutlineFaceSource.Create(this._rasterizer, def, Renderer.DirectWrite, null, this._def.Name);
+            var source = OutlineFaceSource.Create(this._services, def, this._def.Name);
             this.SetMeasureMode(source);
-            element = new(def, source, this.ReferenceSize);
+            element = new(def, source, this._referenceSize);
             this._fallbackElements.Add(key, element);
         }
 
         return element.Source is not null && element.Has(grapheme[0]) ? element : null;
-    }
-
-    /// <summary>Draws a run of a source again narrower, at the advance it was drawn with (or as it was, if it can't be).</summary>
-    private readonly ref struct RunSqueeze(IFaceSource source, float px, GlyphRun run, RasterGlyph drawn) : IGlyphSqueeze
-    {
-        private readonly GlyphRun _run = run;
-
-        public RasterGlyph Squeeze(float scale) => source.Rasterize(px, this._run, new(0, drawn.Advance, scale)) ?? drawn;
     }
 }

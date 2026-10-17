@@ -15,7 +15,9 @@ public static class FaceFromFont
 {
     private const string LodestoneFontName = "XIV AXIS Std ATK";
 
-    private const float DefaultGamma = 1.4f;
+    // Text is drawn a little heavier; the icons and merged glyphs more so.
+    private const float TextGamma = 1.2f;
+    private const float SymbolGamma = 1.4f;
 
     private const int RenderNatural = 4;
     private const int RenderNaturalSymmetric = 5;
@@ -39,7 +41,7 @@ public static class FaceFromFont
         float gameSize,
         LookupStruct font,
         TryOpenFontDelegate tryOpenFont,
-        bool monospacedDigits = true) =>
+        bool monospacedDigits) =>
         MakeElements(Preset.FamilyOf(gameFontFaceName), gameSize, font, tryOpenFont, monospacedDigits) is { } elements
             ? new()
             {
@@ -52,12 +54,12 @@ public static class FaceFromFont
             }
             : null;
 
-    public static IReadOnlyList<FaceElement>? MakeElements(
+    private static List<FaceElement>? MakeElements(
         string family,
         float size,
         LookupStruct chosen,
         TryOpenFontDelegate tryOpenFont,
-        bool monospacedDigits = true)
+        bool monospacedDigits)
     {
         if (!tryOpenFont(chosen, out var font))
             return null;
@@ -92,7 +94,7 @@ public static class FaceFromFont
                 italic,
                 placed.Size,
                 placed.RenderMode,
-                1.2f,
+                TextGamma,
                 RuneRange.From('!', '!'),
                 MergeMode.Replace,
                 placed.Offset,
@@ -109,18 +111,18 @@ public static class FaceFromFont
 
         var res = new List<FaceElement>();
         if (traits.HasLetters && hasHangul)
-            res.Add(Make(lookup, fontSize, renderMode, 1.2f, HangulCodepoints, MergeMode.AddAll, cjkOffset, cjkShift));
+            res.Add(Make(lookup, fontSize, renderMode, TextGamma, HangulCodepoints, MergeMode.AddAll, cjkOffset, cjkShift));
         if (traits.HasLetters && hasHanForChinese)
-            res.Add(Make(lookup, fontSize, renderMode, 1.2f, HanCodepoints, MergeMode.AddAll, cjkOffset, cjkShift));
+            res.Add(Make(lookup, fontSize, renderMode, TextGamma, HanCodepoints, MergeMode.AddAll, cjkOffset, cjkShift));
 
         if (traits.IsAxis && (hasKana || hasHangul || hasHan))
         {
-            res.Add(Make(lookup, fontSize, renderMode, 1.2f, LatinCodepoints, MergeMode.Replace, latinOffset));
-            res.Add(Make(lookup, fontSize, renderMode, 1.2f, CjkCodepoints, MergeMode.Replace, cjkOffset, cjkShift));
+            res.Add(Make(lookup, fontSize, renderMode, TextGamma, LatinCodepoints, MergeMode.Replace, latinOffset));
+            res.Add(Make(lookup, fontSize, renderMode, TextGamma, CjkCodepoints, MergeMode.Replace, cjkOffset, cjkShift));
         }
         else
         {
-            res.Add(Make(lookup, fontSize, renderMode, 1.2f, AllCodepoints, MergeMode.Replace, latinOffset));
+            res.Add(Make(lookup, fontSize, renderMode, TextGamma, AllCodepoints, MergeMode.Replace, latinOffset));
         }
 
         if (needFakeTabularDigits)
@@ -130,7 +132,7 @@ public static class FaceFromFont
                     lookup,
                     fontSize,
                     renderMode,
-                    1.2f,
+                    TextGamma,
                     RuneRange.From('0', '9'),
                     MergeMode.Replace,
                     latinOffset,
@@ -147,7 +149,7 @@ public static class FaceFromFont
                     LookupStruct.Of(LodestoneFontName),
                     size,
                     RenderNaturalSymmetric,
-                    1.4f,
+                    SymbolGamma,
                     PrivateUseCodepoints,
                     MergeMode.Replace,
                     puaOffset,
@@ -264,24 +266,10 @@ public static class FaceFromFont
             lookup,
             size,
             RenderNaturalSymmetric,
-            DefaultGamma,
-            ToRanges(glyphs.Keys),
+            SymbolGamma,
+            glyphs.Keys.Select(c => new RuneRange(c, c)).Coalesce().ToList(),
             MergeMode.Replace,
             glyphMerging: new() { Glyphs = glyphs });
-    }
-
-    private static List<RuneRange> ToRanges(IEnumerable<Rune> codepoints)
-    {
-        var res = new List<RuneRange>();
-        foreach (var c in codepoints.Order())
-        {
-            if (res.Count != 0 && res[^1].Last.Value + 1 == c.Value)
-                res[^1] = res[^1] with { Last = c };
-            else
-                res.Add(new(c, c));
-        }
-
-        return res;
     }
 
     private sealed record ExclamationMark(

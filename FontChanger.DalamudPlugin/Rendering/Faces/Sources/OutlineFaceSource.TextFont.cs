@@ -1,10 +1,11 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
 using FontChanger.DalamudPlugin.Rendering.Faces.Sources.Nominal;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
+using FontChanger.DalamudPlugin.Rendering.Text;
 using FontChanger.Presets.Utilities;
 
 using TerraFX.Interop.DirectX;
@@ -12,7 +13,7 @@ using TerraFX.Interop.Windows;
 
 namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources;
 
-// Glyph merging's texts drawn with the font: laid out with DirectWrite (letter spacing and all), measured by the glyphs'
+// Glyph merging's texts drawn with the font: shaped as the source shapes (with letter spacing), measured by the glyphs'
 // outlines, and drawn as the source draws.
 internal abstract unsafe partial class OutlineFaceSource
 {
@@ -22,9 +23,10 @@ internal abstract unsafe partial class OutlineFaceSource
     /// </summary>
     public MergingFaceSource.IMergeTextFont CreateMergeTextFont(float size, Matrix2x2 transform) => new TextFont(this, size, transform * this.Font.Transform);
 
-    private sealed class TextFont(OutlineFaceSource font, float size, Matrix2x2 transform) : MergingFaceSource.IMergeTextFont, IGlyphRunSink
+    private sealed class TextFont(OutlineFaceSource font, float size, Matrix2x2 transform) : MergingFaceSource.IMergeTextFont
     {
-        private readonly List<Run> _runs = [];
+        private readonly List<TextRun> _runs = [];
+        private readonly List<ShapedCluster> _clusters = [];
 
         public int Ascent { get; } = font.GetLineMetrics(size, transform).Ascent;
 
@@ -32,38 +34,26 @@ internal abstract unsafe partial class OutlineFaceSource
 
         public MergingFaceSource.MergeTextLine LayOut(string text, int letterSpacing)
         {
-            this._runs.Clear();
-            var spacing = text.Length != 0 && transform.M11 != 0 ? letterSpacing / transform.M11 : 0;
-            if (text.Length != 0)
-                this.Shape(text, spacing);
-
-            var runs = this._runs.ToArray();
-            var extra = font.GetExtraAdvance(size);
-            var width = runs.Sum(r => r.Advances.Sum() + (extra * r.Glyphs.Length)) - spacing;
+            var spacing = transform.M11 != 0 ? letterSpacing / transform.M11 : 0;
+            var (glyphs, advances, offsets) = this.Shape(text, spacing);
+            var width = glyphs.Length != 0 ? advances.Sum() - spacing : 0;
             var advance = (int)Rounding.Round(width * transform.M11);
 
             float inkX1 = float.MaxValue, inkX2 = float.MinValue;
             int inkY1 = int.MaxValue, inkY2 = int.MinValue;
-            var pen = 0f;
-            foreach (var r in runs)
+            var along = 0f;
+            for (var i = 0; i < glyphs.Length; i++)
             {
-                var runFace = font.GetRunFace(r.Face, r.EmSize);
-                var along = 0f;
-                for (var i = 0; i < r.Glyphs.Length; i++)
+                var offset = offsets?[i] ?? default;
+                var x = (transform.M11 * (along + offset.advanceOffset)) - (transform.M12 * offset.ascenderOffset);
+                if (font.MeasureGlyph(size, glyphs[i], offset with { advanceOffset = 0 }, transform) is { } ink)
                 {
-                    var offset = r.Offsets?[i] ?? default;
-                    var x = (pen + (transform.M11 * (along + offset.advanceOffset))) - (transform.M12 * offset.ascenderOffset);
-                    if (font.MeasureGlyph(runFace, r.EmSize, r.Glyphs[i], offset with { advanceOffset = 0 }, transform) is { } ink)
-                    {
-                        var (left, right) = font.GetInkExtent(runFace, r.EmSize, r.Glyphs[i], transform);
-                        (inkX1, inkX2) = (Math.Min(inkX1, x + left), Math.Max(inkX2, x + right));
-                        (inkY1, inkY2) = (Math.Min(inkY1, ink.Top), Math.Max(inkY2, ink.Bottom));
-                    }
-
-                    along += r.Advances[i] + extra;
+                    var (left, right) = font.GetInkExtent(size, glyphs[i], transform);
+                    (inkX1, inkX2) = (Math.Min(inkX1, x + left), Math.Max(inkX2, x + right));
+                    (inkY1, inkY2) = (Math.Min(inkY1, ink.Top), Math.Max(inkY2, ink.Bottom));
                 }
 
-                pen += along * transform.M11;
+                along += advances[i];
             }
 
             if (inkX1 > inkX2 || inkY1 > inkY2)
@@ -72,69 +62,75 @@ internal abstract unsafe partial class OutlineFaceSource
                 (inkY1, inkY2) = (inkY1 + this.Ascent, inkY2 + this.Ascent);
 
             return new(advance, true, inkX1, inkX2, inkY1, inkY2, x => {
-                var pieces = new List<RasterGlyph>();
-                foreach (var r in runs)
-                {
-                    var advances = r.Advances.Select(a => a + extra).ToArray();
-                    fixed (ushort* g = r.Glyphs)
-                    fixed (float* a = advances)
-                    fixed (DWRITE_GLYPH_OFFSET* o = r.Offsets)
-                    {
-                        var runFace = font.GetRunFace(r.Face, r.EmSize);
-                        pieces.Add(font.RasterizeRun(runFace, r.EmSize, g, a, o, (uint)r.Glyphs.Length, x, 0, 1, transform));
-                    }
-
-                    x += advances.Sum() * transform.M11;
-                }
-
-                return RasterGlyph.Merge(pieces, advance);
+                if (glyphs.Length == 0)
+                    return new RasterGlyph(advance, 0, 0, 0, 0, []);
+                fixed (ushort* g = glyphs)
+                fixed (float* a = advances)
+                fixed (DWRITE_GLYPH_OFFSET* o = offsets)
+                    return font.RasterizeRun(size, g, a, o, (uint)glyphs.Length, x, advance, transform);
             });
         }
 
-        void IGlyphRunSink.OnGlyphRun(IDWriteFontFace5* face, in DWRITE_GLYPH_RUN run, in DWRITE_GLYPH_RUN_DESCRIPTION description)
+        /// <summary>
+        /// Shapes a text by its runs of a script, each cluster advancing <paramref name="spacing"/> further (and as
+        /// emboldening does); glyphs the font lacks are left out.
+        /// </summary>
+        private (ushort[] Glyphs, float[] Advances, DWRITE_GLYPH_OFFSET[]? Offsets) Shape(string text, float spacing)
         {
-            // Glyphs the font lacks are left out.
             var glyphs = new List<ushort>();
             var advances = new List<float>();
-            var offsets = run.glyphOffsets is null ? null : new List<DWRITE_GLYPH_OFFSET>();
-            for (var i = 0; i < run.glyphCount; i++)
+            var offsets = new List<DWRITE_GLYPH_OFFSET>();
+            var extra = font.GetExtraAdvance(size);
+            font.Services.TextAnalyzer.Itemize(text, this._runs);
+            foreach (var run in this._runs)
             {
-                if (run.glyphIndices[i] == 0)
+                for (var start = run.Start; start < run.End;)
                 {
-                    if (advances.Count != 0)
-                        advances[^1] += run.glyphAdvances[i];
-                    continue;
-                }
+                    this._clusters.Clear();
+                    start += font.Shape(size, text.AsSpan(start, run.End - start), run.Script, this._clusters);
+                    foreach (var c in this._clusters)
+                    {
+                        for (var i = 0; i < c.GlyphIds.Length; i++)
+                        {
+                            glyphs.Add((ushort)c.GlyphIds[i]);
+                            advances.Add(c.Advances[i] + extra);
+                            var o = c.Offsets?[i] ?? default;
+                            offsets.Add(new() { advanceOffset = o.Advance, ascenderOffset = o.Ascender });
+                        }
 
-                glyphs.Add(run.glyphIndices[i]);
-                advances.Add(run.glyphAdvances[i]);
-                offsets?.Add(run.glyphOffsets[i]);
+                        if (advances.Count != 0)
+                            advances[^1] += spacing;
+                    }
+
+                    // Shaping stops at a glyph the font lacks.
+                    if (start < run.End)
+                        start += char.IsSurrogatePair(text, start) ? 2 : 1;
+                }
             }
 
-            if (glyphs.Count != 0)
-                this._runs.Add(new(face, run.fontEmSize, glyphs.ToArray(), advances.ToArray(), offsets?.ToArray()));
+            var hasOffsets = offsets.Exists(o => o.advanceOffset != 0 || o.ascenderOffset != 0);
+            return (glyphs.ToArray(), advances.ToArray(), hasOffsets ? offsets.ToArray() : null);
         }
+    }
 
-        private void Shape(string text, float letterSpacing)
-        {
-            var rasterizer = font._rasterizer;
-            using var format = rasterizer.CreateFormat(
-                font._def.Lookup.Name,
-                font.Font.LayoutWeight,
-                font.Font.LayoutStyle,
-                font.Font.LayoutStretch,
-                size,
-                rasterizer.NoFallback);
-            using var layout = rasterizer.CreateLayout(text, format.Get());
+    /// <summary>
+    /// Gets the vertical extent in pixels of a glyph's ink, moved by its offset in a shaped run, as
+    /// <see cref="RasterizeRun"/> would draw it; null if it has none.
+    /// </summary>
+    private (int Top, int Bottom)? MeasureGlyph(float size, ushort glyph, DWRITE_GLYPH_OFFSET offset, Matrix2x2 transform)
+    {
+        var bounds = this.MeasureRun(size, glyph, offset, transform);
+        return bounds.right <= bounds.left || bounds.bottom <= bounds.top ? null : (bounds.top, bounds.bottom);
+    }
 
-            var range = new DWRITE_TEXT_RANGE { startPosition = 0, length = (uint)text.Length };
-            font.ApplyTo(layout.Get(), range, size);
-            if (letterSpacing != 0)
-                layout.Get()->SetCharacterSpacing(0, letterSpacing, 0, range);
-
-            layout.Get()->CollectTo(this);
-        }
-
-        private sealed record Run(Pointer<IDWriteFontFace5> Face, float EmSize, ushort[] Glyphs, float[] Advances, DWRITE_GLYPH_OFFSET[]? Offsets);
+    /// <summary>Gets a glyph's ink extent horizontally in pixels from its origin, from its outline's side bearings.</summary>
+    private (float Left, float Right) GetInkExtent(float size, ushort glyph, Matrix2x2 transform)
+    {
+        DWRITE_GLYPH_METRICS gm;
+        if (this.Font.GetFace(size)->GetDesignGlyphMetrics(&glyph, 1, &gm, BOOL.FALSE).FAILED)
+            return (0, 0);
+        var scale = size / this.Font.Metrics.designUnitsPerEm * transform.M11;
+        var (x1, x2) = (gm.leftSideBearing * scale, ((int)gm.advanceWidth - gm.rightSideBearing) * scale);
+        return x1 <= x2 ? (x1, x2) : (x2, x1);
     }
 }

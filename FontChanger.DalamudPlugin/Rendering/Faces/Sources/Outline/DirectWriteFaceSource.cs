@@ -1,6 +1,4 @@
-using FontChanger.DalamudPlugin.Rendering.Fonts;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
-using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
 using FontChanger.Presets.Utilities;
 
@@ -9,13 +7,11 @@ using TerraFX.Interop.Windows;
 
 namespace FontChanger.DalamudPlugin.Rendering.Faces.Sources.Outline;
 
-/// <summary>A font's glyphs drawn with DirectWrite (xivres directwrite_fixed_size_font).</summary>
-internal sealed unsafe class DirectWriteFaceSource(
-    GlyphRasterizer rasterizer, FaceElement def, Renderer renderer, LookupFont font, byte[]? gamma, string faceName)
-    : OutlineFaceSource(rasterizer, def, renderer, font, gamma, faceName)
+/// <summary>A font's glyphs drawn with DirectWrite (xivres directwrite_fixed_size_font), measured as the face measures.</summary>
+internal sealed unsafe class DirectWriteFaceSource(FontServices services, FaceElement def, LookupFont font, string faceName)
+    : OutlineFaceSource(services, def, font, faceName)
 {
     protected override RasterGlyph DrawRun(
-        IDWriteFontFace5* face,
         float size,
         ushort* glyphs,
         float* advances,
@@ -24,8 +20,29 @@ internal sealed unsafe class DirectWriteFaceSource(
         float originX,
         int advance,
         Matrix2x2 transform) =>
-        this.DrawWithDirectWrite(face, size, glyphs, advances, offsets, count, originX, advance, transform);
+        this.Services.DirectWrite.RasterizeRun(
+            this.Font.GetFace(size),
+            size,
+            glyphs,
+            advances,
+            offsets,
+            count,
+            originX,
+            advance,
+            this.Def.DirectWrite with { MeasureMode = this.MeasureMode },
+            transform);
 
-    protected override RECT MeasureRun(IDWriteFontFace5* face, float size, ushort glyph, DWRITE_GLYPH_OFFSET offset, Matrix2x2 transform) =>
-        this.MeasureWithDirectWrite(face, size, glyph, offset, transform);
+    protected override RECT MeasureRun(float size, ushort glyph, DWRITE_GLYPH_OFFSET offset, Matrix2x2 transform)
+    {
+        var advance = 0f;
+        return this.Services.DirectWrite.GetRunBounds(
+            this.Font.GetFace(size),
+            size,
+            &glyph,
+            &advance,
+            &offset,
+            1,
+            this.Def.DirectWrite with { MeasureMode = this.MeasureMode },
+            transform);
+    }
 }

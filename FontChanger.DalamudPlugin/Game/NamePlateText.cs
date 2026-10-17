@@ -10,12 +10,13 @@ using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Rendering;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.DalamudPlugin.Utilities;
 
 using static FFXIVClientStructs.FFXIV.Client.UI.AddonNamePlate;
 
-namespace FontChanger.DalamudPlugin.Rendering.Game;
+namespace FontChanger.DalamudPlugin.Game;
 
 /// <summary>
 /// Nameplate text with the replaced fonts.
@@ -229,8 +230,6 @@ internal sealed unsafe class NamePlateText : IDisposable
         return true;
     }
 
-    private static float GetShownScaleOrDefault(NamePlateObject* obj, float fallback) => TryGetShownScale(obj, out var scale) ? scale : fallback;
-
     /// <summary>
     /// Gets the text node's on-screen scale with the plate at 100 percent: its current scale divided by the plate's
     /// current distance factor, which OnRequestedUpdate stored as the bake alpha (factor^(1/4) * 255) this update.
@@ -242,11 +241,8 @@ internal sealed unsafe class NamePlateText : IDisposable
             return false;
         var a = obj->BakeData.Alpha / 255f;
         var factor = Math.Max(a * a * a * a, MinDistanceFactor);
-        var scale = shown / factor;
-        if (!float.IsFinite(scale))
-            return false;
-        fullSize = Math.Clamp(scale, MinBakeScale, MaxBakeScale);
-        return true;
+        fullSize = shown / factor;
+        return float.IsFinite(fullSize);
     }
 
     private byte AllocateBakeDetour(BakePlateRenderer* renderer, NamePlateObject* obj)
@@ -258,8 +254,8 @@ internal sealed unsafe class NamePlateText : IDisposable
         if (this.EffectiveMode != NamePlateMode.BakedAtFullSize || !TryGetFullSizeScale(obj, out var fullSize))
             return this._allocateBakeHook.Original(renderer, obj);
 
-        // At least the size it is shown at now, and what it was baked at before (it was shown that large).
-        var scale = Math.Clamp(Math.Max(fullSize, Math.Max(GetShownScaleOrDefault(obj, 0), previous)), MinBakeScale, MaxBakeScale);
+        // At least what it was baked at before (it was shown that large); the full size is at least the size it is shown at now.
+        var scale = Math.Clamp(Math.Max(fullSize, previous), MinBakeScale, MaxBakeScale);
 
         var (w, h) = (obj->TextW, obj->TextH);
         obj->TextW = (short)MathF.Ceiling(w * scale);

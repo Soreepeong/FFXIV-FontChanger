@@ -8,8 +8,8 @@ using TerraFX.Interop.Windows;
 namespace FontChanger.DalamudPlugin.Rendering.Text;
 
 /// <summary>
-/// An IDWriteTextAnalysisSource of a text, left to right, in one locale, for the analyzer and the font fallback. It
-/// lives where it is declared (a local); <see cref="Get"/> gives the interface, valid while the text is pinned.
+/// An IDWriteTextAnalysisSource of a text, left to right, in en-us, for the analyzer and the font fallback. It lives
+/// where it is declared (a local); <see cref="Get"/> gives the interface, valid while the text is pinned.
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct TextAnalysisSource
@@ -25,12 +25,11 @@ internal unsafe struct TextAnalysisSource
     private delegate* unmanaged<void*, uint, uint*, IDWriteNumberSubstitution**, int> _getNumberSubstitution;
     private char* _text;
     private uint _length;
-    private char* _locale;
+    private fixed char _locale[6];
 
     /// <param name="text">The text, pinned while the source is used.</param>
     /// <param name="length">Its length in code units.</param>
-    /// <param name="locale">The locale name, zero-terminated and pinned while the source is used.</param>
-    public TextAnalysisSource(char* text, uint length, char* locale)
+    public TextAnalysisSource(char* text, uint length)
     {
         this._queryInterface = &QueryInterfaceImpl;
         this._addRef = &AddRefImpl;
@@ -42,7 +41,7 @@ internal unsafe struct TextAnalysisSource
         this._getNumberSubstitution = &GetNumberSubstitutionImpl;
         this._text = text;
         this._length = length;
-        this._locale = locale;
+        "en-us".CopyTo(MemoryMarshal.CreateSpan(ref this._locale[0], 5));
     }
 
     /// <summary>Gets the interface; the source must not move while it is used.</summary>
@@ -67,11 +66,13 @@ internal unsafe struct TextAnalysisSource
         return E.E_NOINTERFACE;
     }
 
+    /// <summary>IUnknown::AddRef of a COM object that lives where it is declared, as this one (and the analyzer's sinks) does.</summary>
     [UnmanagedCallersOnly]
-    private static uint AddRefImpl(void* self) => 1;
+    internal static uint AddRefImpl(void* self) => 1;
 
+    /// <summary>IUnknown::Release of a COM object that lives where it is declared.</summary>
     [UnmanagedCallersOnly]
-    private static uint ReleaseImpl(void* self) => 1;
+    internal static uint ReleaseImpl(void* self) => 1;
 
     [UnmanagedCallersOnly]
     private static int GetTextAtPositionImpl(void* self, uint position, char** text, uint* length)

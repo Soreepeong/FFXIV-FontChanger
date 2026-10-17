@@ -20,12 +20,9 @@ internal sealed partial class MergingFaceSource(
     IFaceSource inner,
     FaceElement def,
     GlyphMergingStruct merging,
-    GlyphRasterizer rasterizer,
+    FontServices services,
     OutlineFaceSource? textOutline) : NominalFaceSource
 {
-    // Advances are those of the drawn glyphs, which drawing finds: kept by size and codepoint.
-    private readonly Dictionary<(float Px, uint Id), float> _advances = [];
-
     /// <summary>Gets the outline sources it draws with (its own and its texts'), which the face measures alike.</summary>
     public IEnumerable<OutlineFaceSource> OutlineSources => new[] { inner as OutlineFaceSource, textOutline }.OfType<OutlineFaceSource>();
 
@@ -35,33 +32,21 @@ internal sealed partial class MergingFaceSource(
     /// Makes glyph merging around an element's source. Its texts are drawn with the element's font; glyph images draw
     /// them with the font the lookup names, if any, else with their own files.
     /// </summary>
-    public static MergingFaceSource Create(
-        IFaceSource inner, FaceElement def, GlyphMergingStruct merging, GlyphRasterizer rasterizer, byte[]? gamma, string faceName)
+    public static MergingFaceSource Create(IFaceSource inner, FaceElement def, GlyphMergingStruct merging, FontServices services, string faceName)
     {
         var textOutline = inner is ImageFaceSource && def.Lookup.Name.Length != 0
-                              ? OutlineFaceSource.Create(rasterizer, def, Renderer.DirectWrite, gamma, faceName)
+                              ? OutlineFaceSource.Create(services, def with { Renderer = Renderer.DirectWrite }, faceName)
                               : inner as OutlineFaceSource;
-        return new(inner, def, merging, rasterizer, textOutline);
+        return new(inner, def, merging, services, textOutline);
     }
 
     public override uint GetGlyphId(Rune rune) => merging.Glyphs.ContainsKey(rune) ? (uint)rune.Value : 0;
-
-    public override float GetAdvance(float px, uint glyphId)
-    {
-        if (!this._advances.TryGetValue((px, glyphId), out var advance))
-        {
-            advance = this.RasterizeGlyph(px, glyphId)?.Advance ?? 0;
-            this._advances.Add((px, glyphId), advance);
-        }
-
-        return advance;
-    }
 
     public override (int Ascent, int LineHeight) GetLineMetrics(float px) => inner.GetLineMetrics(px);
 
     public override bool TryGetBaseline(float px, Baseline baseline, out float y) => inner.TryGetBaseline(px, baseline, out y);
 
-    public override RasterGlyph? RasterizeGlyph(float px, uint glyphId)
+    protected override RasterGlyph? RasterizeGlyph(float px, uint glyphId)
     {
         if (!Rune.IsValid(glyphId) || !merging.Glyphs.TryGetValue(new((int)glyphId), out var glyph))
             return null;

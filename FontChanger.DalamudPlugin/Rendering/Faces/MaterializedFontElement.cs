@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-using FontChanger.DalamudPlugin.Rendering.Faces.Sources;
 using FontChanger.DalamudPlugin.Rendering.Rasterization;
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Records;
@@ -42,12 +41,9 @@ internal sealed class MaterializedFontElement(FaceElement def, IFaceSource? sour
     /// <summary>Gets its line metrics at a drawn size of the face; none without a source.</summary>
     public (int Ascent, int LineHeight) GetLineMetrics(float facePx) => this.Source?.GetLineMetrics(this.GetPx(facePx)) ?? (0, 0);
 
-    /// <summary>Gets a baseline of its source at a drawn size of the face, or <paramref name="fallback"/>.</summary>
-    public float GetBaselineOrDefault(float facePx, Baseline baseline, float fallback) =>
-        this.Source is { } s && s.TryGetBaseline(this.GetPx(facePx), baseline, out var y) ? y : fallback;
-
     /// <summary>Gets how far below the line's top its roman baseline is, with its line's ascent.</summary>
-    public float GetRomanBaselineY(float facePx, int ascent) => ascent - this.GetBaselineOrDefault(facePx, Baseline.Roman, 0);
+    public float GetRomanBaselineY(float facePx, int ascent) =>
+        this.Source is { } s && s.TryGetBaseline(this.GetPx(facePx), Baseline.Roman, out var y) ? ascent - y : ascent;
 
     /// <summary>
     /// Gets how far below the line's top the middle of its ideographic face (or em box) is, with its line's metrics; the
@@ -68,15 +64,15 @@ internal sealed class MaterializedFontElement(FaceElement def, IFaceSource? sour
     }
 
     /// <summary>
-    /// Places a glyph in its cell (xivres wrapping_fixed_size_font): monospaced (<paramref name="squeeze"/> draws it
-    /// narrower), its letter spacing added to the advance, its horizontal offset to the ink, and moved down by its
-    /// alignment in the face (<paramref name="face"/>) and its baseline shift. <paramref name="glyph"/>'s advance is the
-    /// whole pixels it takes, unadjusted.
+    /// Places a glyph in its cell (xivres wrapping_fixed_size_font): monospaced, its letter spacing added to the advance,
+    /// its horizontal offset to the ink, and moved down by its alignment in the face (<paramref name="face"/>) and its
+    /// baseline shift. <paramref name="glyph"/> is <paramref name="run"/> as <paramref name="source"/> (its source, or its
+    /// italic) drew it with the pen at <paramref name="originX"/>, which is drawn again narrower if the cell needs it; its
+    /// advance is the whole pixels it takes, unadjusted.
     /// </summary>
-    public RasterGlyph Wrap<TSqueeze>(RasterGlyph glyph, float facePx, in FaceAlignment face, TSqueeze squeeze)
-        where TSqueeze : IGlyphSqueeze, allows ref struct
+    public RasterGlyph Wrap(RasterGlyph glyph, float facePx, in FaceAlignment face, IFaceSource source, in GlyphRun run, float originX = 0)
     {
-        var g = this.Monospace(facePx, glyph, squeeze);
+        var g = this.Monospace(facePx, glyph, source, run, originX);
         return g with
         {
             Advance = g.Advance + this.GetLetterSpacing(facePx),
@@ -112,11 +108,10 @@ internal sealed class MaterializedFontElement(FaceElement def, IFaceSource? sour
 
     /// <summary>
     /// Places a glyph (its advance on screen, unadjusted) in a cell as its monospacing says: the advance clamped into its
-    /// limits, the ink aligned in the cell, and ink wider than a limited cell drawn narrower with
-    /// <paramref name="squeeze"/>. Glyphs that don't advance stay as they are.
+    /// limits, the ink aligned in the cell, and ink wider than a limited cell drawn again narrower. Glyphs that don't
+    /// advance stay as they are.
     /// </summary>
-    private RasterGlyph Monospace<TSqueeze>(float facePx, RasterGlyph glyph, TSqueeze squeeze)
-        where TSqueeze : IGlyphSqueeze, allows ref struct
+    private RasterGlyph Monospace(float facePx, RasterGlyph glyph, IFaceSource source, in GlyphRun run, float originX)
     {
         if (this.Def.Monospacing is not { } mono || glyph.Advance <= 0)
             return glyph;
@@ -143,10 +138,11 @@ internal sealed class MaterializedFontElement(FaceElement def, IFaceSource? sour
             // Hinting and rounding make the ink only roughly as narrow as the scale says: narrower scales are tried until
             // it fits.
             var scale = (float)cell / glyph.Width;
+            var px = this.GetPx(facePx);
             var fitted = glyph;
             for (var attempt = 0; attempt < 8; attempt++)
             {
-                fitted = squeeze.Squeeze(scale);
+                fitted = source.Rasterize(px, run, new(originX, null, scale)) ?? glyph;
                 if (fitted.Width <= cell)
                     break;
                 scale *= (float)cell / fitted.Width * 0.98f;
