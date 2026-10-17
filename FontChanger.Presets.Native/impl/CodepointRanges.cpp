@@ -14,7 +14,6 @@ namespace {
 		return s;
 	}
 
-	// Removes a prefix of hexadecimal numbers: 0x, U+, or \x; returns whether there was one.
 	bool TrimHexPrefix(std::u32string_view& s) {
 		for (const auto prefix : {U"0x", U"0X", U"U+", U"u+", U"\\x", U"\\X"}) {
 			if (s.starts_with(prefix)) {
@@ -29,7 +28,6 @@ namespace {
 		return static_cast<char32_t>(std::strtol(xivres::util::unicode::convert<std::string>(Trim(s)).c_str(), nullptr, 16));
 	}
 
-	// Sorts the ranges, and merges those that overlap or touch.
 	FontChanger::CodepointRanges::Ranges Normalize(FontChanger::CodepointRanges::Ranges ranges) {
 		std::ranges::sort(ranges);
 		FontChanger::CodepointRanges::Ranges res;
@@ -124,4 +122,31 @@ FontChanger::CodepointRanges::Ranges FontChanger::CodepointRanges::Subtract(cons
 
 bool FontChanger::CodepointRanges::Contains(const Ranges& ranges, char32_t codepoint) {
 	return std::ranges::any_of(ranges, [codepoint](const auto& r) { return r.first <= codepoint && codepoint <= r.second; });
+}
+
+FontChanger::CodepointRanges::Ranges FontChanger::CodepointRanges::Intersect(const Ranges& ranges, const Ranges& others) {
+	return Subtract(ranges, Subtract(ranges, others));
+}
+
+const FontChanger::CodepointRanges::Ranges& FontChanger::CodepointRanges::GetScriptGroupCodepoints(ScriptGroup group) {
+	static const Ranges han{
+		{0x2E80, 0x2FDF}, {0x2FF0, 0x303F}, {0x3100, 0x312F}, {0x3190, 0x31EF}, {0x3200, 0x33FF}, {0x3400, 0x4DBF},
+		{0x4E00, 0x9FFF}, {0xF900, 0xFAFF}, {0xFE30, 0xFE4F}, {0xFF01, 0xFF60}, {0xFFE0, 0xFFE6}, {0x20000, 0x3FFFF},
+	};
+	static const Ranges kana{{0x3040, 0x30FF}, {0x31F0, 0x31FF}, {0xFF65, 0xFF9F}, {0x1AFF0, 0x1B16F}};
+	static const Ranges hangul{{0x1100, 0x11FF}, {0x3130, 0x318F}, {0xA960, 0xA97F}, {0xAC00, 0xD7FF}, {0xFFA0, 0xFFDC}};
+	static const Ranges nonCjk = [] {
+		auto others = han;
+		others.insert(others.end(), kana.begin(), kana.end());
+		others.insert(others.end(), hangul.begin(), hangul.end());
+		others.emplace_back(0xE000, 0xF8FF);
+		return Subtract({{0x20, 0x10FFFF}}, others);
+	}();
+
+	switch (group) {
+		case ScriptGroup::Han: return han;
+		case ScriptGroup::Kana: return kana;
+		case ScriptGroup::Hangul: return hangul;
+		default: return nonCjk;
+	}
 }

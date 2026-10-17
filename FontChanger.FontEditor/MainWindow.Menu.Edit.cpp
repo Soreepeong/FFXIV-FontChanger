@@ -2,36 +2,37 @@
 
 #include <commdlg.h>
 
-#include "FontChanger.Presets/FaceFromFont.h"
+#include "FontChanger.Presets/FontsFromSystemFont.h"
 #include "FontChanger.Presets/Structs.h"
+#include "FontElementEditorDialog.h"
 #include "MainWindow.h"
 #include "NegativeBearingCodepointsDialog.h"
 #include "resource.h"
 #include "xivres/textools.h"
 
 LRESULT App::FontEditorWindow::Menu_Edit_Add() {
-	if (!m_pActiveFace)
+	if (!m_pActiveFont)
 		return 0;
 
-	auto& elements = m_pActiveFace->Elements;
+	auto& elements = m_pActiveFont->Elements;
 	auto indices = GetSelectedElementIndices();
 	if (indices.empty())
 		indices.push_back(static_cast<int>(elements.size()));
 
-	// Each new element copies the one before it, except for the characters.
-	std::set<const Structs::FaceElement*> added;
+	// Each new element is empty, at the size of the font, with the fields that fonts are fit by Auto: once it draws
+	// characters with a font, it is fit to the game's font.
+	const auto size = FontChanger::FontsFromSystemFont::GetGameFontSize(*m_pActiveFont).value_or(12.f);
+	std::set<const Structs::FontElement*> added;
 	for (const auto pos : indices | std::views::reverse) {
-		auto& element = **elements.emplace(elements.begin() + pos, std::make_unique<Structs::FaceElement>());
-		if (pos > 0) {
-			element = *elements[static_cast<size_t>(pos) - 1];
-			element.WrapModifiers.Codepoints.clear();
-		}
+		auto& element = **elements.emplace(elements.begin() + pos, std::make_unique<Structs::FontElement>());
+		element.Size = size;
+		element.Auto = {.Size = true, .HorizontalOffset = true, .VerticalOffset = true, .RenderMode = true};
 		added.insert(&element);
 	}
 
-	UpdateFaceElementList();
-	SelectFaceElements(added);
-	OnActiveFaceElementsChanged();
+	UpdateFontElementList();
+	SelectFontElements(added);
+	OnActiveFontElementsChanged();
 
 	if (indices.size() == 1)
 		ShowEditor(*elements[indices.front()]);
@@ -39,22 +40,9 @@ LRESULT App::FontEditorWindow::Menu_Edit_Add() {
 	return 0;
 }
 
-namespace FaceFromFont = FontChanger::FaceFromFont;
+namespace FontsFromSystemFont = FontChanger::FontsFromSystemFont;
 
-LRESULT App::FontEditorWindow::Menu_Edit_AddFromFont() {
-	if (!m_pActiveFace)
-		return 0;
-
-	const auto familyAndSize = FaceFromFont::GetGameFontFamilyAndSize(m_pActiveFace->Name);
-	if (!familyAndSize) {
-		const auto name = xivres::util::unicode::convert<std::wstring>(m_pActiveFace->Name);
-		MessageBoxW(m_hWnd,
-			std::vformat(GetStringResource(IDS_ADDFROMFONT_NOTGAMEFONT), std::make_wformat_args(name)).c_str(),
-			std::wstring(GetStringResource(IDS_APP)).c_str(),
-			MB_OK | MB_ICONWARNING);
-		return 0;
-	}
-
+std::optional<LOGFONTW> App::FontEditorWindow::ChooseSystemFont() {
 	LOGFONTW logFont{};
 	CHOOSEFONTW chooseFont{
 		.lStructSize = sizeof chooseFont,
@@ -63,33 +51,135 @@ LRESULT App::FontEditorWindow::Menu_Edit_AddFromFont() {
 		.Flags = CF_SCREENFONTS | CF_SCALABLEONLY | CF_NOVERTFONTS | CF_NOSIZESEL | CF_NOSCRIPTSEL | CF_FORCEFONTEXIST,
 	};
 	if (!ChooseFontW(&chooseFont))
+		return std::nullopt;
+	return logFont;
+}
+
+LRESULT App::FontEditorWindow::Menu_Edit_AddElementFromFont() {
+	if (!m_pActiveFont)
 		return 0;
 
-	// The faces of the family in the font set of the active face, each with the elements that draw it with the font.
-	std::vector<std::pair<Structs::Face*, std::vector<std::unique_ptr<Structs::FaceElement>>>> additions;
+	const auto logFont = ChooseSystemFont();
+	if (!logFont)
+		return 0;
+
+	// Added before the first selected element, as Add does, or after all.
+	const auto indices = GetSelectedElementIndices();
+	const auto index = indices.empty() ? m_pActiveFont->Elements.size() : static_cast<size_t>(indices.front());
+
+	std::set<const Structs::FontElement*> added;
 	try {
-		const auto lookup = FaceFromFont::GetLookupFromLogFont(logFont);
-		for (const auto& pFontSet : m_multiFontSet.FontSets) {
-			if (std::ranges::any_of(pFontSet->Faces, [this](const auto& pFace) { return pFace.get() == m_pActiveFace; }))
-				additions = FaceFromFont::MakeFamilyElements(*pFontSet, familyAndSize->first, lookup);
-		}
+		for (const auto pElement : FontsFromSystemFont::AddElement(*m_pActiveFont, FontsFromSystemFont::GetLookupFromLogFont(*logFont), index))
+			added.insert(pElement);
 	} catch (const std::exception& e) {
 		const auto message = xivres::util::unicode::convert<std::wstring>(e.what());
 		MessageBoxW(m_hWnd,
 			std::vformat(GetStringResource(IDS_ADDFROMFONT_FAILED), std::make_wformat_args(message)).c_str(),
 			std::wstring(GetStringResource(IDS_APP)).c_str(),
 			MB_OK | MB_ICONERROR);
+	}
+
+	UpdateFontElementList();
+	SelectFontElements(added);
+	OnActiveFontElementsChanged();
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::Menu_Edit_AddFromFont() {
+	if (!m_pActiveFont)
+		return 0;
+
+	const auto familyAndSize = FontsFromSystemFont::GetGameFontFamilyAndSize(m_pActiveFont->Name);
+	if (!familyAndSize) {
+		const auto name = xivres::util::unicode::convert<std::wstring>(m_pActiveFont->Name);
+		MessageBoxW(m_hWnd,
+			std::vformat(GetStringResource(IDS_ADDFROMFONT_NOTGAMEFONT), std::make_wformat_args(name)).c_str(),
+			std::wstring(GetStringResource(IDS_APP)).c_str(),
+			MB_OK | MB_ICONWARNING);
 		return 0;
 	}
 
-	for (auto& [pFace, elements] : additions) {
-		std::ranges::move(elements, std::back_inserter(pFace->Elements));
-		pFace->OnElementChange();
+	const auto logFont = ChooseSystemFont();
+	if (!logFont)
+		return 0;
+
+	// The elements are added to the fonts of the family in the font set of the active font, and fit at each size.
+	try {
+		const auto lookup = FontsFromSystemFont::GetLookupFromLogFont(*logFont);
+		if (const auto pFontSet = FindFontSet(*m_pActiveFont))
+			FontsFromSystemFont::AddFamilyElements(*pFontSet, familyAndSize->first, lookup);
+	} catch (const std::exception& e) {
+		const auto message = xivres::util::unicode::convert<std::wstring>(e.what());
+		MessageBoxW(m_hWnd,
+			std::vformat(GetStringResource(IDS_ADDFROMFONT_FAILED), std::make_wformat_args(message)).c_str(),
+			std::wstring(GetStringResource(IDS_APP)).c_str(),
+			MB_OK | MB_ICONERROR);
 	}
 
-	UpdateFaceElementList();
+	UpdateFontElementList();
 	Changes_MarkDirty();
 	Window_Redraw();
+	return 0;
+}
+
+LRESULT App::FontEditorWindow::Menu_Edit_AutoFit(bool allSizes, bool selectedOnly) {
+	if (!m_pActiveFont)
+		return 0;
+
+	auto& font = *m_pActiveFont;
+	auto indices = selectedOnly ? GetSelectedElementIndices() : std::vector<int>{};
+	if (indices.empty()) {
+		for (int i = 0; i < static_cast<int>(font.Elements.size()); i++)
+			indices.push_back(i);
+	}
+
+	std::vector<Structs::FontElement*> targets;
+	for (const auto i : indices) {
+		if (FontsFromSystemFont::CanAutoFit(*font.Elements[i]))
+			targets.push_back(font.Elements[i].get());
+	}
+	if (targets.empty() || !FontsFromSystemFont::GetGameFontFamilyAndSize(font.Name) || !FontsFromSystemFont::GetGameFontSize(font)) {
+		MessageBoxW(m_hWnd, std::wstring(GetStringResource(IDS_AUTOFIT_NOTHINGTOFIT)).c_str(), std::wstring(GetStringResource(IDS_APP)).c_str(), MB_OK | MB_ICONWARNING);
+		return 0;
+	}
+
+	// Editors would show, and revert to, the values from before the fitting.
+	CloseEditors(targets);
+
+	std::set<const Structs::FontElement*> fitted;
+	try {
+		const auto result = FontsFromSystemFont::AutoFit(font, targets);
+		if (!result)
+			return 0;
+
+		std::vector<size_t> fittedIndices;
+		for (const auto& [pElement, group] : result->Fitted) {
+			fitted.insert(pElement);
+			fittedIndices.push_back(std::ranges::find(font.Elements, pElement, &std::unique_ptr<Structs::FontElement>::get) - font.Elements.begin());
+		}
+
+		// The other sizes get copies of the elements, split as they are now, each fit at its size.
+		if (const auto pFontSet = allSizes ? FindFontSet(font) : nullptr) {
+			for (const auto pOther : FontListBox_ReplaceOtherSizes(*pFontSet, font)) {
+				std::vector<Structs::FontElement*> others;
+				for (const auto i : fittedIndices)
+					others.push_back(pOther->Elements[i].get());
+				FontsFromSystemFont::AutoFit(*pOther, others);
+			}
+		}
+	} catch (const std::exception& e) {
+		const auto message = xivres::util::unicode::convert<std::wstring>(e.what());
+		MessageBoxW(m_hWnd,
+			std::vformat(GetStringResource(IDS_AUTOFIT_FAILED), std::make_wformat_args(message)).c_str(),
+			std::wstring(GetStringResource(IDS_APP)).c_str(),
+			MB_OK | MB_ICONERROR);
+	}
+
+	UpdateFontElementList();
+	for (const auto& pElement : font.Elements)
+		UpdateFontElementListViewItem(*pElement);
+	SelectFontElements(fitted);
+	OnActiveFontElementsChanged();
 	return 0;
 }
 
@@ -102,12 +192,12 @@ LRESULT App::FontEditorWindow::Menu_Edit_Cut() {
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_Copy() {
-	if (!m_pActiveFace)
+	if (!m_pActiveFont)
 		return 1;
 
 	auto objs = nlohmann::json::array();
 	for (const auto i : GetSelectedElementIndices())
-		objs.emplace_back(*m_pActiveFace->Elements[i]);
+		objs.emplace_back(*m_pActiveFont->Elements[i]);
 
 	const auto wstr = xivres::util::unicode::convert<std::wstring>(objs.dump());
 
@@ -132,7 +222,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_Copy() {
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_Paste() {
-	if (!m_pActiveFace)
+	if (!m_pActiveFont)
 		return 0;
 
 	const auto clipboard = OpenClipboard(m_hWnd);
@@ -144,7 +234,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_Paste() {
 		data = xivres::util::unicode::convert<std::string>(static_cast<const wchar_t*>(pData));
 	CloseClipboard();
 
-	std::vector<Structs::FaceElement> parsedTemplateElements;
+	std::vector<Structs::FontElement> parsedTemplateElements;
 	try {
 		const auto parsed = nlohmann::json::parse(data);
 		if (!parsed.is_array())
@@ -159,25 +249,25 @@ LRESULT App::FontEditorWindow::Menu_Edit_Paste() {
 		return 0;
 	}
 
-	auto& elements = m_pActiveFace->Elements;
+	auto& elements = m_pActiveFont->Elements;
 	auto indices = GetSelectedElementIndices();
 	if (indices.empty())
 		indices.push_back(static_cast<int>(elements.size()));
 
-	std::set<const Structs::FaceElement*> added;
+	std::set<const Structs::FontElement*> added;
 	for (const auto pos : indices | std::views::reverse) {
 		for (const auto& templateElement : parsedTemplateElements | std::views::reverse)
-			added.insert(elements.emplace(elements.begin() + pos, std::make_unique<Structs::FaceElement>(templateElement))->get());
+			added.insert(elements.emplace(elements.begin() + pos, std::make_unique<Structs::FontElement>(templateElement))->get());
 	}
 
-	UpdateFaceElementList();
-	SelectFaceElements(added);
-	OnActiveFaceElementsChanged();
+	UpdateFontElementList();
+	SelectFontElements(added);
+	OnActiveFontElementsChanged();
 	return 0;
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_Delete() {
-	if (!m_pActiveFace)
+	if (!m_pActiveFont)
 		return 0;
 
 	const auto indices = GetSelectedElementIndices();
@@ -185,55 +275,65 @@ LRESULT App::FontEditorWindow::Menu_Edit_Delete() {
 		return 0;
 
 	for (const auto index : indices | std::views::reverse)
-		m_pActiveFace->Elements.erase(m_pActiveFace->Elements.begin() + index);
+		m_pActiveFont->Elements.erase(m_pActiveFont->Elements.begin() + index);
 
-	UpdateFaceElementList();
-	OnActiveFaceElementsChanged();
+	UpdateFontElementList();
+	OnActiveFontElementsChanged();
 	return 0;
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_SelectAll() {
-	ListView_SetItemState(m_hFaceElementsListView, -1, LVIS_SELECTED, LVIS_SELECTED);
+	ListView_SetItemState(m_hFontElementsListView, -1, LVIS_SELECTED, LVIS_SELECTED);
 	return 0;
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_Details() {
 	for (const auto i : GetSelectedElementIndices())
-		ShowEditor(*m_pActiveFace->Elements[i]);
+		ShowEditor(*m_pActiveFont->Elements[i]);
 	return 0;
 }
 
-LRESULT App::FontEditorWindow::Menu_Edit_ChangeParams(int baselineShift, int horizontalOffset, int letterSpacing, float fontSize) {
+LRESULT App::FontEditorWindow::Menu_Edit_ChangeParams(int verticalOffset, int horizontalOffset, int letterSpacing, float fontSize) {
 	const auto indices = GetSelectedElementIndices();
 	if (indices.empty())
 		return 0;
 
-	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
+	const auto tempDisableRedraw = SuppressRedraw(m_hFontElementsListView);
 	for (const auto i : indices) {
-		auto& e = *m_pActiveFace->Elements[i];
+		auto& e = *m_pActiveFont->Elements[i];
 		auto baseChanged = false;
-		if (e.Renderer == Structs::RendererEnum::Empty) {
-			baseChanged |= !!baselineShift;
+		if (e.Source == Structs::ElementSourceEnum::Empty) {
+			baseChanged |= !!verticalOffset;
 			baseChanged |= !!(letterSpacing + horizontalOffset);
-			e.RendererSpecific.Empty.Ascent += baselineShift;
+			e.RendererSpecific.Empty.Ascent += verticalOffset;
 			e.RendererSpecific.Empty.LineHeight += letterSpacing + horizontalOffset;
 		} else {
-			e.WrapModifiers.BaselineShift += baselineShift;
+			e.WrapModifiers.VerticalOffset += verticalOffset;
 			e.WrapModifiers.HorizontalOffset += horizontalOffset;
 			e.WrapModifiers.LetterSpacing += letterSpacing;
+
+			// Values stepped from are the user's from then on.
+			if (verticalOffset)
+				e.Auto.VerticalOffset = false;
+			if (horizontalOffset)
+				e.Auto.HorizontalOffset = false;
 		}
 		if (fontSize != 0.f) {
 			e.Size = std::roundf((e.Size + fontSize) * 10.f) / 10.f;
+			e.Auto.Size = false;
 			baseChanged = true;
 		}
 		if (baseChanged)
 			e.OnFontCreateParametersChange();
 		else
 			e.OnFontWrappingParametersChange();
-		UpdateFaceElementListViewItem(e);
+		UpdateFontElementListViewItem(e);
+
+		if (const auto it = m_editors.find(&e); it != m_editors.end() && it->second && it->second->IsOpened())
+			it->second->RefreshAutoFields();
 	}
 
-	OnActiveFaceElementsChanged();
+	OnActiveFontElementsChanged();
 	return 0;
 }
 
@@ -242,24 +342,24 @@ LRESULT App::FontEditorWindow::Menu_Edit_ToggleMergeMode() {
 	if (indices.empty())
 		return 0;
 
-	const auto tempDisableRedraw = SuppressRedraw(m_hFaceElementsListView);
+	const auto tempDisableRedraw = SuppressRedraw(m_hFontElementsListView);
 	for (const auto i : indices) {
-		auto& e = *m_pActiveFace->Elements[i];
+		auto& e = *m_pActiveFont->Elements[i];
 		e.MergeMode = static_cast<FontChanger::FixedSizeFont::codepoint_merge_mode>((static_cast<int>(e.MergeMode) + 1) % static_cast<int>(FontChanger::FixedSizeFont::codepoint_merge_mode::Enum_Count_));
 		e.OnFontWrappingParametersChange();
-		UpdateFaceElementListViewItem(e);
+		UpdateFontElementListViewItem(e);
 	}
 
-	OnActiveFaceElementsChanged();
+	OnActiveFontElementsChanged();
 	return 0;
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_SetVerticalAlignment(FontChanger::FixedSizeFont::vertical_alignment alignment) {
-	if (!m_pActiveFace || m_pActiveFace->VerticalAlignment == alignment)
+	if (!m_pActiveFont || m_pActiveFont->VerticalAlignment == alignment)
 		return 0;
 
-	m_pActiveFace->VerticalAlignment = alignment;
-	m_pActiveFace->OnElementChange();
+	m_pActiveFont->VerticalAlignment = alignment;
+	m_pActiveFont->OnElementChange();
 	Changes_MarkDirty();
 	Window_Redraw();
 	return 0;
@@ -271,7 +371,7 @@ LRESULT App::FontEditorWindow::Menu_Edit_MoveUpOrDown(int direction) {
 		return 0;
 
 	// Each selected element swaps places with its neighbor, starting from the one nearest to where they move.
-	auto& elements = m_pActiveFace->Elements;
+	auto& elements = m_pActiveFont->Elements;
 	if (direction > 0)
 		std::ranges::reverse(indices);
 
@@ -287,13 +387,13 @@ LRESULT App::FontEditorWindow::Menu_Edit_MoveUpOrDown(int direction) {
 	if (!any)
 		return 0;
 
-	UpdateFaceElementList();
-	OnActiveFaceElementsChanged();
+	UpdateFontElementList();
+	OnActiveFontElementsChanged();
 	return 0;
 }
 
-LRESULT App::FontEditorWindow::FaceElementsListView_Clone() {
-	if (!m_pActiveFace)
+LRESULT App::FontEditorWindow::FontElementsListView_Clone() {
+	if (!m_pActiveFont)
 		return 0;
 
 	const auto indices = GetSelectedElementIndices();
@@ -301,30 +401,30 @@ LRESULT App::FontEditorWindow::FaceElementsListView_Clone() {
 		return 0;
 
 	// The copies go after the last selected element, in their order.
-	auto& elements = m_pActiveFace->Elements;
-	std::vector<std::unique_ptr<Structs::FaceElement>> clones;
+	auto& elements = m_pActiveFont->Elements;
+	std::vector<std::unique_ptr<Structs::FontElement>> clones;
 	for (const auto i : indices)
-		clones.emplace_back(std::make_unique<Structs::FaceElement>(*elements[i]));
+		clones.emplace_back(std::make_unique<Structs::FontElement>(*elements[i]));
 
-	std::set<const Structs::FaceElement*> added;
+	std::set<const Structs::FontElement*> added;
 	for (const auto& pClone : clones)
 		added.insert(pClone.get());
 	elements.insert(elements.begin() + indices.back() + 1, std::make_move_iterator(clones.begin()), std::make_move_iterator(clones.end()));
 
-	UpdateFaceElementList();
-	SelectFaceElements(added);
-	OnActiveFaceElementsChanged();
+	UpdateFontElementList();
+	SelectFontElements(added);
+	OnActiveFontElementsChanged();
 	return 0;
 }
 
-LRESULT App::FontEditorWindow::FaceElementsListView_ShowNegativeBearingCodepoints() {
-	if (!m_pActiveFace) return 0;
-	const auto index = ListView_GetNextItem(m_hFaceElementsListView, -1, LVNI_SELECTED);
+LRESULT App::FontEditorWindow::FontElementsListView_ShowNegativeBearingCodepoints() {
+	if (!m_pActiveFont) return 0;
+	const auto index = ListView_GetNextItem(m_hFontElementsListView, -1, LVNI_SELECTED);
 	if (index < 0)
 		return 0;
 
-	const auto& element = *m_pActiveFace->Elements[index];
-	if (element.Renderer == Structs::RendererEnum::Empty)
+	const auto& element = *m_pActiveFont->Elements[index];
+	if (element.Source == Structs::ElementSourceEnum::Empty)
 		return 0;
 
 	const auto hPrevCursor = SetCursor(LoadCursor(nullptr, IDC_WAIT));
@@ -344,28 +444,28 @@ LRESULT App::FontEditorWindow::FaceElementsListView_ShowNegativeBearingCodepoint
 }
 
 LRESULT App::FontEditorWindow::Menu_Edit_CreateEmptyCopyFromSelection() {
-	if (!m_pActiveFace)
+	if (!m_pActiveFont)
 		return 0;
 
-	const auto refIndex = ListView_GetNextItem(m_hFaceElementsListView, -1, LVNI_SELECTED);
+	const auto refIndex = ListView_GetNextItem(m_hFontElementsListView, -1, LVNI_SELECTED);
 	if (refIndex == -1)
 		return 0;
 
-	// An empty element of the same metrics, first so that it decides the metrics of the face.
-	auto& elements = m_pActiveFace->Elements;
+	// An empty element of the same metrics, first so that it decides the metrics of the font.
+	auto& elements = m_pActiveFont->Elements;
 	const auto& ref = *elements[refIndex];
-	auto element = std::make_unique<Structs::FaceElement>();
+	auto element = std::make_unique<Structs::FontElement>();
 	element->Size = ref.Size;
 	element->RendererSpecific = {
 		.Empty = {
-			.Ascent = static_cast<float>(ref.GetWrappedFont()->ascent()) + ref.WrapModifiers.BaselineShift,
+			.Ascent = static_cast<float>(ref.GetWrappedFont()->ascent()) + ref.WrapModifiers.VerticalOffset,
 			.LineHeight = static_cast<float>(ref.GetWrappedFont()->line_height()),
 		},
 	};
 	const auto& added = **elements.emplace(elements.begin(), std::move(element));
 
-	UpdateFaceElementList();
-	SelectFaceElements({&added});
-	OnActiveFaceElementsChanged();
+	UpdateFontElementList();
+	SelectFontElements({&added});
+	OnActiveFontElementsChanged();
 	return 0;
 }

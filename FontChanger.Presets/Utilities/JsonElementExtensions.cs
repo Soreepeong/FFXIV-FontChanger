@@ -21,6 +21,20 @@ public static class JsonElementExtensions
             json is { ValueKind: JsonValueKind.Object } && json.TryGetProperty(name, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False
                 ? v.ValueKind == JsonValueKind.True
                 : fallback;
+
+        public bool TryGetObject(string name, out JsonElement value) =>
+            json.TryGetPropertyOfKind(name, JsonValueKind.Object, out value);
+
+        public bool TryGetArray(string name, out JsonElement value) =>
+            json.TryGetPropertyOfKind(name, JsonValueKind.Array, out value);
+
+        private bool TryGetPropertyOfKind(string name, JsonValueKind kind, out JsonElement value)
+        {
+            if (json is { ValueKind: JsonValueKind.Object } && json.TryGetProperty(name, out value) && value.ValueKind == kind)
+                return true;
+            value = default;
+            return false;
+        }
     }
 
     extension(JsonElement? json)

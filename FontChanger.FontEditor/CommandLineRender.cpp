@@ -81,32 +81,32 @@ namespace {
 		App::ElementFonts::SetProjectDirectory(configPath.parent_path());
 		const auto multiFontSet = nlohmann::json::parse(in).get<App::Structs::MultiFontSet>();
 
-		const App::Structs::Face* face = nullptr;
+		const App::Structs::Font* presetFont = nullptr;
 		for (const auto& fontSet : multiFontSet.FontSets) {
-			for (const auto& f : fontSet->Faces) {
-				if (!face && (!fontName || xivres::util::unicode::convert<std::wstring>(f->Name) == *fontName))
-					face = f.get();
+			for (const auto& f : fontSet->Fonts) {
+				if (!presetFont && (!fontName || xivres::util::unicode::convert<std::wstring>(f->Name) == *fontName))
+					presetFont = f.get();
 			}
 		}
-		if (!face) {
+		if (!presetFont) {
 			throw std::invalid_argument(fontName
 				? std::format("No font is named {}.", xivres::util::unicode::convert<std::string>(*fontName))
 				: std::string("The configuration has no font."));
 		}
 
 		if (exportFolder) {
-			const App::Structs::FaceElement* element = nullptr;
+			const App::Structs::FontElement* element = nullptr;
 			if (elementIndex) {
-				if (*elementIndex >= face->Elements.size())
-					throw std::invalid_argument(std::format("The font has {} elements.", face->Elements.size()));
-				element = face->Elements[*elementIndex].get();
+				if (*elementIndex >= presetFont->Elements.size())
+					throw std::invalid_argument(std::format("The font has {} elements.", presetFont->Elements.size()));
+				element = presetFont->Elements[*elementIndex].get();
 			}
-			const auto font = element ? App::GlyphFileTools::GetElementFontForExport(*element, withAdjustments) : face->GetMergedFont();
+			const auto font = element ? App::GlyphFileTools::GetElementFontForExport(*element, withAdjustments) : presetFont->GetMergedFont();
 			App::GlyphFileTools::ExportGlyphs(*font, *exportFolder, {
 				.Svg = exportSvg,
 				.Png = exportPng,
 				.WithAdjustments = withAdjustments || !element,
-				.Source = element ? App::GlyphFileTools::DescribeSource(*element) : App::GlyphFileTools::DescribeSource(*face),
+				.Source = element ? App::GlyphFileTools::DescribeSource(*element) : App::GlyphFileTools::DescribeSource(*presetFont),
 			});
 			if (!output)
 				return 0;
@@ -114,7 +114,7 @@ namespace {
 		if (!text)
 			throw std::invalid_argument("--render-text is required.");
 
-		const auto& font = *face->GetMergedFont();
+		const auto& font = *presetFont->GetMergedFont();
 		const auto measured = FontChanger::FixedSizeFont::text_measurer(font)
 			.max_width(maxWidth.value_or((std::numeric_limits<int>::max)()))
 			.use_kerning(true)

@@ -12,9 +12,9 @@ using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 
 using FontChanger.DalamudPlugin.Configuration;
-using FontChanger.DalamudPlugin.Rendering;
-using FontChanger.DalamudPlugin.Rendering.Game;
-using FontChanger.DalamudPlugin.Rendering.Shaders;
+using FontChanger.DalamudPlugin.Fonts;
+using FontChanger.DalamudPlugin.Fonts.Shaders;
+using FontChanger.DalamudPlugin.Game;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;
 
@@ -27,6 +27,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
     private readonly DisposeSafety.ScopedFinalizer _finalizer = new();
 
     private long _lastSubpixelQuery;
+    private ConfigWindow _configWindow = null!;
 
     public Plugin()
     {
@@ -42,8 +43,6 @@ public sealed class Plugin : IAsyncDalamudPlugin
         }
 
         this.Configuration = PluginInterface.GetPluginConfig() as Configuration.Configuration ?? new();
-        if (this.Configuration.Migrate())
-            PluginInterface.SavePluginConfig(this.Configuration);
     }
 
     public async Task LoadAsync(CancellationToken cancellationToken)
@@ -63,8 +62,8 @@ public sealed class Plugin : IAsyncDalamudPlugin
             this.Replacer.Atlas = this.Configuration.Atlas;
             this.Replacer.Edge = this.Configuration.Edge;
             this.Replacer.VerticalSubpixel = this.Configuration.VerticalSubpixel;
-            this.Replacer.Subpixel =
-                SubpixelShaders.SettingsRecord.From(this.Configuration.Subpixel, this.Configuration.ClearType, PluginInterface.UiBuilder.WindowHandlePtr);
+            this.ApplySubpixel();
+            this.NamePlates?.Mode = this.Configuration.NamePlates;
             return;
 
             static void Optional(string part, Action create)
@@ -82,7 +81,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
         this.Presets = this._finalizer.Add<PresetController>(new(this.Configuration, this.Replacer));
 
-        this._windowSystem.AddWindow(this.ConfigWindow = new(this));
+        this._windowSystem.AddWindow(this._configWindow = new(this));
         this._finalizer.Add(this._windowSystem.RemoveAllWindows);
 
         PluginInterface.UiBuilder.Draw += this.Replacer.Upload;
@@ -91,14 +90,13 @@ public sealed class Plugin : IAsyncDalamudPlugin
         Framework.Update += this.OnFrameworkUpdate;
         this._finalizer.Add(() => Framework.Update -= this.OnFrameworkUpdate);
 
-        // using IUiBuilder.Draw event as a way of being called back on IDXGISwapChain.Present calls
-        // so we're dealing with automatic UI hide by ourselves
+        // Draw doubles as the Present callback, so it must keep running while the UI is hidden.
         PluginInterface.UiBuilder.DisableAutomaticUiHide = true;
         PluginInterface.UiBuilder.Draw += this._windowSystem.Draw;
         this._finalizer.Add(() => PluginInterface.UiBuilder.Draw -= this._windowSystem.Draw);
 
-        PluginInterface.UiBuilder.OpenConfigUi += this.ConfigWindow.Toggle;
-        this._finalizer.Add(() => PluginInterface.UiBuilder.OpenConfigUi -= this.ConfigWindow.Toggle);
+        PluginInterface.UiBuilder.OpenConfigUi += this._configWindow.Toggle;
+        this._finalizer.Add(() => PluginInterface.UiBuilder.OpenConfigUi -= this._configWindow.Toggle);
 
         CommandManager.AddHandler(CommandName, new(this.OnCommand) { HelpMessage = "Open the Custom Fonts window." });
         this._finalizer.Add(() => CommandManager.RemoveHandler(CommandName));
@@ -122,12 +120,13 @@ public sealed class Plugin : IAsyncDalamudPlugin
     internal static ITextureProvider TextureProvider { get; private set; } = null!;
 
     [PluginService]
+    internal static IDataManager DataManager { get; private set; } = null!;
+
+    [PluginService]
     internal static IPluginLog Log { get; private set; } = null!;
 
     [PluginService]
     internal static INotificationManager NotificationManager { get; private set; } = null!;
-
-    internal ConfigWindow ConfigWindow { get; private set; } = null!;
 
     internal FontReplacer Replacer { get; private set; } = null!;
 
@@ -141,7 +140,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
     public ValueTask DisposeAsync() => this._finalizer.DisposeAsync();
 
-    private void OnCommand(string command, string args) => this.ConfigWindow.Toggle();
+    private void OnCommand(string command, string args) => this._configWindow.Toggle();
 
     internal void ApplySubpixel()
     {

@@ -497,6 +497,37 @@ namespace {
 		return any;
 	}
 
+	// Whether a text has nothing but characters drawn on the ideographic em box (Han, kana, Hangul, fullwidth forms), besides
+	// spaces and line breaks: those are taller than capitals, and sized by an ideograph instead.
+	bool is_cjk_only(const std::u32string& text) {
+		auto any = false;
+		for (const auto c : text) {
+			if (c == U' ' || c == U'\n' || c == U'\r')
+				continue;
+
+			const auto cjk = (c >= 0x1100 && c <= 0x11FF)  // Hangul jamo
+				|| (c >= 0x2E80 && c <= 0x9FFF)  // radicals, CJK symbols, kana, bopomofo, Hangul compatibility jamo, ideographs
+				|| (c >= 0xA960 && c <= 0xA97F)  // Hangul jamo extended A
+				|| (c >= 0xAC00 && c <= 0xD7FF)  // Hangul syllables
+				|| (c >= 0xF900 && c <= 0xFAFF)  // CJK compatibility ideographs
+				|| (c >= 0xFF00 && c <= 0xFFEF)  // halfwidth and fullwidth forms
+				|| c >= 0x20000;  // supplementary ideographs
+			if (!cjk)
+				return false;
+			any = true;
+		}
+		return any;
+	}
+
+	// The height of the ink of an ideograph that fills the em box, in a font: 国, or for fonts without Han, 가; 0 if neither.
+	int get_ideograph_height(const FontChanger::FixedSizeFont::fixed_size_font& font) {
+		for (const auto c : {U'国', U'가'}) {
+			if (FontChanger::FixedSizeFont::glyph_metrics gm; font.try_get_glyph_metrics(c, gm) && !gm.is_effectively_empty())
+				return gm.Y2 - gm.Y1;
+		}
+		return 0;
+	}
+
 	struct text_layout {
 		struct glyph {
 			// A glyph of a shaped line has its index, and a position of its origin on the baseline, which may be between
@@ -1108,13 +1139,23 @@ FontChanger::FixedSizeFont::glyph_merging_fixed_size_font::arrangement FontChang
 		if (const auto capHeight = static_cast<float>(referenceFont.ascent() - reference.CapTop); capHeight > 0)
 			textScale = ShapelessCapHeight * scale / capHeight;
 	}
+	const auto cjk = is_cjk_only(text);
 	if (hasArea) {
 		const auto areaWidth = (shape.AreaX2 - shape.AreaX1) * scale;
 		const auto areaHeight = (shape.AreaY2 - shape.AreaY1) * scale;
-		const auto reference = layout_text(get_text_font(size, 1.f), lines, params, true);
-		const auto referenceHeight = static_cast<float>(reference.LastBaseline - reference.CapTop);
+		const auto& referenceFont = get_text_font(size, 1.f);
+		const auto reference = layout_text(referenceFont, lines, params, true);
+		auto referenceHeight = static_cast<float>(reference.LastBaseline - reference.CapTop);
+
+		// Text of CJK characters is sized by the ink of an ideograph, which is as tall as the capitals of the game's
+		// letters in shapes, instead of by the capitals of the font, which ideographs are drawn taller than.
+		if (const auto ideograph = cjk ? get_ideograph_height(referenceFont) : 0; ideograph > 0)
+			referenceHeight = static_cast<float>(ideograph + reference.LastBaseline - referenceFont.ascent());
+
+		// As tall as the area in whole pixels, as the game's letters in shapes are, rather than reaching into another row of
+		// pixels at sizes where the area isn't a whole number of them.
 		if (!params.TextSize && referenceHeight > 0)
-			textScale = areaHeight / referenceHeight;
+			textScale = (std::max)(1.f, std::floor(areaHeight + 0.01f)) / referenceHeight;
 
 		const auto width = static_cast<float>(reference.InkX2 - reference.InkX1) * textScale;
 		if (width > areaWidth && width > 0) {
@@ -1149,8 +1190,9 @@ FontChanger::FixedSizeFont::glyph_merging_fixed_size_font::arrangement FontChang
 		textX = centerX - (layout.InkX1 + layout.InkX2) / 2;
 
 		// Letters and digits are centered by the height of capitals, so that they line up across glyphs; symbols such as
-		// + sit around the middle of lowercase letters instead, and are centered by themselves.
-		if (is_symbols_only(text) && layout.InkY1 < layout.InkY2)
+		// + sit around the middle of lowercase letters instead, and are centered by themselves, as are CJK characters,
+		// which are drawn on the em box rather than on the baseline of capitals.
+		if ((is_symbols_only(text) || cjk) && layout.InkY1 < layout.InkY2)
 			textY = static_cast<int>(std::lround(centerY - static_cast<float>(layout.InkY1 + layout.InkY2) / 2));
 		else
 			textY = static_cast<int>(std::lround(centerY - static_cast<float>(layout.CapTop + layout.LastBaseline) / 2));

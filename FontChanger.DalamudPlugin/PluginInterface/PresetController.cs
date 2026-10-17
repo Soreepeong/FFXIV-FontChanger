@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
@@ -7,9 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using FontChanger.DalamudPlugin.Configuration;
-using FontChanger.DalamudPlugin.Rendering;
-using FontChanger.DalamudPlugin.Rendering.Fonts;
-using FontChanger.DalamudPlugin.Rendering.Game;
+using FontChanger.DalamudPlugin.Fonts;
+using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 
@@ -21,22 +21,22 @@ internal sealed class PresetController : IDisposable
 
     private readonly Configuration.Configuration _configuration;
     private readonly FontReplacer _replacer;
-    private readonly Lock _sync = new();
     private readonly Lock _loadSync = new();
     private readonly Dictionary<string, FileSystemWatcher> _presetWatchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, FileSystemWatcher> _folderWatchers = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _watchedPresets = new(StringComparer.OrdinalIgnoreCase);
-    private readonly SystemFonts _systemFonts = new();
     private readonly Timer _timer;
+
+    // Read by the watchers' threads, so it is replaced rather than changed.
+    private ImmutableHashSet<string> _watchedPresets = ImmutableHashSet.Create<string>(StringComparer.OrdinalIgnoreCase);
     private bool _pendingSettingsLoad;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public PresetController(Configuration.Configuration configuration, FontReplacer replacer)
     {
         this._configuration = configuration;
         this._replacer = replacer;
         this._timer = new(_ => this.RunPending());
-        this.Schedule(false, TimeSpan.Zero);
+        this.Schedule(false);
     }
 
     public string Status { get; private set; } = string.Empty;
@@ -45,238 +45,104 @@ internal sealed class PresetController : IDisposable
 
     public void Dispose()
     {
-        lock (this._sync)
-            this._disposed = true;
+        this._disposed = true;
         this._timer.Dispose();
 
-        // wait for the ongoing operation to complete
-        this._loadSync.EnterScope().Dispose();
-
-        this.WatchPresets([]);
-        this.WatchFolders([]);
-        this._systemFonts.Dispose();
+        // A load in progress would otherwise add watchers back after they are removed.
+        lock (this._loadSync)
+        {
+            this.WatchPresets([]);
+            this.WatchGlyphImageFolders([]);
+        }
     }
 
-    public void Save() => Plugin.PluginInterface.SavePluginConfig(this._configuration);
+    public IReadOnlyList<FontSource> GetSources(string family) => GetChain(this._configuration, family);
 
-    public IReadOnlyList<FontSource> GetSources(string family)
-    {
-        lock (this._sync)
-            return this._configuration.FamilySources.TryGetValue(family, out var sources) ? [.. sources] : [];
-    }
-
-    public void AddPresets(string family, IEnumerable<string> paths) => this.Change(c => GetChain(c, family).AddRange(
+    public void AddPresets(string family, IEnumerable<string> paths) => this.ChangeChain(family, chain => chain.AddRange(
         paths.Select(p => new FontSource { Type = FontSourceType.Preset, Path = Path.GetFullPath(p.Trim().Trim('"')) })));
 
     public void AddFont(string family, FamilyFont font) =>
-        this.Change(c => GetChain(c, family).Add(new() { Type = FontSourceType.SystemFont, Font = font }));
+        this.ChangeChain(family, chain => chain.Add(new() { Type = FontSourceType.SystemFont, Font = font }));
 
-    public void Replace(string family, int index, FontSource source) => this.Change(c => {
-        var chain = GetChain(c, family);
-        if (index >= 0 && index < chain.Count)
-            chain[index] = source;
-    });
+    public void Replace(string family, int index, FontSource source) =>
+        this.ChangeChain(family, chain => index >= 0 && index < chain.Count ? chain.SetItem(index, source) : chain);
 
-    public void SetEnabled(string family, int index, bool enabled) => this.Change(c => {
-        var chain = GetChain(c, family);
-        if (index >= 0 && index < chain.Count)
-            chain[index] = chain[index] with { Enabled = enabled };
-    });
-
-    public void Remove(string family, int index) => this.Change(c => {
-        var chain = GetChain(c, family);
-        if (index >= 0 && index < chain.Count)
-            chain.RemoveAt(index);
-    });
+    public void Remove(string family, int index) =>
+        this.ChangeChain(family, chain => index >= 0 && index < chain.Count ? chain.RemoveAt(index) : chain);
 
     public int Move(string family, int index, int offset)
     {
         var target = index;
-        this.Change(c => {
-            var chain = GetChain(c, family);
+        this.ChangeChain(family, chain => {
             target = Math.Clamp(index + offset, 0, Math.Max(chain.Count - 1, 0));
             if (index < 0 || index >= chain.Count || target == index)
             {
                 target = index;
-                return;
+                return chain;
             }
 
-            var source = chain[index];
-            chain.RemoveAt(index);
-            chain.Insert(target, source);
+            return chain.RemoveAt(index).Insert(target, chain[index]);
         });
         return target;
     }
 
-    public void Clear(string family) => this.Change(c => c.FamilySources.Remove(family));
+    public void Clear(string family) => this.Change(c => c.FamilySources = c.FamilySources.Remove(family));
 
     public void CopyToOthers(string family) => this.Change(c => {
-        var copy = c.FamilySources.TryGetValue(family, out var chain) ? chain : [];
-        foreach (var other in GameFontNames.Families)
+        var chain = GetChain(c, family);
+        var sources = c.FamilySources.ToBuilder();
+        foreach (var other in FontNames.Families)
         {
             if (string.Equals(other, family, StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (copy.Count == 0)
-                c.FamilySources.Remove(other);
+            if (chain.IsEmpty)
+                sources.Remove(other);
             else
-                c.FamilySources[other] = [.. copy];
+                sources[other] = chain;
         }
+
+        c.FamilySources = sources.ToImmutable();
     });
 
-    public void SetMonospacedDigits(string family, int index, bool monospaced) => this.Change(c => {
-        var chain = GetChain(c, family);
-        if (index >= 0 && index < chain.Count)
-            chain[index] = chain[index] with { MonospacedDigits = monospaced };
-    });
+    public bool IsFamilyEnabled(string family) => !this._configuration.DisabledFamilies.Contains(family);
 
-    public bool IsFamilyEnabled(string family)
-    {
-        lock (this._sync)
-            return !this._configuration.DisabledFamilies.Contains(family);
-    }
-
-    public void SetFamilyEnabled(string family, bool enabled) =>
-        this.Change(c => _ = enabled ? c.DisabledFamilies.Remove(family) : c.DisabledFamilies.Add(family));
+    public void SetFamilyEnabled(string family, bool enabled) => this.Change(c =>
+        c.DisabledFamilies = enabled ? c.DisabledFamilies.Remove(family) : c.DisabledFamilies.Add(family));
 
     public void SetSystemFallback(bool systemFallback) => this.Change(c => c.SystemFallback = systemFallback);
 
-    public void Reload() => this.Schedule(false, TimeSpan.Zero);
+    public void Reload() => this.Schedule(false);
 
-    private static List<FontSource> GetChain(Configuration.Configuration configuration, string family)
-    {
-        if (!configuration.FamilySources.TryGetValue(family, out var chain))
-            configuration.FamilySources[family] = chain = [];
-        return chain;
-    }
+    private static ImmutableList<FontSource> GetChain(Configuration.Configuration configuration, string family) =>
+        configuration.FamilySources.GetValueOrDefault(family, ImmutableList<FontSource>.Empty);
+
+    private void ChangeChain(string family, Func<ImmutableList<FontSource>, ImmutableList<FontSource>> edit) => this.Change(c => {
+        var chain = edit(GetChain(c, family));
+        c.FamilySources = chain.IsEmpty ? c.FamilySources.Remove(family) : c.FamilySources.SetItem(family, chain);
+    });
 
     private void Change(Action<Configuration.Configuration> edit)
     {
-        lock (this._sync)
-            edit(this._configuration);
-        this.Save();
-        this.Schedule(false, TimeSpan.Zero);
+        edit(this._configuration);
+        Plugin.PluginInterface.SavePluginConfig(this._configuration);
+
+        this.Schedule(false);
     }
 
-    private Preset? MakeFaces(string family, FamilyFont font, bool monospacedDigits, List<string> failures)
+    // Edited files may be written in several steps, so they load a little later and a failure keeps the last loaded presets.
+    private void Schedule(bool edited)
     {
-        this._loadSync.DebugAssertLockHeld();
-        var opened = new Dictionary<(string, int, int, int), SystemFonts.Probe?>();
-
-        bool TryOpen(LookupStruct l, [NotNullWhen(true)] out IFontProbe? probe)
-        {
-            var key = (l.Name, l.Weight, l.Stretch, l.Style);
-            if (!opened.TryGetValue(key, out var cached))
-            {
-                this._systemFonts.TryOpen(l, out cached);
-                opened[key] = cached;
-            }
-
-            probe = cached;
-            return probe is not null;
-        }
-
+        if (!edited)
+            Volatile.Write(ref this._pendingSettingsLoad, true);
+        if (this._disposed)
+            return;
         try
         {
-            var lookup = font.ToLookup();
-            if (!TryOpen(lookup, out _))
-            {
-                failures.Add($"{family}: the font {font.Name} isn't installed");
-                return null;
-            }
-
-            var faces = GameFontNames.FacesOf(family)
-                                     .Select(f => FaceFromFont.MakeFace(f.Name, f.Size, lookup, TryOpen, monospacedDigits))
-                                     .OfType<Face>()
-                                     .ToList();
-            return faces.Count == 0 ? null : Preset.FromFaces(faces);
+            this._timer.Change(edited ? ReloadDelay : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
         }
-        catch (Exception ex)
+        catch (ObjectDisposedException)
         {
-            Plugin.Log.Error(ex, "Making the faces of {family} with {font} failed", family, font.Name);
-            failures.Add($"{family}: {ex.Message}");
-            return null;
-        }
-        finally
-        {
-            foreach (var probe in opened.Values)
-                probe?.Dispose();
-        }
-    }
-
-    private void WatchPresets(IEnumerable<string> paths)
-    {
-        lock (this._sync)
-        {
-            var wanted = paths.ToList();
-            this._watchedPresets.Clear();
-            this._watchedPresets.UnionWith(wanted);
-
-            var folders = wanted.Select(Path.GetDirectoryName).OfType<string>().Where(Directory.Exists).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var folder in this._presetWatchers.Keys.Where(f => !folders.Contains(f)).ToList())
-            {
-                this._presetWatchers[folder].Dispose();
-                this._presetWatchers.Remove(folder);
-            }
-
-            foreach (var folder in folders.Where(f => !this._presetWatchers.ContainsKey(f)))
-            {
-                var w = new FileSystemWatcher(folder)
-                {
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
-                };
-                w.Changed += this.OnPresetChanged;
-                w.Created += this.OnPresetChanged;
-                w.Deleted += this.OnPresetChanged;
-                w.Renamed += this.OnPresetChanged;
-                w.EnableRaisingEvents = true;
-                this._presetWatchers.Add(folder, w);
-            }
-        }
-    }
-
-    private void WatchFolders(IEnumerable<string> folders)
-    {
-        lock (this._sync)
-        {
-            var wanted = folders.Where(Directory.Exists).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var folder in this._folderWatchers.Keys.Where(f => !wanted.Contains(f)).ToList())
-            {
-                this._folderWatchers[folder].Dispose();
-                this._folderWatchers.Remove(folder);
-            }
-
-            foreach (var folder in wanted.Where(f => !this._folderWatchers.ContainsKey(f)))
-            {
-                var w = new FileSystemWatcher(folder) { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName };
-                w.Changed += this.OnGlyphImageChanged;
-                w.Created += this.OnGlyphImageChanged;
-                w.Deleted += this.OnGlyphImageChanged;
-                w.Renamed += this.OnGlyphImageChanged;
-                w.EnableRaisingEvents = true;
-                this._folderWatchers.Add(folder, w);
-            }
-        }
-    }
-
-    private void OnPresetChanged(object sender, FileSystemEventArgs e)
-    {
-        var paths = e is RenamedEventArgs r ? new[] { e.FullPath, r.OldFullPath } : [e.FullPath];
-        bool used;
-        lock (this._sync)
-            used = paths.Any(this._watchedPresets.Contains);
-        if (used)
-            this.Schedule(true, ReloadDelay);
-    }
-
-    private void OnGlyphImageChanged(object sender, FileSystemEventArgs e) => this.Schedule(true, ReloadDelay);
-
-    private void Schedule(bool edited, TimeSpan delay)
-    {
-        lock (this._sync)
-        {
-            this._pendingSettingsLoad |= !edited;
-            if (!this._disposed)
-                this._timer.Change(delay, Timeout.InfiniteTimeSpan);
+            // Dispose can run between the check above and this call.
         }
     }
 
@@ -287,13 +153,7 @@ internal sealed class PresetController : IDisposable
             if (this._disposed)
                 return;
 
-            bool keepOnFailure;
-            lock (this._sync)
-            {
-                keepOnFailure = !this._pendingSettingsLoad;
-                this._pendingSettingsLoad = false;
-            }
-
+            var keepOnFailure = !Interlocked.Exchange(ref this._pendingSettingsLoad, false);
             try
             {
                 this.Load(keepOnFailure);
@@ -309,15 +169,15 @@ internal sealed class PresetController : IDisposable
     private void Load(bool keepOnFailure)
     {
         this._loadSync.DebugAssertLockHeld();
-        List<(string Family, List<FontSource> Sources)> families;
-        lock (this._sync)
-        {
-            families = this._configuration.FamilySources
-                           .Where(f => !this._configuration.DisabledFamilies.Contains(f.Key))
-                           .Select(f => (f.Key, f.Value.Where(s => s.Enabled).ToList()))
-                           .Where(f => f.Item2.Count != 0)
+
+        // Each is read once, as a change of the settings replaces them from another thread.
+        var systemFallback = this._configuration.SystemFallback;
+        var disabled = this._configuration.DisabledFamilies;
+        var families = this._configuration.FamilySources
+                           .Where(f => !disabled.Contains(f.Key))
+                           .Select(f => (Family: f.Key, Sources: f.Value.Where(s => s.Enabled).ToList()))
+                           .Where(f => f.Sources.Count != 0)
                            .ToList();
-        }
 
         var loaded = new Dictionary<string, Preset?>(StringComparer.OrdinalIgnoreCase);
         var failures = new List<string>();
@@ -343,12 +203,13 @@ internal sealed class PresetController : IDisposable
         foreach (var (family, sources) in families)
         {
             var chain = new List<Preset>();
+            var above = new List<Preset>();
             foreach (var source in sources)
             {
                 Preset? preset;
                 if (source is { Type: FontSourceType.SystemFont, Font: { } font })
                 {
-                    preset = this.MakeFaces(family, font, source.MonospacedDigits, failures);
+                    preset = this.MakeFonts(family, font, source.MonospacedDigits, source.Adjustments, above, failures);
                     if (preset is not null)
                         fontCount++;
                 }
@@ -362,7 +223,10 @@ internal sealed class PresetController : IDisposable
                 }
 
                 if (preset is not null)
+                {
                     chain.Insert(0, preset);
+                    above.Add(preset);
+                }
             }
 
             perFamily[family] = chain;
@@ -375,12 +239,12 @@ internal sealed class PresetController : IDisposable
         }
 
         var overlaid = Preset.Combine(perFamily.Values.Select(Preset.Overlay));
-        var combined = overlaid.Faces.Count == 0 ? null : overlaid;
-        var familyCount = combined?.Faces.Keys.Select(Preset.FamilyOf).Distinct(StringComparer.OrdinalIgnoreCase).Count() ?? 0;
+        var combined = overlaid.Fonts.Count == 0 ? null : overlaid;
+        var familyCount = combined?.Fonts.Keys.Select(Preset.FamilyOf).Distinct(StringComparer.OrdinalIgnoreCase).Count() ?? 0;
         var presetCount = loaded.Values.Count(p => p is not null);
         var status = combined is null
                          ? "The game's fonts"
-                         : $"{combined.Faces.Count} faces of {familyCount} families"
+                         : $"{combined.Fonts.Count} fonts of {familyCount} families"
                            + (presetCount != 0 ? $" from {presetCount} presets" : string.Empty)
                            + (fontCount != 0 ? $"; system fonts for {fontCount}" : string.Empty);
         if (failures.Count != 0)
@@ -388,11 +252,10 @@ internal sealed class PresetController : IDisposable
         this.Status = status;
 
         this.WatchPresets(families.SelectMany(f => f.Sources).Where(s => s.Type == FontSourceType.Preset && s.Path.Length != 0).Select(s => s.Path));
-        this.WatchFolders(combined?.GlyphImageFolders ?? []);
-        var systemFallback = this._configuration.SystemFallback;
+        this.WatchGlyphImageFolders(combined?.GlyphImageFolders ?? []);
         Plugin.Framework.RunOnFrameworkThread(() => {
             if (!this._disposed)
-                this._replacer.Faces = new(combined, systemFallback);
+                this._replacer.Fonts = new(combined, systemFallback);
         }).ContinueWith(
             task => {
                 Plugin.Log.Error(task.Exception!, "Applying the preset failed");
@@ -400,4 +263,111 @@ internal sealed class PresetController : IDisposable
             },
             TaskContinuationOptions.OnlyOnFaulted);
     }
+
+    // The fonts are made to go under those of the sources above, which are listed top first.
+    private Preset? MakeFonts(
+        string family,
+        FamilyFont font,
+        bool monospacedDigits,
+        FontAdjustments adjustments,
+        IReadOnlyList<Preset> above,
+        List<string> failures)
+    {
+        this._loadSync.DebugAssertLockHeld();
+        var opened = new Dictionary<(string, int, int, int), FontProbe?>();
+
+        bool TryOpen(LookupStruct l, [NotNullWhen(true)] out IFontProbe? probe)
+        {
+            var key = (l.FamilyName, l.Weight, l.Stretch, l.Style);
+            if (!opened.TryGetValue(key, out var cached))
+            {
+                this._replacer.Services.TryOpenProbe(l, out cached);
+                opened[key] = cached;
+            }
+
+            probe = cached;
+            return probe is not null;
+        }
+
+        try
+        {
+            var lookup = font.ToLookup();
+            if (!TryOpen(lookup, out _))
+            {
+                failures.Add($"{family}: the font {font.FamilyName} isn't installed");
+                return null;
+            }
+
+            var fonts = FontNames.FontNamesOf(family)
+                                 .Select(
+                                     f => FontsFromSystemFont.MakeFont(
+                                         f.Name,
+                                         f.Size,
+                                         lookup,
+                                         TryOpen,
+                                         monospacedDigits,
+                                         GameFontProbe.Open(f.Name),
+                                         above.Select(p => p.Fonts.TryGetValue(f.Name, out var drawn) ? FontsFromSystemFont.ProbeFont(drawn, TryOpen) : null)
+                                              .OfType<IFontProbe>()
+                                              .ToList(),
+                                         adjustments))
+                                 .OfType<Font>()
+                                 .ToList();
+            return fonts.Count == 0 ? null : Preset.FromFonts(fonts);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Making the fonts of {family} with {font} failed", family, font.FamilyName);
+            failures.Add($"{family}: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            foreach (var probe in opened.Values)
+                probe?.Dispose();
+        }
+    }
+
+    private void WatchPresets(IEnumerable<string> paths)
+    {
+        this._loadSync.DebugAssertLockHeld();
+        this._watchedPresets = paths.ToImmutableHashSet(StringComparer.OrdinalIgnoreCase);
+        Watch(this._presetWatchers, this._watchedPresets.Select(Path.GetDirectoryName).OfType<string>(), this.OnPresetChanged);
+    }
+
+    private void WatchGlyphImageFolders(IEnumerable<string> folders)
+    {
+        this._loadSync.DebugAssertLockHeld();
+        Watch(this._folderWatchers, folders, this.OnGlyphImageChanged);
+    }
+
+    private static void Watch(Dictionary<string, FileSystemWatcher> watchers, IEnumerable<string> folders, FileSystemEventHandler onChanged)
+    {
+        var wanted = folders.Where(Directory.Exists).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in watchers.Keys.Where(f => !wanted.Contains(f)).ToList())
+        {
+            watchers[folder].Dispose();
+            watchers.Remove(folder);
+        }
+
+        foreach (var folder in wanted.Where(f => !watchers.ContainsKey(f)))
+        {
+            var w = new FileSystemWatcher(folder) { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName };
+            w.Changed += onChanged;
+            w.Created += onChanged;
+            w.Deleted += onChanged;
+            w.Renamed += onChanged.Invoke;
+            w.EnableRaisingEvents = true;
+            watchers.Add(folder, w);
+        }
+    }
+
+    private void OnPresetChanged(object sender, FileSystemEventArgs e)
+    {
+        var watched = this._watchedPresets;
+        if (watched.Contains(e.FullPath) || (e is RenamedEventArgs r && watched.Contains(r.OldFullPath)))
+            this.Schedule(true);
+    }
+
+    private void OnGlyphImageChanged(object sender, FileSystemEventArgs e) => this.Schedule(true);
 }

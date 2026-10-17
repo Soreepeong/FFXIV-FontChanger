@@ -13,7 +13,7 @@
     <ClCompile Include="pch.cpp">
       <Filter>Project Items</Filter>
     </ClCompile>
-    <ClCompile Include="FaceElementEditorDialog.GlyphImages.cpp">
+    <ClCompile Include="FontElementEditorDialog.GlyphImages.cpp">
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="MainWindow.GlyphFiles.cpp">
@@ -28,22 +28,22 @@
     <ClCompile Include="MainWindow.cpp">
       <Filter>Source\Windows</Filter>
     </ClCompile>
-    <ClCompile Include="FaceElementEditorDialog.Characters.cpp">
+    <ClCompile Include="FontElementEditorDialog.Characters.cpp">
       <Filter>Source\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="FaceElementEditorDialog.cpp">
+    <ClCompile Include="FontElementEditorDialog.cpp">
       <Filter>Source\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="FaceElementEditorDialog.Font.cpp">
+    <ClCompile Include="FontElementEditorDialog.Font.cpp">
       <Filter>Source\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="FaceElementEditorDialog.Typography.cpp">
+    <ClCompile Include="FontElementEditorDialog.Typography.cpp">
       <Filter>Source\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="FaceElementEditorDialog.GlyphMerging.cpp">
+    <ClCompile Include="FontElementEditorDialog.GlyphMerging.cpp">
       <Filter>Source\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="FaceElementEditorDialog.Monospacing.cpp">
+    <ClCompile Include="FontElementEditorDialog.Monospacing.cpp">
       <Filter>Source\Dialogs</Filter>
     </ClCompile>
     <ClCompile Include="ProgressDialog.cpp">
@@ -125,10 +125,10 @@
     <ClInclude Include="MainWindow.h">
       <Filter>Source\Windows</Filter>
     </ClInclude>
-    <ClInclude Include="FaceElementEditorDialog.h">
+    <ClInclude Include="FontElementEditorDialog.h">
       <Filter>Source\Dialogs</Filter>
     </ClInclude>
-    <ClInclude Include="FaceElementEditorDialog.Internal.h">
+    <ClInclude Include="FontElementEditorDialog.Internal.h">
       <Filter>Source\Dialogs</Filter>
     </ClInclude>
     <ClInclude Include="GameFontReloader.h">

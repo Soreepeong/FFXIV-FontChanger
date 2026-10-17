@@ -50,7 +50,7 @@ std::optional<float> FontChanger::FixedSizeFont::wrapping_fixed_size_font::get_m
 			return 1.f;
 		case monospacing_unit::Em:
 			return font.font_size();
-		case monospacing_unit::ReferenceGlyph:
+		case monospacing_unit::ReferenceCharacter:
 			if (glyph_metrics gm; font.try_get_glyph_metrics(referenceCharacter, gm))
 				return static_cast<float>(gm.AdvanceX);
 			return std::nullopt;
@@ -176,12 +176,12 @@ const FontChanger::FixedSizeFont::fixed_size_font* FontChanger::FixedSizeFont::w
 	return font->try_get_glyph_metrics(codepoint, scaledGm) ? font.get() : nullptr;
 }
 
-void FontChanger::FixedSizeFont::wrapping_fixed_size_font::apply_placement(glyph_metrics& gm, const placement& p, int baselineShift) {
+void FontChanger::FixedSizeFont::wrapping_fixed_size_font::apply_placement(glyph_metrics& gm, const placement& p, int verticalOffset) {
 	if (p.ScaledFont)
 		gm = p.ScaledMetrics;
 	else if (p.SqueezedWidth)
 		gm.X2 = gm.X1 + p.SqueezedWidth;
-	gm.translate(p.ShiftX, baselineShift);
+	gm.translate(p.ShiftX, verticalOffset);
 	gm.AdvanceX = p.AdvanceX;
 }
 
@@ -254,7 +254,7 @@ bool FontChanger::FixedSizeFont::wrapping_fixed_size_font::draw(char32_t codepoi
 		return false;
 
 	const auto p = place(codepoint, gm);
-	drawY += m_info->BaselineShift;
+	drawY += m_info->VerticalOffset;
 	if (p.ScaledFont)
 		return p.ScaledFont->draw(codepoint, pBuf, stride, drawX + p.ShiftX, drawY, destWidth, destHeight, fgColor, bgColor, fgOpacity, bgOpacity);
 	if (p.SqueezedWidth) {
@@ -286,7 +286,7 @@ bool FontChanger::FixedSizeFont::wrapping_fixed_size_font::draw(char32_t codepoi
 		return false;
 
 	const auto p = place(codepoint, gm);
-	drawY += m_info->BaselineShift;
+	drawY += m_info->VerticalOffset;
 	if (p.ScaledFont)
 		return p.ScaledFont->draw(codepoint, pBuf, drawX + p.ShiftX, drawY, destWidth, destHeight, fgColor, bgColor);
 	if (p.SqueezedWidth) {
@@ -423,7 +423,7 @@ bool FontChanger::FixedSizeFont::wrapping_fixed_size_font::try_get_glyph_metrics
 	if (!m_font->try_get_glyph_metrics(codepoint, gm))
 		return false;
 
-	apply_placement(gm, place(codepoint, gm), m_info->BaselineShift);
+	apply_placement(gm, place(codepoint, gm), m_info->VerticalOffset);
 	return true;
 }
 
@@ -447,7 +447,7 @@ bool FontChanger::FixedSizeFont::wrapping_fixed_size_font::try_get_glyph_outline
 				pt.X = static_cast<float>(gm.X1) + (pt.X - static_cast<float>(gm.X1)) * scaleX;
 		}
 	}
-	outline.translate(static_cast<float>(p.ShiftX), static_cast<float>(m_info->BaselineShift));
+	outline.translate(static_cast<float>(p.ShiftX), static_cast<float>(m_info->VerticalOffset));
 	return true;
 }
 
@@ -486,7 +486,7 @@ FontChanger::FixedSizeFont::wrapping_fixed_size_font::wrapping_fixed_size_font(s
 	auto info = std::make_shared<struct info>();
 	info->LetterSpacing = static_cast<int>(std::lround(wrapModifiers.LetterSpacing));
 	info->HorizontalOffset = static_cast<int>(std::lround(wrapModifiers.HorizontalOffset));
-	info->BaselineShift = static_cast<int>(std::lround(wrapModifiers.BaselineShift));
+	info->VerticalOffset = static_cast<int>(std::lround(wrapModifiers.VerticalOffset));
 
 	if (const auto& monospacing = wrapModifiers.Monospacing; monospacing.is_enabled()) {
 		if (const auto unitPixels = get_monospacing_unit_pixels(*m_font, monospacing.Unit, monospacing.ReferenceCharacter)) {

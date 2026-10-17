@@ -1,10 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 using FontChanger.Presets.Enums;
-using FontChanger.Presets.Utilities;
 
 namespace FontChanger.Presets.Records;
 
@@ -22,7 +20,6 @@ public sealed record GlyphImagesStruct
 
     public ImageCoverageMode BitmapCoverage { get; init; }
 
-    [JsonConverter(typeof(RuneToIntConverter))]
     public IReadOnlyDictionary<Rune, (string? Svg, string? PngBase64)> Embedded { get; init; } =
         new Dictionary<Rune, (string?, string?)>();
 

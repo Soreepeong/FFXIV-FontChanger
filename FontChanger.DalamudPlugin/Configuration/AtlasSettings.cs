@@ -1,6 +1,6 @@
-using System;
+﻿using System;
 
-using FontChanger.DalamudPlugin.Rendering;
+using FontChanger.DalamudPlugin.Fonts;
 
 namespace FontChanger.DalamudPlugin.Configuration;
 
@@ -13,11 +13,13 @@ public readonly record struct AtlasSettings(
     int OtherMaxPages = 2,
     AtlasTextureFormat Format = AtlasTextureFormat.Bgra8888)
 {
-    // Without it, new() gives zeros rather than the defaults above.
-    public AtlasSettings() : this(4096) { }
+    private const int MinPageSide = 256;
+    private const int MaxPageSide = 4096;
 
-    public const int MinPageSide = 256;
-    public const int MaxPageSide = 4096;
+    // Without it, new() gives zeros rather than the defaults above.
+    public AtlasSettings() : this(4096)
+    {
+    }
 
     public AtlasSettings Clamped() => new()
     {

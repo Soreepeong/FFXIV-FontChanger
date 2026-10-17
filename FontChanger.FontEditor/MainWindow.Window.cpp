@@ -1,7 +1,8 @@
 ﻿#include "pch.h"
 
-#include "FaceElementEditorDialog.h"
+#include "FontElementEditorDialog.h"
 #include "resource.h"
+#include "FontChanger.Presets/FontsFromSystemFont.h"
 #include "FontChanger.Presets/Structs.h"
 #include "MainWindow.h"
 #include "MainWindow.Internal.h"
@@ -42,7 +43,7 @@ namespace {
 	// Gets the smallest heights of the list, the edit and the preview in pixels.
 	MinimumHeights GetMinimumHeights(double zoom) {
 		return {
-			static_cast<int>(std::lround(MinFaceElementListViewHeight * zoom)),
+			static_cast<int>(std::lround(MinFontElementListViewHeight * zoom)),
 			static_cast<int>(std::lround(MinPreviewEditHeight * zoom)),
 			static_cast<int>(std::lround(MinPreviewHeight * zoom)),
 		};
@@ -80,7 +81,7 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 	m_hWnd = hwnd;
 	StartWatchingGlyphFolders();
 
-	m_hAccelerator =LoadAcceleratorsW(g_hInstance, MAKEINTRESOURCEW(IDR_ACCELERATOR_FACEELEMENTEDITOR));
+	m_hAccelerator =LoadAcceleratorsW(g_hInstance, MAKEINTRESOURCEW(IDR_ACCELERATOR_FONTELEMENTEDITOR));
 
 	const auto hGlob = LoadResourceWithLanguageFallback(RT_MENU, IDR_FONTEDITOR);
 	if (!hGlob)
@@ -88,28 +89,28 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 	SetMenu(m_hWnd, LoadMenuIndirectW(LockResource(hGlob.get())));
 
 	{
-		const auto hCtxGlob = LoadResourceWithLanguageFallback(RT_MENU, IDR_CONTEXTMENU_FACEELEMENT);
-		m_hFaceElementContextMenu = LoadMenuIndirectW(LockResource(hCtxGlob.get()));
+		const auto hCtxGlob = LoadResourceWithLanguageFallback(RT_MENU, IDR_CONTEXTMENU_FONTELEMENT);
+		m_hFontElementContextMenu = LoadMenuIndirectW(LockResource(hCtxGlob.get()));
 	}
 
 	NONCLIENTMETRICSW ncm = {sizeof(NONCLIENTMETRICSW)};
 	SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof ncm, &ncm, 0);
 	m_hUiFont = CreateFontIndirectW(&ncm.lfMessageFont);
 
-	m_hFacesListBox = CreateWindowExW(0, WC_LISTBOXW, nullptr,
+	m_hFontsListBox = CreateWindowExW(0, WC_LISTBOXW, nullptr,
 		WS_CHILD | WS_TABSTOP | WS_BORDER | WS_VISIBLE | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY,
-		0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(Id_FaceListBox), reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(m_hWnd, GWLP_HINSTANCE)), nullptr);
-	m_hFaceElementsListView = CreateWindowExW(0, WC_LISTVIEWW, nullptr,
+		0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(Id_FontListBox), reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(m_hWnd, GWLP_HINSTANCE)), nullptr);
+	m_hFontElementsListView = CreateWindowExW(0, WC_LISTVIEWW, nullptr,
 		WS_CHILD | WS_TABSTOP | WS_BORDER | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS,
-		0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(Id_FaceElementListView), reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(m_hWnd, GWLP_HINSTANCE)), nullptr);
+		0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(Id_FontElementListView), reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(m_hWnd, GWLP_HINSTANCE)), nullptr);
 	m_hEdit = CreateWindowExW(0, WC_EDITW, nullptr,
 		WS_CHILD | WS_TABSTOP | WS_BORDER | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_AUTOVSCROLL | ES_MULTILINE | ES_WANTRETURN,
 		0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(Id_Edit), reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(m_hWnd, GWLP_HINSTANCE)), nullptr);
 
-	ListView_SetExtendedListViewStyle(m_hFaceElementsListView, LVS_EX_FULLROWSELECT);
+	ListView_SetExtendedListViewStyle(m_hFontElementsListView, LVS_EX_FULLROWSELECT);
 
-	SendMessage(m_hFacesListBox, WM_SETFONT, reinterpret_cast<WPARAM>(m_hUiFont), FALSE);
-	SendMessage(m_hFaceElementsListView, WM_SETFONT, reinterpret_cast<WPARAM>(m_hUiFont), FALSE);
+	SendMessage(m_hFontsListBox, WM_SETFONT, reinterpret_cast<WPARAM>(m_hUiFont), FALSE);
+	SendMessage(m_hFontElementsListView, WM_SETFONT, reinterpret_cast<WPARAM>(m_hUiFont), FALSE);
 	SendMessage(m_hEdit, WM_SETFONT, reinterpret_cast<WPARAM>(m_hUiFont), FALSE);
 
 	SetWindowSubclass(m_hEdit, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
@@ -121,7 +122,7 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 	}, 1, 0);
 
 	const auto AddColumn = [this](int columnIndex, int width, UINT resId) {
-		AddListViewColumn(m_hFaceElementsListView, columnIndex, width, resId);
+		AddListViewColumn(m_hFontElementsListView, columnIndex, width, resId);
 	};
 	AddColumn(ListViewColsFamilyName, 120, IDS_FONTLISTVIEW_COLUMN_FAMILY);
 	AddColumn(ListViewColsSubfamilyName, 80, IDS_FONTLISTVIEW_COLUMN_SUBFAMILY);
@@ -134,7 +135,7 @@ LRESULT App::FontEditorWindow::Window_OnCreate(HWND hwnd) {
 	AddColumn(ListViewColsCodepoints, 80, IDS_FONTLISTVIEW_COLUMN_CODEPOINTS);
 	AddColumn(ListViewColsMergeMode, 70, IDS_FONTLISTVIEW_COLUMN_OVERWRITE);
 	AddColumn(ListViewColsGlyphCount, 60, IDS_FONTLISTVIEW_COLUMN_GLYPHS);
-	AddColumn(ListViewColsRenderer, 180, IDS_FONTLISTVIEW_COLUMN_RENDERER);
+	AddColumn(ListViewColsSource, 180, IDS_FONTLISTVIEW_COLUMN_SOURCE);
 	AddColumn(ListViewColsLookup, 300, IDS_FONTLISTVIEW_COLUMN_LOOKUP);
 
 	if (m_args.size() >= 2 && std::filesystem::exists(m_args[1])) {
@@ -157,7 +158,7 @@ LRESULT App::FontEditorWindow::Window_OnSize() {
 	GetClientRect(m_hWnd, &rc);
 
 	const auto zoom = GetZoom();
-	const auto scaledFaceListBoxWidth = static_cast<int>(std::lround(FaceListBoxWidth * zoom));
+	const auto scaledFontListBoxWidth = static_cast<int>(std::lround(FontListBoxWidth * zoom));
 	const auto availableHeight = rc.bottom - rc.top;
 
 	auto splitterThickness = static_cast<int>(std::lround(SplitterThickness * zoom));
@@ -166,7 +167,7 @@ LRESULT App::FontEditorWindow::Window_OnSize() {
 
 	const auto [minListPx, minEditPx, minPreviewPx] = GetMinimumHeights(zoom);
 
-	auto listViewHeightPx = static_cast<int>(std::lround(g_config.FaceElementListViewHeight * zoom));
+	auto listViewHeightPx = static_cast<int>(std::lround(g_config.FontElementListViewHeight * zoom));
 	auto editHeightPx = static_cast<int>(std::lround(g_config.PreviewEditHeight * zoom));
 
 	listViewHeightPx = (std::max)(minListPx, listViewHeightPx);
@@ -197,34 +198,34 @@ LRESULT App::FontEditorWindow::Window_OnSize() {
 	auto hdwp = BeginDeferWindowPos(Id_Last_);
 	hdwp = DeferWindowPos(
 		hdwp,
-		m_hFacesListBox,
+		m_hFontsListBox,
 		nullptr,
 		0,
 		0,
-		scaledFaceListBoxWidth,
+		scaledFontListBoxWidth,
 		rc.bottom - rc.top,
 		SWP_NOZORDER | SWP_NOACTIVATE);
 	hdwp = DeferWindowPos(
 		hdwp,
-		m_hFaceElementsListView,
+		m_hFontElementsListView,
 		nullptr,
-		scaledFaceListBoxWidth,
+		scaledFontListBoxWidth,
 		0,
-		(std::max<int>)(0, rc.right - rc.left - scaledFaceListBoxWidth),
+		(std::max<int>)(0, rc.right - rc.left - scaledFontListBoxWidth),
 		m_scaledListViewHeight,
 		SWP_NOZORDER | SWP_NOACTIVATE);
 	hdwp = DeferWindowPos(
 		hdwp,
 		m_hEdit,
 		nullptr,
-		scaledFaceListBoxWidth,
+		scaledFontListBoxWidth,
 		m_splitterListEditBottom,
-		(std::max<int>)(0, rc.right - rc.left - scaledFaceListBoxWidth),
+		(std::max<int>)(0, rc.right - rc.left - scaledFontListBoxWidth),
 		m_scaledEditHeight,
 		SWP_NOZORDER | SWP_NOACTIVATE);
 	EndDeferWindowPos(hdwp);
 
-	m_nDrawLeft = scaledFaceListBoxWidth;
+	m_nDrawLeft = scaledFontListBoxWidth;
 	m_nDrawTop = m_splitterEditPreviewBottom;
 	m_bNeedRedraw = true;
 
@@ -255,13 +256,13 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 		std::ranges::fill(buf, xivres::util::b8g8r8a8{0x88, 0x88, 0x88, 0xFF});
 
 		const auto measured = [&]() -> std::optional<FontChanger::FixedSizeFont::text_measure_result> {
-			if (!m_pActiveFace || m_pActiveFace->PreviewText.empty())
+			if (!m_pActiveFont || m_pActiveFont->PreviewText.empty())
 				return std::nullopt;
 
 			return FontChanger::FixedSizeFont::text_measurer(*GetPreviewFont())
 			       .max_width(m_bWordWrap ? m_pMipmap->Width - pad * 2 : (std::numeric_limits<int>::max)())
 			       .use_kerning(m_bKerning)
-			       .measure(m_pActiveFace->PreviewText);
+			       .measure(m_pActiveFont->PreviewText);
 		}();
 
 		if (measured) {
@@ -294,20 +295,19 @@ LRESULT App::FontEditorWindow::Window_OnPaint() {
 				buf[y * m_pMipmap->Width + x] = {0x00, 0x00, 0x00, 0xFF};
 		}
 
-		if (m_pActiveFace) {
+		if (m_pActiveFont) {
 			const auto pMergedFont = GetPreviewFont();
 			const auto& mergedFont = *pMergedFont;
 
-			// The part of each line below the ascent is shaded; if lines have nothing below it, every other line is.
 			if (int lineHeight = mergedFont.line_height(), ascent = mergedFont.ascent();
 				lineHeight > 0 && m_bShowLineMetrics && ascent <= lineHeight) {
 				const auto period = ascent < lineHeight ? lineHeight : 2 * lineHeight;
-				for (int y = pad - m_nPreviewScrollY, y_ = m_pMipmap->Height - pad; y < y_; y += period) {
-					if (y + ascent >= pad) {
-						for (int y2 = y + ascent, y2_ = (std::min)(y_, y + period); y2 < y2_; y2++)
-							for (int x = previewContentRect.left; x < previewContentRect.right; x++)
-								buf[y2 * m_pMipmap->Width + x] = {0x33, 0x33, 0x33, 0xFF};
-					}
+				const auto top = static_cast<int>(previewContentRect.top);
+				const auto bottom = static_cast<int>(previewContentRect.bottom);
+				for (int y = pad - m_nPreviewScrollY; y < bottom; y += period) {
+					for (int y2 = (std::max)(top, y + ascent), y2_ = (std::min)(bottom, y + period); y2 < y2_; y2++)
+						for (int x = previewContentRect.left; x < previewContentRect.right; x++)
+							buf[y2 * m_pMipmap->Width + x] = {0x33, 0x33, 0x33, 0xFF};
 				}
 			}
 
@@ -384,9 +384,9 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		setChecked(id, m_hotReloadFontType == fontType);
 
 	{
-		const auto i = ListView_GetNextItem(m_hFaceElementsListView, -1, LVNI_SELECTED);
-		const bool hasElement = m_pActiveFace && i >= 0;
-		const bool notEmpty = hasElement && m_pActiveFace->Elements[i]->Renderer != Structs::RendererEnum::Empty;
+		const auto i = ListView_GetNextItem(m_hFontElementsListView, -1, LVNI_SELECTED);
+		const bool hasElement = m_pActiveFont && i >= 0;
+		const bool notEmpty = hasElement && m_pActiveFont->Elements[i]->Source != Structs::ElementSourceEnum::Empty;
 		const auto setState = [&](UINT id, bool enabled) {
 			const MENUITEMINFOW mii{
 				.cbSize = sizeof mii, .fMask = MIIM_STATE,
@@ -402,14 +402,20 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 		setState(ID_EDIT_DELETE, hasElement);
 		setState(ID_EXPORT_GLYPHS, notEmpty);
 		setState(ID_EXPORT_GLYPHSWITHADJUSTMENTS, notEmpty);
-		setState(ID_EXPORT_FACEGLYPHS, m_pActiveFace != nullptr);
+		setState(ID_EXPORT_FONTGLYPHS, m_pActiveFont != nullptr);
+
+		const auto isGameFont = m_pActiveFont && FontChanger::FontsFromSystemFont::GetGameFontFamilyAndSize(m_pActiveFont->Name);
+		setState(ID_EDIT_ADDELEMENTFROMFONT, m_pActiveFont != nullptr);
+		setState(ID_EDIT_ADDFROMFONT, isGameFont);
+		setState(ID_EDIT_AUTOFIT, isGameFont);
+		setState(ID_EDIT_AUTOFITALLSIZES, isGameFont);
 	}
 	for (const auto& [id, alignment] : AlignmentItems) {
 		const MENUITEMINFOW mii{
 			.cbSize = sizeof mii,
 			.fMask = MIIM_STATE | MIIM_FTYPE,
 			.fType = MFT_RADIOCHECK,
-			.fState = static_cast<UINT>((m_pActiveFace ? MFS_ENABLED : MFS_GRAYED) | (m_pActiveFace && m_pActiveFace->VerticalAlignment == alignment ? MFS_CHECKED : 0)),
+			.fState = static_cast<UINT>((m_pActiveFont ? MFS_ENABLED : MFS_GRAYED) | (m_pActiveFont && m_pActiveFont->VerticalAlignment == alignment ? MFS_CHECKED : 0)),
 		};
 		SetMenuItemInfoW(hMenu, id, FALSE, &mii);
 	}
@@ -417,7 +423,7 @@ LRESULT App::FontEditorWindow::Window_OnInitMenuPopup(HMENU hMenu, int index, bo
 }
 
 LRESULT App::FontEditorWindow::Window_OnMouseMove(uint16_t states, int16_t x, int16_t y) {
-	if (FaceElementsListView_OnDragProcessMouseMove(x, y))
+	if (FontElementsListView_OnDragProcessMouseMove(x, y))
 		return 0;
 
 	if (m_activeSplitter != VerticalSplitter::None) {
@@ -439,7 +445,7 @@ LRESULT App::FontEditorWindow::Window_OnMouseMove(uint16_t states, int16_t x, in
 }
 
 LRESULT App::FontEditorWindow::Window_OnMouseLButtonDown(uint16_t states, int16_t x, int16_t y) {
-	if (m_bIsReorderingFaceElementList)
+	if (m_bIsReorderingFontElementList)
 		return 0;
 
 	const auto splitter = HitTestSplitter(x, y);
@@ -475,7 +481,7 @@ LRESULT App::FontEditorWindow::Window_OnMouseLButtonDown(uint16_t states, int16_
 }
 
 LRESULT App::FontEditorWindow::Window_OnMouseLButtonUp(uint16_t states, int16_t x, int16_t y) {
-	if (FaceElementsListView_OnDragProcessMouseUp(x, y))
+	if (FontElementsListView_OnDragProcessMouseUp(x, y))
 		return 0;
 
 	if (m_activeSplitter != VerticalSplitter::None) {
@@ -545,7 +551,7 @@ LRESULT App::FontEditorWindow::Window_OnDestroy() {
 }
 
 void App::FontEditorWindow::Window_Redraw() {
-	if (!m_pActiveFace)
+	if (!m_pActiveFont)
 		return;
 
 	m_bNeedRedraw = true;
@@ -576,7 +582,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 			switch (LOWORD(wParam)) {
 				case Id_Edit: return Edit_OnCommand(HIWORD(wParam));
-				case Id_FaceListBox: return FaceListBox_OnCommand(HIWORD(wParam));
+				case Id_FontListBox: return FontListBox_OnCommand(HIWORD(wParam));
 				case ID_FILE_NEW_MAINGAMEFONT: return Menu_File_New(xivres::font_type::font);
 				case ID_FILE_NEW_LOBBYFONT: return Menu_File_New(xivres::font_type::font_lobby);
 				case ID_FILE_NEW_CHNAXIS: return Menu_File_New(xivres::font_type::chn_axis);
@@ -590,15 +596,18 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_FILE_GAMEINSTALLATIONMANAGER: return Menu_File_GameInstallationManager();
 				case ID_FILE_EXIT: return Menu_File_Exit();
 				case ID_EDIT_ADD: return Menu_Edit_Add();
+				case ID_EDIT_ADDELEMENTFROMFONT: return Menu_Edit_AddElementFromFont();
 				case ID_EDIT_ADDFROMFONT: return Menu_Edit_AddFromFont();
+				case ID_EDIT_AUTOFIT: return Menu_Edit_AutoFit(false);
+				case ID_EDIT_AUTOFITALLSIZES: return Menu_Edit_AutoFit(true);
 				case ID_EDIT_CUT: return Menu_Edit_Cut();
 				case ID_EDIT_COPY: return Menu_Edit_Copy();
 				case ID_EDIT_PASTE: return Menu_Edit_Paste();
 				case ID_EDIT_DELETE: return Menu_Edit_Delete();
 				case ID_EDIT_SELECTALL: return Menu_Edit_SelectAll();
 				case ID_EDIT_DETAILS: return Menu_Edit_Details();
-				case ID_EDIT_DECREASEBASELINESHIFT: return Menu_Edit_ChangeParams(-1, 0, 0, 0);
-				case ID_EDIT_INCREASEBASELINESHIFT: return Menu_Edit_ChangeParams(+1, 0, 0, 0);
+				case ID_EDIT_DECREASEVERTICALOFFSET: return Menu_Edit_ChangeParams(-1, 0, 0, 0);
+				case ID_EDIT_INCREASEVERTICALOFFSET: return Menu_Edit_ChangeParams(+1, 0, 0, 0);
 				case ID_EDIT_DECREASEHORIZONTALOFFSET: return Menu_Edit_ChangeParams(0, -1, 0, 0);
 				case ID_EDIT_INCREASEHORIZONTALOFFSET: return Menu_Edit_ChangeParams(0, +1, 0, 0);
 				case ID_EDIT_DECREASELETTERSPACING: return Menu_Edit_ChangeParams(0, 0, -1, 0);
@@ -611,8 +620,8 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EDIT_MOVEUP: return Menu_Edit_MoveUpOrDown(-1);
 				case ID_EDIT_MOVEDOWN: return Menu_Edit_MoveUpOrDown(+1);
 				case ID_EDIT_CREATEEMPTYCOPYFROMSELECTION: return Menu_Edit_CreateEmptyCopyFromSelection();
-				case ID_CONTEXTMENU_CLONE: return FaceElementsListView_Clone();
-				case ID_CONTEXTMENU_SHOWNEGATIVEBEARING: return FaceElementsListView_ShowNegativeBearingCodepoints();
+				case ID_CONTEXTMENU_CLONE: return FontElementsListView_Clone();
+				case ID_CONTEXTMENU_SHOWNEGATIVEBEARING: return FontElementsListView_ShowNegativeBearingCodepoints();
 				case ID_VIEW_PREVIOUSFONT: return Menu_View_NextOrPrevFont(-1);
 				case ID_VIEW_NEXTFONT: return Menu_View_NextOrPrevFont(1);
 				case ID_VIEW_WORDWRAP: return Menu_View_WordWrap();
@@ -631,7 +640,7 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				case ID_EXPORT_RAW: return Menu_Export_Raw();
 				case ID_EXPORT_GLYPHS: return Menu_Export_Glyphs(false);
 				case ID_EXPORT_GLYPHSWITHADJUSTMENTS: return Menu_Export_Glyphs(true);
-				case ID_EXPORT_FACEGLYPHS: return Menu_Export_FaceGlyphs();
+				case ID_EXPORT_FONTGLYPHS: return Menu_Export_FontGlyphs();
 				case ID_EXPORT_TOTTMP_COMPRESSWHILEPACKING: return Menu_Export_TTMP(CompressionMode::CompressWhilePacking);
 				case ID_EXPORT_TOTTMP_COMPRESSAFTERPACKING: return Menu_Export_TTMP(CompressionMode::CompressAfterPacking);
 				case ID_EXPORT_TOTTMP_DONOTCOMPRESS: return Menu_Export_TTMP(CompressionMode::DoNotCompress);
@@ -644,19 +653,20 @@ LRESULT App::FontEditorWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		case WM_NOTIFY:
 			switch (auto& hdr = *reinterpret_cast<NMHDR*>(lParam); hdr.idFrom) {
-				case Id_FaceElementListView:
+				case Id_FontElementListView:
 					switch (hdr.code) {
-						case LVN_BEGINDRAG: return FaceElementsListView_OnBeginDrag(*reinterpret_cast<NM_LISTVIEW*>(lParam));
-						case NM_DBLCLK: return FaceElementsListView_OnDblClick(*reinterpret_cast<NMITEMACTIVATE*>(lParam));
-						case NM_RCLICK: return FaceElementsListView_OnRightClick(*reinterpret_cast<NMITEMACTIVATE*>(lParam));
+						case LVN_BEGINDRAG: return FontElementsListView_OnBeginDrag(*reinterpret_cast<NM_LISTVIEW*>(lParam));
+						case NM_DBLCLK: return FontElementsListView_OnDblClick(*reinterpret_cast<NMITEMACTIVATE*>(lParam));
+						case NM_RCLICK: return FontElementsListView_OnRightClick(*reinterpret_cast<NMITEMACTIVATE*>(lParam));
+						case NM_CUSTOMDRAW: return FontElementsListView_OnCustomDraw(*reinterpret_cast<NMLVCUSTOMDRAW*>(lParam));
 					}
 					break;
 			}
 			return 0;
 
 		case WM_CONTEXTMENU:
-			if (reinterpret_cast<HWND>(wParam) == m_hFacesListBox)
-				return FaceListBox_OnContextMenu({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)});
+			if (reinterpret_cast<HWND>(wParam) == m_hFontsListBox)
+				return FontListBox_OnContextMenu({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)});
 			break;
 
 		case WM_CREATE: return Window_OnCreate(hwnd);
@@ -729,9 +739,9 @@ void App::FontEditorWindow::UpdateSplitterDragPosition(int16_t y) {
 			const auto maxYRaw = availableHeight - (m_splitterThicknessPx * 2 + minEditPx + minPreviewPx);
 			const auto maxY = (std::max<int>)(minY, maxYRaw);
 			const auto clampedY = std::clamp(static_cast<int>(y), minY, maxY);
-			const auto newDip = (std::max)(MinFaceElementListViewHeight, static_cast<int>(std::lround(clampedY / zoom)));
-			if (newDip != g_config.FaceElementListViewHeight) {
-				g_config.FaceElementListViewHeight = newDip;
+			const auto newDip = (std::max)(MinFontElementListViewHeight, static_cast<int>(std::lround(clampedY / zoom)));
+			if (newDip != g_config.FontElementListViewHeight) {
+				g_config.FontElementListViewHeight = newDip;
 				g_config.MarkDirty();
 				updated = true;
 			}

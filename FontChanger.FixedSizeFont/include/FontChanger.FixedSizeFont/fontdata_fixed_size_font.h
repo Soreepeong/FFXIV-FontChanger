@@ -10,7 +10,7 @@
 #include "xivres/installation.h"
 
 namespace FontChanger::FixedSizeFont {
-	// A face of the game's fonts, as data/game_fonts.json lists it.
+	// One of the game's fonts, as data/game_fonts.json lists it.
 	struct game_fontdata_definition {
 		// The font type whose files it is of.
 		xivres::font_type FontType;
@@ -18,7 +18,7 @@ namespace FontChanger::FixedSizeFont {
 		// The path of its FDT file (common/font/AXIS_12.fdt).
 		std::string Path;
 
-		// The FDT file name without the extension (AXIS_12), which faces of font sets are named by.
+		// The FDT file name without the extension (AXIS_12), which fonts of font sets are named by.
 		std::string Name;
 
 		// The family (AXIS, JupiterN) and the subfamily (Regular).
@@ -28,9 +28,9 @@ namespace FontChanger::FixedSizeFont {
 		float Size;
 	};
 
-	// An entry of a table the game loads its fonts from: the face, and how many textures of its font type are loaded.
+	// An entry of a table the game loads its fonts from: the font, and how many textures of its font type are loaded.
 	struct game_font_table_entry {
-		const game_fontdata_definition* Face;
+		const game_fontdata_definition* Font;
 		int TextureCount;
 	};
 
@@ -114,10 +114,10 @@ namespace FontChanger::FixedSizeFont {
 	// The font types data/game_fonts.json lists, in its order.
 	[[nodiscard]] std::span<const xivres::font_type> get_font_types();
 
-	// The faces of a font type, in the order the game's files list them.
+	// The fonts of a font type, in the order the game's files list them.
 	[[nodiscard]] std::span<const game_fontdata_definition> get_fontdata_definition(xivres::font_type fontType = xivres::font_type::font);
 
-	// Finds a face of any font type by its name (AXIS_12, AXIS_12_lobby); null if the game has none of the name.
+	// Finds a font of any font type by its name (AXIS_12, AXIS_12_lobby); null if the game has none of the name.
 	[[nodiscard]] const game_fontdata_definition* find_fontdata_definition(std::string_view name);
 
 	// The families of the game's fonts (AXIS, JupiterN, ...), in the order of data/game_fonts.json.
@@ -129,14 +129,14 @@ namespace FontChanger::FixedSizeFont {
 	// How many texture files of a font type the game loads; 0 if unknown.
 	[[nodiscard]] int get_font_texture_count(xivres::font_type fontType = xivres::font_type::font);
 
-	// The faces whose glyph tables must list the same characters in the same order: the game may draw a glyph of the second
+	// The fonts whose glyph tables must list the same characters in the same order: the game may draw a glyph of the second
 	// with that of the first at the same position.
 	[[nodiscard]] std::span<const std::pair<std::string, std::string>> get_linked_fontdata_names();
 
-	// The table of 41 faces the game of a font type loads its fonts from (the lobby's for font_lobby); empty if unknown.
+	// The table of 41 fonts the game of a font type loads its fonts from (the lobby's for font_lobby); empty if unknown.
 	[[nodiscard]] std::span<const game_font_table_entry> get_font_table(xivres::font_type fontType = xivres::font_type::font);
 
-	// Reads the faces of a font type, with their textures, from a game installation.
+	// Reads the fonts of a font type, with their textures, from a game installation.
 	[[nodiscard]] game_fontdata_set get_fontdata_set(const xivres::installation& installation, xivres::font_type fontType = xivres::font_type::font);
 }
 

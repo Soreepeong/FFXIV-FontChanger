@@ -221,7 +221,7 @@ GameFontReloader::GameProcess::GameProcess(DWORD pid)
 		text.GetStaticAddress(GameCode::FontTablesSignature, GameCode::LobbyTableAOffset),
 		text.GetStaticAddress(GameCode::FontTablesSignature, GameCode::LobbyTableBOffset),
 	};
-	static_assert(sizeof(FontSetInGame::Face) == GameCode::FontTableEntrySize);
+	static_assert(sizeof(FontSetInGame::Font) == GameCode::FontTableEntrySize);
 
 	// The tables as the executable has them; their pointers are of the executable's preferred base.
 	const auto& dosHeader = *reinterpret_cast<const IMAGE_DOS_HEADER*>(exe.data());
@@ -241,9 +241,9 @@ GameFontReloader::GameProcess::GameProcess(DWORD pid)
 
 		auto& table = m_tables.emplace_back(reinterpret_cast<void*>(address));
 		memcpy(&table.Original, &exe[fileOffset(address - realBase)], sizeof table.Original);
-		for (size_t i = 0; i < FaceCount; i++) {
-			auto& source = table.Original.Faces[i];
-			auto& target = table.Faces.Faces[i];
+		for (size_t i = 0; i < FontCount; i++) {
+			auto& source = table.Original.Fonts[i];
+			auto& target = table.Fonts.Fonts[i];
 			target.TexCount = source.TexCount;
 			target.TexPattern = reinterpret_cast<const char*>(&exe[fileOffset(reinterpret_cast<uint64_t>(source.TexPattern) - imageBase)]);
 			target.Fdt = reinterpret_cast<const char*>(&exe[fileOffset(reinterpret_cast<uint64_t>(source.Fdt) - imageBase)]);
@@ -254,7 +254,7 @@ GameFontReloader::GameProcess::GameProcess(DWORD pid)
 
 	for (const auto type : {xivres::font_type::font, xivres::font_type::chn_axis, xivres::font_type::krn_axis}) {
 		const auto defaults = FontChanger::FixedSizeFont::get_font_table(type);
-		if (defaults.size() == FaceCount && std::ranges::equal(m_tables.front().Faces.Faces, defaults, [](const auto& f, const auto& d) { return f.Fdt == d.Face->Name + ".fdt"; }))
+		if (defaults.size() == FontCount && std::ranges::equal(m_tables.front().Fonts.Fonts, defaults, [](const auto& f, const auto& d) { return f.Fdt == d.Font->Name + ".fdt"; }))
 			m_fontType = type;
 	}
 }
@@ -263,7 +263,7 @@ void GameFontReloader::GameProcess::RefreshFonts(const FontChanger::Structs::Mul
 	if (pProject && fontType != xivres::font_type::undefined && fontType != xivres::font_type::font && fontType != m_fontType)
 		throw std::runtime_error("The game has no fonts of the font type.");
 
-	// What each table will be: as the executable has it without a project; with the faces of the project loaded from the
+	// What each table will be: as the executable has it without a project; with the fonts of the project loaded from the
 	// project's textures; or the game's table of a font type, the lobby's staying.
 	std::vector<std::optional<FontSet>> targets(m_tables.size());
 	if (pProject) {
@@ -274,15 +274,15 @@ void GameFontReloader::GameProcess::RefreshFonts(const FontChanger::Structs::Mul
 				continue;
 			}
 
-			auto& target = targets[i].emplace(m_tables[i].Faces);
+			auto& target = targets[i].emplace(m_tables[i].Fonts);
 			for (const auto& f : pProject->FontSets) {
 				std::string texNameFormat = f->TexFilenameFormat;
 				for (size_t pos; (pos = texNameFormat.find("{}")) != std::string::npos;)
 					texNameFormat.replace(pos, 2, "%d");
 
-				for (const auto& face : f->Faces) {
-					for (auto& slot : target.Faces) {
-						if (slot.Fdt == face->Name + ".fdt" && slot.TexPattern != texNameFormat) {
+				for (const auto& font : f->Fonts) {
+					for (auto& slot : target.Fonts) {
+						if (slot.Fdt == font->Name + ".fdt" && slot.TexPattern != texNameFormat) {
 							slot.TexPattern = texNameFormat;
 							slot.TexCount = f->ExpectedTexCount;
 						}
@@ -331,9 +331,9 @@ void GameFontReloader::GameProcess::RefreshFonts(const FontChanger::Structs::Mul
 		written[t] = m_tables[t].Original;
 		if (!targets[t])
 			continue;
-		for (size_t i = 0; i < FaceCount; i++) {
-			const auto& local = targets[t]->Faces[i];
-			auto& remote = written[t].Faces[i];
+		for (size_t i = 0; i < FontCount; i++) {
+			const auto& local = targets[t]->Fonts[i];
+			auto& remote = written[t].Fonts[i];
 			remote.TexCount = local.TexCount;
 
 			remote.TexPattern = reinterpret_cast<char*>(code.size());
@@ -395,7 +395,7 @@ void GameFontReloader::GameProcess::RefreshFonts(const FontChanger::Structs::Mul
 	for (size_t t = 0; t < m_tables.size(); t++) {
 		if (!targets[t])
 			continue;
-		for (auto& remote : written[t].Faces) {
+		for (auto& remote : written[t].Fonts) {
 			remote.Fdt = pRemote + reinterpret_cast<size_t>(remote.Fdt);
 			remote.TexPattern = pRemote + reinterpret_cast<size_t>(remote.TexPattern);
 		}
@@ -425,15 +425,15 @@ void GameFontReloader::GameProcess::RefreshFonts(const FontChanger::Structs::Mul
 
 GameFontReloader::FontSet GameFontReloader::GetDefaultFontSet(xivres::font_type type) {
 	const auto table = FontChanger::FixedSizeFont::get_font_table(type);
-	if (table.size() != FaceCount)
+	if (table.size() != FontCount)
 		throw std::out_of_range("font/lobby/chn/krn are supported");
 
 	FontSet res;
-	for (size_t i = 0; i < FaceCount; i++) {
-		std::string_view format(FontChanger::FixedSizeFont::get_font_tex_filename_format(table[i].Face->FontType));
+	for (size_t i = 0; i < FontCount; i++) {
+		std::string_view format(FontChanger::FixedSizeFont::get_font_tex_filename_format(table[i].Font->FontType));
 		auto texPattern = std::string(format.substr(format.rfind('/') + 1));
 		texPattern.replace(texPattern.find("{}"), 2, "%d");
-		res.Faces[i] = {table[i].TextureCount, std::move(texPattern), table[i].Face->Name + ".fdt"};
+		res.Fonts[i] = {table[i].TextureCount, std::move(texPattern), table[i].Font->Name + ".fdt"};
 	}
 	return res;
 }

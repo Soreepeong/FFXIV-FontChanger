@@ -342,29 +342,29 @@ void App::GlyphFileTools::Embed(Structs::GlyphImagesStruct& settings) {
 		settings.EmbeddedMetadata.reset();
 }
 
-std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> App::GlyphFileTools::GetElementFontForExport(const Structs::FaceElement& element, bool withAdjustments) {
+std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> App::GlyphFileTools::GetElementFontForExport(const Structs::FontElement& element, bool withAdjustments) {
 	if (withAdjustments)
 		return element.GetWrappedFont();
 
 	// The codepoints and their replacements are kept, as they decide which glyphs the element adds.
 	auto modifiers = element.WrapModifiers;
-	modifiers.LetterSpacing = modifiers.HorizontalOffset = modifiers.BaselineShift = 0;
+	modifiers.LetterSpacing = modifiers.HorizontalOffset = modifiers.VerticalOffset = 0;
 	return std::make_shared<FontChanger::FixedSizeFont::wrapping_fixed_size_font>(element.GetBaseFont(), modifiers);
 }
 
-nlohmann::json App::GlyphFileTools::DescribeSource(const Structs::FaceElement& element) {
+nlohmann::json App::GlyphFileTools::DescribeSource(const Structs::FontElement& element) {
 	const auto& font = *element.GetBaseFont();
 	return {
 		{"family", font.family_name()},
 		{"subfamily", font.subfamily_name()},
-		{"renderer", xivres::util::unicode::convert<std::string>(GetRendererRepresentation(element))},
+		{"elementSource", xivres::util::unicode::convert<std::string>(GetSourceRepresentation(element))},
 		{"element", element},
 	};
 }
 
-nlohmann::json App::GlyphFileTools::DescribeSource(const Structs::Face& face) {
+nlohmann::json App::GlyphFileTools::DescribeSource(const Structs::Font& font) {
 	return {
-		{"face", face.Name},
+		{"font", font.Name},
 	};
 }
 

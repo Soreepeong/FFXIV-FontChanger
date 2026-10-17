@@ -5,24 +5,24 @@ namespace FontChanger::Structs {
 }
 
 namespace GameFontReloader {
-	static constexpr size_t FaceCount = 0x29;
+	static constexpr size_t FontCount = 0x29;
 
 	// A font table of the game: which font each of its 41 slots loads.
 	struct FontSetInGame {
-		struct Face {
+		struct Font {
 			int TexCount;
 			int Padding;
 			char* TexPattern;
 			char* Fdt;
-		} Faces[FaceCount];
+		} Fonts[FontCount];
 	};
 
 	struct FontSet {
-		struct Face {
+		struct Font {
 			int TexCount;
 			std::string TexPattern;
 			std::string Fdt;
-		} Faces[FaceCount];
+		} Fonts[FontCount];
 	};
 
 	// A running game: its font tables (the game's and the two of the lobby), read from its executable, and what
@@ -31,7 +31,7 @@ namespace GameFontReloader {
 		struct Table {
 			void* Address;
 			FontSetInGame Original;  // as the executable has it, with pointers into the running game
-			FontSet Faces;
+			FontSet Fonts;
 		};
 
 		const std::unique_ptr<void, decltype(&CloseHandle)> m_hProcess;
@@ -72,6 +72,6 @@ namespace GameFontReloader {
 		void RefreshFonts(const FontChanger::Structs::MultiFontSet* pProject, xivres::font_type fontType = xivres::font_type::undefined) const;
 	};
 
-	// The table of the faces the game of a font type loads (data/game_fonts.json of FontChanger.FixedSizeFont).
+	// The table of the fonts the game of a font type loads (data/game_fonts.json of FontChanger.FixedSizeFont).
 	FontSet GetDefaultFontSet(xivres::font_type type);
 }

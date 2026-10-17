@@ -10,35 +10,34 @@ using FontChanger.Presets.Records;
 
 namespace FontChanger.Presets;
 
-/// <summary>Built-in shapes of glyph merging and its presets.</summary>
 public static class GlyphMergeShapes
 {
-    private static readonly (MergeShape Shape, string Name)[] Names =
+    private static readonly (GlyphMergeShape Shape, string Name)[] Names =
     [
-        (MergeShape.None, "none"),
-        (MergeShape.AmPm, "amPm"),
-        (MergeShape.Ime, "ime"),
-        (MergeShape.Box, "box"),
-        (MergeShape.NumberBox, "numberBox"),
-        (MergeShape.HollowBox, "hollowBox"),
-        (MergeShape.Hexagon, "hexagon"),
-        (MergeShape.Rhombus, "rhombus"),
-        (MergeShape.Bozja, "bozja"),
-        (MergeShape.Time, "time"),
-        (MergeShape.Star, "star"),
-        (MergeShape.Custom, "custom"),
-        (MergeShape.Glyph, "glyph"),
+        (GlyphMergeShape.None, "none"),
+        (GlyphMergeShape.AmPm, "amPm"),
+        (GlyphMergeShape.Ime, "ime"),
+        (GlyphMergeShape.Box, "box"),
+        (GlyphMergeShape.NumberBox, "numberBox"),
+        (GlyphMergeShape.HollowBox, "hollowBox"),
+        (GlyphMergeShape.Hexagon, "hexagon"),
+        (GlyphMergeShape.Rhombus, "rhombus"),
+        (GlyphMergeShape.Bozja, "bozja"),
+        (GlyphMergeShape.Time, "time"),
+        (GlyphMergeShape.Star, "star"),
+        (GlyphMergeShape.Custom, "custom"),
+        (GlyphMergeShape.Glyph, "glyph"),
     ];
 
     private static readonly JsonElement Root = Load();
 
     public static JsonElement Shapes { get; } = Root.GetProperty("shapes");
 
-    public static IReadOnlyList<IReadOnlyList<(Rune Codepoint, GlyphMergeMapping Mapping, string Text)>> Presets { get; } = LoadPresets();
+    public static IReadOnlyList<(Rune Codepoint, GlyphMergeMapping Mapping, string Text)> Presets { get; } = LoadPresets();
 
-    public static string NameOf(MergeShape shape) => Names.First(n => n.Shape == shape).Name;
+    public static string NameOf(GlyphMergeShape shape) => Names.First(n => n.Shape == shape).Name;
 
-    public static MergeShape ShapeOf(string name) => Array.Find(Names, n => n.Name == name) is { Name: not null } n2 ? n2.Shape : MergeShape.Box;
+    public static GlyphMergeShape ShapeOf(string name) => Array.Find(Names, n => n.Name == name) is { Name: not null } n ? n.Shape : GlyphMergeShape.Box;
 
     private static JsonElement Load()
     {
@@ -48,36 +47,24 @@ public static class GlyphMergeShapes
         return document.RootElement.Clone();
     }
 
-    private static List<IReadOnlyList<(Rune, GlyphMergeMapping, string)>> LoadPresets()
+    private static List<(Rune, GlyphMergeMapping, string)> LoadPresets()
     {
-        var res = new List<IReadOnlyList<(Rune, GlyphMergeMapping, string)>>();
-        foreach (var group in Root.GetProperty("presets").EnumerateArray())
+        var res = new List<(Rune, GlyphMergeMapping, string)>();
+        foreach (var run in Root.GetProperty("presets").EnumerateArray().SelectMany(group => group.EnumerateArray()))
         {
-            var glyphs = new List<(Rune, GlyphMergeMapping, string)>();
-            foreach (var run in group.EnumerateArray())
+            var mapping = new GlyphMergeMapping(ShapeOf(run.GetProperty("shape").GetString()!), GlyphMergeTextMode.Subtract, string.Empty, string.Empty, 1000, null);
+            var texts = new List<string>();
+            if (run.TryGetProperty("numbers", out var numbers))
             {
-                var mapping = new GlyphMergeMapping(
-                    ShapeOf(run.GetProperty("shape").GetString()!),
-                    MergeTextMode.Subtract,
-                    string.Empty,
-                    string.Empty,
-                    1000,
-                    null);
-                var texts = new List<string>();
-                if (run.TryGetProperty("numbers", out var numbers))
-                {
-                    for (var i = numbers[0].GetInt32(); i <= numbers[1].GetInt32(); i++)
-                        texts.Add(i.ToString(CultureInfo.InvariantCulture));
-                }
-
-                if (run.TryGetProperty("texts", out var more))
-                    texts.AddRange(more.EnumerateArray().Select(t => t.GetString()!));
-
-                var first = int.Parse(run.GetProperty("first").GetString()!, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-                glyphs.AddRange(texts.Select((text, i) => (new Rune(first + i), mapping, text)));
+                for (var i = numbers[0].GetInt32(); i <= numbers[1].GetInt32(); i++)
+                    texts.Add(i.ToString(CultureInfo.InvariantCulture));
             }
 
-            res.Add(glyphs);
+            if (run.TryGetProperty("texts", out var more))
+                texts.AddRange(more.EnumerateArray().Select(t => t.GetString()!));
+
+            var first = int.Parse(run.GetProperty("first").GetString()!, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            res.AddRange(texts.Select((text, i) => (new Rune(first + i), mapping, text)));
         }
 
         return res;

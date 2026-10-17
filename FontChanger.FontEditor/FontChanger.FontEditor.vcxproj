@@ -213,13 +213,13 @@
   <ItemGroup>
     <ClCompile Include="BaseWindow.cpp" />
     <ClCompile Include="ExportPreviewWindow.cpp" />
-    <ClCompile Include="FaceElementEditorDialog.Characters.cpp" />
-    <ClCompile Include="FaceElementEditorDialog.cpp" />
-    <ClCompile Include="FaceElementEditorDialog.Font.cpp" />
-    <ClCompile Include="FaceElementEditorDialog.Typography.cpp" />
-    <ClCompile Include="FaceElementEditorDialog.GlyphMerging.cpp" />
-    <ClCompile Include="FaceElementEditorDialog.GlyphImages.cpp" />
-    <ClCompile Include="FaceElementEditorDialog.Monospacing.cpp" />
+    <ClCompile Include="FontElementEditorDialog.Characters.cpp" />
+    <ClCompile Include="FontElementEditorDialog.cpp" />
+    <ClCompile Include="FontElementEditorDialog.Font.cpp" />
+    <ClCompile Include="FontElementEditorDialog.Typography.cpp" />
+    <ClCompile Include="FontElementEditorDialog.GlyphMerging.cpp" />
+    <ClCompile Include="FontElementEditorDialog.GlyphImages.cpp" />
+    <ClCompile Include="FontElementEditorDialog.Monospacing.cpp" />
     <ClCompile Include="GameFontReloader.cpp" />
     <ClCompile Include="GlyphFileTools.cpp" />
     <ClCompile Include="FontGeneratorConfig.cpp" />
@@ -257,8 +257,8 @@
   <ItemGroup>
     <ClInclude Include="BaseWindow.h" />
     <ClInclude Include="ExportPreviewWindow.h" />
-    <ClInclude Include="FaceElementEditorDialog.h" />
-    <ClInclude Include="FaceElementEditorDialog.Internal.h" />
+    <ClInclude Include="FontElementEditorDialog.h" />
+    <ClInclude Include="FontElementEditorDialog.Internal.h" />
     <ClInclude Include="GameFontReloader.h" />
     <ClInclude Include="GlyphFileTools.h" />
     <ClInclude Include="CommandLineRender.h" />

@@ -4,7 +4,6 @@ using System.Text;
 
 namespace FontChanger.ShaderGen;
 
-/// <summary>D3DCompile and D3DDisassemble from d3dcompiler_47.dll.</summary>
 internal static unsafe partial class D3DCompiler
 {
     private const uint OptimizationLevel3 = 1 << 15;

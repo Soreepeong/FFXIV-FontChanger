@@ -8,17 +8,17 @@
 #include "resource.h"
 
 namespace {
-	// Compiles the faces of the font set into font data and textures.
+	// Compiles the fonts of the font set into font data and textures.
 	App::CompiledFontSet CompileFontSet(App::ProgressDialog& progressDialog, App::Structs::FontSet& fontSet) {
 		progressDialog.UpdateStatusMessage(GetStringResource(IDS_EXPORTPROGRESS_LOADFONTS));
 		fontSet.ConsolidateFonts();
 
 		progressDialog.UpdateStatusMessage(GetStringResource(IDS_EXPORTPROGRESS_KERNINGPAIRS));
 		std::vector<std::string> tooManyKernings;
-		for (const auto& pFace : fontSet.Faces) {
+		for (const auto& pFont : fontSet.Fonts) {
 			progressDialog.ThrowIfCancelled();
-			if (const auto nKerns = pFace->GetMergedFont()->all_kerning_pairs().size(); nKerns >= 65536)
-				tooManyKernings.emplace_back(std::format("\n{}: {}", pFace->Name, nKerns));
+			if (const auto nKerns = pFont->GetMergedFont()->all_kerning_pairs().size(); nKerns >= 65536)
+				tooManyKernings.emplace_back(std::format("\n{}: {}", pFont->Name, nKerns));
 		}
 		if (!tooManyKernings.empty()) {
 			std::ranges::sort(tooManyKernings);
@@ -32,8 +32,8 @@ namespace {
 		packer.set_discard_step(fontSet.DiscardStep);
 		packer.set_side_length(fontSet.SideLength);
 
-		for (auto& pFace : fontSet.Faces)
-			packer.add_font(pFace->GetMergedFont());
+		for (auto& pFont : fontSet.Fonts)
+			packer.add_font(pFont->GetMergedFont());
 
 		packer.compile();
 
@@ -95,7 +95,7 @@ namespace {
 				if (it == sourceDefs.end())
 					continue;
 
-				if (std::ranges::any_of(fontSet.Faces, [&](const auto& pFace) { return pFace->Name == it->Name; }))
+				if (std::ranges::any_of(fontSet.Fonts, [&](const auto& pFont) { return pFont->Name == it->Name; }))
 					res.emplace_back(it->Name + ".fdt", target.Name + ".fdt");
 			}
 
@@ -134,9 +134,9 @@ namespace {
 			const xivres::fontdata::stream* pSmall = nullptr;
 			const xivres::fontdata::stream* pLarge = nullptr;
 			for (size_t i = 0; i < fdts.size(); i++) {
-				if (fontSet.Faces[i]->Name == smallName)
+				if (fontSet.Fonts[i]->Name == smallName)
 					pSmall = fdts[i].get();
-				else if (fontSet.Faces[i]->Name == largeName)
+				else if (fontSet.Fonts[i]->Name == largeName)
 					pLarge = fdts[i].get();
 			}
 			if (!pSmall || !pLarge)
@@ -193,7 +193,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Preview() {
 				texturesAll->set_mipmap(0, i, mips[i]);
 
 			for (size_t i = 0; i < fdts.size(); i++)
-				resultFonts.emplace_back(fontSet->Faces[i]->Name, std::make_shared<fontdata_fixed_size_font>(fdts[i], mips, fontSet->Faces[i]->Name, ""));
+				resultFonts.emplace_back(fontSet->Fonts[i]->Name, std::make_shared<fontdata_fixed_size_font>(fdts[i], mips, fontSet->Fonts[i]->Name, ""));
 
 			std::thread([texturesAll]() { preview(*texturesAll); }).detach();
 		}
@@ -240,7 +240,7 @@ LRESULT App::FontEditorWindow::Menu_Export_Raw() {
 
 			for (size_t i = 0; i < fdts.size(); i++) {
 				progressDialog.ThrowIfCancelled();
-				write(*basePath / std::format("{}.fdt", pFontSet->Faces[i]->Name), *fdts[i]);
+				write(*basePath / std::format("{}.fdt", pFontSet->Fonts[i]->Name), *fdts[i]);
 			}
 
 			for (const auto& [source, alias] : GetExportAliases(m_multiFontSet, *pFontSet, mips.size()))
@@ -294,7 +294,7 @@ LRESULT App::FontEditorWindow::Menu_Export_TTMP(CompressionMode compressionMode)
 			const auto beginIndex = modsList.size();
 
 			for (size_t i = 0; i < fdts.size(); i++) {
-				const auto targetFileName = std::format("common/font/{}.fdt", pFontSet->Faces[i]->Name);
+				const auto targetFileName = std::format("common/font/{}.fdt", pFontSet->Fonts[i]->Name);
 				reportWriting(targetFileName);
 				writer.add_packed(xivres::compressing_packed_stream<xivres::standard_compressing_packer>(targetFileName, fdts[i], level));
 			}

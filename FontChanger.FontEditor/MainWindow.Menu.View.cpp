@@ -4,14 +4,14 @@
 #include "xivres/textools.h"
 
 LRESULT App::FontEditorWindow::Menu_View_NextOrPrevFont(int direction) {
-	auto i = static_cast<size_t>(ListBox_GetCurSel(m_hFacesListBox));
+	auto i = static_cast<size_t>(ListBox_GetCurSel(m_hFontsListBox));
 	if (i == static_cast<size_t>(LB_ERR)
 		|| i + direction < 0
-		|| i + direction >= ListBox_GetCount(m_hFacesListBox))
+		|| i + direction >= ListBox_GetCount(m_hFontsListBox))
 		return 0;
 
-	ListBox_SetCurSel(m_hFacesListBox, i + direction);
-	return FaceListBox_OnCommand(LBN_SELCHANGE);
+	ListBox_SetCurSel(m_hFontsListBox, i + direction);
+	return FontListBox_OnCommand(LBN_SELCHANGE);
 }
 
 LRESULT App::FontEditorWindow::Menu_View_WordWrap() {

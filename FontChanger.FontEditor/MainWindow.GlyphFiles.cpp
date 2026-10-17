@@ -76,23 +76,23 @@ LRESULT App::FontEditorWindow::OnGlyphFoldersChanged() {
 
 	auto redraw = false;
 	for (const auto& fontSet : m_multiFontSet.FontSets) {
-		for (const auto& face : fontSet->Faces) {
-			auto faceChanged = false;
-			for (const auto& element : face->Elements) {
+		for (const auto& font : fontSet->Fonts) {
+			auto fontChanged = false;
+			for (const auto& element : font->Elements) {
 				const auto& settings = element->RendererSpecific.GlyphImages;
-				if (element->Renderer != Structs::RendererEnum::GlyphImages || settings.IsEmbedded() || settings.Path.empty())
+				if (element->Source != Structs::ElementSourceEnum::GlyphImages || settings.IsEmbedded() || settings.Path.empty())
 					continue;
 				if (std::ranges::find(changed, GlyphFiles::ResolvePath(settings.Path)) == changed.end())
 					continue;
 
 				element->OnFontCreateParametersChange();
-				faceChanged = true;
-				if (face.get() == m_pActiveFace)
-					UpdateFaceElementListViewItem(*element);
+				fontChanged = true;
+				if (font.get() == m_pActiveFont)
+					UpdateFontElementListViewItem(*element);
 			}
-			if (faceChanged) {
-				face->OnElementChange();
-				redraw |= face.get() == m_pActiveFace;
+			if (fontChanged) {
+				font->OnElementChange();
+				redraw |= font.get() == m_pActiveFont;
 			}
 		}
 	}
@@ -102,13 +102,13 @@ LRESULT App::FontEditorWindow::OnGlyphFoldersChanged() {
 }
 
 LRESULT App::FontEditorWindow::Menu_Export_Glyphs(bool withAdjustments) {
-	if (!m_pActiveFace)
+	if (!m_pActiveFont)
 		return 0;
 
 	std::vector<ExportJob> jobs;
 	for (const auto i : GetSelectedElementIndices()) {
-		const auto& element = *m_pActiveFace->Elements[i];
-		if (element.Renderer == Structs::RendererEnum::Empty)
+		const auto& element = *m_pActiveFont->Elements[i];
+		if (element.Source == Structs::ElementSourceEnum::Empty)
 			continue;
 
 		jobs.push_back({
@@ -126,16 +126,16 @@ LRESULT App::FontEditorWindow::Menu_Export_Glyphs(bool withAdjustments) {
 	return RunExportJobs(m_hWnd, jobs);
 }
 
-LRESULT App::FontEditorWindow::Menu_Export_FaceGlyphs() {
-	if (!m_pActiveFace)
+LRESULT App::FontEditorWindow::Menu_Export_FontGlyphs() {
+	if (!m_pActiveFont)
 		return 0;
 
 	return RunExportJobs(m_hWnd, {{
-		.FolderName = xivres::util::unicode::convert<std::wstring>(m_pActiveFace->Name),
-		.Font = m_pActiveFace->GetMergedFont(),
+		.FolderName = xivres::util::unicode::convert<std::wstring>(m_pActiveFont->Name),
+		.Font = m_pActiveFont->GetMergedFont(),
 		.Options = {
 			.WithAdjustments = true,
-			.Source = GlyphFileTools::DescribeSource(*m_pActiveFace),
+			.Source = GlyphFileTools::DescribeSource(*m_pActiveFont),
 		},
 	}});
 }

@@ -3,8 +3,8 @@
 namespace FontChanger.Presets.Records;
 
 public sealed record GlyphMergeMapping(
-    MergeShape Shape,
-    MergeTextMode TextMode,
+    GlyphMergeShape Shape,
+    GlyphMergeTextMode TextMode,
     string CustomPath,
     string CustomSvg,
     float CustomAdvance,

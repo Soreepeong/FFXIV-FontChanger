@@ -5,11 +5,7 @@ using System.Text;
 
 namespace FontChanger.ShaderGen;
 
-/// <summary>
-/// The generated part of FontEdgePS.hlsl: for a one-hot Channel and reaches 1 to <see cref="SquareReach"/>, a function
-/// per reach that takes the whole square of samples from gathers, written out statement by statement (the channel is a
-/// literal at each call). FXC compiles that several times faster than the same code as unrolled loops over arrays.
-/// </summary>
+/// <summary>Written out statement by statement, which FXC compiles several times faster than unrolled loops over arrays.</summary>
 internal static class FontEdgeSquares
 {
     public const int SquareReach = 4;
@@ -39,9 +35,8 @@ internal static class FontEdgeSquares
     }
 
     /// <summary>
-    /// Reach r for channel c (a literal): the (2r + 1)^2 samples around Uv from the (r + 1)^2 gathers at the texel corners
-    /// around them. Gather (a, b) holds texel columns a, a + 1 of rows b, b + 1 (relative to the corner of Uv's
-    /// footprint); sample row y blends texel rows y and y + 1 into columns, and sample x blends columns x and x + 1.
+    /// Relative to the corner of Uv's footprint, gather (a, b) holds texel columns a, a + 1 of rows b, b + 1, and sample
+    /// (x, y) blends texel columns x, x + 1 of rows y, y + 1.
     /// </summary>
     private static string Square(int r)
     {
@@ -53,7 +48,6 @@ internal static class FontEdgeSquares
         Emit("    float2 corner, f;");
         Emit("    Footprint(input, texel, size, corner, f);");
 
-        // The rectangle test of each column and row of samples.
         for (var i = -r; i <= r; i++)
         {
             var n = i + r;
@@ -76,8 +70,8 @@ internal static class FontEdgeSquares
             return $"g{b + r}_{a + r}.{component}";
         }
 
-        // Offsets r + 1 or further away weigh 0 (r is the furthest weighing more); with any softness, every other one is
-        // weighed (by exactly 1 when solid there, which keeps the product exact).
+        // Offsets r + 1 or further weigh 0 (r is the furthest weighing more), and every other one is weighed, by exactly 1
+        // where solid, which keeps the product exact.
         var weights = new HashSet<int>();
         Emit("    float alpha = 0;");
         for (var y = -r; y <= r; y++)
@@ -106,7 +100,7 @@ internal static class FontEdgeSquares
         return sb.ToString();
     }
 
-    /// <summary>base + i * step, as written by hand.</summary>
+    /// <summary>As written by hand, without "+ 0 *" or "1 *".</summary>
     private static string Offset(string @base, int i, string step)
     {
         if (i == 0)

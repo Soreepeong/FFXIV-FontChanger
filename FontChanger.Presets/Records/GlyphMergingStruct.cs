@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using System.Text;
-using System.Text.Json.Serialization;
 
 using FontChanger.Presets.Enums;
 using FontChanger.Presets.Utilities;
@@ -11,7 +10,7 @@ public sealed record GlyphMergingStruct
 {
     public float? TextSize { get; init; }
 
-    public MergeFitMode FitMode { get; init; }
+    public GlyphMergeFitMode FitMode { get; init; }
 
     public float TextOffsetX { get; init; }
 
@@ -21,11 +20,10 @@ public sealed record GlyphMergingStruct
 
     public float LineSpacing { get; init; }
 
-    public MergeLineAlignment LineAlignment { get; init; } = MergeLineAlignment.Center;
+    public GlyphMergeLineAlignment LineAlignment { get; init; } = GlyphMergeLineAlignment.Center;
 
     public Matrix2x2 TextTransform { get; init; } = Matrix2x2.Identity;
 
-    [JsonConverter(typeof(RuneToIntConverter))]
     public IReadOnlyDictionary<Rune, (GlyphMergeMapping Mapping, string Text)> Glyphs { get; init; } =
         new Dictionary<Rune, (GlyphMergeMapping, string)>();
 }

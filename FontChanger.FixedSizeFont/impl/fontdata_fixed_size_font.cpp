@@ -10,6 +10,16 @@ using namespace xivres;
 #include "xivres/texture.stream.h"
 #include "xivres/util.bitmap_copy.h"
 
+namespace {
+	// The columns that the game drops from the left of a glyph when it loads a font (AtkFontManager.BuildFont): in fonts
+	// larger than 35 px, the first of the IME indicators (U+E020-E027) and of U+E0BB, which are then drawn a pixel left and
+	// advance a pixel less than their files say.
+	int GetDroppedColumns(const fontdata::glyph_entry* pEntry, float fontSize) {
+		const auto c = pEntry->codepoint();
+		return fontSize > 35 && (c >= 0xE020 && c <= 0xE027 || c == 0xE0BB) && *pEntry->BoundingWidth > 0 ? 1 : 0;
+	}
+}
+
 FontChanger::FixedSizeFont::glyph_metrics FontChanger::FixedSizeFont::fontdata_fixed_size_font::glyph_metrics_from_glyph_entry(const fontdata::glyph_entry* pEntry, int x, int y) {
 	glyph_metrics res;
 	res.X1 = x;
@@ -33,8 +43,10 @@ bool FontChanger::FixedSizeFont::fontdata_fixed_size_font::draw(char32_t codepoi
 	if (!pEntry)
 		return false;
 
-	auto src = glyph_metrics{*pEntry->TextureOffsetX, *pEntry->TextureOffsetY, *pEntry->TextureOffsetX + *pEntry->BoundingWidth, *pEntry->TextureOffsetY + *pEntry->BoundingHeight};
+	const auto dropped = GetDroppedColumns(pEntry, font_size());
+	auto src = glyph_metrics{*pEntry->TextureOffsetX + dropped, *pEntry->TextureOffsetY, *pEntry->TextureOffsetX + *pEntry->BoundingWidth, *pEntry->TextureOffsetY + *pEntry->BoundingHeight};
 	auto dest = glyph_metrics_from_glyph_entry(pEntry, drawX, drawY);
+	dest.X2 -= dropped;
 	const auto& mipmapStream = *m_info->Mipmaps.at(pEntry->texture_file_index());
 	const auto planeIndex = fontdata::glyph_entry::ChannelMap[pEntry->texture_plane_index()];
 	src.adjust_to_intersection(dest, mipmapStream.Width, mipmapStream.Height, destWidth, destHeight);
@@ -55,8 +67,10 @@ bool FontChanger::FixedSizeFont::fontdata_fixed_size_font::draw(char32_t codepoi
 	if (!pEntry)
 		return false;
 
-	auto src = glyph_metrics{*pEntry->TextureOffsetX, *pEntry->TextureOffsetY, *pEntry->TextureOffsetX + *pEntry->BoundingWidth, *pEntry->TextureOffsetY + *pEntry->BoundingHeight};
+	const auto dropped = GetDroppedColumns(pEntry, font_size());
+	auto src = glyph_metrics{*pEntry->TextureOffsetX + dropped, *pEntry->TextureOffsetY, *pEntry->TextureOffsetX + *pEntry->BoundingWidth, *pEntry->TextureOffsetY + *pEntry->BoundingHeight};
 	auto dest = glyph_metrics_from_glyph_entry(pEntry, drawX, drawY);
+	dest.X2 -= dropped;
 	const auto& mipmapStream = *m_info->Mipmaps.at(pEntry->texture_file_index());
 	const auto planeIndex = fontdata::glyph_entry::ChannelMap[pEntry->texture_plane_index()];
 	src.adjust_to_intersection(dest, mipmapStream.Width, mipmapStream.Height, destWidth, destHeight);
@@ -88,6 +102,9 @@ bool FontChanger::FixedSizeFont::fontdata_fixed_size_font::try_get_glyph_metrics
 		return false;
 
 	gm = glyph_metrics_from_glyph_entry(p);
+	const auto dropped = GetDroppedColumns(p, font_size());
+	gm.X2 -= dropped;
+	gm.AdvanceX -= dropped;
 	return true;
 }
 
@@ -205,7 +222,7 @@ namespace {
 			xivres::font_type FontType;
 			std::string TextureFormat;
 			int TextureCount;
-			std::vector<FontChanger::FixedSizeFont::game_fontdata_definition> Faces;
+			std::vector<FontChanger::FixedSizeFont::game_fontdata_definition> Fonts;
 			std::vector<FontChanger::FixedSizeFont::game_font_table_entry> Table;
 		};
 
@@ -240,7 +257,12 @@ namespace {
 				subfamilies.emplace(family, info.at("subfamily").get<std::string>());
 			}
 
-			// Reserved first: the tables point to the faces.
+			// Earlier versions of the file called "fonts" and "linkedFonts" "faces" and "linkedFaces".
+			const auto at = [](const nlohmann::ordered_json& obj, const char* key, const char* legacyKey) -> const nlohmann::ordered_json& {
+				return obj.contains(key) ? obj.at(key) : obj.at(legacyKey);
+			};
+
+			// Reserved first: the tables point to the fonts.
 			res.Infos.reserve(json.at("fontTypes").size());
 			for (const auto& [typeName, info] : json.at("fontTypes").items()) {
 				auto& type = res.Infos.emplace_back(game_fonts::font_type_info{
@@ -249,21 +271,21 @@ namespace {
 					.TextureCount = info.at("textureCount").get<int>(),
 				});
 				res.FontTypes.push_back(type.FontType);
-				for (const auto& face : info.at("faces")) {
-					const auto name = face.at(0).get<std::string>();
-					const auto family = face.at(1).get<std::string>();
-					type.Faces.push_back({
+				for (const auto& font : at(info, "fonts", "faces")) {
+					const auto name = font.at(0).get<std::string>();
+					const auto family = font.at(1).get<std::string>();
+					type.Fonts.push_back({
 						.FontType = type.FontType,
 						.Path = std::format("common/font/{}.fdt", name),
 						.Name = name,
 						.Family = family,
 						.Subfamily = subfamilies.find(family)->second,
-						.Size = face.at(2).get<float>(),
+						.Size = font.at(2).get<float>(),
 					});
 				}
 			}
 
-			for (const auto& pair : json.at("linkedFaces"))
+			for (const auto& pair : at(json, "linkedFonts", "linkedFaces"))
 				res.LinkedNames.emplace_back(pair.at(0).get<std::string>(), pair.at(1).get<std::string>());
 
 			for (const auto& [typeName, info] : json.at("fontTables").items()) {
@@ -272,8 +294,8 @@ namespace {
 				for (const auto& slot : info.at("slots")) {
 					const auto name = slot.get<std::string>();
 					for (const auto& owner : res.Infos) {
-						const auto face = std::ranges::find(owner.Faces, name, &FontChanger::FixedSizeFont::game_fontdata_definition::Name);
-						if (face == owner.Faces.end())
+						const auto font = std::ranges::find(owner.Fonts, name, &FontChanger::FixedSizeFont::game_fontdata_definition::Name);
+						if (font == owner.Fonts.end())
 							continue;
 
 						auto count = owner.TextureCount;
@@ -281,7 +303,7 @@ namespace {
 							if (parse_font_type(ownerName) == owner.FontType)
 								count = ownerCount.get<int>();
 						}
-						type.Table.push_back({&*face, count});
+						type.Table.push_back({&*font, count});
 						break;
 					}
 				}
@@ -298,12 +320,12 @@ std::span<const xivres::font_type> FontChanger::FixedSizeFont::get_font_types() 
 
 std::span<const FontChanger::FixedSizeFont::game_fontdata_definition> FontChanger::FixedSizeFont::get_fontdata_definition(font_type fontType) {
 	const auto info = get_game_fonts().find(fontType);
-	return info ? std::span(info->Faces) : std::span<const game_fontdata_definition>();
+	return info ? std::span(info->Fonts) : std::span<const game_fontdata_definition>();
 }
 
 const FontChanger::FixedSizeFont::game_fontdata_definition* FontChanger::FixedSizeFont::find_fontdata_definition(std::string_view name) {
 	for (const auto& info : get_game_fonts().Infos) {
-		if (const auto it = std::ranges::find(info.Faces, name, &game_fontdata_definition::Name); it != info.Faces.end())
+		if (const auto it = std::ranges::find(info.Fonts, name, &game_fontdata_definition::Name); it != info.Fonts.end())
 			return &*it;
 	}
 	return nullptr;

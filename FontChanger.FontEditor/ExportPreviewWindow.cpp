@@ -10,20 +10,20 @@ LRESULT App::ExportPreviewWindow::Window_OnCreate(HWND hwnd) {
 	SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof ncm, &ncm, 0);
 	m_hUiFont = CreateFontIndirectW(&ncm.lfMessageFont);
 
-	m_hFacesListBox = CreateWindowExW(0, WC_LISTBOXW, nullptr,
+	m_hFontsListBox = CreateWindowExW(0, WC_LISTBOXW, nullptr,
 		WS_CHILD | WS_TABSTOP | WS_BORDER | WS_VISIBLE | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY,
-		0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(Id_FaceListBox), reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(m_hWnd, GWLP_HINSTANCE)), nullptr);
+		0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(Id_FontListBox), reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(m_hWnd, GWLP_HINSTANCE)), nullptr);
 	m_hEdit = CreateWindowExW(0, WC_EDITW, nullptr,
 		WS_CHILD | WS_TABSTOP | WS_BORDER | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_AUTOVSCROLL | ES_MULTILINE | ES_WANTRETURN,
 		0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(Id_Edit), reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(m_hWnd, GWLP_HINSTANCE)), nullptr);
 
-	SendMessage(m_hFacesListBox, WM_SETFONT, reinterpret_cast<WPARAM>(m_hUiFont), FALSE);
+	SendMessage(m_hFontsListBox, WM_SETFONT, reinterpret_cast<WPARAM>(m_hUiFont), FALSE);
 	SendMessage(m_hEdit, WM_SETFONT, reinterpret_cast<WPARAM>(m_hUiFont), FALSE);
 	Edit_SetText(m_hEdit, xivres::util::unicode::convert<std::wstring>(Structs::GetDefaultPreviewText()).c_str());
 
 	for (const auto& font : m_fonts)
-		ListBox_AddString(m_hFacesListBox, xivres::util::unicode::convert<std::wstring>(font.first).c_str());
-	ListBox_SetCurSel(m_hFacesListBox, 0);
+		ListBox_AddString(m_hFontsListBox, xivres::util::unicode::convert<std::wstring>(font.first).c_str());
+	ListBox_SetCurSel(m_hFontsListBox, 0);
 
 	SetWindowSubclass(m_hEdit, [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) -> LRESULT {
 		if (msg == WM_GETDLGCODE && wParam == VK_TAB)
@@ -43,15 +43,15 @@ LRESULT App::ExportPreviewWindow::Window_OnSize() {
 	GetClientRect(m_hWnd, &rc);
 
 	const auto zoom = GetZoom();
-	const auto scaledFaceListBoxWidth = static_cast<int>(FaceListBoxWidth * zoom);
+	const auto scaledFontListBoxWidth = static_cast<int>(FontListBoxWidth * zoom);
 	const auto scaledEditHeight = static_cast<int>(EditHeight * zoom);
 
 	auto hdwp = BeginDeferWindowPos(Id__Last);
-	hdwp = DeferWindowPos(hdwp, m_hFacesListBox, nullptr, 0, 0, scaledFaceListBoxWidth, rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
-	hdwp = DeferWindowPos(hdwp, m_hEdit, nullptr, scaledFaceListBoxWidth, 0, (std::max<int>)(0, rc.right - rc.left - scaledFaceListBoxWidth), scaledEditHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+	hdwp = DeferWindowPos(hdwp, m_hFontsListBox, nullptr, 0, 0, scaledFontListBoxWidth, rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
+	hdwp = DeferWindowPos(hdwp, m_hEdit, nullptr, scaledFontListBoxWidth, 0, (std::max<int>)(0, rc.right - rc.left - scaledFontListBoxWidth), scaledEditHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 	EndDeferWindowPos(hdwp);
 
-	m_nDrawLeft = scaledFaceListBoxWidth;
+	m_nDrawLeft = scaledFontListBoxWidth;
 	m_nDrawTop = scaledEditHeight;
 	m_pMipmap = std::make_shared<xivres::texture::memory_mipmap_stream>(
 		(std::max<int>)(32, rc.right - rc.left - m_nDrawLeft),
@@ -88,7 +88,7 @@ LRESULT App::ExportPreviewWindow::Window_OnPaint() {
 				buf[y * m_pMipmap->Width + x] = {0x00, 0x00, 0x00, 0xFF};
 		}
 
-		auto sel = ListBox_GetCurSel(m_hFacesListBox);
+		auto sel = ListBox_GetCurSel(m_hFontsListBox);
 		sel = (std::max)(0, (std::min)(static_cast<int>(m_fonts.size() - 1), sel));
 		if (sel < m_fonts.size()) {
 			const auto& font = *m_fonts.at(sel).second;
@@ -132,7 +132,7 @@ LRESULT App::ExportPreviewWindow::Edit_OnCommand(uint16_t commandId) {
 	return 0;
 }
 
-LRESULT App::ExportPreviewWindow::FaceListBox_OnCommand(uint16_t commandId) {
+LRESULT App::ExportPreviewWindow::FontListBox_OnCommand(uint16_t commandId) {
 	switch (commandId) {
 		case LBN_SELCHANGE: {
 			m_bNeedRedraw = true;
@@ -148,7 +148,7 @@ LRESULT App::ExportPreviewWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
 		case WM_COMMAND:
 			switch (LOWORD(wParam)) {
 				case Id_Edit: return Edit_OnCommand(HIWORD(wParam));
-				case Id_FaceListBox: return FaceListBox_OnCommand(HIWORD(wParam));
+				case Id_FontListBox: return FontListBox_OnCommand(HIWORD(wParam));
 			}
 			break;
 

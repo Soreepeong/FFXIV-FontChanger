@@ -1,18 +1,29 @@
 using System;
-using System.Collections.Generic;
+using System.Collections.Immutable;
 
 using Dalamud.Configuration;
+
+using Newtonsoft.Json;
 
 namespace FontChanger.DalamudPlugin.Configuration;
 
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 1;
 
-    public Dictionary<string, List<FontSource>> FamilySources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    [JsonProperty(TypeNameHandling = TypeNameHandling.None)]
+    public ImmutableDictionary<string, ImmutableList<FontSource>> FamilySources
+    {
+        get;
+        set => field = value.WithComparers(StringComparer.OrdinalIgnoreCase);
+    } = ImmutableDictionary.Create<string, ImmutableList<FontSource>>(StringComparer.OrdinalIgnoreCase);
 
-    public HashSet<string> DisabledFamilies { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public ImmutableHashSet<string> DisabledFamilies
+    {
+        get;
+        set => field = value.WithComparer(StringComparer.OrdinalIgnoreCase);
+    } = ImmutableHashSet.Create<string>(StringComparer.OrdinalIgnoreCase);
 
     public bool SystemFallback { get; set; } = true;
 
@@ -26,23 +37,9 @@ public sealed class Configuration : IPluginConfiguration
 
     public AtlasSettings Atlas { get; set; } = new();
 
+    public NamePlateMode NamePlates { get; set; } = NamePlateMode.BakedAtFullSize;
+
     public bool ConfigWindowOpen { get; set; } = true;
-
-    /// <summary>Updates what an older version saved; true if anything changed.</summary>
-    public bool Migrate()
-    {
-        if (this.Version >= 2)
-            return false;
-
-        // Version 1 saved zeros for edge and atlas settings never set: their defaults then. Edges couldn't be turned off, so
-        // those set to other than the game's own are kept on.
-        if (this.Edge == default)
-            this.Edge = new();
-        else
-            this.Edge = this.Edge with { Enabled = this.Edge.Clamped() != new EdgeSettings() };
-        if (this.Atlas == default)
-            this.Atlas = new();
-        this.Version = 2;
-        return true;
-    }
 }
+
+// DirectWrite has no vertical ClearType, so vertical layouts use FreeType's hinted LCD_V or unhinted ClearType of glyphs turned a quarter.

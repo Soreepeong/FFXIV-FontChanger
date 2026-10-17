@@ -3,8 +3,7 @@
 
 #include "FontChanger.Presets/DirectWriteUtil.h"
 
-// Writes the float with the fewest digits that read back as the same float, such as 7.0000005 instead of
-// 7.000000476837158 as the double that it widens to.
+// The fewest digits that read back as the same float, such as 7.0000005 rather than the 7.000000476837158 of its double.
 static nlohmann::json FloatToJson(float value) {
 	char buf[32];
 	const auto [end, ec] = std::to_chars(buf, buf + sizeof buf, value);
@@ -13,8 +12,7 @@ static nlohmann::json FloatToJson(float value) {
 	return std::strtod(std::string(buf, end).c_str(), nullptr);
 }
 
-// Values in pixels that earlier versions stored as integers are written as integers when they are whole numbers, so
-// that saving files of earlier versions does not change these values in them.
+// Earlier versions stored these as integers, so whole numbers stay integers and resaving their files doesn't change them.
 static nlohmann::json PixelValueToJson(float value) {
 	if (const auto rounded = std::round(value); rounded == value && std::fabs(rounded) < 1e9f)
 		return static_cast<int>(rounded);
@@ -65,8 +63,15 @@ namespace {
 	constexpr std::pair<FontChanger::FixedSizeFont::monospacing_unit, const char*> MonospacingUnitNames[]{
 		{FontChanger::FixedSizeFont::monospacing_unit::Em, "em"},
 		{FontChanger::FixedSizeFont::monospacing_unit::Pixels, "px"},
-		{FontChanger::FixedSizeFont::monospacing_unit::ReferenceGlyph, "glyph"},
+		{FontChanger::FixedSizeFont::monospacing_unit::ReferenceCharacter, "character"},
+		{FontChanger::FixedSizeFont::monospacing_unit::ReferenceCharacter, "glyph"}, // Read from earlier versions only.
 	};
+
+	nlohmann::json::const_iterator FindWithLegacy(const nlohmann::json& json, const char* key, const char* legacyKey) {
+		if (const auto it = json.find(key); it != json.end())
+			return it;
+		return json.find(legacyKey);
+	}
 
 	constexpr std::pair<FontChanger::FixedSizeFont::monospacing_alignment, const char*> MonospacingAlignmentNames[]{
 		{FontChanger::FixedSizeFont::monospacing_alignment::CenterAdvance, "centerAdvance"},
@@ -94,6 +99,26 @@ namespace {
 			}
 		}
 		return defaultValue;
+	}
+
+	// Decomposes into rotation * skew * scale.
+	FontChanger::Structs::TransformStruct FromScreenMatrix(const FontChanger::Structs::TransformStruct::matrix& screen) {
+		constexpr auto RadiansToDegrees = 180.f / std::numbers::pi_v<float>;
+		FontChanger::Structs::TransformStruct res;
+		res.ScaleX = std::hypot(screen.M11, screen.M21);
+		float c = 1.f, s = 0.f;
+		if (res.ScaleX > 1e-6f) {
+			c = screen.M11 / res.ScaleX;
+			s = -screen.M21 / res.ScaleX;
+			res.RotationDegrees = std::atan2(s, c) * RadiansToDegrees;
+		}
+
+		// The remaining upper triangular part is skew * scale: [[ScaleX, -tan(skew) ScaleY], [0, ScaleY]].
+		const auto u12 = c * screen.M12 - s * screen.M22;
+		res.ScaleY = s * screen.M12 + c * screen.M22;
+		if (std::abs(res.ScaleY) > 1e-6f)
+			res.SkewDegrees = std::atan(-u12 / res.ScaleY) * RadiansToDegrees;
+		return res;
 	}
 }
 
@@ -124,42 +149,19 @@ FontChanger::Structs::TransformStruct::matrix FontChanger::Structs::TransformStr
 	// Counterclockwise on screen, where y grows downwards.
 	const matrix rotation{c, s, -s, c};
 
-	// x' = x - t y: points above the baseline move to the right.
+	// x' = x - t y, so points above the baseline move right.
 	const matrix skew{1.f, -t, 0.f, 1.f};
 	const matrix scale{ScaleX, 0.f, 0.f, ScaleY};
 	return Multiply(rotation, Multiply(skew, scale));
 }
 
-FontChanger::Structs::TransformStruct::matrix FontChanger::Structs::TransformStruct::ScreenToRenderer(RendererEnum renderer, const matrix& screen) {
-	// DirectWrite transforms row vectors on screen: x' = x m11 + y m21.
-	if (renderer == RendererEnum::DirectWrite)
+FontChanger::Structs::TransformStruct::matrix FontChanger::Structs::TransformStruct::ScreenToRenderer(ElementSourceEnum renderer, const matrix& screen) {
+	// DirectWrite transforms row vectors; FreeType column vectors with y growing upwards.
+	if (renderer == ElementSourceEnum::DirectWrite)
 		return {screen.M11, screen.M21, screen.M12, screen.M22};
-
-	// Glyph images take the transformation on screen.
-	if (renderer == RendererEnum::GlyphImages)
+	if (renderer == ElementSourceEnum::GlyphImages)
 		return screen;
-
-	// FreeType transforms column vectors in a space where y grows upwards.
 	return {screen.M11, -screen.M12, -screen.M21, screen.M22};
-}
-
-FontChanger::Structs::TransformStruct FontChanger::Structs::TransformStruct::FromScreenMatrix(const matrix& screen) {
-	constexpr auto RadiansToDegrees = 180.f / std::numbers::pi_v<float>;
-	TransformStruct res;
-	res.ScaleX = std::hypot(screen.M11, screen.M21);
-	float c = 1.f, s = 0.f;
-	if (res.ScaleX > 1e-6f) {
-		c = screen.M11 / res.ScaleX;
-		s = -screen.M21 / res.ScaleX;
-		res.RotationDegrees = std::atan2(s, c) * RadiansToDegrees;
-	}
-
-	// The remaining upper triangular part is skew * scale: [[ScaleX, -tan(skew) ScaleY], [0, ScaleY]].
-	const auto u12 = c * screen.M12 - s * screen.M22;
-	res.ScaleY = s * screen.M12 + c * screen.M22;
-	if (std::abs(res.ScaleY) > 1e-6f)
-		res.SkewDegrees = std::atan(-u12 / res.ScaleY) * RadiansToDegrees;
-	return res;
 }
 
 void FontChanger::Structs::to_json(nlohmann::json& json, const TransformStruct& value) {
@@ -181,9 +183,8 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, TransformStruct
 	value.RotationDegrees = json.value<float>("rotation", 0.f);
 }
 
-void FontChanger::Structs::FaceElement::Scale(float factor) {
-	// Nothing is rounded here; the fonts round the values in pixels when they use them, so that scaling back and forth
-	// keeps the values.
+void FontChanger::Structs::FontElement::Scale(float factor) {
+	// The fonts round pixel values when they use them, so nothing is rounded here and scaling back and forth keeps them.
 	Size *= factor;
 
 	RendererSpecific.Empty.Ascent *= factor;
@@ -191,7 +192,7 @@ void FontChanger::Structs::FaceElement::Scale(float factor) {
 
 	WrapModifiers.LetterSpacing *= factor;
 	WrapModifiers.HorizontalOffset *= factor;
-	WrapModifiers.BaselineShift *= factor;
+	WrapModifiers.VerticalOffset *= factor;
 	if (auto& monospacing = WrapModifiers.Monospacing; monospacing.Unit == FontChanger::FixedSizeFont::monospacing_unit::Pixels) {
 		if (monospacing.MinAdvance)
 			*monospacing.MinAdvance *= factor;
@@ -210,26 +211,26 @@ void FontChanger::Structs::FaceElement::Scale(float factor) {
 	OnFontCreateParametersChange();
 }
 
-bool FontChanger::Structs::FaceElement::UsesProjectDirectory() const {
+bool FontChanger::Structs::FontElement::UsesProjectDirectory() const {
 	const auto& glyphImages = RendererSpecific.GlyphImages;
-	return Renderer == RendererEnum::GlyphImages
+	return Source == ElementSourceEnum::GlyphImages
 		&& !glyphImages.IsEmbedded()
 		&& std::filesystem::path(xivres::util::unicode::convert<std::wstring>(glyphImages.Path)).is_relative();
 }
 
-FontChanger::Structs::Face::Face(const Face& r)
+FontChanger::Structs::Font::Font(const Font& r)
 	: MergedFont(r.MergedFont)
 	, Name(r.Name)
 	, PreviewText(r.PreviewText)
 	, VerticalAlignment(r.VerticalAlignment) {
 	Elements.reserve(r.Elements.size());
 	for (const auto& e : r.Elements)
-		Elements.emplace_back(std::make_unique<FaceElement>(*e));
+		Elements.emplace_back(std::make_unique<FontElement>(*e));
 }
 
-FontChanger::Structs::Face& FontChanger::Structs::Face::operator=(const Face& r) {
+FontChanger::Structs::Font& FontChanger::Structs::Font::operator=(const Font& r) {
 	if (this != &r)
-		*this = Face(r);
+		*this = Font(r);
 	return *this;
 }
 
@@ -257,18 +258,18 @@ FontChanger::Structs::FontSet FontChanger::Structs::FontSet::NewFromTemplateFont
 			codepoints = { {0x0000, 0x10FFFF} };
 		}
 
-		auto& face = *res.Faces.emplace_back(std::make_unique<Face>());
-		face.Name = def.Name;
-		face.PreviewText = previewText;
+		auto& font = *res.Fonts.emplace_back(std::make_unique<Font>());
+		font.Name = def.Name;
+		font.PreviewText = previewText;
 
-		auto& element = *face.Elements.emplace_back(std::make_unique<FaceElement>());
+		auto& element = *font.Elements.emplace_back(std::make_unique<FontElement>());
 		element.Size = def.Size;
 		element.WrapModifiers = {
 			.Codepoints = std::move(codepoints),
 		};
-		element.Renderer = RendererEnum::PrerenderedGameInstallation;
+		element.Source = ElementSourceEnum::Game;
 		element.Lookup = {
-			.Name = def.Family,
+			.FamilyName = def.Family,
 		};
 	}
 
@@ -281,10 +282,10 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, FontSet& value)
 		return;
 	}
 
-	value.Faces.clear();
-	if (const auto it = json.find("faces"); it != json.end() && it->is_array()) {
+	value.Fonts.clear();
+	if (const auto it = FindWithLegacy(json, "fonts", "faces"); it != json.end() && it->is_array()) {
 		for (const auto& v : *it)
-			value.Faces.emplace_back(std::make_unique<Face>(v.get<Face>()));
+			value.Fonts.emplace_back(std::make_unique<Font>(v.get<Font>()));
 	}
 	value.DiscardStep = json.value<int>("discardStep", 1);
 	value.SideLength = json.value<int>("sideLength", 4096);
@@ -294,16 +295,16 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, FontSet& value)
 
 void FontChanger::Structs::to_json(nlohmann::json& json, const FontSet& value) {
 	json = nlohmann::json::object();
-	auto& faces = *json.emplace("faces", nlohmann::json::array()).first;
-	for (const auto& e : value.Faces)
-		faces.emplace_back(*e);
+	auto& fonts = *json.emplace("fonts", nlohmann::json::array()).first;
+	for (const auto& e : value.Fonts)
+		fonts.emplace_back(*e);
 	json.emplace("discardStep", value.DiscardStep);
 	json.emplace("sideLength", value.SideLength);
 	json.emplace("expectedTexCount", value.ExpectedTexCount);
 	json.emplace("texFilenameFormat", value.TexFilenameFormat);
 }
 
-void FontChanger::Structs::from_json(const nlohmann::json& json, Face& value) {
+void FontChanger::Structs::from_json(const nlohmann::json& json, Font& value) {
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
@@ -311,13 +312,13 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, Face& value) {
 	value.Elements.clear();
 	if (const auto it = json.find("elements"); it != json.end() && it->is_array()) {
 		for (const auto& v : *it)
-			value.Elements.emplace_back(std::make_unique<FaceElement>(v.get<FaceElement>()));
+			value.Elements.emplace_back(std::make_unique<FontElement>(v.get<FontElement>()));
 	}
 	value.PreviewText = json.value<std::string>("previewText", "");
 	value.VerticalAlignment = ValueOf(VerticalAlignmentNames, json, "verticalAlignment", FontChanger::FixedSizeFont::vertical_alignment::Baseline);
 }
 
-void FontChanger::Structs::to_json(nlohmann::json& json, const Face& value) {
+void FontChanger::Structs::to_json(nlohmann::json& json, const Font& value) {
 	json = nlohmann::json::object();
 	json.emplace("name", value.Name);
 	auto& elements = *json.emplace("elements", nlohmann::json::array()).first;
@@ -328,7 +329,7 @@ void FontChanger::Structs::to_json(nlohmann::json& json, const Face& value) {
 		json.emplace("verticalAlignment", NameOf(VerticalAlignmentNames, value.VerticalAlignment));
 }
 
-void FontChanger::Structs::from_json(const nlohmann::json& json, FaceElement& value) {
+void FontChanger::Structs::from_json(const nlohmann::json& json, FontElement& value) {
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
@@ -338,16 +339,15 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, FaceElement& va
 		if (const auto mode = it->get<int>(); mode >= 0 && mode < static_cast<int>(FontChanger::FixedSizeFont::codepoint_merge_mode::Enum_Count_))
 			value.MergeMode = static_cast<FontChanger::FixedSizeFont::codepoint_merge_mode>(mode);
 	} else if (const auto it = json.find("overwrite"); it != json.end() && it->is_boolean()) {
-		if (it->get<bool>())
-			value.MergeMode = FontChanger::FixedSizeFont::codepoint_merge_mode::AddAll;
-		else
-			value.MergeMode = FontChanger::FixedSizeFont::codepoint_merge_mode::AddNew;
+		value.MergeMode = it->get<bool>() ? FontChanger::FixedSizeFont::codepoint_merge_mode::AddAll : FontChanger::FixedSizeFont::codepoint_merge_mode::AddNew;
 	}
 	if (const auto it = json.find("wrapModifiers"); it != json.end())
 		from_json(*it, value.WrapModifiers);
 	else
 		value.WrapModifiers = {};
-	value.Renderer = static_cast<RendererEnum>(json.value<int>("renderer", static_cast<int>(RendererEnum::Empty)));
+	value.Source = ElementSourceEnum::Empty;
+	if (const auto it = FindWithLegacy(json, "source", "renderer"); it != json.end() && it->is_number_integer())
+		value.Source = static_cast<ElementSourceEnum>(it->get<int>());
 	if (const auto it = json.find("lookup"); it != json.end())
 		from_json(*it, value.Lookup);
 	else
@@ -362,32 +362,60 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, FaceElement& va
 		from_json(*it, value.Transform);
 	} else if (const auto it2 = json.find("transformationMatrix"); it2 != json.end() && it2->is_array() && it2->size() == 4
 		&& std::ranges::all_of(*it2, [](const nlohmann::json& v) { return v.is_number(); })) {
-		// Stored by earlier versions as the renderer takes it, which DirectWrite and FreeType interpret differently; read as
-		// the transformation on screen that it makes, unless it is unusable, which is taken as identity.
+		// Earlier versions stored the renderer's own matrix; an unusable one is taken as identity.
 		const TransformStruct::matrix m{it2->at(0).get<float>(), it2->at(1).get<float>(), it2->at(2).get<float>(), it2->at(3).get<float>()};
 		const auto finite = std::isfinite(m.M11) && std::isfinite(m.M12) && std::isfinite(m.M21) && std::isfinite(m.M22);
 		if (finite && std::abs(m.M11 * m.M22 - m.M12 * m.M21) > 1e-6f)
-			value.Transform = TransformStruct::FromScreenMatrix(TransformStruct::ScreenToRenderer(value.Renderer, m));
+			value.Transform = FromScreenMatrix(TransformStruct::ScreenToRenderer(value.Source, m));
 	}
 
 	if (const auto it = json.find("glyphMerging"); it != json.end())
 		from_json(*it, value.GlyphMerging);
 	else
 		value.GlyphMerging = {};
+
+	value.Auto = {};
+	if (const auto it = json.find("auto"); it != json.end() && it->is_array()) {
+		for (const auto& field : *it) {
+			if (!field.is_string())
+				continue;
+			const auto name = field.get<std::string>();
+			if (name == "size")
+				value.Auto.Size = true;
+			else if (name == "horizontalOffset")
+				value.Auto.HorizontalOffset = true;
+			else if (name == "verticalOffset")
+				value.Auto.VerticalOffset = true;
+			else if (name == "renderMode")
+				value.Auto.RenderMode = true;
+		}
+	}
 }
 
-void FontChanger::Structs::to_json(nlohmann::json& json, const FaceElement& value) {
+void FontChanger::Structs::to_json(nlohmann::json& json, const FontElement& value) {
 	json = nlohmann::json::object();
 	json.emplace("size", FloatToJson(value.Size));
 	json.emplace("gamma", value.Gamma);
 	json.emplace("mergeMode", value.MergeMode);
 	json.emplace("wrapModifiers", value.WrapModifiers);
 	json.emplace("transform", value.Transform);
-	json.emplace("renderer", static_cast<int>(value.Renderer));
+	json.emplace("source", static_cast<int>(value.Source));
 	json.emplace("lookup", value.Lookup);
 	json.emplace("renderSpecific", value.RendererSpecific);
 	if (value.GlyphMerging.IsEnabled())
 		json.emplace("glyphMerging", value.GlyphMerging);
+	if (value.Auto.Any()) {
+		auto& fields = *json.emplace("auto", nlohmann::json::array()).first;
+		for (const auto& [on, name] : {
+			     std::pair{value.Auto.Size, "size"},
+			     std::pair{value.Auto.HorizontalOffset, "horizontalOffset"},
+			     std::pair{value.Auto.VerticalOffset, "verticalOffset"},
+			     std::pair{value.Auto.RenderMode, "renderMode"},
+		     }) {
+			if (on)
+				fields.emplace_back(name);
+		}
+	}
 }
 
 void FontChanger::Structs::to_json(nlohmann::json& json, const GlyphMergingStruct& value) {
@@ -462,7 +490,6 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, GlyphMergingStr
 			mapping.CustomSvg = m.value<std::string>("customSvg", "");
 			mapping.CustomAdvance = m.value<float>("customAdvance", 1000.f);
 
-			// An area is taken only if it has four finite numbers that span a nonempty rectangle.
 			if (const auto it = m.find("customTextArea"); it != m.end() && it->is_array() && it->size() == 4
 				&& std::ranges::all_of(*it, [](const nlohmann::json& v) { return v.is_number() && std::isfinite(v.get<float>()); })) {
 				const auto area = it->get<std::array<float, 4>>();
@@ -605,7 +632,9 @@ void FontChanger::FixedSizeFont::from_json(const nlohmann::json& json, wrap_modi
 
 	value.LetterSpacing = json.value<float>("letterSpacing", 0.f);
 	value.HorizontalOffset = json.value<float>("horizontalOffset", 0.f);
-	value.BaselineShift = json.value<float>("baselineShift", 0.f);
+	value.VerticalOffset = 0.f;
+	if (const auto it = FindWithLegacy(json, "verticalOffset", "baselineShift"); it != json.end() && it->is_number())
+		value.VerticalOffset = it->get<float>();
 
 	value.Monospacing = {};
 	if (const auto it = json.find("monospacing"); it != json.end() && it->is_object()) {
@@ -652,7 +681,7 @@ void FontChanger::FixedSizeFont::to_json(nlohmann::json& json, const wrap_modifi
 		codepoints.emplace_back(nlohmann::json::array({ static_cast<uint32_t>(c.first), static_cast<uint32_t>(c.second) }));
 	json.emplace("letterSpacing", PixelValueToJson(value.LetterSpacing));
 	json.emplace("horizontalOffset", PixelValueToJson(value.HorizontalOffset));
-	json.emplace("baselineShift", PixelValueToJson(value.BaselineShift));
+	json.emplace("verticalOffset", PixelValueToJson(value.VerticalOffset));
 	if (const auto& m = value.Monospacing; m.is_enabled()) {
 		auto& obj = *json.emplace("monospacing", nlohmann::json::object()).first;
 		if (m.MinAdvance)
@@ -673,7 +702,9 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, LookupStruct& v
 	if (!json.is_object())
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
-	value.Name = json.value<std::string>("name", "");
+	value.FamilyName.clear();
+	if (const auto it = FindWithLegacy(json, "familyName", "name"); it != json.end() && it->is_string())
+		value.FamilyName = it->get<std::string>();
 	value.Weight = static_cast<DWRITE_FONT_WEIGHT>(json.value<int>("weight", DWRITE_FONT_WEIGHT_NORMAL));
 	value.Stretch = static_cast<DWRITE_FONT_STRETCH>(json.value<int>("stretch", DWRITE_FONT_STRETCH_NORMAL));
 	value.Style = static_cast<DWRITE_FONT_STYLE>(json.value<int>("style", DWRITE_FONT_STYLE_NORMAL));
@@ -684,9 +715,7 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, LookupStruct& v
 		}
 	}
 
-	// Values other than 1 are stored separately, so that older versions still read the list of features.
-	// A feature turned off appears only here, with 0, so that older versions leave it at the font default
-	// instead of turning it on.
+	// Values other than 1 are stored apart, so that older versions read the list and leave features turned off (0) as is.
 	if (const auto it = json.find("featureValues"); it != json.end() && it->is_object()) {
 		for (const auto& [name, v] : it->items()) {
 			if (!v.is_number_unsigned())
@@ -709,7 +738,7 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, LookupStruct& v
 
 void FontChanger::Structs::to_json(nlohmann::json& json, const LookupStruct& value) {
 	json = nlohmann::json::object();
-	json.emplace("name", value.Name);
+	json.emplace("familyName", value.FamilyName);
 	json.emplace("weight", static_cast<int>(value.Weight));
 	json.emplace("stretch", static_cast<int>(value.Stretch));
 	json.emplace("style", static_cast<int>(value.Style));
@@ -743,8 +772,8 @@ void FontChanger::Structs::from_json(const nlohmann::json& json, MultiFontSet& v
 		throw std::runtime_error(std::format("Expected an object, got {}", json.type_name()));
 
 	value.FontSets.clear();
-	if (json.contains("faces")) {
-		value.FontSets.emplace_back(std::make_unique<FontSet>(std::move(json.get<FontSet>())));
+	if (json.contains("fonts") || json.contains("faces")) {
+		value.FontSets.emplace_back(std::make_unique<FontSet>(json.get<FontSet>()));
 		return;
 	}
 
@@ -788,6 +817,6 @@ const char* FontChanger::Structs::GetDefaultPreviewText() {
 		u8"9\r\n"
 		u8"\r\n"
 		u8"\r\n"
-		// almost every script covered by Nirmala UI has too much triple character gpos entries to be usable in game, so don't bother
+		// Nirmala UI's scripts are left out, as most have too many three-glyph GPOS entries to be usable in the game.
 		);
 }

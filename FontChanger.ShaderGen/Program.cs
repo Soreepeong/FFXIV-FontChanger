@@ -2,24 +2,11 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using FontChanger.DalamudPlugin.Rendering.Shaders;
+using FontChanger.DalamudPlugin.Fonts.Shaders;
 
 namespace FontChanger.ShaderGen;
 
-/// <summary>
-/// Writes FontEdgeSquares.hlsli, or compiles FontEdgePS.hlsl: puts the generated functions in place of its include line,
-/// compiles the result (ps_5_0, main, optimization level 3), and writes the bytecode,
-/// the completed source and its listing. The include is kept in the repository, so that a build can compile
-/// FontEdgePS.hlsl with fxc alone; compiling fails if it differs from what would be written now, or if patching the
-/// softness into the bytecode (PixelShaderSwap) doesn't give what compiling with it does.
-/// </summary>
-/// <remarks>
-/// Usage: FontChanger.ShaderGen &lt;FontEdgePS.hlsl&gt; &lt;output .cso&gt;, or FontChanger.ShaderGen --write-include
-/// &lt;FontEdgeSquares.hlsli&gt;. The completed source and listing go next to the output (.hlsl, .asm). Compile errors go
-/// to stderr in the "file(line,col): error" form, and the exit code is 1.
-/// FontChanger.ShaderGen --subpixel &lt;FontSubpixelPS.hlsl&gt; &lt;output .cso&gt; [--highlight] compiles the subpixel
-/// text shader (with HIGHLIGHT defined), checking its settings' patching (SubpixelShaders) the same way.
-/// </remarks>
+/// <summary>FontEdgeSquares.hlsli is kept in the repository so that a build can compile FontEdgePS.hlsl with fxc alone.</summary>
 internal static class Program
 {
     private const string IncludeName = "FontEdgeSquares.hlsli";
@@ -92,7 +79,6 @@ internal static class Program
         return 0;
     }
 
-    /// <summary>Compiles FontSubpixelPS.hlsl, and checks that patching its ClearTypeLevel, Contrast and Gamma gives what compiling with them does.</summary>
     private static int CompileSubpixel(string sourcePath, string outputPath, bool highlight)
     {
         const string levelDeclaration = "static const float ClearTypeLevel = 0.234567891f;";
@@ -121,12 +107,12 @@ internal static class Program
         }
 
         var patched = (byte[])code.Clone();
-        if (!PixelShaderSwap.PatchConstants(
+        if (!ShaderCode.PatchConstants(
                 patched,
                 [
-                    (SubpixelShaders.ClearTypeLevelSentinel, testLevel),
-                    (SubpixelShaders.ContrastSentinel, testContrast),
-                    (SubpixelShaders.GammaSentinel, testGamma),
+                    (ShaderCode.ClearTypeLevelSentinel, testLevel),
+                    (ShaderCode.ContrastSentinel, testContrast),
+                    (ShaderCode.GammaSentinel, testGamma),
                 ]))
         {
             Console.Error.WriteLine($"{sourcePath}: error: ClearTypeLevel, Contrast and Gamma aren't each an immediate operand exactly once in the bytecode.");
@@ -155,24 +141,21 @@ internal static class Program
         return 0;
     }
 
-    /// <summary>
-    /// Checks that the plugin's patching (PixelShaderSwap) works on this bytecode: the checksum is computed as the
-    /// compiler does, and patching a softness gives what compiling with it written in gives, byte for byte.
-    /// </summary>
+    /// <summary>The plugin patches the bytecode rather than compiling, so patching must give what compiling does, byte for byte.</summary>
     private static string? CheckSoftnessPatch(string source, string sourcePath, byte[] code)
     {
         const string declaration = "static const float Softness = 0.123456789f;";
         const float test = 1.75f;
 
         var checksum = new byte[16];
-        PixelShaderSwap.ComputeChecksum(code, checksum);
+        ShaderCode.ComputeChecksum(code, checksum);
         if (!checksum.AsSpan().SequenceEqual(code.AsSpan(4, 16)))
             return "the computed DXBC checksum differs from the compiler's.";
 
         if (!source.Contains(declaration, StringComparison.Ordinal))
             return $"the line {declaration} is missing.";
         var patched = (byte[])code.Clone();
-        if (!PixelShaderSwap.PatchConstants(patched, (EdgeShader.Sentinel, test)))
+        if (!ShaderCode.PatchConstants(patched, (ShaderCode.SoftnessSentinel, test)))
             return "Softness isn't an immediate operand exactly once in the bytecode.";
 
         var withTest = source.Replace(declaration, $"static const float Softness = {test.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal);

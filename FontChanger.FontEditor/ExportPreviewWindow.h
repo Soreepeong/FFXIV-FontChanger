@@ -8,12 +8,12 @@ namespace App {
 
 		enum : size_t {
 			Id_None,
-			Id_FaceListBox,
+			Id_FontListBox,
 			Id_Edit,
 			Id__Last,
 		};
 
-		static constexpr auto FaceListBoxWidth = 160;
+		static constexpr auto FontListBoxWidth = 160;
 		static constexpr auto EditHeight = 160;
 
 		std::shared_ptr<xivres::texture::memory_mipmap_stream> m_pMipmap;
@@ -24,7 +24,7 @@ namespace App {
 		HWND m_hWnd{};
 		HFONT m_hUiFont{};
 
-		HWND m_hFacesListBox{};
+		HWND m_hFontsListBox{};
 		HWND m_hEdit{};
 
 		int m_nDrawLeft{};
@@ -40,7 +40,7 @@ namespace App {
 
 		LRESULT Edit_OnCommand(uint16_t commandId);
 
-		LRESULT FaceListBox_OnCommand(uint16_t commandId);
+		LRESULT FontListBox_OnCommand(uint16_t commandId);
 
 		LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

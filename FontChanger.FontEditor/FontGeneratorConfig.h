@@ -19,7 +19,7 @@ struct FontGeneratorConfig {
 
 	std::string LanguageCode;
 
-	int FaceElementListViewHeight;
+	int FontElementListViewHeight;
 	int PreviewEditHeight;
 
 	bool Dirty;

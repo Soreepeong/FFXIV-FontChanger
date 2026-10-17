@@ -15,7 +15,7 @@ namespace FontChanger::FixedSizeFont {
 		Em,
 
 		// Multiple of the advance width of the reference character in the font.
-		ReferenceGlyph,
+		ReferenceCharacter,
 	};
 
 	enum class monospacing_alignment : uint8_t {
@@ -52,10 +52,10 @@ namespace FontChanger::FixedSizeFont {
 		std::vector<std::pair<char32_t, char32_t>> Codepoints;
 		std::map<char32_t, char32_t> CodepointReplacements;
 
-		// In pixels, rounded when the font is made, so that scaling them back and forth keeps them.
+		// In pixels, rounded when the font is made, so that scaling them back and forth keeps them; VerticalOffset moves glyphs down.
 		float LetterSpacing = 0.f;
 		float HorizontalOffset = 0.f;
-		float BaselineShift = 0.f;
+		float VerticalOffset = 0.f;
 		monospacing Monospacing;
 	};
 
@@ -65,7 +65,7 @@ namespace FontChanger::FixedSizeFont {
 			std::map<char32_t, char32_t> MappedCodepoints;
 			int LetterSpacing = 0;
 			int HorizontalOffset = 0;
-			int BaselineShift = 0;
+			int VerticalOffset = 0;
 
 			// Limits of the advance widths in pixels, resolved from wrap_modifiers::Monospacing.
 			bool Monospaced = false;
@@ -191,7 +191,7 @@ namespace FontChanger::FixedSizeFont {
 		[[nodiscard]] const fixed_size_font* find_scaled_glyph(char32_t codepoint, const glyph_metrics& gm, int width, glyph_metrics& scaledGm) const;
 
 		// Applies a placement to the metrics of a glyph of the base font.
-		static void apply_placement(glyph_metrics& gm, const placement& p, int baselineShift);
+		static void apply_placement(glyph_metrics& gm, const placement& p, int verticalOffset);
 
 		// Draws a squeezed glyph through a buffer of coverage; draw is called with the buffer and returns its results.
 		template<typename TDraw>

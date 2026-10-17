@@ -8,35 +8,28 @@
 		<Nullable>enable</Nullable>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<GenerateSupportedOSPlatformAttribute>false</GenerateSupportedOSPlatformAttribute>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<SelfContained>false</SelfContained>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+		<AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
+		<CompileShaders Condition="'$(CompileShaders)' == ''">$([MSBuild]::IsOSPlatform('Windows'))</CompileShaders>
 	</PropertyGroup>
 	<ItemGroup>
 		<AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
 			<_Parameter1>windows10.0.19043.0</_Parameter1>
 		</AssemblyAttribute>
-	</ItemGroup>
-	<ItemGroup>
 		<ProjectReference Include="..\FontChanger.Presets\FontChanger.Presets.csproj"/>
 		<Using Include="FontChanger.Presets"/>
-	</ItemGroup>
-	<ItemGroup>
 		<PackageReference Include="FreeTypeSharp" Version="3.1.0"/>
-	</ItemGroup>
-	<PropertyGroup>
-		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
-		<SelfContained>false</SelfContained>
-		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
-		<AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
-	</PropertyGroup>
-	<ItemGroup>
 		<Reference Include="TerraFX.Interop.Windows" Private="false"/>
+		<Reference Include="JetBrains.Annotations" Private="false"/>
 	</ItemGroup>
-	<PropertyGroup>
-		<CompileShaders Condition="'$(CompileShaders)' == ''">$([MSBuild]::IsOSPlatform('Windows'))</CompileShaders>
-	</PropertyGroup>
+	<ItemGroup Label="Unicode Character Database files, which UnicodeData's tables are generated from">
+		<ProjectReference Include="..\FontChanger.UnicodeDataGenerator\FontChanger.UnicodeDataGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained"/>
+		<AdditionalFiles Include="Utilities\Unicode\*.txt"/>
+	</ItemGroup>
 	<ItemGroup>
-		<EmbeddedResource Include="Rendering\Shaders\FontEdgePS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontEdgePS.cso"/>
-		<EmbeddedResource Include="Rendering\Shaders\FontSubpixelPS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelPS.cso"/>
-		<EmbeddedResource Include="Rendering\Shaders\FontSubpixelHighlightPS.cso" LogicalName="FontChanger.DalamudPlugin.Rendering.Shaders.FontSubpixelHighlightPS.cso"/>
+		<EmbeddedResource Include="Fonts\Shaders\*.cso" />
 	</ItemGroup>
 	<ItemGroup Condition="'$(CompileShaders)' == 'true'">
 		<ProjectReference Include="..\FontChanger.ShaderGen\FontChanger.ShaderGen.csproj" ReferenceOutputAssembly="false" Private="false" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained"/>
@@ -46,17 +39,17 @@
 			<Output TaskParameter="TargetOutputs" PropertyName="ShaderGenPath"/>
 		</MSBuild>
 	</Target>
-	<Target Name="CompileEdgeShader" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true' And '$(CompileShaders)' == 'true'" Inputs="Rendering\Shaders\FontEdgePS.hlsl;Rendering\Shaders\FontEdgeSquares.hlsli;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontEdgePS.cso;Rendering\Shaders\FontEdgePS.cso">
-		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; &quot;Rendering\Shaders\FontEdgePS.hlsl&quot; &quot;$(IntermediateOutputPath)FontEdgePS.cso&quot;"/>
-		<Copy SourceFiles="$(IntermediateOutputPath)FontEdgePS.cso" DestinationFolder="Rendering\Shaders"/>
+	<Target Name="CompileEdgeShader" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true' And '$(CompileShaders)' == 'true'" Inputs="Fonts\Shaders\FontEdgePS.hlsl;Fonts\Shaders\FontEdgeSquares.hlsli;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontEdgePS.cso;Fonts\Shaders\FontEdgePS.cso">
+		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; &quot;Fonts\Shaders\FontEdgePS.hlsl&quot; &quot;$(IntermediateOutputPath)FontEdgePS.cso&quot;"/>
+		<Copy SourceFiles="$(IntermediateOutputPath)FontEdgePS.cso" DestinationFolder="Fonts\Shaders"/>
 		<ItemGroup>
 			<FileWrites Include="$(IntermediateOutputPath)FontEdgePS.cso;$(IntermediateOutputPath)FontEdgePS.hlsl;$(IntermediateOutputPath)FontEdgePS.asm"/>
 		</ItemGroup>
 	</Target>
-	<Target Name="CompileSubpixelShaders" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true' And '$(CompileShaders)' == 'true'" Inputs="Rendering\Shaders\FontSubpixelPS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso;Rendering\Shaders\FontSubpixelPS.cso;Rendering\Shaders\FontSubpixelHighlightPS.cso">
-		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\Shaders\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelPS.cso&quot;"/>
-		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Rendering\Shaders\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso&quot; --highlight"/>
-		<Copy SourceFiles="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso" DestinationFolder="Rendering\Shaders"/>
+	<Target Name="CompileSubpixelShaders" DependsOnTargets="ResolveShaderGen" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true' And '$(CompileShaders)' == 'true'" Inputs="Fonts\Shaders\FontSubpixelPS.hlsl;$(ShaderGenPath)" Outputs="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso;Fonts\Shaders\FontSubpixelPS.cso;Fonts\Shaders\FontSubpixelHighlightPS.cso">
+		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Fonts\Shaders\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelPS.cso&quot;"/>
+		<Exec Command="&quot;$([System.IO.Path]::ChangeExtension('$(ShaderGenPath)', '.exe'))&quot; --subpixel &quot;Fonts\Shaders\FontSubpixelPS.hlsl&quot; &quot;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso&quot; --highlight"/>
+		<Copy SourceFiles="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso" DestinationFolder="Fonts\Shaders"/>
 		<ItemGroup>
 			<FileWrites Include="$(IntermediateOutputPath)FontSubpixelPS.cso;$(IntermediateOutputPath)FontSubpixelPS.asm;$(IntermediateOutputPath)FontSubpixelHighlightPS.cso;$(IntermediateOutputPath)FontSubpixelHighlightPS.asm"/>
 		</ItemGroup>

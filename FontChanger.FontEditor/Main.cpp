@@ -3,7 +3,7 @@
 
 #include "CommandLineRender.h"
 #include "ExportPreviewWindow.h"
-#include "FaceElementEditorDialog.h"
+#include "FontElementEditorDialog.h"
 #include "FontChanger.Presets/ElementFonts.h"
 #include "MainWindow.h"
 #include "FontGeneratorConfig.h"

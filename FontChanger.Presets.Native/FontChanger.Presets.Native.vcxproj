@@ -30,18 +30,21 @@
     <ClCompile Include="impl\CodepointRanges.cpp" />
     <ClCompile Include="impl\DirectWriteUtil.cpp" />
     <ClCompile Include="impl\ElementFonts.cpp" />
-    <ClCompile Include="impl\FaceFromFont.cpp" />
+    <ClCompile Include="impl\FontsFromSystemFont.AutoFit.cpp" />
+    <ClCompile Include="impl\FontsFromSystemFont.cpp" />
+    <ClCompile Include="impl\FontsFromSystemFont.Fitting.cpp" />
     <ClCompile Include="impl\GlyphFiles.cpp" />
     <ClCompile Include="impl\GlyphMergingPresets.cpp" />
     <ClCompile Include="impl\HResult.cpp" />
     <ClCompile Include="impl\Structs.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="impl\FontsFromSystemFont.Internal.h" />
     <ClInclude Include="impl\pch.h" />
     <ClInclude Include="include\FontChanger.Presets\CodepointRanges.h" />
     <ClInclude Include="include\FontChanger.Presets\DirectWriteUtil.h" />
     <ClInclude Include="include\FontChanger.Presets\ElementFonts.h" />
-    <ClInclude Include="include\FontChanger.Presets\FaceFromFont.h" />
+    <ClInclude Include="include\FontChanger.Presets\FontsFromSystemFont.h" />
     <ClInclude Include="include\FontChanger.Presets\GlyphFiles.h" />
     <ClInclude Include="include\FontChanger.Presets\GlyphMergingPresets.h" />
     <ClInclude Include="include\FontChanger.Presets\HResult.h" />

@@ -26,12 +26,12 @@ namespace App::GlyphFileTools {
 		nlohmann::json Source;
 	};
 
-	// Returns the font of the glyphs that an element adds, with or without its letter spacing, offset, and baseline shift.
-	[[nodiscard]] std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> GetElementFontForExport(const Structs::FaceElement& element, bool withAdjustments);
+	// Returns the font of the glyphs that an element adds, with or without its letter spacing, offset, and vertical offset.
+	[[nodiscard]] std::shared_ptr<FontChanger::FixedSizeFont::fixed_size_font> GetElementFontForExport(const Structs::FontElement& element, bool withAdjustments);
 
 	// Describes where the glyphs of an element or a font come from, for the source of ExportOptions.
-	[[nodiscard]] nlohmann::json DescribeSource(const Structs::FaceElement& element);
-	[[nodiscard]] nlohmann::json DescribeSource(const Structs::Face& face);
+	[[nodiscard]] nlohmann::json DescribeSource(const Structs::FontElement& element);
+	[[nodiscard]] nlohmann::json DescribeSource(const Structs::Font& font);
 
 	// Writes the glyphs of the font into the folder. progress is called with the number of glyphs written and the
 	// total, and may throw to stop.

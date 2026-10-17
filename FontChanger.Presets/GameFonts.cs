@@ -18,22 +18,25 @@ public static class GameFonts
         return font is not null;
     }
 
+    // Only the first font type that has the family counts, as FontChanger finds game fonts that way.
+    public static IReadOnlyList<GameFontDataDefinition> FontsOf(string family)
+    {
+        var first = All.FirstOrDefault(f => string.Equals(f.Family, family, StringComparison.OrdinalIgnoreCase));
+        return first is null ? [] : All.Where(f => f.FontType == first.FontType && string.Equals(f.Family, family, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
     private static List<GameFontDataDefinition> Load()
     {
         using var stream = typeof(GameFonts).Assembly.GetManifestResourceStream("FontChanger.Presets.game_fonts.json")
                            ?? throw new InvalidOperationException("The game's fonts aren't embedded.");
         using var document = JsonDocument.Parse(stream);
-        var root = document.RootElement;
 
-        var subfamilies = root.GetProperty("families").EnumerateObject().ToDictionary(f => f.Name, f => f.Value.GetProperty("subfamily").GetString()!);
         var res = new List<GameFontDataDefinition>();
-        foreach (var type in root.GetProperty("fontTypes").EnumerateObject())
+        foreach (var type in document.RootElement.GetProperty("fontTypes").EnumerateObject())
         {
-            foreach (var face in type.Value.GetProperty("faces").EnumerateArray())
-            {
-                var family = face[1].GetString()!;
-                res.Add(new(type.Name, face[0].GetString()!, family, subfamilies[family], face[2].GetSingle()));
-            }
+            var textures = type.Value.GetProperty("textures").GetString()!;
+            foreach (var font in type.Value.GetProperty("fonts").EnumerateArray())
+                res.Add(new(type.Name, font[0].GetString()!, font[1].GetString()!, font[2].GetSingle(), textures));
         }
 
         return res;

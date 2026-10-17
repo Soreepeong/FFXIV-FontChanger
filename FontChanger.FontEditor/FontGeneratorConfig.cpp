@@ -26,7 +26,7 @@ const FontGeneratorConfig FontGeneratorConfig::Default{
 			R"(C:\Program Files\USERJOY GAMES\FINAL FANTASY XIV TC\game)",
 		},
 	}},
-	.FaceElementListViewHeight = ::FaceElementListViewHeight,
+	.FontElementListViewHeight = ::FontElementListViewHeight,
 	.PreviewEditHeight = ::PreviewEditHeight,
 };
 
@@ -39,9 +39,9 @@ void from_json(const nlohmann::json& json, FontGeneratorConfig& value) {
 		}
 	}
 
-	value.FaceElementListViewHeight = (std::max)(
-		json.value("FaceElementListViewHeight", FaceElementListViewHeight),
-		MinFaceElementListViewHeight);
+	value.FontElementListViewHeight = (std::max)(
+		json.value("FontElementListViewHeight", json.value("FaceElementListViewHeight", FontElementListViewHeight)),
+		MinFontElementListViewHeight);
 	value.PreviewEditHeight = (std::max)(
 		json.value("PreviewEditHeight", PreviewEditHeight),
 		MinPreviewEditHeight);
@@ -59,7 +59,7 @@ void to_json(nlohmann::json& json, const FontGeneratorConfig& value) {
 		json.emplace(FontGeneratorConfig::GameReleases[i].JsonKey, std::move(arr));
 	}
 
-	json.emplace("FaceElementListViewHeight", value.FaceElementListViewHeight);
+	json.emplace("FontElementListViewHeight", value.FontElementListViewHeight);
 	json.emplace("PreviewEditHeight", value.PreviewEditHeight);
 
 	json.emplace("Language", value.LanguageCode);
