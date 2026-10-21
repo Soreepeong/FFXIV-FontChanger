@@ -108,6 +108,8 @@ internal sealed unsafe partial class FontReplacer
         this._faceFonts.ContainsKey(face) ||
         (face == TextFace.NamePlate && this._faceFonts.Keys.Any(TextFaceNames.IsNamePlates));
 
+    public bool HasOwnFonts(TextFace face) => this._faceFonts.ContainsKey(Misc.DebugAssertMainThread(face));
+
     private TextFace ResolveFace(TextFace face)
     {
         while (!this.HasFonts(face))

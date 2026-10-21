@@ -34,25 +34,24 @@ internal sealed partial class ConfigWindow
     private static void DrawFontTab(ConfigWindow t)
     {
         var presets = t._plugin.Presets;
-
         var systemFallback = presets.SystemFallback;
         if (ImGui.Checkbox("Use System Fallback Fonts", ref systemFallback)) presets.SetSystemFallback(systemFallback);
 
-        if (ImGui.Button("Reload")) presets.Reload();
-        ImGui.SameLine();
-        ImGui.TextUnformatted(presets.Status);
-
-        t.DrawFontChooser();
-
         var families = FontNames.Families;
         if (t._selectedFamily is null ||
-            !(families.Contains(t._selectedFamily) || (TextFaceNames.TryGetFace(t._selectedFamily, out var selectedFace) && t._plugin.HasFace(selectedFace))))
+            !(families.Contains(t._selectedFamily) ||
+              (TextFaceNames.TryGetFace(t._selectedFamily, out var selectedFace) && !TextFaceNames.IsNamePlates(selectedFace) && t._plugin.HasFace(selectedFace))))
             t.SelectFamily(families.Count != 0 ? families[0] : null);
 
+        t.DrawFamiliesAndChain(static t => t.DrawFamilyList());
+    }
+
+    private void DrawFamiliesAndChain(Action<ConfigWindow> drawList)
+    {
         var height = Math.Max(ImGui.GetContentRegionAvail().Y, ImGui.GetFrameHeightWithSpacing() * 6);
-        Ig.Child("##families", new(ImGui.GetFontSize() * 11, height), true, t, static t => t.DrawFamilyList());
+        Ig.Child("##families", new(ImGui.GetFontSize() * 14, height), true, this, drawList);
         ImGui.SameLine();
-        Ig.Child("##chain", new(0, height), true, t, static t => t.DrawChain());
+        Ig.Child("##chain", new(0, height), true, this, static t => t.DrawChain());
     }
 
     private void SelectFamily(string? family)
@@ -69,7 +68,7 @@ internal sealed partial class ConfigWindow
         var first = true;
         foreach (var (face, name) in TextFaceNames.Faces)
         {
-            if (!this._plugin.HasFace(face))
+            if (TextFaceNames.IsNamePlates(face) || !this._plugin.HasFace(face))
                 continue;
             if (first)
                 ImGui.Separator();
@@ -89,16 +88,30 @@ internal sealed partial class ConfigWindow
         return text.Length == 0 ? name : $"{name}: {text}";
     }
 
-    private void DrawFamilyItem(string f, string label)
+    private void DrawFamilyItem(string f, string label, float width = 0)
     {
         var presets = this._plugin.Presets;
         var sources = presets.GetSources(f);
         var count = presets.IsFamilyEnabled(f) ? sources.Count(s => s.Enabled) : 0;
         if (count != 0)
             label = $"{label}  ({count})";
+        var shown = width > 0 ? Ellipsize(label, width - (ImGui.GetStyle().ItemSpacing.X / 2)) : label;
         var selected = string.Equals(this._selectedFamily, f, StringComparison.OrdinalIgnoreCase);
-        if (ImGui.Selectable($"{label}###family{f}", selected) && !selected)
+        if (ImGui.Selectable($"{shown}###family{f}", selected, ImGuiSelectableFlags.None, new(width, 0)) && !selected)
             this.SelectFamily(f);
+        if (!ReferenceEquals(shown, label) && ImGui.IsItemHovered())
+            ImGui.SetTooltip(label);
+    }
+
+    private static string Ellipsize(string text, float width)
+    {
+        if (ImGui.CalcTextSize(text).X <= width)
+            return text;
+        const string Ellipsis = "...";
+        var length = text.Length;
+        while (length > 0 && ImGui.CalcTextSize(string.Concat(text.AsSpan(0, length), Ellipsis)).X > width)
+            length--;
+        return string.Concat(text.AsSpan(0, length).TrimEnd(), Ellipsis);
     }
 
     private void DrawFaceOptions(TextFace face, string family)
@@ -123,6 +136,12 @@ internal sealed partial class ConfigWindow
 
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("In place of the game's log window font size setting, which offers sizes from 12 to 20.");
+        }
+
+        if (TextFaceNames.IsNamePlateRule(face) && !TextFaceNames.IsNamePlateRuleTitle(face) && ImGui.Button("Remove this character"))
+        {
+            this.RemoveNamePlateRule(family);
+            return;
         }
 
         var instead = TextFaceNames.FallbackOf(face) == TextFace.Default ? "its family's" : TextFaceNames.NameOf(TextFaceNames.FallbackOf(face));
