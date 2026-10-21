@@ -9,11 +9,16 @@ internal enum TextFace
     Default,
     NamePlate,
     NamePlateTitle,
+    ChatTab1,
+    ChatTab2,
+    ChatTab3,
+    ChatTab4,
 }
 
 /// <summary>A face's name is the settings' key of its sources among the families', which no game font family is named.</summary>
 internal static class TextFaceNames
 {
+    public const int ChatTabCount = 4;
     public const string NamePlates = "Nameplates";
     public const string NamePlateTitles = "Nameplate titles";
 
@@ -21,10 +26,15 @@ internal static class TextFaceNames
     [
         (TextFace.NamePlate, NamePlates),
         (TextFace.NamePlateTitle, NamePlateTitles),
+        .. Enumerable.Range(0, ChatTabCount).Select(i => (ChatTab(i), $"Chat tab {i + 1}")),
     ];
 
     private static readonly Dictionary<string, TextFace> ByName = Faces.ToDictionary(f => f.Name, f => f.Face, StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<TextFace, string> ByFace = Faces.ToDictionary(f => f.Face, f => f.Name);
+
+    public static TextFace ChatTab(int tab) => TextFace.ChatTab1 + tab;
+
+    public static int ChatTabOf(TextFace face) => face is >= TextFace.ChatTab1 and <= TextFace.ChatTab4 ? face - TextFace.ChatTab1 : -1;
 
     /// <summary>These share an atlas, as a plate's title is drawn with the textures of the font the plate's text picked.</summary>
     public static bool IsNamePlates(TextFace face) => face is TextFace.NamePlate or TextFace.NamePlateTitle;

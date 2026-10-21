@@ -27,6 +27,7 @@ internal sealed unsafe partial class FontReplacer
     // Its callers lay the text out with the font set it returns, and restore the set afterwards.
     // Calls, which matched every version since 5.55, unlike PrepareNode's prologue (since 7.30).
     private const string PrepareMeasureSignature = "E8 ?? ?? ?? ?? 48 8B D8 F7 80 ?? ?? ?? ?? 00 00 00 10";
+    private const string PrepareNodeSignature = "E8 ?? ?? ?? ?? 48 83 BF ?? ?? ?? ?? 00 74 ?? 48 8B CE E8";
 
     // Set by TextFlags.Bold (when drawing) and the bold macro. The game reads it nowhere.
     internal const AtkFontManager.DrawFlags BoldFlag = (AtkFontManager.DrawFlags)(1u << 26);
@@ -54,6 +55,7 @@ internal sealed unsafe partial class FontReplacer
     private readonly Hook<BuildFontDelegate> _buildFontHook;
     private readonly Hook<UnloadFontsDelegate> _unloadFontsHook;
     private readonly Hook<PrepareMeasureDelegate>? _prepareMeasureHook;
+    private readonly Hook<PrepareNodeDelegate>? _prepareNodeHook;
     private readonly nint _rendererVtbl;
     private readonly nint _renderCountVtbl;
 
@@ -70,6 +72,8 @@ internal sealed unsafe partial class FontReplacer
     private delegate int UnloadFontsDelegate(AtkFontManager* manager);
 
     private delegate AtkFontManager.FontSet* PrepareMeasureDelegate(AtkTextNode* node, byte considerScale);
+
+    private delegate void PrepareNodeDelegate(nint renderer, nint outArea, AtkFontManager.FontSet* set, AtkTextNode* node);
 
     /// <summary>The first to give a node's faces wins.</summary>
     public void AddNodeFaces(Func<Pointer<AtkTextNode>, NodeFaces?> faces) => this._nodeFaces.Add(Misc.DebugAssertMainThread(faces));
@@ -141,6 +145,13 @@ internal sealed unsafe partial class FontReplacer
             var end = text[at..].IndexOfAny((byte)'\n', (byte)'\r', (byte)0);
             return text[start..(end < 0 ? text.Length : at + end)];
         }
+    }
+
+    private void PrepareNodeDetour(nint renderer, nint outArea, AtkFontManager.FontSet* set, AtkTextNode* node)
+    {
+        this._prepareNodeHook!.Original(renderer, outArea, set, node);
+        if (set is not null && node is not null)
+            this.ApplyNodeFace(set, node, this.GetNodeFaces(node));
     }
 
     // From AtkTextNode +0x16C. Where positive, the game picks its font for this times the unscaled size, and scales the advances back.

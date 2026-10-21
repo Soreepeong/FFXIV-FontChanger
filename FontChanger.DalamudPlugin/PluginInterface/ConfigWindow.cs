@@ -29,6 +29,8 @@ internal sealed partial class ConfigWindow : Window
     private int _selectedFamilyElement = -1;
     private int? _draggedFamilyElement;
 
+    private (string Family, int Size)? _pendingFontSize;
+
     // Refreshed when an attribute menu or the font chooser opens, so newly installed fonts show without listing them every frame.
     private List<SystemFontFamilyId>? _systemFamilies;
 
