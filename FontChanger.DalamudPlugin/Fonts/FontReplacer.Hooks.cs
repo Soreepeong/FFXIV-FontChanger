@@ -143,16 +143,34 @@ internal sealed unsafe partial class FontReplacer
         }
     }
 
+    // From AtkTextNode +0x16C. Where positive, the game picks its font for this times the unscaled size, and scales the advances back.
+    private static ref float PickScaleOf(AtkFontManager.FontSet* set) => ref *(float*)((byte*)set + 0x15C);
+
+    private static float UnscaledSizeYOf(AtkFontManager.FontSet* set) => *(float*)((byte*)set + 0x124);
+
     private AtkFontManager.FontSet* PrepareMeasureDetour(AtkTextNode* node, byte considerScale)
     {
         var set = this._prepareMeasureHook!.Original(node, considerScale);
         if (set is null || node is null)
             return set;
 
-        this.ApplyNodeFace(set, node, this.GetNodeFaces(node));
+        var faces = this.GetNodeFaces(node);
+        this.ApplyNodeFace(set, node, faces);
 
         // The game measures a node's bold upright, as it draws it.
         set->DrawFlags = (node->TextFlags & TextFlags.Bold) != 0 ? set->DrawFlags | BoldFlag : set->DrawFlags & ~BoldFlag;
+
+        // Hinting rounds glyphs of different sizes differently, so text measured in the node's units (a speech balloon's) is laid
+        // out with the glyphs it is drawn with, of its size on screen. Nameplate bakes are left alone, being drawn at a scale of
+        // their own.
+        if (this._enabled && considerScale == 0 && PickScaleOf(set) <= 0 && !TextFaceNames.IsNamePlates(faces.Face))
+        {
+            ref readonly var m = ref node->Transform;
+            var scale = MathF.Sqrt((m.M21 * m.M21) + (m.M22 * m.M22));
+            if (float.IsFinite(scale) && scale > 0 && MathF.Abs(scale - 1) > 0.001f)
+                PickScaleOf(set) = scale;
+        }
+
         return set;
     }
 
@@ -336,8 +354,11 @@ internal sealed unsafe partial class FontReplacer
             this.ApplyPendingPages();
 
             // Picked for the on-screen size, even where the game picked for another (a node's fixed font resolution, or a pick
-            // scale of its own), so that the renderer doesn't scale the glyphs.
+            // scale of its own), so that the renderer doesn't scale the glyphs. Text laid out unscaled takes its pick scale's.
             var size = set->ScaledSizeY;
+            var pickScale = PickScaleOf(set);
+            if (pickScale > 0 && set->NodeScaleX == 1 && set->NodeScaleY == 1 && float.IsFinite(pickScale))
+                size = UnscaledSizeYOf(set) * pickScale;
             var halfPx = Math.Clamp((int)Misc.StdRound(size * 2), MinHalfPx, MaxHalfPx);
             var copy = this.GetOrCreateCopy(font, halfPx, this.ResolveFace(this.FaceOf(set)));
 
