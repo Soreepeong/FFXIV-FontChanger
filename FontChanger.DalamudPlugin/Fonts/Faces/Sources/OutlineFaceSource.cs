@@ -72,6 +72,12 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
 
     private DirectWriteParams DirectWriteParams => this.Def.DirectWrite with { MeasureMode = this.MeasureMode };
 
+    // Not to be sheared again by the game for an italic macro.
+    private bool IsSlanted =>
+        IsRealItalic(this.Font.Face) ||
+        (this.Font.Face->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) != 0 ||
+        this.Transform.M12 != 0;
+
     public static OutlineFaceSource? Create(FontServices services, FontElement def, string fontName)
     {
         var font = LookupFont.Create(services, def.Lookup, def.Source);
@@ -114,7 +120,7 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
 
     public (IFaceSource Source, bool Real) GetItalic()
     {
-        if (IsRealItalic(this.Font.Face))
+        if (this.IsSlanted)
             return (this, true);
 
         if (!this._italicMade)
