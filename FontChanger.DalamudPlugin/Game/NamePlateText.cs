@@ -1,15 +1,21 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 
+using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Hooking;
+using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 
 using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Client.UI.Arrays;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts;
+using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Utilities;
 
@@ -23,6 +29,8 @@ namespace FontChanger.DalamudPlugin.Game;
 /// </summary>
 internal sealed unsafe class NamePlateText : IDisposable
 {
+    private const string AddonName = "NamePlate";
+
     // OnRequestedUpdate (SetCommonNamePlate's body, inlined in 7.56h) never scales a plate below this factor.
     private const float MinDistanceFactor = 0.05f;
 
@@ -45,8 +53,17 @@ internal sealed unsafe class NamePlateText : IDisposable
     // Keyed by the object's BakeData, which is its first member.
     private readonly Dictionary<Pointer<BakeData>, float> _bakeScales = [];
 
+    // By name text node, as measuring isn't told whose text it measures.
+    private readonly Dictionary<nint, int> _objectIndices = [];
+
+    // By object index, as of the game's last update. The character's name's line isn't the title's.
+    private readonly NodeFaces[] _faces = new NodeFaces[NumNamePlateObjects];
+
     private BakePlateRenderer* _lastRenderer;
     private bool _rebakePending;
+
+    // The game measures a plate's text only when the text changes.
+    private bool _remeasurePending = true;
 
     private NamePlateMode _mode = NamePlateMode.BakedAtFullSize;
 
@@ -84,8 +101,15 @@ internal sealed unsafe class NamePlateText : IDisposable
             this._prepareHook.Enable();
             this._drawBakedHook.Enable();
             this._bakePlateDrawHook.Enable();
-            this._replacer.TextInvalidated += this.ForceRebake;
-            this._finalizer.Add(() => this._replacer.TextInvalidated -= this.ForceRebake);
+            this._replacer.TextInvalidated += this.OnTextInvalidated;
+            this._finalizer.Add(() => this._replacer.TextInvalidated -= this.OnTextInvalidated);
+            Array.Fill(this._faces, new(TextFace.NamePlate, TextFace.NamePlateTitle));
+            this._replacer.AddNodeFaces(this.GetNodeFaces);
+            this._finalizer.Add(() => this._replacer.RemoveNodeFaces(this.GetNodeFaces));
+            Plugin.AddonLifecycle.RegisterListener(AddonEvent.PreRequestedUpdate, AddonName, this.OnPreRequestedUpdate);
+            this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PreRequestedUpdate, AddonName, this.OnPreRequestedUpdate));
+            Plugin.Framework.Update += this.OnFrameworkUpdate;
+            this._finalizer.Add(() => Plugin.Framework.Update -= this.OnFrameworkUpdate);
             this.ForceRebake();
         }
         catch
@@ -174,9 +198,107 @@ internal sealed unsafe class NamePlateText : IDisposable
 
     private void SeeRenderer(BakePlateRenderer* renderer)
     {
+        if (this._lastRenderer != renderer)
+            this.ReadNameTexts((AddonNamePlate*)((byte*)renderer - AddonBakePlateOffset));
         this._lastRenderer = renderer;
         if (this._rebakePending)
             this.ForceRebake();
+    }
+
+    private void ReadNameTexts(AddonNamePlate* addon)
+    {
+        this._objectIndices.Clear();
+        var objects = addon->NamePlateObjectArray;
+        if (objects is null)
+            return;
+        for (var i = 0; i < NumNamePlateObjects; i++)
+        {
+            if (objects[i].NameText is not null)
+                this._objectIndices[(nint)objects[i].NameText] = i;
+        }
+    }
+
+    // OnRequestedUpdate measures plates' text, possibly before any is drawn.
+    private void OnPreRequestedUpdate(AddonEvent type, AddonArgs args)
+    {
+        try
+        {
+            this.ReadNameTexts((AddonNamePlate*)args.Addon.Address);
+            this.ReadCharacters();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Reading the nameplates' text nodes failed");
+        }
+    }
+
+    private void ReadCharacters()
+    {
+        var array = NamePlateNumberArray.Instance();
+        var ui = UIModule.Instance();
+        if (array is null || ui is null)
+            return;
+        var ui3d = ui->GetUI3DModule();
+        var atk = ui->GetRaptureAtkModule();
+        var shown = Math.Clamp(array->ActiveNamePlateCount, 0, NumNamePlateObjects);
+        for (var i = 0; i < shown; i++)
+        {
+            ref var data = ref array->ObjectData[i];
+            var index = data.NamePlateObjectIndex;
+            if (index < 0 || index >= NumNamePlateObjects)
+                continue;
+
+            // As Dalamud's nameplate API finds it: NPCs have no entity ID, and an invalid object's plate (in some cutscenes) no object.
+            var objectInfo = atk->NamePlateInfoEntries[index].ObjectId.ObjectId != 0xE0000000 && i < ui3d->NamePlateObjectInfoCount
+                                 ? ui3d->NamePlateObjectInfoPointers[i].Value
+                                 : null;
+            var obj = objectInfo is null || objectInfo->GameObject is null ? null : Plugin.ObjectTable[objectInfo->GameObject->ObjectIndex];
+            var name = obj?.Name.TextValue ?? string.Empty;
+            this._faces[index] = new(TextFace.NamePlate, TextFace.NamePlateTitle, name.Length == 0 ? null : Encoding.UTF8.GetBytes(name));
+        }
+    }
+
+    private NodeFaces? GetNodeFaces(Pointer<AtkTextNode> node) =>
+        this._objectIndices.TryGetValue((nint)node.Value, out var index) ? this._faces[index] : null;
+
+    private void OnTextInvalidated()
+    {
+        this._remeasurePending = true;
+        this.ForceRebake();
+    }
+
+    // Between frames, as the game's update may be what invalidated the text (a font it built).
+    private void OnFrameworkUpdate(IFramework framework)
+    {
+        if (!this._remeasurePending || this._lastRenderer is null)
+            return;
+        var addon = (AddonNamePlate*)((byte*)this._lastRenderer - AddonBakePlateOffset);
+        if (!IsLoaded(&addon->AtkUnitBase))
+            return;
+
+        this._remeasurePending = false;
+        try
+        {
+            // The update measures again the text that differs from its node's. Plates not shown are left alone, as the game may
+            // show them again without updating them.
+            var objects = addon->NamePlateObjectArray;
+            var array = NamePlateNumberArray.Instance();
+            if (objects is null || array is null)
+                return;
+            var shown = Math.Clamp(array->ActiveNamePlateCount, 0, NumNamePlateObjects);
+            for (var i = 0; i < shown; i++)
+            {
+                var index = array->ObjectData[i].NamePlateObjectIndex;
+                if (index >= 0 && index < NumNamePlateObjects && objects[index].NameText is not null)
+                    objects[index].NameText->NodeText.Clear();
+            }
+
+            addon->UpdateAllNamePlates();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Measuring the nameplates' text again failed");
+        }
     }
 
     // The transform is a 2x2 matrix of floats, row by row.
@@ -226,6 +348,7 @@ internal sealed unsafe class NamePlateText : IDisposable
     private void PrepareDetour(BakePlateRenderer* renderer, float* rect, AtkFontManager.FontSet* set, AtkTextNode* node)
     {
         this._prepareHook.Original(renderer, rect, set, node);
+        this._replacer.ApplyNodeFace(set, node, this.GetNodeFaces(node) ?? new NodeFaces(TextFace.NamePlate));
 
         // The original sets the node scale to 1, so a region allocated at another scale needs its own.
         var bake = renderer->CurrentBakeData;

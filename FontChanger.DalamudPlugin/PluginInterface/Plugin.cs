@@ -13,6 +13,7 @@ using Dalamud.Utility;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts;
+using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Shaders;
 using FontChanger.DalamudPlugin.Game;
 
@@ -117,6 +118,12 @@ public sealed class Plugin : IAsyncDalamudPlugin
     internal static ISigScanner SigScanner { get; private set; } = null!;
 
     [PluginService]
+    internal static IObjectTable ObjectTable { get; private set; } = null!;
+
+    [PluginService]
+    internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
+
+    [PluginService]
     internal static ICommandManager CommandManager { get; private set; } = null!;
 
     [PluginService]
@@ -144,6 +151,8 @@ public sealed class Plugin : IAsyncDalamudPlugin
     public ValueTask DisposeAsync() => this._finalizer.DisposeAsync();
 
     private void OnCommand(string command, string args) => this._configWindow.Toggle();
+
+    internal bool HasFace(TextFace face) => this.NamePlates is not null;
 
     internal void ApplySubpixel()
     {

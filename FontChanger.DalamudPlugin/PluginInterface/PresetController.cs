@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts;
+using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
@@ -110,6 +111,12 @@ internal sealed class PresetController : IDisposable
         c.DisabledFamilies = enabled ? c.DisabledFamilies.Remove(family) : c.DisabledFamilies.Add(family));
 
     public void SetSystemFallback(bool systemFallback) => this.Change(c => c.SystemFallback = systemFallback);
+
+    public static bool IsFace(string family) => TextFaceNames.TryGetFace(family, out _);
+
+    // A face's text may be in any family's fonts.
+    private static IEnumerable<(string Name, float Size)> FontNamesOf(string family) =>
+        IsFace(family) ? FontNames.Families.SelectMany(FontNames.FontNamesOf) : FontNames.FontNamesOf(family);
 
     public void Reload() => this.Schedule(false);
 
@@ -215,7 +222,9 @@ internal sealed class PresetController : IDisposable
                 }
                 else if (source.Type == FontSourceType.Preset && source.Path.Length != 0)
                 {
-                    preset = Read(source.Path)?.OnlyFamily(family);
+                    preset = Read(source.Path);
+                    if (!IsFace(family))
+                        preset = preset?.OnlyFamily(family);
                 }
                 else
                 {
@@ -238,7 +247,14 @@ internal sealed class PresetController : IDisposable
             return;
         }
 
-        var overlaid = Preset.Combine(perFamily.Values.Select(Preset.Overlay));
+        var faces = new Dictionary<TextFace, Preset>();
+        foreach (var (family, chain) in perFamily)
+        {
+            if (TextFaceNames.TryGetFace(family, out var face) && Preset.Overlay(chain) is { Fonts.Count: > 0 } facePreset)
+                faces[face] = facePreset;
+        }
+
+        var overlaid = Preset.Combine(perFamily.Where(f => !IsFace(f.Key)).Select(f => Preset.Overlay(f.Value)));
         var combined = overlaid.Fonts.Count == 0 ? null : overlaid;
         var familyCount = combined?.Fonts.Keys.Select(Preset.FamilyOf).Distinct(StringComparer.OrdinalIgnoreCase).Count() ?? 0;
         var presetCount = loaded.Values.Count(p => p is not null);
@@ -247,15 +263,18 @@ internal sealed class PresetController : IDisposable
                          : $"{combined.Fonts.Count} fonts of {familyCount} families"
                            + (presetCount != 0 ? $" from {presetCount} presets" : string.Empty)
                            + (fontCount != 0 ? $"; system fonts for {fontCount}" : string.Empty);
+        foreach (var (face, facePreset) in faces)
+            status += $"; {facePreset.Fonts.Count} for {TextFaceNames.NameOf(face).ToLowerInvariant()}";
         if (failures.Count != 0)
             status += $"; loading failed ({string.Join("; ", failures)})";
         this.Status = status;
 
         this.WatchPresets(families.SelectMany(f => f.Sources).Where(s => s.Type == FontSourceType.Preset && s.Path.Length != 0).Select(s => s.Path));
-        this.WatchGlyphImageFolders(combined?.GlyphImageFolders ?? []);
+        this.WatchGlyphImageFolders(
+            (combined?.GlyphImageFolders ?? []).Concat(faces.Values.SelectMany(p => p.GlyphImageFolders)).Distinct(StringComparer.OrdinalIgnoreCase));
         Plugin.Framework.RunOnFrameworkThread(() => {
             if (!this._disposed)
-                this._replacer.Fonts = new(combined, systemFallback);
+                this._replacer.Fonts = new(combined, systemFallback, faces);
         }).ContinueWith(
             task => {
                 Plugin.Log.Error(task.Exception!, "Applying the preset failed");
@@ -298,7 +317,7 @@ internal sealed class PresetController : IDisposable
                 return null;
             }
 
-            var fonts = FontNames.FontNamesOf(family)
+            var fonts = FontNamesOf(family)
                                  .Select(
                                      f => FontsFromSystemFont.MakeFont(
                                          f.Name,
