@@ -13,6 +13,7 @@ using Dalamud.Interface.ImGuiFontChooserDialog;
 using Dalamud.Interface.Utility.Raii;
 
 using FontChanger.DalamudPlugin.Configuration;
+using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
@@ -42,8 +43,9 @@ internal sealed partial class ConfigWindow
         t.DrawFontChooser();
 
         var families = FontNames.Families;
-        if (t._selectedFamily is null || !families.Contains(t._selectedFamily))
-            t._selectedFamily = families.Count != 0 ? families[0] : null;
+        if (t._selectedFamily is null ||
+            !(families.Contains(t._selectedFamily) || (TextFaceNames.TryGetFace(t._selectedFamily, out var selectedFace) && t._plugin.HasFace(selectedFace))))
+            t.SelectFamily(families.Count != 0 ? families[0] : null);
 
         var height = Math.Max(ImGui.GetContentRegionAvail().Y, ImGui.GetFrameHeightWithSpacing() * 6);
         Ig.Child("##families", new(ImGui.GetFontSize() * 11, height), true, t, static t => t.DrawFamilyList());
@@ -51,20 +53,45 @@ internal sealed partial class ConfigWindow
         Ig.Child("##chain", new(0, height), true, t, static t => t.DrawChain());
     }
 
+    private void SelectFamily(string? family)
+    {
+        this._selectedFamily = family;
+        this._selectedFamilyElement = -1;
+    }
+
     private void DrawFamilyList()
     {
-        var presets = this._plugin.Presets;
         foreach (var f in FontNames.Families)
+            this.DrawFamilyItem(f, f);
+
+        var first = true;
+        foreach (var (face, name) in TextFaceNames.Faces)
         {
-            var sources = presets.GetSources(f);
-            var count = presets.IsFamilyEnabled(f) ? sources.Count(s => s.Enabled) : 0;
-            var label = count == 0 ? f : $"{f}  ({count})";
-            if (ImGui.Selectable($"{label}###family{f}", string.Equals(this._selectedFamily, f, StringComparison.OrdinalIgnoreCase)) && this._selectedFamily != f)
-            {
-                this._selectedFamily = f;
-                this._selectedFamilyElement = -1;
-            }
+            if (!this._plugin.HasFace(face))
+                continue;
+            if (first)
+                ImGui.Separator();
+            first = false;
+            this.DrawFamilyItem(name, name);
         }
+    }
+
+    private void DrawFamilyItem(string f, string label)
+    {
+        var presets = this._plugin.Presets;
+        var sources = presets.GetSources(f);
+        var count = presets.IsFamilyEnabled(f) ? sources.Count(s => s.Enabled) : 0;
+        if (count != 0)
+            label = $"{label}  ({count})";
+        var selected = string.Equals(this._selectedFamily, f, StringComparison.OrdinalIgnoreCase);
+        if (ImGui.Selectable($"{label}###family{f}", selected) && !selected)
+            this.SelectFamily(f);
+    }
+
+    private void DrawFaceOptions(TextFace face)
+    {
+        var instead = TextFaceNames.FallbackOf(face) == TextFace.Default ? "its family's" : TextFaceNames.NameOf(TextFaceNames.FallbackOf(face));
+        ImGui.TextWrapped($"Takes a preset's fonts of any family, or a system font fitted to each game font; game fonts without one use {instead}.");
     }
 
     private void DrawChain()
@@ -131,6 +158,9 @@ internal sealed partial class ConfigWindow
         });
 
         this.DrawCopyConfirmation();
+
+        if (TextFaceNames.TryGetFace(family, out var face))
+            this.DrawFaceOptions(face);
 
         var paneHeight = AdjustmentsPaneHeight;
         if (ImGui.BeginTable("##sources", 7,

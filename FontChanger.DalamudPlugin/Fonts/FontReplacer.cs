@@ -27,6 +27,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
     private readonly SystemFallbackFonts _fallbackFonts;
 
     private readonly Dictionary<string, MaterializedFont> _presetFonts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<TextFace, Dictionary<string, MaterializedFont>> _faceFonts = [];
     private MaterializedFont _gameFont;
 
     // A glyph of no width, for the characters of a shaped cluster after its first.
@@ -96,7 +97,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             if (Plugin.SigScanner.TryScanText(PrepareMeasureSignature, out var prepareMeasure))
                 this._prepareMeasureHook = this.CreateHook<PrepareMeasureDelegate>(prepareMeasure, this.PrepareMeasureDetour);
             else
-                Plugin.Log.Warning("Text measuring setup not found: a node's bold is measured as the game's");
+                Plugin.Log.Warning("Text measuring setup not found: faces and a node's bold are measured as the game's");
 
             this._finalizer.Add(this._subpixelShaders);
             this._finalizer.Add(this._edgeShader);
@@ -145,16 +146,13 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             this.DisposeFonts();
             this._sizedFonts.Clear();
             this._gameFont = MaterializedFont.CreateGame(this.Services, value.SystemFallback, this._fallbackFonts);
-            foreach (var (name, def) in value.Preset?.Fonts ?? new Dictionary<string, Font>())
+            this.MaterializeFonts(this._presetFonts, value.Preset, value.SystemFallback);
+            foreach (var (face, preset) in value.Faces ?? new Dictionary<TextFace, Preset>())
             {
-                try
-                {
-                    this._presetFonts[name] = new(this.Services, def, value.SystemFallback, this._fallbackFonts);
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.Error(ex, "Setting up the font {name} failed; its fonts use the game's glyphs", name);
-                }
+                var fonts = new Dictionary<string, MaterializedFont>(StringComparer.OrdinalIgnoreCase);
+                this.MaterializeFonts(fonts, preset, value.SystemFallback);
+                if (fonts.Count != 0)
+                    this._faceFonts[face] = fonts;
             }
 
             // Copies made so far take the glyphs and metrics of their new fonts.
@@ -333,11 +331,27 @@ internal sealed unsafe partial class FontReplacer : IDisposable
         }
     }
 
+    private void MaterializeFonts(Dictionary<string, MaterializedFont> fonts, Preset? preset, bool systemFallback)
+    {
+        foreach (var (name, def) in preset?.Fonts ?? new Dictionary<string, Font>())
+        {
+            try
+            {
+                fonts[name] = new(this.Services, def, systemFallback, this._fallbackFonts);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Error(ex, "Setting up the font {name} failed; its text falls back", name);
+            }
+        }
+    }
+
     private void DisposeFonts()
     {
-        foreach (var font in this._presetFonts.Values)
+        foreach (var font in this._presetFonts.Values.Concat(this._faceFonts.Values.SelectMany(f => f.Values)))
             font.Dispose();
         this._presetFonts.Clear();
+        this._faceFonts.Clear();
         this._gameFont?.Dispose();
     }
 
@@ -383,5 +397,6 @@ internal sealed unsafe partial class FontReplacer : IDisposable
     /// Game fonts the preset has no font of (all, if it is null) keep the game's glyphs, and characters a font lacks come from
     /// the game's glyphs unless <paramref name="SystemFallback"/>.
     /// </summary>
-    internal readonly record struct FontSettings(Preset? Preset = null, bool SystemFallback = true);
+    internal readonly record struct FontSettings(
+        Preset? Preset = null, bool SystemFallback = true, IReadOnlyDictionary<TextFace, Preset>? Faces = null);
 }

@@ -7,6 +7,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Configuration;
+using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Faces;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Utilities;
@@ -15,9 +16,9 @@ namespace FontChanger.DalamudPlugin.Fonts;
 
 internal sealed unsafe partial class FontReplacer
 {
-    private readonly Dictionary<(Pointer<AtkFontManager.Font> Original, int HalfPx), Pointer<AtkFontManager.Font>> _copiesByKey = [];
+    private readonly Dictionary<(Pointer<AtkFontManager.Font> Original, int HalfPx, TextFace Face), Pointer<AtkFontManager.Font>> _copiesByKey = [];
     private readonly Dictionary<Pointer<AtkFontManager.Font>, CopyInfo> _copies = [];
-    private readonly Dictionary<(MaterializedFont Font, int HalfPx, string FontName, bool Bold), SizedFont> _sizedFonts = [];
+    private readonly Dictionary<(MaterializedFont Font, int HalfPx, string FontName, TextFace Face, bool Bold), SizedFont> _sizedFonts = [];
 
     // Each game font family gets an atlas of its own, so that one family's text can't push another's out; AXIS, the family of most
     // of the UI's text, has its own page size and count.
@@ -35,7 +36,7 @@ internal sealed unsafe partial class FontReplacer
         {
             if (only is not null && info.Original != only)
                 continue;
-            info.Sized = this.GetSized(info.Original, info.HalfPx, false);
+            info.Sized = this.GetSized(info.Original, info.HalfPx, info.Face, false);
             info.BoldSized = null;
             this.Sync(copy, info);
             any = true;
@@ -48,8 +49,9 @@ internal sealed unsafe partial class FontReplacer
     /// At the size of one of the family's fonts, that font's glyphs with its game font's metrics; at another, each glyph from the
     /// largest font that draws it itself, with the metrics of the font that draws the most glyphs itself.
     /// </summary>
-    private SizedFont GetSized(Pointer<AtkFontManager.Font> original, int halfPx, bool bold)
+    private SizedFont GetSized(Pointer<AtkFontManager.Font> original, int halfPx, TextFace face, bool bold)
     {
+        face = this.ResolveFace(face);
         var px = halfPx / 2f;
         var fonts = new List<(string Name, float Size, MaterializedFont Font, Pointer<AtkFontManager.Font> Game)>();
         if (FontNames.TryGetFontName(original, out var originalName))
@@ -61,14 +63,14 @@ internal sealed unsafe partial class FontReplacer
                     continue;
                 if (loaded.IsNull || !loaded.Value->Flags.HasFlag(AtkFontManager.FontFlags.Ready) || loaded.Value->Size <= 0)
                     continue;
-                fonts.Add((name, size, this.FontOf(name), loaded));
+                fonts.Add((name, size, this.FontOf(name, face), loaded));
             }
         }
 
         if (fonts.Count == 0)
         {
             var name = originalName ?? $"0x{(nint)original.Value:X}";
-            fonts = [(name, 0, originalName is not null ? this.FontOf(originalName) : this._gameFont, original)];
+            fonts = [(name, 0, originalName is not null ? this.FontOf(originalName, face) : this._gameFont, original)];
         }
         else if (fonts.FindIndex(f => MathF.Abs(f.Size - px) < 0.01f) is var exact and >= 0)
         {
@@ -83,20 +85,46 @@ internal sealed unsafe partial class FontReplacer
         }
 
         var (fontName, _, font, game) = fonts[best];
-        var key = (font, halfPx, fontName, bold);
+        var key = (font, halfPx, fontName, face, bold);
         if (!this._sizedFonts.TryGetValue(key, out var sized))
         {
             var (ascent, lineHeight) = font.GetLineMetrics(px, game);
-            sized = new(font, px, ascent, lineHeight, game, this.GetAtlas(Preset.FamilyOf(fontName)), fonts.Select(f => (f.Font, f.Game)).ToList(), bold);
+            var atlas = this.GetAtlas(
+                face == TextFace.Default ? Preset.FamilyOf(fontName)
+                : TextFaceNames.IsNamePlates(face) ? TextFaceNames.NamePlates
+                : TextFaceNames.NameOf(face));
+            sized = new(font, px, ascent, lineHeight, game, atlas, fonts.Select(f => (f.Font, f.Game)).ToList(), bold);
             this._sizedFonts.Add(key, sized);
         }
 
         return sized;
     }
 
-    private SizedFont GetBoldSized(CopyInfo info) => info.BoldSized ??= this.GetSized(info.Original, info.HalfPx, true);
+    private SizedFont GetBoldSized(CopyInfo info) => info.BoldSized ??= this.GetSized(info.Original, info.HalfPx, info.Face, true);
 
-    private MaterializedFont FontOf(string fontName) => this._presetFonts.GetValueOrDefault(fontName) ?? this._gameFont;
+    // A plate whose own face has no fonts still picks a copy in the nameplates' atlas, which its title's glyphs must be in.
+    private bool HasFonts(TextFace face) =>
+        face == TextFace.Default ||
+        this._faceFonts.ContainsKey(face) ||
+        (face == TextFace.NamePlate && this._faceFonts.Keys.Any(TextFaceNames.IsNamePlates));
+
+    private TextFace ResolveFace(TextFace face)
+    {
+        while (!this.HasFonts(face))
+            face = TextFaceNames.FallbackOf(face);
+        return face;
+    }
+
+    private MaterializedFont FontOf(string fontName, TextFace face)
+    {
+        for (; face != TextFace.Default; face = TextFaceNames.FallbackOf(face))
+        {
+            if (this._faceFonts.TryGetValue(face, out var fonts) && fonts.GetValueOrDefault(fontName) is { } font)
+                return font;
+        }
+
+        return this._presetFonts.GetValueOrDefault(fontName) ?? this._gameFont;
+    }
 
     private GlyphAtlas GetAtlas(string family)
     {
@@ -159,14 +187,14 @@ internal sealed unsafe partial class FontReplacer
         this.ApplyPages(copy, sized.Atlas);
     }
 
-    private AtkFontManager.Font* GetOrCreateCopy(AtkFontManager.Font* original, int halfPx)
+    private AtkFontManager.Font* GetOrCreateCopy(AtkFontManager.Font* original, int halfPx, TextFace face)
     {
-        var key = ((Pointer<AtkFontManager.Font>)original, halfPx);
+        var key = ((Pointer<AtkFontManager.Font>)original, halfPx, face);
         if (this._copiesByKey.TryGetValue(key, out var existing))
             return existing;
 
         var copy = (AtkFontManager.Font*)NativeMemory.Alloc((nuint)sizeof(AtkFontManager.Font));
-        var info = new CopyInfo(original, halfPx, this.GetSized(original, halfPx, false));
+        var info = new CopyInfo(original, halfPx, face, this.GetSized(original, halfPx, face, false));
         this.Sync(copy, info);
         this._copies.Add(copy, info);
         this._copiesByKey.Add(key, copy);
@@ -227,11 +255,13 @@ internal sealed unsafe partial class FontReplacer
             this.OnPageAdded(atlas);
     }
 
-    private sealed class CopyInfo(Pointer<AtkFontManager.Font> original, int halfPx, SizedFont sized)
+    private sealed class CopyInfo(Pointer<AtkFontManager.Font> original, int halfPx, TextFace face, SizedFont sized)
     {
         public Pointer<AtkFontManager.Font> Original { get; } = original;
 
         public int HalfPx { get; } = halfPx;
+
+        public TextFace Face { get; } = face;
 
         public SizedFont Sized { get; set; } = sized;
 

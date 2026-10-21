@@ -31,6 +31,16 @@ internal sealed unsafe partial class FontReplacer
     // Set by TextFlags.Bold (when drawing) and the bold macro. The game reads it nowhere.
     internal const AtkFontManager.DrawFlags BoldFlag = (AtkFontManager.DrawFlags)(1u << 26);
 
+    // The game neither sets nor reads it, and restores the set's flags after each layout, so it can't outlive the text it marks.
+    private const AtkFontManager.DrawFlags FaceFlag = (AtkFontManager.DrawFlags)(1u << 25);
+
+    // AtkFontManager's buffer that multiline text is drawn from, a line at a time.
+    private const int LineBufferOffset = 0x48;
+    private const int LineBufferSize = 0x2000;
+
+    private readonly (NodeFaces Faces, nint Text, int Length)[] _setFaces = new (NodeFaces, nint, int)[AtkFontManager.FontSetCount];
+    private readonly List<Func<Pointer<AtkTextNode>, NodeFaces?>> _nodeFaces = [];
+
     // What LayOutCharacter lays out a character a font has no glyph of as, in order of preference (packed UTF-8): U+3013, '-', U+3400.
     private static readonly uint[] MissingGlyphSubstitutes = [0xE38093, 0x2D, 0xE39080];
 
@@ -61,11 +71,85 @@ internal sealed unsafe partial class FontReplacer
 
     private delegate AtkFontManager.FontSet* PrepareMeasureDelegate(AtkTextNode* node, byte considerScale);
 
+    /// <summary>The first to give a node's faces wins.</summary>
+    public void AddNodeFaces(Func<Pointer<AtkTextNode>, NodeFaces?> faces) => this._nodeFaces.Add(Misc.DebugAssertMainThread(faces));
+
+    public void RemoveNodeFaces(Func<Pointer<AtkTextNode>, NodeFaces?> faces) => this._nodeFaces.Remove(Misc.DebugAssertMainThread(faces));
+
+    public void ApplyNodeFace(AtkFontManager.FontSet* set, AtkTextNode* node, NodeFaces faces)
+    {
+        var index = IndexOf(set);
+        if (faces.Face == TextFace.Default || index < 0)
+        {
+            set->DrawFlags &= ~FaceFlag;
+            return;
+        }
+
+        // A name the game shows shortened is in no line, so no line is the title's.
+        var text = node is null ? null : (byte*)node->NodeText.StringPtr;
+        var length = text is null ? 0 : (int)node->NodeText.Length;
+        if (faces.MainLine is not { } main || new ReadOnlySpan<byte>(text, length).IndexOf(main) < 0)
+            faces = faces with { MainLine = null };
+        this._setFaces[index] = (faces, (nint)text, length);
+        set->DrawFlags |= FaceFlag;
+    }
+
+    private static int IndexOf(AtkFontManager.FontSet* set)
+    {
+        var manager = AtkStage.Instance()->AtkFontManager;
+        var index = manager is null || manager->FontSets is null ? -1 : set - manager->FontSets;
+        return index >= 0 && index < AtkFontManager.FontSetCount ? (int)index : -1;
+    }
+
+    private TextFace FaceOf(AtkFontManager.FontSet* set) =>
+        (set->DrawFlags & FaceFlag) != 0 && IndexOf(set) is var index and >= 0 ? this._setFaces[index].Faces.Face : TextFace.Default;
+
+    private NodeFaces GetNodeFaces(AtkTextNode* node)
+    {
+        foreach (var resolve in this._nodeFaces)
+        {
+            if (resolve(node) is { } faces)
+                return faces;
+        }
+
+        return default;
+    }
+
+    // Measuring lays a node's text out where it is. Drawing multiline text lays it out a line at a time, copied to the line buffer.
+    private TextFace LineFaceOf(AtkFontManager.FontSet* set)
+    {
+        var p = _current.Character;
+        if (p is null || (set->DrawFlags & FaceFlag) == 0 || IndexOf(set) is not (var index and >= 0))
+            return TextFace.Default;
+        var (faces, text, length) = this._setFaces[index];
+        if (faces.MainLine is not { } main)
+            return TextFace.Default;
+
+        var buffer = *(byte**)((byte*)AtkStage.Instance()->AtkFontManager + LineBufferOffset);
+        ReadOnlySpan<byte> line;
+        if ((nint)p >= text && (nint)p < text + length)
+            line = LineAround(new((byte*)text, length), (int)((nint)p - text));
+        else if (buffer is not null && p >= buffer && p < buffer + LineBufferSize)
+            line = LineAround(new(buffer, LineBufferSize), (int)(p - buffer));
+        else
+            return TextFace.Default;
+        return line.IndexOf(main) < 0 ? faces.OtherLines : TextFace.Default;
+
+        static ReadOnlySpan<byte> LineAround(ReadOnlySpan<byte> text, int at)
+        {
+            var start = text[..at].LastIndexOfAny((byte)'\n', (byte)'\r') + 1;
+            var end = text[at..].IndexOfAny((byte)'\n', (byte)'\r', (byte)0);
+            return text[start..(end < 0 ? text.Length : at + end)];
+        }
+    }
+
     private AtkFontManager.FontSet* PrepareMeasureDetour(AtkTextNode* node, byte considerScale)
     {
         var set = this._prepareMeasureHook!.Original(node, considerScale);
         if (set is null || node is null)
             return set;
+
+        this.ApplyNodeFace(set, node, this.GetNodeFaces(node));
 
         // The game measures a node's bold upright, as it draws it.
         set->DrawFlags = (node->TextFlags & TextFlags.Bold) != 0 ? set->DrawFlags | BoldFlag : set->DrawFlags & ~BoldFlag;
@@ -255,7 +339,7 @@ internal sealed unsafe partial class FontReplacer
             // scale of its own), so that the renderer doesn't scale the glyphs.
             var size = set->ScaledSizeY;
             var halfPx = Math.Clamp((int)Misc.StdRound(size * 2), MinHalfPx, MaxHalfPx);
-            var copy = this.GetOrCreateCopy(font, halfPx);
+            var copy = this.GetOrCreateCopy(font, halfPx, this.ResolveFace(this.FaceOf(set)));
 
             // Any renderer scale but exactly 1 resamples bilinearly (soft text), while a quarter pixel of size error doesn't show.
             if (halfPx < MaxHalfPx && halfPx > MinHalfPx)
@@ -316,7 +400,7 @@ internal sealed unsafe partial class FontReplacer
     /// <summary>Null if neither the copy nor its game font has a glyph of the character.</summary>
     private AtkFontManager.Glyph* GetCopyGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info)
     {
-        var sized = this.GetDrawnSized(info);
+        var sized = this.GetDrawnSized(set, info);
 
         // The character LayOutCharacter is at gets its shaped cluster's glyph, unless the lookup is of the game's fallback characters.
         var p = _current.Character;
@@ -390,15 +474,20 @@ internal sealed unsafe partial class FontReplacer
         }
     }
 
-    private SizedFont GetDrawnSized(CopyInfo info)
+    // A glyph takes its textures from the font the game picked, so a line's face is used only where it shares that font's atlas.
+    private SizedFont GetDrawnSized(AtkFontManager.FontSet* set, CopyInfo info)
     {
         try
         {
+            if (this.LineFaceOf(set) is var face && face != TextFace.Default && face != info.Face && this.HasFonts(face) &&
+                this._copies.TryGetValue(this.GetOrCreateCopy(info.Original, info.HalfPx, face), out var other) &&
+                other.Sized.Atlas == info.Sized.Atlas)
+                info = other;
             return _current.State is not null && (_current.State->Flags & BoldFlag) != 0 ? this.GetBoldSized(info) : info.Sized;
         }
         catch (Exception ex)
         {
-            Plugin.Log.Error(ex, "Setting up the fonts of bold failed");
+            Plugin.Log.Error(ex, "Setting up the fonts of a line's face or of bold failed");
             return info.BoldSized = info.Sized;
         }
     }
