@@ -99,6 +99,11 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             else
                 Plugin.Log.Warning("Text measuring setup not found: faces and a node's bold are measured as the game's");
 
+            if (Plugin.SigScanner.TryScanText(PrepareNodeSignature, out var prepareNode))
+                this._prepareNodeHook = this.CreateHook<PrepareNodeDelegate>(prepareNode, this.PrepareNodeDetour);
+            else
+                Plugin.Log.Warning("Text drawing setup not found: chat tabs are drawn in their family's fonts");
+
             this._finalizer.Add(this._subpixelShaders);
             this._finalizer.Add(this._edgeShader);
             this._getGlyphHook.Enable();
@@ -108,6 +113,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             this._buildFontHook.Enable();
             this._unloadFontsHook.Enable();
             this._prepareMeasureHook?.Enable();
+            this._prepareNodeHook?.Enable();
 
             // Runs first, so that the game's font caches are rebuilt while the hooks are still there to build them.
             this._finalizer.Add(() => this.Enabled = false);

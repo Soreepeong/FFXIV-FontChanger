@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -53,9 +54,11 @@ public sealed class Plugin : IAsyncDalamudPlugin
         await Framework.RunOnFrameworkThread(() => {
             this.Replacer = new();
             Optional("Nameplate text", () => this.NamePlates = new(this.Replacer));
+            Optional("Chat log text", () => this.ChatLog = new(this.Replacer));
             Optional("Line breaking", () => this.LineBreaker = new(this.Replacer));
             this._finalizer.Add(() => Framework.RunOnFrameworkThread(() => {
                 this.LineBreaker?.Dispose();
+                this.ChatLog?.Dispose();
                 this.NamePlates?.Dispose();
                 this.Replacer.Dispose();
             }));
@@ -65,6 +68,8 @@ public sealed class Plugin : IAsyncDalamudPlugin
             this.Replacer.VerticalSubpixel = this.Configuration.VerticalSubpixel;
             this.ApplySubpixel();
             this.NamePlates?.Mode = this.Configuration.NamePlates;
+            foreach (var (face, name) in TextFaceNames.Faces)
+                this.SetFaceFontSize(face, this.Configuration.FaceFontSizes.GetValueOrDefault(name));
             return;
 
             static void Optional(string part, Action create)
@@ -118,6 +123,9 @@ public sealed class Plugin : IAsyncDalamudPlugin
     internal static ISigScanner SigScanner { get; private set; } = null!;
 
     [PluginService]
+    internal static IGameGui GameGui { get; private set; } = null!;
+
+    [PluginService]
     internal static IObjectTable ObjectTable { get; private set; } = null!;
 
     [PluginService]
@@ -142,6 +150,8 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
     internal NamePlateText? NamePlates { get; private set; }
 
+    internal ChatLogText? ChatLog { get; private set; }
+
     internal LineBreaker? LineBreaker { get; private set; }
 
     internal Configuration.Configuration Configuration { get; }
@@ -152,7 +162,13 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
     private void OnCommand(string command, string args) => this._configWindow.Toggle();
 
-    internal bool HasFace(TextFace face) => this.NamePlates is not null;
+    internal bool HasFace(TextFace face) => TextFaceNames.IsNamePlates(face) ? this.NamePlates is not null : this.ChatLog is not null;
+
+    internal void SetFaceFontSize(TextFace face, int size)
+    {
+        if (TextFaceNames.ChatTabOf(face) is var tab and >= 0)
+            this.ChatLog?.SetFontSize(tab, size);
+    }
 
     internal void ApplySubpixel()
     {

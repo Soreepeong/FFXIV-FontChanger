@@ -12,6 +12,8 @@ using Dalamud.Interface.FontIdentifier;
 using Dalamud.Interface.ImGuiFontChooserDialog;
 using Dalamud.Interface.Utility.Raii;
 
+using FFXIVClientStructs.FFXIV.Client.UI.Misc;
+
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Game;
@@ -72,8 +74,19 @@ internal sealed partial class ConfigWindow
             if (first)
                 ImGui.Separator();
             first = false;
-            this.DrawFamilyItem(name, name);
+            this.DrawFamilyItem(name, GetFaceLabel(face, name));
         }
+    }
+
+    private static unsafe string GetFaceLabel(TextFace face, string name)
+    {
+        var tab = TextFaceNames.ChatTabOf(face);
+        if (tab < 0)
+            return name;
+        var module = RaptureLogModule.Instance();
+        var tabName = module is null ? null : module->GetTabName(tab);
+        var text = tabName is null ? string.Empty : tabName->ToString();
+        return text.Length == 0 ? name : $"{name}: {text}";
     }
 
     private void DrawFamilyItem(string f, string label)
@@ -88,8 +101,30 @@ internal sealed partial class ConfigWindow
             this.SelectFamily(f);
     }
 
-    private void DrawFaceOptions(TextFace face)
+    private void DrawFaceOptions(TextFace face, string family)
     {
+        var configuration = this._plugin.Configuration;
+        if (TextFaceNames.ChatTabOf(face) >= 0)
+        {
+            var size = this._pendingFontSize is { } pending && pending.Family == family
+                           ? pending.Size
+                           : configuration.FaceFontSizes.GetValueOrDefault(family);
+            if (ImGui.SliderInt("Font size", ref size, ChatLogText.MinFontSize - 1, ChatLogText.MaxFontSize, size < ChatLogText.MinFontSize ? "Game's" : "%d px"))
+                this._pendingFontSize = (family, size < ChatLogText.MinFontSize ? 0 : size);
+            if (!ImGui.IsItemActive() && this._pendingFontSize is { } released && released.Family == family)
+            {
+                this._pendingFontSize = null;
+                configuration.FaceFontSizes = released.Size == 0
+                                                  ? configuration.FaceFontSizes.Remove(family)
+                                                  : configuration.FaceFontSizes.SetItem(family, released.Size);
+                this.SaveConfiguration();
+                Plugin.Framework.RunOnTick(() => this._plugin.SetFaceFontSize(face, released.Size));
+            }
+
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("In place of the game's log window font size setting, which offers sizes from 12 to 20.");
+        }
+
         var instead = TextFaceNames.FallbackOf(face) == TextFace.Default ? "its family's" : TextFaceNames.NameOf(TextFaceNames.FallbackOf(face));
         ImGui.TextWrapped($"Takes a preset's fonts of any family, or a system font fitted to each game font; game fonts without one use {instead}.");
     }
@@ -160,7 +195,7 @@ internal sealed partial class ConfigWindow
         this.DrawCopyConfirmation();
 
         if (TextFaceNames.TryGetFace(family, out var face))
-            this.DrawFaceOptions(face);
+            this.DrawFaceOptions(face, family);
 
         var paneHeight = AdjustmentsPaneHeight;
         if (ImGui.BeginTable("##sources", 7,

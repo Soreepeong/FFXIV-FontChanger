@@ -39,6 +39,12 @@ public sealed class Configuration : IPluginConfiguration
 
     public NamePlateMode NamePlates { get; set; } = NamePlateMode.BakedAtFullSize;
 
+    public ImmutableDictionary<string, int> FaceFontSizes
+    {
+        get;
+        set => field = value.WithComparers(StringComparer.OrdinalIgnoreCase);
+    } = ImmutableDictionary.Create<string, int>(StringComparer.OrdinalIgnoreCase);
+
     public bool ConfigWindowOpen { get; set; } = true;
 }
 
