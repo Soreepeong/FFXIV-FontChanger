@@ -70,6 +70,8 @@ public sealed class Plugin : IAsyncDalamudPlugin
             this.NamePlates?.Mode = this.Configuration.NamePlates;
             foreach (var (face, name) in TextFaceNames.Faces)
                 this.SetFaceFontSize(face, this.Configuration.FaceFontSizes.GetValueOrDefault(name));
+            foreach (var rule in this.Configuration.NamePlateRules)
+                RegisterNamePlateRule(rule);
             return;
 
             static void Optional(string part, Action create)
@@ -129,6 +131,9 @@ public sealed class Plugin : IAsyncDalamudPlugin
     internal static IObjectTable ObjectTable { get; private set; } = null!;
 
     [PluginService]
+    internal static ITargetManager TargetManager { get; private set; } = null!;
+
+    [PluginService]
     internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
 
     [PluginService]
@@ -163,6 +168,13 @@ public sealed class Plugin : IAsyncDalamudPlugin
     private void OnCommand(string command, string args) => this._configWindow.Toggle();
 
     internal bool HasFace(TextFace face) => TextFaceNames.IsNamePlates(face) ? this.NamePlates is not null : this.ChatLog is not null;
+
+    // A rule's title may have fonts without its plate's, so plates are matched to the rule whether or not its faces have fonts.
+    internal static void RegisterNamePlateRule(string rule)
+    {
+        TextFaceNames.TryGetFace(rule, out _);
+        TextFaceNames.TryGetFace(TextFaceNames.NamePlateRuleTitleName(rule), out _);
+    }
 
     internal void SetFaceFontSize(TextFace face, int size)
     {

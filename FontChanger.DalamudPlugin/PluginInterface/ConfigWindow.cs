@@ -31,6 +31,9 @@ internal sealed partial class ConfigWindow : Window
 
     private (string Family, int Size)? _pendingFontSize;
 
+    private string _newRuleName = string.Empty;
+    private string _newRuleWorld = string.Empty;
+
     // Refreshed when an attribute menu or the font chooser opens, so newly installed fonts show without listing them every frame.
     private List<SystemFontFamilyId>? _systemFamilies;
 
@@ -52,10 +55,21 @@ internal sealed partial class ConfigWindow : Window
         if (ImGui.Checkbox("Use Custom Fonts", ref enabled))
             Plugin.Framework.RunOnTick(() => replacer.Enabled = enabled);
 
+        var presets = this._plugin.Presets;
+        ImGui.SameLine();
+        if (ImGui.Button("Reload")) presets.Reload();
+        ImGui.SameLine();
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextUnformatted(presets.Status);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(presets.Status);
+
         this._fileDialog.Draw();
+        this.DrawFontChooser();
 
         Ig.TabBar("##tabs", this, static t => {
             Ig.TabItem("Font", t, DrawFontTab);
+            Ig.TabItem("Nameplates", t, DrawNamePlateTab);
             Ig.TabItem("Rendering", t, DrawRenderingTab);
             Ig.TabItem("Advanced", t, DrawAdvancedTab);
         });
@@ -179,9 +193,10 @@ internal sealed partial class ConfigWindow : Window
                 t.SaveConfiguration();
                 Plugin.Framework.RunOnTick(() => namePlates.Mode = (NamePlateMode)mode);
             }
+
+            ImGui.Separator();
         }
 
-        ImGui.Separator();
         ImGui.TextUnformatted("Glyph atlas pages");
 
         var changed = false;

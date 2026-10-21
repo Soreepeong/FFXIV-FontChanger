@@ -39,6 +39,8 @@ public sealed class Configuration : IPluginConfiguration
 
     public NamePlateMode NamePlates { get; set; } = NamePlateMode.BakedAtFullSize;
 
+    public ImmutableList<string> NamePlateRules { get; set; } = ImmutableList<string>.Empty;
+
     public ImmutableDictionary<string, int> FaceFontSizes
     {
         get;

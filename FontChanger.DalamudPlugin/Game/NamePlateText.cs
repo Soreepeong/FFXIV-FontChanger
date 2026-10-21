@@ -4,6 +4,8 @@ using System.Text;
 
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
+using Dalamud.Game.ClientState.Objects.SubKinds;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility;
@@ -223,8 +225,9 @@ internal sealed unsafe class NamePlateText : IDisposable
     {
         try
         {
-            this.ReadNameTexts((AddonNamePlate*)args.Addon.Address);
-            this.ReadCharacters();
+            var addon = (AddonNamePlate*)args.Addon.Address;
+            this.ReadNameTexts(addon);
+            this.ReadCharacters(addon);
         }
         catch (Exception ex)
         {
@@ -232,11 +235,13 @@ internal sealed unsafe class NamePlateText : IDisposable
         }
     }
 
-    private void ReadCharacters()
+    // A plate whose face changes is updated (and so measured) again, as the game would only if its text changed.
+    private void ReadCharacters(AddonNamePlate* addon)
     {
+        var objects = addon->NamePlateObjectArray;
         var array = NamePlateNumberArray.Instance();
         var ui = UIModule.Instance();
-        if (array is null || ui is null)
+        if (objects is null || array is null || ui is null)
             return;
         var ui3d = ui->GetUI3DModule();
         var atk = ui->GetRaptureAtkModule();
@@ -253,10 +258,36 @@ internal sealed unsafe class NamePlateText : IDisposable
                                  ? ui3d->NamePlateObjectInfoPointers[i].Value
                                  : null;
             var obj = objectInfo is null || objectInfo->GameObject is null ? null : Plugin.ObjectTable[objectInfo->GameObject->ObjectIndex];
-            var name = obj?.Name.TextValue ?? string.Empty;
-            this._faces[index] = new(TextFace.NamePlate, TextFace.NamePlateTitle, name.Length == 0 ? null : Encoding.UTF8.GetBytes(name));
+            var faces = this.ChooseFaces(obj, data.NamePlateKind);
+            var old = this._faces[index];
+            this._faces[index] = faces;
+            if (old.Face == faces.Face && old.OtherLines == faces.OtherLines)
+                continue;
+            if (objects[index].NameText is not null)
+                objects[index].NameText->NodeText.Clear();
+            data.UpdateFlags |= 1;
         }
     }
+
+    // In order, where it has fonts: the character's rule's (its world's before any world's), its kind's, then the nameplates'.
+    private NodeFaces ChooseFaces(IGameObject? obj, UIObjectKind kind)
+    {
+        var name = obj?.Name.TextValue ?? string.Empty;
+        var world = obj is IPlayerCharacter pc && pc.HomeWorld.ValueNullable is { } row ? row.Name.ExtractText() : string.Empty;
+        var rule = name.Length == 0 ? null
+                   : TextFaceNames.TryGetNamePlateRule(TextFaceNames.NamePlateRuleName(name, world), out _) ? TextFaceNames.NamePlateRuleName(name, world)
+                   : TextFaceNames.TryGetNamePlateRule(TextFaceNames.NamePlateRuleName(name, string.Empty), out _) ? TextFaceNames.NamePlateRuleName(name, string.Empty)
+                   : null;
+
+        var face = rule is not null && this.WithFonts(rule) is { } ruleFace ? ruleFace
+                   : this._replacer.HasOwnFonts(TextFaceNames.KindFace(kind)) ? TextFaceNames.KindFace(kind)
+                   : TextFace.NamePlate;
+        var title = rule is not null && this.WithFonts(TextFaceNames.NamePlateRuleTitleName(rule)) is { } ruleTitle ? ruleTitle : TextFace.NamePlateTitle;
+        return new(face, title, name.Length == 0 ? null : Encoding.UTF8.GetBytes(name));
+    }
+
+    private TextFace? WithFonts(string rule) =>
+        TextFaceNames.TryGetNamePlateRule(rule, out var face) && this._replacer.HasOwnFonts(face) ? face : null;
 
     private NodeFaces? GetNodeFaces(Pointer<AtkTextNode> node) =>
         this._objectIndices.TryGetValue((nint)node.Value, out var index) ? this._faces[index] : null;
