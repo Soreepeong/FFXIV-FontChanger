@@ -31,6 +31,8 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
     private HashSet<Rune>? _codepoints;
     private OutlineFaceSource? _italic;
     private bool _italicMade;
+    private OutlineFaceSource? _bold;
+    private bool _boldMade;
 
     /// <summary>Takes <paramref name="font"/>, which it disposes.</summary>
     private OutlineFaceSource(FontServices services, FontElement def, LookupFont font, FT_FaceRec_* freeTypeFace, string fontName)
@@ -53,6 +55,8 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
             field = value;
             if (this._italic is { } italic)
                 italic.MeasureMode = value;
+            if (this._bold is { } bold)
+                bold.MeasureMode = value;
         }
     }
 
@@ -116,27 +120,56 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
         if (!this._italicMade)
         {
             this._italicMade = true;
-            try
-            {
-                var lookup = this.Def.Lookup with { Style = (int)DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_ITALIC };
-                var font = LookupFont.Create(this.Services, lookup, this.Def.Source);
-                if (font is not null && IsRealItalic(font.Face) && !SameFont(font.Face, this.Font.Face))
-                {
-                    this._italic = FromFont(this.Services, this.Def with { Lookup = lookup }, font, this._fontName);
-                    this._italic.MeasureMode = this.MeasureMode;
-                }
-                else
-                {
-                    font?.Dispose();
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.Warning(ex, "{font}: the italic of {family} can't be made", this._fontName, this.Def.Lookup.FamilyName);
-            }
+            this._italic = this.MakeVariant(
+                this.Def.Lookup with { Style = (int)DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_ITALIC },
+                f => IsRealItalic(f.Face) && !SameFont(f.Face, this.Font.Face),
+                "italic");
         }
 
         return this._italic is not null ? (this._italic, true) : (this, false);
+    }
+
+    /// <summary>The next weight up as CSS's <c>bolder</c> picks it.</summary>
+    public IFaceSource GetBold()
+    {
+        if (!this._boldMade)
+        {
+            this._boldMade = true;
+            var weight = this.Def.Lookup.Weight;
+
+            // FreeType draws none of DirectWrite's simulations, so it emboldens by synthesis.
+            var lookup = this.Def.Lookup with
+            {
+                Weight = weight < 350 ? 400 : weight < 550 ? 700 : 900,
+                AllowSynthesis = this.Def.Lookup.AllowSynthesis ?? (this.Def.Source == ElementSource.FreeType ? true : null),
+            };
+            this._bold = this.MakeVariant(lookup, this.IsBolder, "bold");
+        }
+
+        return this._bold ?? this;
+    }
+
+    /// <summary>Null unless the lookup finds a font that <paramref name="differs"/>.</summary>
+    private OutlineFaceSource? MakeVariant(LookupStruct lookup, Func<LookupFont, bool> differs, string what)
+    {
+        try
+        {
+            var font = LookupFont.Create(this.Services, lookup, this.Def.Source);
+            if (font is not null && differs(font))
+            {
+                var made = FromFont(this.Services, this.Def with { Lookup = lookup }, font, this._fontName);
+                made.MeasureMode = this.MeasureMode;
+                return made;
+            }
+
+            font?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "{font}: the {what} of {family} can't be made", this._fontName, what, this.Def.Lookup.FamilyName);
+        }
+
+        return null;
     }
 
     public RasterGlyph? Rasterize(float px, in GlyphRun run, in RasterizeOptions options = default)
@@ -174,6 +207,7 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
 
     public void Dispose()
     {
+        this._bold?.Dispose();
         this._italic?.Dispose();
         this.Font.Dispose();
     }
@@ -193,6 +227,14 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
     private static bool IsRealItalic(IDWriteFontFace5* face) =>
         (face->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0 &&
         face->GetStyle() != DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_NORMAL;
+
+    private bool IsBolder(LookupFont font)
+    {
+        const DWRITE_FONT_SIMULATIONS Bold = DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_BOLD;
+        return font.Face->GetWeight() > this.Font.Face->GetWeight() ||
+               ((font.Face->GetSimulations() & Bold) != 0 && (this.Font.Face->GetSimulations() & Bold) == 0) ||
+               font.Embolden > this.Font.Embolden;
+    }
 
     /// <summary>Compares the files, since a family's styles often have the same glyph count; simulations and axis values are ignored.</summary>
     private static bool SameFont(IDWriteFontFace5* a, IDWriteFontFace5* b)

@@ -93,6 +93,11 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             this._layOutCharacterHook = this.CreateHook<LayOutCharacterDelegate>(layOutCharacter, this.LayOutCharacterDetour);
             this._buildFontHook = this.CreateHook<BuildFontDelegate>(buildFont, this.BuildFontDetour);
             this._unloadFontsHook = this.CreateHook<UnloadFontsDelegate>(unloadFonts, this.UnloadFontsDetour);
+            if (Plugin.SigScanner.TryScanText(PrepareMeasureSignature, out var prepareMeasure))
+                this._prepareMeasureHook = this.CreateHook<PrepareMeasureDelegate>(prepareMeasure, this.PrepareMeasureDetour);
+            else
+                Plugin.Log.Warning("Text measuring setup not found: a node's bold is measured as the game's");
+
             this._finalizer.Add(this._subpixelShaders);
             this._finalizer.Add(this._edgeShader);
             this._getGlyphHook.Enable();
@@ -101,6 +106,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             this._layOutCharacterHook.Enable();
             this._buildFontHook.Enable();
             this._unloadFontsHook.Enable();
+            this._prepareMeasureHook?.Enable();
 
             // Runs first, so that the game's font caches are rebuilt while the hooks are still there to build them.
             this._finalizer.Add(() => this.Enabled = false);

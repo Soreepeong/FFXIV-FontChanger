@@ -29,8 +29,9 @@ internal sealed unsafe partial class GameTextLayout
 
             if (b == ReadOnlySeString.Stx)
             {
+                // Bold is laid out with another sized font.
                 var macro = (MacroCode)p[i + 1];
-                if (macro == MacroCode.NewLine || (macro == MacroCode.Italic && italic == ItalicMode.Images))
+                if (macro is MacroCode.NewLine or MacroCode.Bold || (macro == MacroCode.Italic && italic == ItalicMode.Images))
                     break;
                 var total = GameUtf8.MacroLength(p + i);
                 if (total == 0 || i + total > MaxRunBytes)

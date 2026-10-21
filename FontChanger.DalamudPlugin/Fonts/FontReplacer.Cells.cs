@@ -43,7 +43,7 @@ internal sealed unsafe partial class FontReplacer
         var pick = sized.Pick([rune]);
         if (pick.Element is { DrawsGame: true })
             return null;
-        return pick.Font.TryRasterize(rune, sized.Px, pick.Game, out var r)
+        return pick.Font.TryRasterize(rune, sized.Px, pick.Game, sized.Bold, out var r)
                    ? this.PlaceCell(sized, this.FinishGlyph(sized, r), utf8Value)
                    : null;
     }

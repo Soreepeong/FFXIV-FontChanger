@@ -10,6 +10,7 @@ using FontChanger.DalamudPlugin.Fonts.Faces;
 namespace FontChanger.DalamudPlugin.Fonts;
 
 /// <summary>Shared by the copies of a family's fonts of one size, such as a font and its lobby version.</summary>
+/// <remarks>A bold one keeps the upright one's line metrics, so that lines partly in bold line up.</remarks>
 internal sealed unsafe class SizedFont(
     MaterializedFont font,
     float px,
@@ -17,8 +18,11 @@ internal sealed unsafe class SizedFont(
     int lineHeight,
     Pointer<AtkFontManager.Font> gameFont,
     GlyphAtlas atlas,
-    IReadOnlyList<(MaterializedFont Font, Pointer<AtkFontManager.Font> Game)> fonts)
+    IReadOnlyList<(MaterializedFont Font, Pointer<AtkFontManager.Font> Game)> fonts,
+    bool bold)
 {
+    public bool Bold { get; } = bold;
+
     public MaterializedFont Font { get; } = font;
 
     public GlyphAtlas Atlas { get; } = atlas;

@@ -41,6 +41,9 @@ internal interface IFaceSource : IDisposable
     /// <summary><c>Real</c> is false if the source has no italic and returns itself.</summary>
     (IFaceSource Source, bool Real) GetItalic() => (this, false);
 
+    /// <summary>Itself if it has no bolder face.</summary>
+    IFaceSource GetBold() => this;
+
     /// <summary>Clusters are in logical order and stop before the first one lacking a glyph; returns the chars shaped, at a cluster boundary.</summary>
     int Shape(float px, ReadOnlySpan<char> text, ScriptToken script, List<ShapedCluster> clusters);
 

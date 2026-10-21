@@ -40,6 +40,8 @@ internal sealed unsafe partial class GameTextLayout
     {
         var element = glyphSource?.Element;
         var source = element?.Source;
+        if (source is not null && this._shapingSized!.Bold)
+            source = source.GetBold();
         var realItalic = false;
         if (source is not null && inItalic)
             (source, realItalic) = source.GetItalic();

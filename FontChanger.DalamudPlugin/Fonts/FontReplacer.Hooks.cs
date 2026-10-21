@@ -24,6 +24,13 @@ internal sealed unsafe partial class FontReplacer
     // AtkResNode.Type of the first component node type; those after are components too.
     private const ushort FirstComponentNodeType = 1000;
 
+    // Its callers lay the text out with the font set it returns, and restore the set afterwards.
+    // Calls, which matched every version since 5.55, unlike PrepareNode's prologue (since 7.30).
+    private const string PrepareMeasureSignature = "E8 ?? ?? ?? ?? 48 8B D8 F7 80 ?? ?? ?? ?? 00 00 00 10";
+
+    // Set by TextFlags.Bold (when drawing) and the bold macro. The game reads it nowhere.
+    internal const AtkFontManager.DrawFlags BoldFlag = (AtkFontManager.DrawFlags)(1u << 26);
+
     // What LayOutCharacter lays out a character a font has no glyph of as, in order of preference (packed UTF-8): U+3013, '-', U+3400.
     private static readonly uint[] MissingGlyphSubstitutes = [0xE38093, 0x2D, 0xE39080];
 
@@ -36,6 +43,7 @@ internal sealed unsafe partial class FontReplacer
     private readonly Hook<LayOutCharacterDelegate> _layOutCharacterHook;
     private readonly Hook<BuildFontDelegate> _buildFontHook;
     private readonly Hook<UnloadFontsDelegate> _unloadFontsHook;
+    private readonly Hook<PrepareMeasureDelegate>? _prepareMeasureHook;
     private readonly nint _rendererVtbl;
     private readonly nint _renderCountVtbl;
 
@@ -50,6 +58,19 @@ internal sealed unsafe partial class FontReplacer
     private delegate int BuildFontDelegate(AtkFontManager* manager, ushort index);
 
     private delegate int UnloadFontsDelegate(AtkFontManager* manager);
+
+    private delegate AtkFontManager.FontSet* PrepareMeasureDelegate(AtkTextNode* node, byte considerScale);
+
+    private AtkFontManager.FontSet* PrepareMeasureDetour(AtkTextNode* node, byte considerScale)
+    {
+        var set = this._prepareMeasureHook!.Original(node, considerScale);
+        if (set is null || node is null)
+            return set;
+
+        // The game measures a node's bold upright, as it draws it.
+        set->DrawFlags = (node->TextFlags & TextFlags.Bold) != 0 ? set->DrawFlags | BoldFlag : set->DrawFlags & ~BoldFlag;
+        return set;
+    }
 
     private Hook<T> CreateHook<T>(nint address, T detour)
         where T : Delegate =>
@@ -295,7 +316,7 @@ internal sealed unsafe partial class FontReplacer
     /// <summary>Null if neither the copy nor its game font has a glyph of the character.</summary>
     private AtkFontManager.Glyph* GetCopyGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info)
     {
-        var sized = info.Sized;
+        var sized = this.GetDrawnSized(info);
 
         // The character LayOutCharacter is at gets its shaped cluster's glyph, unless the lookup is of the game's fallback characters.
         var p = _current.Character;
@@ -366,6 +387,19 @@ internal sealed unsafe partial class FontReplacer
         {
             Plugin.Log.Error(ex, "Copying the game's glyph 0x{value:X} failed", utf8Value);
             return &this._emptyGlyph->Glyph;
+        }
+    }
+
+    private SizedFont GetDrawnSized(CopyInfo info)
+    {
+        try
+        {
+            return _current.State is not null && (_current.State->Flags & BoldFlag) != 0 ? this.GetBoldSized(info) : info.Sized;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Setting up the fonts of bold failed");
+            return info.BoldSized = info.Sized;
         }
     }
 

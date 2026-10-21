@@ -154,11 +154,13 @@ internal sealed unsafe class MaterializedFont : IDisposable
     }
 
     /// <summary>False means the game's glyph is used.</summary>
-    public bool TryRasterize(Rune rune, float px, AtkFontManager.Font* game, out RasterGlyph glyph)
+    public bool TryRasterize(Rune rune, float px, AtkFontManager.Font* game, bool bold, out RasterGlyph glyph)
     {
         glyph = default;
         if (!this.TryGetElement([rune], game, out var element) || element.Source is not { } source)
             return false;
+        if (bold)
+            source = source.GetBold();
 
         var id = source.GetGlyphId(element.GetDrawnCodepoint(rune));
         if (id == 0)

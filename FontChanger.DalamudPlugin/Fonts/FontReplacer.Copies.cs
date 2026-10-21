@@ -17,7 +17,7 @@ internal sealed unsafe partial class FontReplacer
 {
     private readonly Dictionary<(Pointer<AtkFontManager.Font> Original, int HalfPx), Pointer<AtkFontManager.Font>> _copiesByKey = [];
     private readonly Dictionary<Pointer<AtkFontManager.Font>, CopyInfo> _copies = [];
-    private readonly Dictionary<(MaterializedFont Font, int HalfPx, string FontName), SizedFont> _sizedFonts = [];
+    private readonly Dictionary<(MaterializedFont Font, int HalfPx, string FontName, bool Bold), SizedFont> _sizedFonts = [];
 
     // Each game font family gets an atlas of its own, so that one family's text can't push another's out; AXIS, the family of most
     // of the UI's text, has its own page size and count.
@@ -35,7 +35,8 @@ internal sealed unsafe partial class FontReplacer
         {
             if (only is not null && info.Original != only)
                 continue;
-            info.Sized = this.GetSized(info.Original, info.HalfPx);
+            info.Sized = this.GetSized(info.Original, info.HalfPx, false);
+            info.BoldSized = null;
             this.Sync(copy, info);
             any = true;
         }
@@ -47,7 +48,7 @@ internal sealed unsafe partial class FontReplacer
     /// At the size of one of the family's fonts, that font's glyphs with its game font's metrics; at another, each glyph from the
     /// largest font that draws it itself, with the metrics of the font that draws the most glyphs itself.
     /// </summary>
-    private SizedFont GetSized(Pointer<AtkFontManager.Font> original, int halfPx)
+    private SizedFont GetSized(Pointer<AtkFontManager.Font> original, int halfPx, bool bold)
     {
         var px = halfPx / 2f;
         var fonts = new List<(string Name, float Size, MaterializedFont Font, Pointer<AtkFontManager.Font> Game)>();
@@ -82,15 +83,18 @@ internal sealed unsafe partial class FontReplacer
         }
 
         var (fontName, _, font, game) = fonts[best];
-        if (!this._sizedFonts.TryGetValue((font, halfPx, fontName), out var sized))
+        var key = (font, halfPx, fontName, bold);
+        if (!this._sizedFonts.TryGetValue(key, out var sized))
         {
             var (ascent, lineHeight) = font.GetLineMetrics(px, game);
-            sized = new(font, px, ascent, lineHeight, game, this.GetAtlas(Preset.FamilyOf(fontName)), fonts.Select(f => (f.Font, f.Game)).ToList());
-            this._sizedFonts.Add((font, halfPx, fontName), sized);
+            sized = new(font, px, ascent, lineHeight, game, this.GetAtlas(Preset.FamilyOf(fontName)), fonts.Select(f => (f.Font, f.Game)).ToList(), bold);
+            this._sizedFonts.Add(key, sized);
         }
 
         return sized;
     }
+
+    private SizedFont GetBoldSized(CopyInfo info) => info.BoldSized ??= this.GetSized(info.Original, info.HalfPx, true);
 
     private MaterializedFont FontOf(string fontName) => this._presetFonts.GetValueOrDefault(fontName) ?? this._gameFont;
 
@@ -162,7 +166,7 @@ internal sealed unsafe partial class FontReplacer
             return existing;
 
         var copy = (AtkFontManager.Font*)NativeMemory.Alloc((nuint)sizeof(AtkFontManager.Font));
-        var info = new CopyInfo(original, halfPx, this.GetSized(original, halfPx));
+        var info = new CopyInfo(original, halfPx, this.GetSized(original, halfPx, false));
         this.Sync(copy, info);
         this._copies.Add(copy, info);
         this._copiesByKey.Add(key, copy);
@@ -230,5 +234,7 @@ internal sealed unsafe partial class FontReplacer
         public int HalfPx { get; } = halfPx;
 
         public SizedFont Sized { get; set; } = sized;
+
+        public SizedFont? BoldSized { get; set; }
     }
 }
