@@ -55,14 +55,7 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
 
     private delegate void SetDrawStateDelegate(AtkServer* server, AtkServer.DrawState* state, byte divisor);
 
-    public bool Active
-    {
-        get
-        {
-            Misc.DebugAssertMainThread();
-            return this._enabled;
-        }
-    }
+    public bool Active => Misc.DebugAssertMainThread(this._enabled);
 
     /// <summary>The hooks are made the first time it is on.</summary>
     public void Apply(SettingsRecord value)

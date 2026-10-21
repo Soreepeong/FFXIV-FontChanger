@@ -66,8 +66,7 @@ internal sealed unsafe class FontServices : IDisposable
         get;
         set
         {
-            Misc.DebugAssertMainThread();
-            field = value;
+            field = Misc.DebugAssertMainThread(value);
             this.DirectWrite.SubpixelOrder = value;
             this.FreeType.SubpixelOrder = value;
         }

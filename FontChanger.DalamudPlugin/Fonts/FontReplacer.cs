@@ -134,8 +134,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
         get;
         set
         {
-            Misc.DebugAssertMainThread();
-            field = value;
+            field = Misc.DebugAssertMainThread(value);
             this._layout.Clear();
             this.DisposeFonts();
             this._sizedFonts.Clear();
@@ -275,8 +274,12 @@ internal sealed unsafe partial class FontReplacer : IDisposable
         }
     }
 
-    /// <summary>Between frames, as copy texture slots change only on the framework thread.</summary>
-    public void EndFrame() => this.ApplyPendingPages();
+    /// <summary>Between frames.</summary>
+    public void EndFrame()
+    {
+        Misc.DebugAssertMainThread();
+        this.ApplyPendingPages();
+    }
 
     /// <summary>Between frames; nameplates already baked keep their pixels until the game bakes them again.</summary>
     public void RebuildGlyphs()

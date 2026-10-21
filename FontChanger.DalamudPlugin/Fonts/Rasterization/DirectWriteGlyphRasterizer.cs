@@ -17,14 +17,12 @@ namespace FontChanger.DalamudPlugin.Fonts.Rasterization;
 
 internal sealed unsafe class DirectWriteGlyphRasterizer(IDWriteFactory7* factory, FreeTypeGlyphRasterizer freeType)
 {
-    /// <summary>Set on the framework thread, before glyphs are made again.</summary>
-    public SubpixelOrder SubpixelOrder { get; set; }
+    /// <summary>Set before glyphs are made again.</summary>
+    public SubpixelOrder SubpixelOrder { get; set => field = Misc.DebugAssertMainThread(value); }
 
-    /// <summary>
-    /// DirectWrite has no ClearType for vertical stripes, so without FreeType it draws them turned a quarter; set on the
-    /// framework thread, before glyphs are made again.
-    /// </summary>
-    public bool VerticalWithFreeType { get; set; }
+    /// <summary>Set before glyphs are made again.</summary>
+    /// <remarks>DirectWrite has no ClearType for vertical stripes, so without FreeType it draws them turned a quarter.</remarks>
+    public bool VerticalWithFreeType { get; set => field = Misc.DebugAssertMainThread(value); }
 
     /// <summary>The pen is at <paramref name="originX"/>, a fraction of a pixel, so the cluster lands where shaping put it.</summary>
     public RasterGlyph RasterizeRun(

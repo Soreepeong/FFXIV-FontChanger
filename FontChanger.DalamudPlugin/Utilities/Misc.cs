@@ -22,6 +22,13 @@ public static unsafe class Misc
     [Conditional("DEBUG")]
     public static void DebugAssertMainThread() => ThreadSafety.AssertMainThread();
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T DebugAssertMainThread<T>(T value)
+    {
+        DebugAssertMainThread();
+        return value;
+    }
+
     [Conditional("DEBUG")]
     public static void DebugAssertLockHeld(this Lock lockObj)
     {

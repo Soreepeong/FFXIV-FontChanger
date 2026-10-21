@@ -113,11 +113,7 @@ internal sealed unsafe class NamePlateText : IDisposable
 
     public NamePlateMode Mode
     {
-        get
-        {
-            Misc.DebugAssertMainThread();
-            return this._mode;
-        }
+        get => Misc.DebugAssertMainThread(this._mode);
         set
         {
             Misc.DebugAssertMainThread();
