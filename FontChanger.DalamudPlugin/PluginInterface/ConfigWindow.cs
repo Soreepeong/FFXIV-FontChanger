@@ -130,7 +130,7 @@ internal sealed partial class ConfigWindow : Window
             if (own && configuration.ClearType == new SubpixelRenderingParameters())
             {
                 var windows = SubpixelShaders.SettingsRecord.FromWindow(Plugin.PluginInterface.UiBuilder.WindowHandlePtr);
-                configuration.ClearType = new SubpixelRenderingParameters(windows.Level, windows.Contrast, windows.Gamma).Clamped();
+                configuration.ClearType = new SubpixelRenderingParameters(windows.Level, windows.Contrast, windows.Gamma, windows.GrayscaleContrast).Clamped();
             }
 
             configuration.Subpixel = mode;
@@ -140,8 +140,10 @@ internal sealed partial class ConfigWindow : Window
 
         var applied = t._plugin.Replacer.Subpixel;
         var clearType = t._pendingClearType
-                        ?? (mode == SubpixelMode.System ? new(applied.Level, applied.Contrast, applied.Gamma) : configuration.ClearType);
-        var (level, contrast, gamma) = (clearType.Level, clearType.Contrast, clearType.Gamma);
+                        ?? (mode == SubpixelMode.System
+                                ? new(applied.Level, applied.Contrast, applied.Gamma, applied.GrayscaleContrast)
+                                : configuration.ClearType);
+        var (level, contrast, gamma, grayscaleContrast) = (clearType.Level, clearType.Contrast, clearType.Gamma, clearType.GrayscaleContrast);
         changed = false;
         active = false;
         using (ImRaii.Disabled(!own))
@@ -149,9 +151,10 @@ internal sealed partial class ConfigWindow : Window
             SliderFloat("Color separation", ref level, 0, 1, "%.2f", ref changed, ref active);
             SliderFloat("Enhanced contrast", ref contrast, 0, 4, "%.2f", ref changed, ref active);
             SliderFloat("Gamma", ref gamma, 1, 2.2f, "%.2f", ref changed, ref active);
+            SliderFloat("Enhanced contrast (scaled text)", ref grayscaleContrast, 0, 4, "%.2f", ref changed, ref active);
         }
 
-        if (changed) t._pendingClearType = new SubpixelRenderingParameters(level, contrast, gamma).Clamped();
+        if (changed) t._pendingClearType = new SubpixelRenderingParameters(level, contrast, gamma, grayscaleContrast).Clamped();
 
         if (TakeWhenReleased(ref t._pendingClearType, active) is { } pendingClearType)
         {

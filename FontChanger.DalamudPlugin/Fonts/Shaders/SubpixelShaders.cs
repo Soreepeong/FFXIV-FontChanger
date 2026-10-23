@@ -68,7 +68,7 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             this.Resolve();
 
         using var _ = this._lock.EnterScope();
-        var shaderChanged = value.Level != this._settings.Level || value.Contrast != this._settings.Contrast || value.Gamma != this._settings.Gamma;
+        var shaderChanged = value with { Order = this._settings.Order } != this._settings;
         this._settings = value;
         this._enabled = value.Order != SubpixelOrder.None;
 
@@ -275,7 +275,8 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         if (!ShaderCode.PatchConstants(code,
                 (ShaderCode.ClearTypeLevelSentinel, this._settings.Level),
                 (ShaderCode.ContrastSentinel, this._settings.Contrast),
-                (ShaderCode.GammaSentinel, this._settings.Gamma)))
+                (ShaderCode.GammaSentinel, this._settings.Gamma),
+                (ShaderCode.GrayscaleContrastSentinel, this._settings.GrayscaleContrast)))
             Plugin.Log.Warning($"Placeholder variables missing or repeated: {name}");
         return PixelShaderSwap.CreateShader(game, code);
     }

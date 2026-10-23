@@ -84,9 +84,11 @@ internal static class Program
         const string levelDeclaration = "static const float ClearTypeLevel = 0.234567891f;";
         const string contrastDeclaration = "static const float Contrast = 0.345678912f;";
         const string gammaDeclaration = "static const float Gamma = 0.456789123f;";
+        const string grayscaleContrastDeclaration = "static const float GrayscaleContrast = 0.567891234f;";
         const float testLevel = 0.75f;
         const float testContrast = 1.25f;
         const float testGamma = 2.2f;
+        const float testGrayscaleContrast = 2.5f;
 
         var source = File.ReadAllText(sourcePath).Replace("\r\n", "\n");
         if (highlight)
@@ -100,9 +102,10 @@ internal static class Program
         if (messages.Length > 0)
             Console.WriteLine(messages);
         if (!source.Contains(levelDeclaration, StringComparison.Ordinal) || !source.Contains(contrastDeclaration, StringComparison.Ordinal)
-            || !source.Contains(gammaDeclaration, StringComparison.Ordinal))
+            || !source.Contains(gammaDeclaration, StringComparison.Ordinal) || !source.Contains(grayscaleContrastDeclaration, StringComparison.Ordinal))
         {
-            Console.Error.WriteLine($"{sourcePath}: error: the lines {levelDeclaration}, {contrastDeclaration} and {gammaDeclaration} are needed.");
+            Console.Error.WriteLine(
+                $"{sourcePath}: error: the lines {levelDeclaration}, {contrastDeclaration}, {gammaDeclaration} and {grayscaleContrastDeclaration} are needed.");
             return 1;
         }
 
@@ -113,16 +116,22 @@ internal static class Program
                     (ShaderCode.ClearTypeLevelSentinel, testLevel),
                     (ShaderCode.ContrastSentinel, testContrast),
                     (ShaderCode.GammaSentinel, testGamma),
+                    (ShaderCode.GrayscaleContrastSentinel, testGrayscaleContrast),
                 ]))
         {
-            Console.Error.WriteLine($"{sourcePath}: error: ClearTypeLevel, Contrast and Gamma aren't each an immediate operand exactly once in the bytecode.");
+            Console.Error.WriteLine(
+                $"{sourcePath}: error: ClearTypeLevel, Contrast, Gamma and GrayscaleContrast aren't each an immediate operand exactly once in the bytecode.");
             return 1;
         }
 
         var withTest = source
                        .Replace(levelDeclaration, $"static const float ClearTypeLevel = {testLevel.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal)
                        .Replace(contrastDeclaration, $"static const float Contrast = {testContrast.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal)
-                       .Replace(gammaDeclaration, $"static const float Gamma = {testGamma.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal);
+                       .Replace(gammaDeclaration, $"static const float Gamma = {testGamma.ToString("R", CultureInfo.InvariantCulture)}f;", StringComparison.Ordinal)
+                       .Replace(
+                           grayscaleContrastDeclaration,
+                           $"static const float GrayscaleContrast = {testGrayscaleContrast.ToString("R", CultureInfo.InvariantCulture)}f;",
+                           StringComparison.Ordinal);
         if (!D3DCompiler.Compile(Encoding.UTF8.GetBytes(withTest), sourcePath, "main", "ps_5_0", out var expected, out messages))
         {
             Console.Error.WriteLine($"{sourcePath}: error: compiling with the test values failed: {messages}");

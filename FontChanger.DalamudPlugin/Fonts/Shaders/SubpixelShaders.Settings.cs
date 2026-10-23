@@ -14,7 +14,8 @@ namespace FontChanger.DalamudPlugin.Fonts.Shaders;
 
 internal sealed partial class SubpixelShaders
 {
-    internal readonly record struct SettingsRecord(SubpixelOrder Order = SubpixelOrder.None, float Level = 1, float Contrast = 0.5f, float Gamma = 1.8f)
+    internal readonly record struct SettingsRecord(SubpixelOrder Order = SubpixelOrder.None, float Level = 1, float Contrast = 0.5f, float Gamma = 1.8f,
+        float GrayscaleContrast = 1)
     {
         public static SettingsRecord FromWindow(nint window) =>
             FromMonitor(window == 0 ? default : MonitorFromWindow((HWND)window, MONITOR.MONITOR_DEFAULTTONEAREST));
@@ -44,6 +45,7 @@ internal sealed partial class SubpixelShaders
                         Level = clearType.Level,
                         Contrast = clearType.Contrast,
                         Gamma = clearType.Gamma,
+                        GrayscaleContrast = clearType.GrayscaleContrast,
                     };
                 default:
                     return new();
@@ -72,6 +74,7 @@ internal sealed partial class SubpixelShaders
                     Level = Math.Clamp(parameters.Value->GetClearTypeLevel(), 0, 1),
                     Contrast = Math.Max(parameters.Value->GetEnhancedContrast(), 0),
                     Gamma = Math.Max(parameters.Value->GetGamma(), 1),
+                    GrayscaleContrast = Math.Max(parameters.Value->GetGrayscaleEnhancedContrast(), 0),
                 };
             }
             catch (Exception ex)

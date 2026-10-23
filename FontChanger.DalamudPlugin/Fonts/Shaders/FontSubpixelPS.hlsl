@@ -22,6 +22,7 @@ struct PSOutput
 // Sentinels the plugin patches in the bytecode, as FontEdgePS.hlsl's Softness, with IDWriteRenderingParams' values.
 static const float ClearTypeLevel = 0.234567891f;
 static const float Contrast = 0.345678912f;
+static const float GrayscaleContrast = 0.567891234f;
 
 // The display's gamma, which blending corrects for.
 static const float Gamma = 0.456789123f;
@@ -98,10 +99,12 @@ PSOutput main(PSInput input)
     // 0 at run time, unknown to the compiler, so the sentinels stay immediate operands.
     float zero = min(input.Uv.x, 0);
     float level = saturate(asfloat(asuint(ClearTypeLevel) + asuint(zero)));
-    float k = max(asfloat(asuint(Contrast) + asuint(zero)), 0);
     float gamma = max(asfloat(asuint(Gamma) + asuint(zero)), 1);
 
     bool unscaled = all(abs(abs(perPixelX) + abs(perPixelY) - 1) < 1.0 / 64);
+
+    // DirectWrite takes the ClearType contrast at any level, and the grayscale one only in grayscale mode.
+    float k = max(asfloat(asuint(unscaled ? Contrast : GrayscaleContrast) + asuint(zero)), 0);
 
     // UNORM samples are never negative; abs tells pow (X3571) so, as a free source modifier.
     texel = pow(abs(texel), BaselineGamma);
