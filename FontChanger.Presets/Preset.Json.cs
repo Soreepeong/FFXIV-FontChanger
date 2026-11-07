@@ -201,6 +201,9 @@ public sealed partial class Preset
             if (m.ValueKind != JsonValueKind.Object)
                 continue;
 
+            if (m.GetPropertyStringOrDefault("shape") is { Length: > 0 } shape && !GlyphMergeShapes.IsKnown(shape))
+                continue;
+
             (float, float, float, float)? area = null;
             if (m.TryGetArray("customTextArea", out var a) &&
                 a.GetArrayLength() == 4 &&

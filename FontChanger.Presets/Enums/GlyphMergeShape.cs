@@ -15,7 +15,6 @@ public enum GlyphMergeShape
     /// <summary>A box outline the text is drawn inside of, instead of cut out of.</summary>
     HollowBox,
     Hexagon,
-    Rhombus,
     Bozja,
     Time,
 

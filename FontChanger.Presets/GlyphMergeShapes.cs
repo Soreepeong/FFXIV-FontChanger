@@ -21,7 +21,6 @@ public static class GlyphMergeShapes
         (GlyphMergeShape.NumberBox, "numberBox"),
         (GlyphMergeShape.HollowBox, "hollowBox"),
         (GlyphMergeShape.Hexagon, "hexagon"),
-        (GlyphMergeShape.Rhombus, "rhombus"),
         (GlyphMergeShape.Bozja, "bozja"),
         (GlyphMergeShape.Time, "time"),
         (GlyphMergeShape.Star, "star"),
@@ -36,6 +35,8 @@ public static class GlyphMergeShapes
     public static IReadOnlyList<(Rune Codepoint, GlyphMergeMapping Mapping, string Text)> Presets { get; } = LoadPresets();
 
     public static string NameOf(GlyphMergeShape shape) => Names.First(n => n.Shape == shape).Name;
+
+    public static bool IsKnown(string name) => Array.Exists(Names, n => n.Name == name);
 
     public static GlyphMergeShape ShapeOf(string name) => Array.Find(Names, n => n.Name == name) is { Name: not null } n ? n.Shape : GlyphMergeShape.Box;
 
