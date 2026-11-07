@@ -99,6 +99,11 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             else
                 Plugin.Log.Warning("Text measuring setup not found: faces and a node's bold are measured as the game's");
 
+            if (Plugin.SigScanner.TryScanText(TextWrapLayoutSignature, out var textWrapLayout))
+                this._textWrapLayoutHook = this.CreateHook<TextWrapLayoutDelegate>(textWrapLayout, this.TextWrapLayoutDetour);
+            else
+                Plugin.Log.Warning("Text wrapper's layout not found: text is wrapped with the glyphs of its unscaled size");
+
             if (Plugin.SigScanner.TryScanText(PrepareNodeSignature, out var prepareNode))
                 this._prepareNodeHook = this.CreateHook<PrepareNodeDelegate>(prepareNode, this.PrepareNodeDetour);
             else
@@ -113,6 +118,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             this._buildFontHook.Enable();
             this._unloadFontsHook.Enable();
             this._prepareMeasureHook?.Enable();
+            this._textWrapLayoutHook?.Enable();
             this._prepareNodeHook?.Enable();
 
             // Runs first, so that the game's font caches are rebuilt while the hooks are still there to build them.
@@ -303,6 +309,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             sized.Glyphs.Clear();
             sized.GameGlyphs.Clear();
             sized.ConvertedGlyphs.Clear();
+            sized.WrapCells.Clear();
         }
 
         this.FreeGlyphs();

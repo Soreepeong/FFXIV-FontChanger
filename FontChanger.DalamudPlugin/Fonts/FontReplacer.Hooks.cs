@@ -27,6 +27,8 @@ internal sealed unsafe partial class FontReplacer
     // Its callers lay the text out with the font set it returns, and restore the set afterwards.
     // Calls, which matched every version since 5.55, unlike PrepareNode's prologue (since 7.30).
     private const string PrepareMeasureSignature = "E8 ?? ?? ?? ?? 48 8B D8 F7 80 ?? ?? ?? ?? 00 00 00 10";
+    // The text wrapper's layout, at its only call: mov rcx, [rbx+0x70]; mov edi, eax after it.
+    private const string TextWrapLayoutSignature = "E8 ?? ?? ?? ?? 48 8B 4B 70 8B F8";
     private const string PrepareNodeSignature = "E8 ?? ?? ?? ?? 48 83 BF ?? ?? ?? ?? 00 74 ?? 48 8B CE E8";
 
     // Set by TextFlags.Bold (when drawing) and the bold macro. The game reads it nowhere.
@@ -48,6 +50,13 @@ internal sealed unsafe partial class FontReplacer
     [ThreadStatic]
     private static LayoutContext _current;
 
+    // The UI scales (High Resolution UI) text wrapped unscaled may be drawn at, the largest last.
+    private static readonly float[] WrapScales = [1f, 1.5f, 2f, 3f];
+
+    // While the text wrapper lays text out.
+    [ThreadStatic]
+    private static bool _wrapping;
+
     private readonly Hook<PickFontDelegate> _pickFontHook;
     private readonly Hook<GetGlyphDelegate> _getGlyphHook;
     private readonly Hook<FontCacheDelegate> _buildFontCacheHook;
@@ -55,6 +64,7 @@ internal sealed unsafe partial class FontReplacer
     private readonly Hook<BuildFontDelegate> _buildFontHook;
     private readonly Hook<UnloadFontsDelegate> _unloadFontsHook;
     private readonly Hook<PrepareMeasureDelegate>? _prepareMeasureHook;
+    private readonly Hook<TextWrapLayoutDelegate>? _textWrapLayoutHook;
     private readonly Hook<PrepareNodeDelegate>? _prepareNodeHook;
     private readonly nint _rendererVtbl;
     private readonly nint _renderCountVtbl;
@@ -72,6 +82,8 @@ internal sealed unsafe partial class FontReplacer
     private delegate int UnloadFontsDelegate(AtkFontManager* manager);
 
     private delegate AtkFontManager.FontSet* PrepareMeasureDelegate(AtkTextNode* node, byte considerScale);
+
+    private delegate int TextWrapLayoutDelegate(nint wrapper, byte* text);
 
     private delegate void PrepareNodeDelegate(nint renderer, nint outArea, AtkFontManager.FontSet* set, AtkTextNode* node);
 
@@ -183,6 +195,24 @@ internal sealed unsafe partial class FontReplacer
         }
 
         return set;
+    }
+
+    /// <summary>
+    /// The text may come from a script or an addon, so there is no node to tell the scale it is drawn at; as glyphs of different
+    /// sizes don't scale evenly, it is wrapped to fit at every UI scale (<see cref="GetWrapGlyph"/>).
+    /// </summary>
+    private int TextWrapLayoutDetour(nint wrapper, byte* text)
+    {
+        var outer = _wrapping;
+        _wrapping = this._enabled;
+        try
+        {
+            return this._textWrapLayoutHook!.Original(wrapper, text);
+        }
+        finally
+        {
+            _wrapping = outer;
+        }
     }
 
     private Hook<T> CreateHook<T>(nint address, T detour)
@@ -368,8 +398,14 @@ internal sealed unsafe partial class FontReplacer
             // scale of its own), so that the renderer doesn't scale the glyphs. Text laid out unscaled takes its pick scale's.
             var size = set->ScaledSizeY;
             var pickScale = PickScaleOf(set);
-            if (pickScale > 0 && set->NodeScaleX == 1 && set->NodeScaleY == 1 && float.IsFinite(pickScale))
-                size = UnscaledSizeYOf(set) * pickScale;
+            if (set->NodeScaleX == 1 && set->NodeScaleY == 1)
+            {
+                if (pickScale > 0 && float.IsFinite(pickScale))
+                    size = UnscaledSizeYOf(set) * pickScale;
+                else if (_wrapping)
+                    size *= WrapScales[^1];
+            }
+
             var halfPx = Math.Clamp((int)Misc.StdRound(size * 2), MinHalfPx, MaxHalfPx);
             var copy = this.GetOrCreateCopy(font, halfPx, this.ResolveFace(this.FaceOf(set)));
 
@@ -425,15 +461,93 @@ internal sealed unsafe partial class FontReplacer
     {
         if (!this._copies.TryGetValue(font, out var info))
             return this._getGlyphHook.Original(set, utf8Value, font);
-        var glyph = this.GetCopyGlyph(set, utf8Value, info);
-        return glyph is not null ? glyph : this.GetMissingGlyph(set, utf8Value, info);
+
+        var wrapping = _wrapping && set->NodeScaleX == 1 && set->NodeScaleY == 1 && PickScaleOf(set) <= 0;
+        if (wrapping && this.GetWrapRunGlyph(set, utf8Value, info) is var wrapGlyph and not null)
+            return wrapGlyph;
+
+        var glyph = this.GetCopyGlyph(set, utf8Value, info, this.GetDrawnSized(set, info));
+        if (glyph is null)
+            glyph = this.GetMissingGlyph(set, utf8Value, info);
+        return wrapping ? this.GetWrapGlyph(set, utf8Value, info, glyph) : glyph;
+    }
+
+    /// <summary>The sized fonts of the UI scales (<see cref="WrapScales"/>) for the text being wrapped, the copy's own (the largest) last.</summary>
+    private SizedFont[] GetWrapSizes(AtkFontManager.FontSet* set, CopyInfo info)
+    {
+        var bold = _current.State is not null && (_current.State->Flags & BoldFlag) != 0;
+        var sizes = new SizedFont[WrapScales.Length];
+        for (var i = 0; i < sizes.Length - 1; i++)
+        {
+            var halfPx = Math.Clamp((int)Misc.StdRound(set->ScaledSizeY * WrapScales[i] * 2), MinHalfPx, MaxHalfPx);
+            sizes[i] = this.GetSized(info.Original, halfPx, info.Face, bold);
+        }
+
+        sizes[^1] = this.GetDrawnSized(set, info);
+        return sizes;
+    }
+
+    /// <summary>
+    /// While wrapping, the character LayOutCharacter is at gets its cell of its run laid out at every UI scale
+    /// (<see cref="GameTextLayout.TryGetWrapGlyph"/>); null if it is looked up by itself.
+    /// </summary>
+    private AtkFontManager.Glyph* GetWrapRunGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info)
+    {
+        var p = _current.Character;
+        if (p is null || GameUtf8.Pack(p) != utf8Value)
+            return null;
+        try
+        {
+            return this._layout.TryGetWrapGlyph(this.GetWrapSizes(set, info), WrapScales, p, this.GetItalicMode(set)).Value;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Laying out a run at the UI scales failed; it is measured a character at a time");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// While wrapping, for a character looked up by itself, in the copy of the largest UI scale: a glyph of no pixels as wide as
+    /// <paramref name="glyph"/> is at the widest of the UI scales.
+    /// </summary>
+    private AtkFontManager.Glyph* GetWrapGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, AtkFontManager.Glyph* glyph)
+    {
+        if (glyph is null || glyph == &this._emptyGlyph->Glyph)
+            return glyph;
+
+        // In the copy's pixels, which are those of the largest scale; Width + OffsetX is how far the game advances.
+        var largest = WrapScales[^1];
+        var own = glyph->Width + glyph->OffsetX;
+        var widest = own;
+        try
+        {
+            var sizes = this.GetWrapSizes(set, info);
+            for (var i = 0; i < sizes.Length - 1; i++)
+            {
+                var other = this.GetCopyGlyph(set, utf8Value, info, sizes[i]);
+                if (other is not null && other != &this._emptyGlyph->Glyph)
+                    widest = Math.Max(widest, (int)MathF.Ceiling((other->Width + other->OffsetX) * largest / WrapScales[i]));
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Measuring 0x{utf8:X} at the other UI scales failed", utf8Value);
+            return glyph;
+        }
+
+        if (widest == own)
+            return glyph;
+
+        var sized = this.GetDrawnSized(set, info);
+        if (!sized.WrapCells.TryGetValue(widest, out var cell))
+            sized.WrapCells.Add(widest, cell = this.PlaceCell(sized, new(widest, 0, 0, 0, 0, []), 0));
+        return cell;
     }
 
     /// <summary>Null if neither the copy nor its game font has a glyph of the character.</summary>
-    private AtkFontManager.Glyph* GetCopyGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info)
+    private AtkFontManager.Glyph* GetCopyGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont sized)
     {
-        var sized = this.GetDrawnSized(set, info);
-
         // The character LayOutCharacter is at gets its shaped cluster's glyph, unless the lookup is of the game's fallback characters.
         var p = _current.Character;
         if (p is not null && GameUtf8.Pack(p) == utf8Value)
@@ -532,7 +646,7 @@ internal sealed unsafe partial class FontReplacer
         {
             if (utf8Value == substitute)
                 continue;
-            var glyph = this.GetCopyGlyph(set, substitute, info);
+            var glyph = this.GetCopyGlyph(set, substitute, info, this.GetDrawnSized(set, info));
             if (glyph is not null)
                 return glyph;
         }

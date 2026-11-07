@@ -49,6 +49,9 @@ internal sealed unsafe class SizedFont(
 
     public Dictionary<Rune, GlyphSource> Picks { get; } = [];
 
+    /// <summary>Glyphs of no pixels that advance as far as wrapping measures (<c>FontReplacer.GetWrapGlyph</c>), by advance.</summary>
+    public Dictionary<int, Pointer<AtkFontManager.Glyph>> WrapCells { get; } = [];
+
     /// <summary>
     /// Of several fonts, the largest whose element other than the game's has the grapheme, else the game's, else one without
     /// any for it.

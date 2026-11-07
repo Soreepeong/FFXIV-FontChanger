@@ -64,7 +64,7 @@ internal sealed unsafe partial class GameTextLayout
                     continue;
                 glyphs[b] = cell.IsNull ? default
                             : t == c.TextStart ? cell
-                            : startsElement ? this.GetSpacer(Share(advance, elements, element))
+                            : startsElement ? this.GetSpacer(this._shapingSized!, Share(advance, elements, element))
                             : this._emptyGlyph;
             }
         }
@@ -72,9 +72,8 @@ internal sealed unsafe partial class GameTextLayout
         static int Share(int advance, int parts, int part) => (advance * (part + 1) / parts) - (advance * part / parts);
     }
 
-    private Pointer<AtkFontManager.Glyph> GetSpacer(int advance)
+    private Pointer<AtkFontManager.Glyph> GetSpacer(SizedFont sized, int advance)
     {
-        var sized = this._shapingSized!;
         var key = (sized, advance);
         if (!this._spacers.TryGetValue(key, out var cell))
         {
