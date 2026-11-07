@@ -16,22 +16,20 @@ internal sealed unsafe partial class GameTextLayout
     private void Collect(int count, bool italicImages)
     {
         this._clusters.Clear();
-        this._analyzer.Itemize(this._text.AsSpan(0, count), this._textRuns);
 
         var pen = 0f;
-        foreach (var run in this._textRuns)
+        for (var start = 0; start < count;)
         {
-            for (var start = run.Start; start < run.End;)
-            {
-                var source = this._textSource[start];
-                var inItalic = this._textItalic[start];
-                var end = start + 1;
-                while (end < run.End && this._textSource[end] == source && this._textItalic[end] == inItalic)
-                    end++;
+            var source = this._textSource[start];
+            var inItalic = this._textItalic[start];
+            var end = start + 1;
+            while (end < count && this._textSource[end] == source && this._textItalic[end] == inItalic)
+                end++;
 
-                this.CollectPiece(source, start, end, run, inItalic, italicImages, ref pen);
-                start = end;
-            }
+            this._analyzer.Itemize(this._text.AsSpan(start, end - start), this._textRuns);
+            foreach (var run in this._textRuns)
+                this.CollectPiece(source, start + run.Start, start + run.End, run, inItalic, italicImages, ref pen);
+            start = end;
         }
     }
 
