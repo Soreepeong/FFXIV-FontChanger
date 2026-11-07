@@ -42,12 +42,13 @@ internal sealed partial class MergingFaceSource(
         MergeTextLine LayOut(string text, int letterSpacing);
     }
 
+    /// <summary>The inner source may be shared, so it is made with the measuring mode already set.</summary>
     public int MeasureMode
     {
         set
         {
-            inner.MeasureMode = value;
-            textOutline?.MeasureMode = value;
+            if (!ReferenceEquals(textOutline, inner))
+                textOutline?.MeasureMode = value;
         }
     }
 
@@ -68,9 +69,9 @@ internal sealed partial class MergingFaceSource(
 
     public override bool TryGetBaseline(float px, Baseline baseline, out float y) => inner.TryGetBaseline(px, baseline, out y);
 
+    /// <summary>Leaves the inner source to its owner.</summary>
     public override void Dispose()
     {
-        inner.Dispose();
         if (!ReferenceEquals(textOutline, inner))
             textOutline?.Dispose();
     }

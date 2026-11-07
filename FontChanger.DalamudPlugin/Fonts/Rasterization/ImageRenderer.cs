@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 using FontChanger.DalamudPlugin.Utilities;
 
@@ -17,6 +18,9 @@ internal sealed unsafe class ImageRenderer : IDisposable
 {
     // A large viewport and viewBox of the same size map user units one to one, so the transformation alone places the drawing.
     private const float SvgViewportHalfSize = 100000;
+
+    // Glyph images are read off the framework thread, and the factory is single threaded.
+    private readonly Lock _lock = new();
 
     private MyComPtr<ID2D1Factory1> _factory;
     private MyComPtr<IWICImagingFactory> _wic;
@@ -168,6 +172,7 @@ internal sealed unsafe class ImageRenderer : IDisposable
     /// <summary>Returns straight-alpha BGRA pixels.</summary>
     public (uint[] Pixels, int Width, int Height) Decode(byte[] data)
     {
+        using var scope = this._lock.EnterScope();
         using var stream = default(MyComPtr<IWICStream>);
         using var decoder = default(MyComPtr<IWICBitmapDecoder>);
         using var frame = default(MyComPtr<IWICBitmapFrameDecode>);
@@ -225,6 +230,7 @@ internal sealed unsafe class ImageRenderer : IDisposable
     /// <summary>Returns premultiplied BGRA pixels.</summary>
     private uint[] Render(int width, int height, DrawCallback draw)
     {
+        using var scope = this._lock.EnterScope();
         using var bitmap = default(MyComPtr<IWICBitmap>);
         using var target = default(MyComPtr<ID2D1RenderTarget>);
         using var context = default(MyComPtr<ID2D1DeviceContext5>);

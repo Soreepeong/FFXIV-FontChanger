@@ -6,6 +6,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Fonts.Faces;
+using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.Fonts;
 
@@ -39,18 +40,19 @@ internal sealed unsafe class SizedFont(
     public IReadOnlyList<(MaterializedFont Font, Pointer<AtkFontManager.Font> Game)> Fonts { get; } = fonts;
 
     /// <summary>By packed UTF-8 value; 0 for a glyph left to the game.</summary>
-    public Dictionary<uint, Pointer<AtkFontManager.Glyph>> Glyphs { get; } = [];
+    /// <remarks>This and the other glyph caches hold their glyphs with <see cref="FontReplacer.Keep"/>.</remarks>
+    public AgedMap<uint, Pointer<AtkFontManager.Glyph>> Glyphs { get; } = new();
 
     /// <summary>Copied from the game fonts of <see cref="Fonts"/>, by packed UTF-8 value; 0 if none could be.</summary>
-    public Dictionary<uint, Pointer<AtkFontManager.Glyph>> GameGlyphs { get; } = [];
+    public AgedMap<uint, Pointer<AtkFontManager.Glyph>> GameGlyphs { get; } = new();
 
-    public Dictionary<(Pointer<AtkFontManager.Font> Font, Pointer<AtkFontManager.Glyph> Glyph), Pointer<AtkFontManager.Glyph>> ConvertedGlyphs { get; } =
-        [];
+    public AgedMap<(Pointer<AtkFontManager.Font> Font, Pointer<AtkFontManager.Glyph> Glyph), Pointer<AtkFontManager.Glyph>> ConvertedGlyphs { get; } =
+        new();
 
     public Dictionary<Rune, GlyphSource> Picks { get; } = [];
 
     /// <summary>Glyphs of no pixels that advance as far as wrapping measures (<c>FontReplacer.GetWrapGlyph</c>), by advance.</summary>
-    public Dictionary<int, Pointer<AtkFontManager.Glyph>> WrapCells { get; } = [];
+    public AgedMap<int, Pointer<AtkFontManager.Glyph>> WrapCells { get; } = new();
 
     /// <summary>
     /// Of several fonts, the largest whose element other than the game's has the grapheme, else the game's, else one without

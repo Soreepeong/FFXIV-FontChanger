@@ -17,9 +17,13 @@ namespace FontChanger.DalamudPlugin.Fonts;
 
 internal sealed unsafe partial class FontReplacer
 {
-    // Sizes in half pixels: below 4 px nothing is legible; a request over 255 px uses the 255 px copy, scaled up by the renderer.
+    // Sizes in half pixels; below 4 px nothing is legible.
     private const int MinHalfPx = 8;
     private const int MaxHalfPx = 2 * byte.MaxValue;
+
+    // A glyph's box is a line high and at most 255 pixels; text whose lines are taller is drawn from a smaller copy, scaled up by the
+    // renderer.
+    private const int MaxDrawnLineHeight = byte.MaxValue;
 
     // AtkResNode.Type of the first component node type; those after are components too.
     private const ushort FirstComponentNodeType = 1000;
@@ -332,8 +336,8 @@ internal sealed unsafe partial class FontReplacer
         {
             if (!sized.Fonts.Any(f => f.Game == font) && sized.ConvertedGlyphs.Keys.All(k => k.Font != font))
                 continue;
-            sized.GameGlyphs.Clear();
-            sized.ConvertedGlyphs.Clear();
+            sized.GameGlyphs.Clear(this._release);
+            sized.ConvertedGlyphs.Clear(this._release);
             sized.Picks.Clear();
             any = true;
         }
@@ -407,11 +411,22 @@ internal sealed unsafe partial class FontReplacer
             }
 
             var halfPx = Math.Clamp((int)Misc.StdRound(size * 2), MinHalfPx, MaxHalfPx);
-            var copy = this.GetOrCreateCopy(font, halfPx, this.ResolveFace(this.FaceOf(set)));
+            var face = this.ResolveFace(this.FaceOf(set));
+            var drawn = size;
+            if (this.GetSized(font, halfPx, face, false).LineHeight is var lineHeight && lineHeight > MaxDrawnLineHeight)
+            {
+                // The largest size whose lines fit; line metrics are rounded, so it is checked.
+                halfPx = Math.Max(MinHalfPx, halfPx * MaxDrawnLineHeight / lineHeight);
+                while (halfPx > MinHalfPx && this.GetSized(font, halfPx, face, false).LineHeight > MaxDrawnLineHeight)
+                    halfPx--;
+                drawn = halfPx / 2f;
+            }
+
+            var copy = this.GetOrCreateCopy(font, halfPx, face);
 
             // Any renderer scale but exactly 1 resamples bilinearly (soft text), while a quarter pixel of size error doesn't show.
             if (halfPx < MaxHalfPx && halfPx > MinHalfPx)
-                copy->Size = size;
+                copy->Size = drawn;
             set->CurrentFont = copy;
             return copy;
         }
@@ -463,13 +478,18 @@ internal sealed unsafe partial class FontReplacer
             return this._getGlyphHook.Original(set, utf8Value, font);
 
         var wrapping = _wrapping && set->NodeScaleX == 1 && set->NodeScaleY == 1 && PickScaleOf(set) <= 0;
-        if (wrapping && this.GetWrapRunGlyph(set, utf8Value, info) is var wrapGlyph and not null)
-            return wrapGlyph;
-
-        var glyph = this.GetCopyGlyph(set, utf8Value, info, this.GetDrawnSized(set, info));
+        var glyph = wrapping ? this.GetWrapRunGlyph(set, utf8Value, info) : null;
         if (glyph is null)
-            glyph = this.GetMissingGlyph(set, utf8Value, info);
-        return wrapping ? this.GetWrapGlyph(set, utf8Value, info, glyph) : glyph;
+        {
+            glyph = this.GetCopyGlyph(set, utf8Value, info, this.GetDrawnSized(set, info));
+            if (glyph is null)
+                glyph = this.GetMissingGlyph(set, utf8Value, info);
+            if (wrapping)
+                glyph = this.GetWrapGlyph(set, utf8Value, info, glyph);
+        }
+
+        this.Hand(glyph);
+        return glyph;
     }
 
     /// <summary>The sized fonts of the UI scales (<see cref="WrapScales"/>) for the text being wrapped, the copy's own (the largest) last.</summary>
@@ -540,8 +560,8 @@ internal sealed unsafe partial class FontReplacer
             return glyph;
 
         var sized = this.GetDrawnSized(set, info);
-        if (!sized.WrapCells.TryGetValue(widest, out var cell))
-            sized.WrapCells.Add(widest, cell = this.PlaceCell(sized, new(widest, 0, 0, 0, 0, []), 0));
+        if (!sized.WrapCells.TryGetValue(widest, this._frame, out var cell))
+            cell = sized.WrapCells.Add(widest, this.Keep(this.PlaceCell(sized, new(widest, 0, 0, 0, 0, []), 0)), this._frame);
         return cell;
     }
 
@@ -575,7 +595,7 @@ internal sealed unsafe partial class FontReplacer
             }
         }
 
-        if (!sized.Glyphs.TryGetValue(utf8Value, out var glyph))
+        if (!sized.Glyphs.TryGetValue(utf8Value, this._frame, out var glyph))
         {
             try
             {
@@ -587,7 +607,7 @@ internal sealed unsafe partial class FontReplacer
                 glyph = default;
             }
 
-            sized.Glyphs.Add(utf8Value, glyph);
+            sized.Glyphs.Add(utf8Value, this.Keep(glyph), this._frame);
         }
 
         if (glyph != default)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Enums;
@@ -24,6 +25,9 @@ internal sealed unsafe class LookupFont : IDisposable
 
     // Without the optical size when it follows the text size, which GetFace adds per size.
     private readonly DWRITE_FONT_AXIS_VALUE[] _axes = [];
+
+    // Locked, as clusters are rasterized on several threads at once.
+    private readonly Lock _sizedFacesLock = new();
     private readonly Dictionary<float, MyComPtr<IDWriteFontFace5>> _sizedFaces = [];
     private readonly DWRITE_FONT_AXIS_RANGE _opticalSizeRange;
     private readonly bool _autoOpticalSize;
@@ -161,6 +165,7 @@ internal sealed unsafe class LookupFont : IDisposable
         // Keyed by the clamped size, so that sizes past the axis's range share one face; making a face is slow.
         var range = this._opticalSizeRange;
         var key = this._autoOpticalSize ? Math.Clamp(Misc.StdRound(px * 4) / 4, range.minValue, range.maxValue) : 0;
+        using var scope = this._sizedFacesLock.EnterScope();
         if (this._sizedFaces.TryGetValue(key, out var existing))
             return existing.Value;
 

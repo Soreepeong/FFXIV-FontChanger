@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.Interop;
@@ -18,6 +20,7 @@ internal sealed unsafe partial class GameTextLayout
     /// </summary>
     private void PlaceClusters(byte* bytes, Pointer<AtkFontManager.Glyph>[] glyphs)
     {
+        this.RasterizeConcurrently();
         var count = this._clusters.Count;
         var starts = count <= 256 ? stackalloc int[count] : new int[count];
         for (var i = 0; i < count; i++)
@@ -75,34 +78,81 @@ internal sealed unsafe partial class GameTextLayout
     private Pointer<AtkFontManager.Glyph> GetSpacer(SizedFont sized, int advance)
     {
         var key = (sized, advance);
-        if (!this._spacers.TryGetValue(key, out var cell))
+        var frame = this._replacer.Frame;
+        if (this._spacers.TryGetValue(key, frame, out var cell))
+            return cell;
+        return this._spacers.Add(key, this._replacer.Keep(this._replacer.PlaceCell(sized, new(advance, 0, 0, 0, 0, []), 0)), frame);
+    }
+
+    /// <summary>
+    /// The clusters not rasterized yet whose sources allow it are rasterized on the thread pool together, which this thread
+    /// waits for, so that new text costs about as long as its slowest cluster.
+    /// </summary>
+    private void RasterizeConcurrently()
+    {
+        var frame = this._replacer.Frame;
+        var pending = new List<Cluster>();
+        var seen = new HashSet<RasterKey>();
+        foreach (var c in this._clusters)
         {
-            cell = this._replacer.PlaceCell(sized, new(advance, 0, 0, 0, 0, []), 0);
-            this._spacers.Add(key, cell);
+            if (c.Missing || !c.Source!.RasterizesConcurrently)
+                continue;
+            var key = this.KeyOf(c);
+            if (!this._rasters.TryGetValue(key, frame, out _) && seen.Add(key))
+                pending.Add(c);
         }
 
-        return cell;
+        if (pending.Count < 2)
+            return;
+
+        // A cluster that fails is rasterized again by GetRaster, which reports it.
+        var raws = new RasterGlyph?[pending.Count];
+        var failed = new bool[pending.Count];
+        Parallel.For(
+            0,
+            pending.Count,
+            i =>
+            {
+                var c = pending[i];
+                try
+                {
+                    raws[i] = c.Source!.Rasterize(c.Px, new(c.GlyphIds, c.Advances, c.Offsets), new(c.Origin, c.RawAdvance));
+                }
+                catch
+                {
+                    failed[i] = true;
+                }
+            });
+
+        for (var i = 0; i < pending.Count; i++)
+        {
+            if (!failed[i])
+                this.AddRaster(pending[i], raws[i]);
+        }
     }
+
+    private RasterKey KeyOf(Cluster c) => c.RasterKey ??= new(this._shapingSized!, c);
 
     /// <summary>Relative to the pen; the advance is final only for a monospaced cluster, as <see cref="GetCell"/> sets the others'.</summary>
     private RasterGlyph GetRaster(Cluster c)
     {
-        var sized = this._shapingSized!;
-        var key = c.RasterKey ??= new(sized, c);
-        if (this._rasters.TryGetValue(key, out var raster))
+        if (this._rasters.TryGetValue(this.KeyOf(c), this._replacer.Frame, out var raster))
             return raster;
+        return this.AddRaster(c, c.Source!.Rasterize(c.Px, new(c.GlyphIds, c.Advances, c.Offsets), new(c.Origin, c.RawAdvance)));
+    }
 
+    /// <summary>Places what the source rasterized as the element does, and caches it.</summary>
+    private RasterGlyph AddRaster(Cluster c, RasterGlyph? raw)
+    {
+        var sized = this._shapingSized!;
         var glyphSource = c.GlyphSource!;
         var run = new GlyphRun(c.GlyphIds, c.Advances, c.Offsets);
-        raster = c.Source!.Rasterize(c.Px, run, new(c.Origin, c.RawAdvance)) ?? new(c.RawAdvance, 0, 0, 0, 0, []);
-        raster = glyphSource.Element!.Wrap(raster, sized.Px, glyphSource.Font.GetAlignment(sized.Px, glyphSource.Game), c.Source, run, c.Origin);
+        var raster = raw ?? new(c.RawAdvance, 0, 0, 0, 0, []);
+        raster = glyphSource.Element!.Wrap(raster, sized.Px, glyphSource.Font.GetAlignment(sized.Px, glyphSource.Game), c.Source!, run, c.Origin);
 
         // The edge margin puts ink left of the pen, so the cell starts earlier (PlaceClusters), keeping the spacing.
         raster = this._replacer.FinishGlyph(sized, raster);
-        if (this._rasters.Count >= MaxCachedRasters)
-            this._rasters.Clear();
-        this._rasters.Add(key, raster);
-        return raster;
+        return this._rasters.Add(c.RasterKey!, raster, this._replacer.Frame);
     }
 
     /// <summary>The cell's box starts <paramref name="pad"/> pixels left of the cluster's pen.</summary>
@@ -111,7 +161,8 @@ internal sealed unsafe partial class GameTextLayout
         var sized = this._shapingSized!;
         var raster = this.GetRaster(c);
         var key = (c.RasterKey!, sized, pad, advance);
-        if (this._cells.TryGetValue(key, out var cell))
+        var frame = this._replacer.Frame;
+        if (this._cells.TryGetValue(key, frame, out var cell))
             return cell;
 
         raster = raster with { Advance = advance, Left = raster.Left + pad };
@@ -125,8 +176,7 @@ internal sealed unsafe partial class GameTextLayout
         cell = this._replacer.PlaceCell(sized, raster, utf8);
         if (c.RealItalic)
             this._replacer.MarkRealItalic(cell);
-        this._cells.Add(key, cell);
-        return cell;
+        return this._cells.Add(key, this._replacer.Keep(cell), frame);
     }
 
     /// <summary>Compares glyphs by value.</summary>

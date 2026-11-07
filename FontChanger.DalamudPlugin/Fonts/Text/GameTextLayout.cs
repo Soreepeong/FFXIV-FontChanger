@@ -7,6 +7,7 @@ using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Records;
+using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.Fonts.Text;
 
@@ -16,8 +17,9 @@ internal sealed unsafe partial class GameTextLayout
 {
     private const int MaxRunBytes = 4096;
     private const int MaxActiveRuns = 8;
-    private const int MaxCachedRuns = 8192;
-    private const int MaxCachedRasters = 8192;
+
+    // A resized chat log lays out every line again at each wrapping size, which the runs of a long log must all be kept for.
+    private const int CachedRuns = 65536;
 
     // Graphemes longer than this are picked an element by their first runes.
     private const int MaxGraphemeRunes = 16;
@@ -28,15 +30,23 @@ internal sealed unsafe partial class GameTextLayout
     private readonly FontReplacer _replacer;
     private readonly DirectWriteTextAnalyzer _analyzer;
     private readonly Pointer<AtkFontManager.Glyph> _emptyGlyph;
-    private readonly Dictionary<(ulong Hash, int Length, SizedFont Sized, ItalicMode Italic), ShapedRun> _runs = [];
+    private readonly AgedMap<(ulong Hash, int Length, SizedFont Sized, ItalicMode Italic), ShapedRun> _runs = new(CachedRuns);
 
     // Keyed by the largest size's sized font.
-    private readonly Dictionary<(ulong Hash, int Length, SizedFont Sized, ItalicMode Italic), ShapedRun> _wrapRuns = [];
+    private readonly AgedMap<(ulong Hash, int Length, SizedFont Sized, ItalicMode Italic), ShapedRun> _wrapRuns = new(CachedRuns);
 
-    // Keyed by sized font too, as families may share a font but each places cells in its own atlas with its own metrics.
-    private readonly Dictionary<(RasterKey Raster, SizedFont Sized, int Pad, int Advance), Pointer<AtkFontManager.Glyph>> _cells = [];
-    private readonly Dictionary<(SizedFont Sized, int Advance), Pointer<AtkFontManager.Glyph>> _spacers = [];
-    private readonly Dictionary<RasterKey, RasterGlyph> _rasters = [];
+    // Keyed by sized font too, as families may share a font but each places cells in its own atlas with its own metrics. Held
+    // with FontReplacer.Keep.
+    private readonly AgedMap<(RasterKey Raster, SizedFont Sized, int Pad, int Advance), Pointer<AtkFontManager.Glyph>> _cells = new();
+    private readonly AgedMap<(SizedFont Sized, int Advance), Pointer<AtkFontManager.Glyph>> _spacers = new();
+    private readonly AgedMap<RasterKey, RasterGlyph> _rasters = new();
+
+    // Made once for the sweeps. Runs an active run still has, and cells a run still has, stay so that they aren't made again
+    // alongside.
+    private readonly Action<Pointer<AtkFontManager.Glyph>> _release;
+    private readonly Action<ShapedRun> _dropRun;
+    private readonly Func<ShapedRun, bool> _inactive = static r => r.Holders == 1;
+    private readonly Func<Pointer<AtkFontManager.Glyph>, bool> _unused;
 
     private readonly List<ActiveRun> _active = [];
     private readonly List<(int Byte, int Owner)> _absorbed = [];
@@ -58,6 +68,9 @@ internal sealed unsafe partial class GameTextLayout
         this._replacer = replacer;
         this._emptyGlyph = emptyGlyph;
         this._analyzer = services.TextAnalyzer;
+        this._release = g => replacer.Release(g);
+        this._dropRun = this.Drop;
+        this._unused = g => replacer.RefCount(g) == 1;
     }
 
     /// <summary>Returns null to have the game look the character up on its own.</summary>
@@ -73,12 +86,41 @@ internal sealed unsafe partial class GameTextLayout
 
     public void Clear()
     {
+        foreach (var active in this._active)
+            this.Drop(active.Shaped);
         this._active.Clear();
-        this._runs.Clear();
-        this._wrapRuns.Clear();
-        this._cells.Clear();
-        this._spacers.Clear();
-        this._rasters.Clear();
+        this._runs.Clear(this._dropRun);
+        this._wrapRuns.Clear(this._dropRun);
+        this._cells.Clear(this._release);
+        this._spacers.Clear(this._release);
+        this._rasters.Clear(null);
+    }
+
+    /// <summary>Drops what wasn't used lately, a bounded amount at a time. Once a frame, between frames.</summary>
+    public void Sweep(long frame)
+    {
+        this._runs.Sweep(frame, this._inactive, this._dropRun);
+        this._wrapRuns.Sweep(frame, this._inactive, this._dropRun);
+        this._cells.Sweep(frame, this._unused, this._release);
+        this._spacers.Sweep(frame, this._unused, this._release);
+        this._rasters.Sweep(frame, null, null);
+    }
+
+    // The first holder keeps the run's glyphs, and the last one lets go of them.
+    private void Hold(ShapedRun run)
+    {
+        if (run.Holders++ != 0)
+            return;
+        foreach (var glyph in run.Glyphs)
+            this._replacer.Keep(glyph);
+    }
+
+    private void Drop(ShapedRun run)
+    {
+        if (--run.Holders != 0)
+            return;
+        foreach (var glyph in run.Glyphs)
+            this._replacer.Release(glyph);
     }
 
     private static ulong HashBytes(byte* p, int length)
@@ -109,12 +151,14 @@ internal sealed unsafe partial class GameTextLayout
         {
             run = this._active[0];
             this._active.RemoveAt(0);
+            this.Drop(run.Shaped);
         }
         else
         {
             run = new();
         }
 
+        this.Hold(shaped);
         run.Set(p, length, sized, italic, wrap, shaped);
         this._active.Add(run);
         return shaped.Glyphs[0];
@@ -129,28 +173,32 @@ internal sealed unsafe partial class GameTextLayout
             return null;
 
         var key = (HashBytes(p, length), length, sized, italic);
-        if (!this._runs.TryGetValue(key, out var shaped))
-        {
-            shaped = new(new Pointer<AtkFontManager.Glyph>[length], italic == ItalicMode.Images ? null : this._byteItalic.AsSpan(0, length).ToArray());
-            if (count != 0)
-                this.Shape(sized, p, count, shaped.Glyphs, italic);
-            if (this._runs.Count >= MaxCachedRuns)
-                this._runs.Clear();
-            this._runs.Add(key, shaped);
-        }
+        var frame = this._replacer.Frame;
+        if (this._runs.TryGetValue(key, frame, out var shaped))
+            return shaped;
 
-        return shaped;
+        shaped = new(new Pointer<AtkFontManager.Glyph>[length], italic == ItalicMode.Images ? null : this._byteItalic.AsSpan(0, length).ToArray());
+        if (count != 0)
+            this.Shape(sized, p, count, shaped.Glyphs, italic);
+        this.Hold(shaped);
+        return this._runs.Add(key, shaped, frame);
     }
 
     private ShapedRun? GetWrapRun(SizedFont[] sizes, float[] scales, byte* p, ItalicMode italic, out int length)
     {
+        // Looked up before shaping, as the sizes' runs, made far more often by texts other than wrapped ones, are let go of much sooner.
         var largest = sizes[^1];
-        if (this.GetShapedRun(largest, p, italic, out length) is not { } top)
+        this.ReadRun(p, italic, out length);
+        if (length == 0)
             return null;
 
         var key = (HashBytes(p, length), length, largest, italic);
-        if (this._wrapRuns.TryGetValue(key, out var known))
+        var frame = this._replacer.Frame;
+        if (this._wrapRuns.TryGetValue(key, frame, out var known))
             return known;
+
+        if (this.GetShapedRun(largest, p, italic, out length) is not { } top)
+            return null;
 
         // Every size reads the same bytes, so their glyphs line up by byte.
         var runs = new ShapedRun[sizes.Length];
@@ -162,7 +210,7 @@ internal sealed unsafe partial class GameTextLayout
             runs[i] = run;
         }
 
-        var wrap = top with { Glyphs = (Pointer<AtkFontManager.Glyph>[])top.Glyphs.Clone() };
+        var wrap = new ShapedRun((Pointer<AtkFontManager.Glyph>[])top.Glyphs.Clone(), top.ItalicBytes);
         var pens = new float[runs.Length];
         var furthest = 0f;
         var placed = 0;
@@ -187,10 +235,8 @@ internal sealed unsafe partial class GameTextLayout
             placed = end;
         }
 
-        if (this._wrapRuns.Count >= MaxCachedRuns)
-            this._wrapRuns.Clear();
-        this._wrapRuns.Add(key, wrap);
-        return wrap;
+        this.Hold(wrap);
+        return this._wrapRuns.Add(key, wrap, frame);
     }
 
     private void EnsureCapacity(int n)
@@ -204,7 +250,16 @@ internal sealed unsafe partial class GameTextLayout
     }
 
     /// <summary>ItalicBytes is null for a run in a node's italics, which is all in them.</summary>
-    private sealed record ShapedRun(Pointer<AtkFontManager.Glyph>[] Glyphs, bool[]? ItalicBytes);
+    /// <remarks>Holds its glyphs with <see cref="FontReplacer.Keep"/> while the caches or active runs have it. <seealso cref="Hold"/></remarks>
+    private sealed class ShapedRun(Pointer<AtkFontManager.Glyph>[] glyphs, bool[]? italicBytes)
+    {
+        public Pointer<AtkFontManager.Glyph>[] Glyphs { get; } = glyphs;
+
+        public bool[]? ItalicBytes { get; } = italicBytes;
+
+        /// <summary>The caches and active runs that have it.</summary>
+        public int Holders { get; set; }
+    }
 
     /// <summary>
     /// A run shaped at an address, used only while the text there is unchanged since shaping, as the game reuses its

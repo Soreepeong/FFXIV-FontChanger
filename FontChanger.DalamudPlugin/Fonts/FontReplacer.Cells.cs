@@ -20,20 +20,32 @@ internal sealed unsafe partial class FontReplacer
 {
     private const int SlotBlockSize = 1024;
 
-    // When an atlas is full, a plane is emptied of glyphs not drawn this recently, at most this often.
-    private const long KeepDrawnMs = 2000;
+    // When an atlas is full, its least recently drawn plane is reused, at most this often.
     private const long EvictIntervalMs = 1000;
 
-    // The game reads glyphs from these blocks, so they must not move; _cells is indexed by GlyphSlot.Id.
+    // The game may keep a glyph pointer (font caches, vertex data) for a few frames after it was last handed out.
+    private const long GraceFrames = 8;
+
+    // The game reads glyphs from these blocks, so they must not move; _cells is indexed by GlyphSlot.Id. Freed slots are reused.
     private readonly List<Pointer<GlyphSlot>> _slotBlocks = [];
     private readonly List<Cell> _cells = [];
+    private readonly Stack<int> _freeIds = [];
+
+    // Glyphs nothing of ours holds anymore, freed once GraceFrames have passed since they were last handed out.
+    private readonly List<int> _unreferenced = [];
+
+    private long _frame;
     private long _frameTick;
 
     private readonly HashSet<GlyphAtlas> _fullAtlases = [];
     private readonly Dictionary<GlyphAtlas, long> _lastEviction = [];
+    private bool _planeReused;
 
     // Placed glyphs made from game glyphs, whose pixels are read from the game's textures at the next upload.
     private readonly List<Pointer<AtkFontManager.Glyph>> _gameReads = [];
+
+    /// <summary>Counted by <see cref="Upload"/>.</summary>
+    internal long Frame => this._frame;
 
     /// <summary>Null leaves the glyph to the game.</summary>
     private AtkFontManager.Glyph* CreateGlyph(SizedFont sized, uint utf8Value)
@@ -54,7 +66,7 @@ internal sealed unsafe partial class FontReplacer
     /// </summary>
     private AtkFontManager.Glyph* GetGameGlyph(SizedFont sized, uint utf8Value)
     {
-        if (sized.GameGlyphs.TryGetValue(utf8Value, out var made))
+        if (sized.GameGlyphs.TryGetValue(utf8Value, this._frame, out var made))
             return made;
 
         AtkFontManager.Glyph* glyph = null;
@@ -68,15 +80,14 @@ internal sealed unsafe partial class FontReplacer
             }
         }
 
-        sized.GameGlyphs[utf8Value] = glyph;
-        return glyph;
+        return sized.GameGlyphs.Add(utf8Value, this.Keep(glyph), this._frame);
     }
 
     private Pointer<AtkFontManager.Glyph> ConvertGameGlyph(
         SizedFont sized, Pointer<AtkFontManager.Font> font, Pointer<AtkFontManager.Glyph> game, uint utf8Value)
     {
         var key = (font, game);
-        if (sized.ConvertedGlyphs.TryGetValue(key, out var made))
+        if (sized.ConvertedGlyphs.TryGetValue(key, this._frame, out var made))
             return (AtkFontManager.Glyph*)made;
         var glyph = this.PlaceGameGlyph(sized, font, game, utf8Value);
         if (glyph.IsNull)
@@ -85,8 +96,7 @@ internal sealed unsafe partial class FontReplacer
             glyph = this.PlaceCell(sized, new(advance, 0, 0, 0, 0, []), utf8Value);
         }
 
-        sized.ConvertedGlyphs[key] = glyph;
-        return glyph;
+        return sized.ConvertedGlyphs.Add(key, this.Keep(glyph), this._frame);
     }
 
     private Pointer<AtkFontManager.Glyph> PlaceGameGlyph(SizedFont sized, Pointer<AtkFontManager.Font> font, Pointer<AtkFontManager.Glyph> game, uint utf8Value)
@@ -119,26 +129,7 @@ internal sealed unsafe partial class FontReplacer
     {
         Misc.DebugAssertMainThread();
         this._frameTick = Environment.TickCount64;
-        foreach (var g in this._gameReads)
-        {
-            var glyph = g.Value;
-            ref var cell = ref this.CellOf(glyph);
-            try
-            {
-                var s = cell.Source!;
-                var pixels = this._gameTextures.Read(s.Texture, s.X, s.Y, s.Width, s.Height, s.Plane);
-                cell.Raster = WithSourcePixels(cell.Raster, s, pixels);
-                WriteCell(glyph, cell);
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.Error(ex, "Reading a game glyph's pixels failed");
-            }
-
-            ReleasePixels(ref cell);
-        }
-
-        this._gameReads.Clear();
+        this.ReadGameGlyphs();
 
         foreach (var atlas in this._fullAtlases.ToArray())
         {
@@ -161,7 +152,111 @@ internal sealed unsafe partial class FontReplacer
 
         // This frame's UI draw commands are processed by now (Present, which is called even while the UI is hidden).
         this._subpixelShaders.EndFrame();
+
+        // After the game reads, which hold glyphs without a reference.
+        this.SweepCaches();
+        this.FreeUnreferenced();
+        this._frame++;
     }
+
+    private void ReadGameGlyphs()
+    {
+        foreach (var g in this._gameReads)
+        {
+            var glyph = g.Value;
+            ref var cell = ref this.CellOf(glyph);
+            try
+            {
+                var s = cell.Source!;
+                var pixels = this._gameTextures.Read(s.Texture, s.X, s.Y, s.Width, s.Height, s.Plane);
+                cell.Raster = WithSourcePixels(cell.Raster, s, pixels);
+                WriteCell(glyph, cell);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Error(ex, "Reading a game glyph's pixels failed");
+            }
+
+            cell.Source = null;
+        }
+
+        this._gameReads.Clear();
+    }
+
+    private void SweepCaches()
+    {
+        this._layout.Sweep(this._frame);
+        foreach (var sized in this._sizedFonts.Values)
+        {
+            sized.Glyphs.Sweep(this._frame, null, this._release);
+            sized.GameGlyphs.Sweep(this._frame, null, this._release);
+            sized.ConvertedGlyphs.Sweep(this._frame, null, this._release);
+            sized.WrapCells.Sweep(this._frame, null, this._release);
+        }
+    }
+
+    private void FreeUnreferenced()
+    {
+        var count = this._unreferenced.Count;
+        for (var i = 0; i < count; i++)
+        {
+            var id = this._unreferenced[i];
+            ref var cell = ref CollectionsMarshal.AsSpan(this._cells)[id];
+            if (cell.Refs != 0)
+            {
+                cell.Unreferenced = false;
+                continue;
+            }
+
+            if (this._frame - cell.Handed < GraceFrames)
+            {
+                this._unreferenced.Add(id);
+                continue;
+            }
+
+            // Its blank then waits for its own grace period.
+            var blank = cell.Blank;
+            cell = default;
+            *this.SlotAt(id) = new() { Id = id };
+            this._freeIds.Push(id);
+            this.Release(blank);
+        }
+
+        this._unreferenced.RemoveRange(0, count);
+    }
+
+    /// <summary>Holds a glyph made by <see cref="PlaceCell"/>, so that it isn't freed.</summary>
+    /// <returns>The glyph.</returns>
+    /// <remarks>Null and the empty glyph are ignored, here and by the others.</remarks>
+    internal AtkFontManager.Glyph* Keep(AtkFontManager.Glyph* glyph)
+    {
+        if (IsOwn(glyph))
+            this.CellOf(glyph).Refs++;
+        return glyph;
+    }
+
+    internal void Release(AtkFontManager.Glyph* glyph)
+    {
+        if (!IsOwn(glyph))
+            return;
+        ref var cell = ref this.CellOf(glyph);
+        if (--cell.Refs == 0 && !cell.Unreferenced)
+        {
+            cell.Unreferenced = true;
+            this._unreferenced.Add(((GlyphSlot*)glyph)->Id);
+        }
+    }
+
+    internal int RefCount(AtkFontManager.Glyph* glyph) => IsOwn(glyph) ? this.CellOf(glyph).Refs : 0;
+
+    // Marks it handed to the game in this frame.
+    private void Hand(AtkFontManager.Glyph* glyph)
+    {
+        if (IsOwn(glyph))
+            this.CellOf(glyph).Handed = this._frame;
+    }
+
+    private static bool IsOwn(AtkFontManager.Glyph* glyph) => glyph is not null && ((GlyphSlot*)glyph)->Id >= 0;
 
     private static RasterGlyph WithSourcePixels(RasterGlyph box, GameTextureSource s, byte[] sourceAlpha)
     {
@@ -209,8 +304,8 @@ internal sealed unsafe partial class FontReplacer
         glyph->OffsetX = (sbyte)Math.Clamp(r.Advance - width, sbyte.MinValue, sbyte.MaxValue);
         glyph->OffsetY = (sbyte)top;
 
-        // Text is measured far more than drawn (every text change, at the node's unscaled size too), so a glyph keeps its pixels
-        // here until it is drawn (WithPixels, which every glyph handed to the game goes through).
+        // Text is measured far more than drawn (every text change, at the node's unscaled size too), so a glyph is placed only
+        // once it is drawn (WithPixels, which every glyph handed to the game goes through).
         if (width != 0)
         {
             this.CellOf(glyph) = new()
@@ -230,6 +325,7 @@ internal sealed unsafe partial class FontReplacer
     internal void MarkRealItalic(AtkFontManager.Glyph* cell) => this.CellOf(cell).RealItalic = true;
 
     /// <summary>A glyph that finds no room draws nothing this time, at the same advance, and room is made at the next upload.</summary>
+    /// <remarks>A glyph whose plane was reused is placed again here.</remarks>
     private AtkFontManager.Glyph* WithPixels(AtkFontManager.Glyph* glyph)
     {
         if (_current.MeasuringOnly || ((GlyphSlot*)glyph)->Id < 0)
@@ -238,8 +334,14 @@ internal sealed unsafe partial class FontReplacer
         ref var cell = ref this.CellOf(glyph);
         if (cell.State == CellState.Placed)
         {
-            cell.Drawn = this._frameTick;
-            return glyph;
+            var page = glyph->TextureIndex;
+            var plane = glyph->Channel;
+            if (cell.Atlas!.Touch(page, plane, cell.Generation, this._frameTick))
+                return glyph;
+
+            // Its plane was reused; it is placed again from its pixels, which show in this frame like any newly placed glyph's,
+            // so that text baked now (nameplates) keeps them.
+            cell.State = CellState.Pending;
         }
 
         if (cell.State != CellState.Pending)
@@ -252,7 +354,7 @@ internal sealed unsafe partial class FontReplacer
 
         try
         {
-            if (this.WritePixels(glyph, ref cell, this._frameTick))
+            if (this.WritePixels(glyph, ref cell))
                 return glyph;
         }
         catch (Exception ex)
@@ -266,24 +368,19 @@ internal sealed unsafe partial class FontReplacer
         return this.GetBlank(glyph);
     }
 
-    private bool WritePixels(AtkFontManager.Glyph* glyph, ref Cell cell, long drawn)
+    private bool WritePixels(AtkFontManager.Glyph* glyph, ref Cell cell)
     {
-        if (!cell.Atlas!.TryAllocate(glyph->Width, glyph->Height, out var page, out var plane, out var x, out var y))
+        if (!cell.Atlas!.TryAllocate(glyph->Width, glyph->Height, this._frameTick, out var a))
             return false;
 
-        glyph->Packed = (x, y, plane, page);
+        glyph->Packed = (a.X, a.Y, a.Plane, a.Page);
         cell.State = CellState.Placed;
-        cell.Drawn = drawn;
-        if (cell.Source is not null)
-        {
-            this._gameReads.Add(glyph);
-        }
-        else
-        {
-            WriteCell(glyph, cell);
-            cell.Raster = default;
-        }
+        cell.Generation = a.Generation;
 
+        if (cell.Source is not null)
+            this._gameReads.Add(glyph);
+        else
+            WriteCell(glyph, cell);
         return true;
     }
 
@@ -295,84 +392,21 @@ internal sealed unsafe partial class FontReplacer
         var b = this.AllocateGlyph();
         *b = *glyph;
         DropPixels(b);
-        this.CellOf(glyph).Blank = b;
+        this.CellOf(glyph).Blank = this.Keep(b);
         return b;
     }
 
-    /// <summary>
-    /// After this frame's text was laid out, so that the next frame lays out with the new places and the upload after it puts
-    /// them in the texture.
-    /// </summary>
+    /// <summary>After this frame's text was laid out.</summary>
+    /// <remarks>The plane's glyphs are placed again as they are drawn.</remarks>
     private void EvictPlane(GlyphAtlas atlas)
     {
         Misc.DebugAssertMainThread();
-        var now = Environment.TickCount64;
-        var stale = new long[atlas.MaxPlanes];
-        var oldest = new long[atlas.MaxPlanes];
-        Array.Fill(oldest, long.MaxValue);
-        var all = CollectionsMarshal.AsSpan(this._cells);
-        for (var id = 0; id < all.Length; id++)
-        {
-            if (all[id].State != CellState.Placed || all[id].Atlas != atlas)
-                continue;
-            var glyph = &this.SlotAt(id)->Glyph;
-            var plane = PlaneOf(glyph);
-            if (now - all[id].Drawn > KeepDrawnMs)
-                stale[plane] += GlyphAtlas.PaddedArea(glyph->Width, glyph->Height);
-            oldest[plane] = Math.Min(oldest[plane], all[id].Drawn);
-        }
-
-        var victim = Array.IndexOf(stale, stale.Max());
-        if (stale[victim] == 0)
-            victim = Array.IndexOf(oldest, oldest.Min());
-
-        var moved = new List<(int Id, long Drawn, byte[] Pixels, byte[]? Lcd)>();
-        for (var id = 0; id < all.Length; id++)
-        {
-            var glyph = &this.SlotAt(id)->Glyph;
-            if (all[id].State != CellState.Placed || all[id].Atlas != atlas || PlaneOf(glyph) != victim)
-                continue;
-            var page = glyph->TextureIndex;
-            var pixels = atlas.Read(page, glyph->Channel, glyph->X, glyph->Y, glyph->Width, glyph->Height);
-            var lcd = atlas.Subpixel ? atlas.ReadLcd(page, glyph->X, glyph->Y, glyph->Width, glyph->Height) : null;
-            moved.Add((id, all[id].Drawn, pixels, lcd));
-        }
-
-        moved.Sort((a, b) => b.Drawn.CompareTo(a.Drawn));
-        atlas.ClearPlane(victim / GlyphAtlas.PlanesPerPage, victim % GlyphAtlas.PlanesPerPage);
-
-        // Without stale glyphs, the least recently drawn still leave until half of the plane is free, so that it makes room.
-        var budget = stale[victim] == 0 ? (long)atlas.Width * atlas.Height / 2 : long.MaxValue;
-        var kept = 0;
-        foreach (var (id, drawn, pixels, lcd) in moved)
-        {
-            var glyph = &this.SlotAt(id)->Glyph;
-            ref var cell = ref all[id];
-            cell.State = CellState.Pending;
-            cell.Raster = new(0, 0, 0, glyph->Width, glyph->Height, pixels, lcd);
-            cell.BoxLeft = 0;
-            cell.InkTop = 0;
-            glyph->Packed = (0, 0, 0, 0);
-            var area = GlyphAtlas.PaddedArea(glyph->Width, glyph->Height);
-            if (now - drawn <= KeepDrawnMs && area <= budget && this.WritePixels(glyph, ref cell, drawn))
-            {
-                budget -= area;
-                kept++;
-            }
-        }
-
+        var plane = atlas.RecycleLeastRecentlyDrawn();
         this._fullAtlases.Remove(atlas);
-        this._lastEviction[atlas] = now;
-        Plugin.Log.Information(
-            "The {family} glyph atlas was full: emptied plane {plane}, kept {kept} recently drawn glyphs of its {count}",
-            atlas.Name,
-            victim,
-            kept,
-            moved.Count);
+        this._lastEviction[atlas] = Environment.TickCount64;
+        this._planeReused = true;
+        Plugin.Log.Information("The {family} glyph atlas was full: reusing plane {plane}, whose glyphs are placed again as they are drawn", atlas.Name, plane);
     }
-
-    private static int PlaneOf(AtkFontManager.Glyph* glyph) =>
-        (glyph->TextureIndex * GlyphAtlas.PlanesPerPage) + glyph->Channel;
 
     private static void WriteCell(AtkFontManager.Glyph* glyph, in Cell cell)
     {
@@ -428,8 +462,12 @@ internal sealed unsafe partial class FontReplacer
         });
     }
 
+    /// <summary>Reuses a freed slot if there is one.</summary>
     private AtkFontManager.Glyph* AllocateGlyph()
     {
+        if (this._freeIds.TryPop(out var free))
+            return &this.SlotAt(free)->Glyph;
+
         var id = this._cells.Count;
         if (id % SlotBlockSize == 0)
             this._slotBlocks.Add((GlyphSlot*)NativeMemory.AllocZeroed((nuint)(SlotBlockSize * sizeof(GlyphSlot))));
@@ -450,6 +488,8 @@ internal sealed unsafe partial class FontReplacer
             NativeMemory.Free(block.Value);
         this._slotBlocks.Clear();
         this._cells.Clear();
+        this._freeIds.Clear();
+        this._unreferenced.Clear();
     }
 
     /// <summary>Glyph pointers handed to the game point into these; Id indexes the cells, -1 for the empty glyph.</summary>
@@ -474,7 +514,8 @@ internal sealed unsafe partial class FontReplacer
 
         public GlyphAtlas? Atlas;
 
-        // Kept while pending, and for a game glyph until its pixels are read.
+        // Kept once placed, so that it can be placed again after its plane is reused. A game glyph's is blank until its pixels
+        // are read.
         public RasterGlyph Raster;
 
         // The box's left relative to the pen, as Raster's Left is.
@@ -483,16 +524,26 @@ internal sealed unsafe partial class FontReplacer
         // The ink's top row in the box.
         public int InkTop;
 
+        // Until its pixels are read.
         public GameTextureSource? Source;
 
-        // Environment.TickCount64 of the frame it was last drawn in, once placed.
-        public long Drawn;
+        // Of its plane when placed.
+        public uint Generation;
 
-        // Drawn instead while its pixels find no room.
+        // Drawn instead while its pixels find no room. Held with Keep.
         public AtkFontManager.Glyph* Blank;
 
         // A real italic glyph, which the game must not shear.
         public bool RealItalic;
+
+        // Caches, shaped runs and the glyph whose blank it is holding it.
+        public int Refs;
+
+        // The frame it was last handed to the game in.
+        public long Handed;
+
+        // In _unreferenced.
+        public bool Unreferenced;
     }
 
     /// <summary>A rectangle of a game font texture's plane, whose top left is at (0, <see cref="Top"/>) from the pen in the game font's pixels.</summary>

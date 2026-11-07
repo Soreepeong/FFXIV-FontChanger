@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Records;
@@ -32,6 +33,9 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
 
     // FT_LCD_FILTER_DEFAULT.
     private const int LcdFilterDefault = 1;
+
+    // FreeType's library and faces aren't thread safe, and fonts are loaded off the framework thread.
+    private readonly Lock _lock = new();
 
     private readonly Dictionary<(string Path, uint Index), FacePointer> _faces = [];
     private FT_LibraryRec_* _library;
@@ -96,19 +100,22 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         var (path, index) = GetFile(fontFace);
         if (path is null)
             return null;
-        if (this._faces.TryGetValue((path, index), out var existing))
-            return existing;
-
-        FT_FaceRec_* face = null;
-        var bytes = Encoding.UTF8.GetBytes(path + "\0");
-        fixed (byte* p = bytes)
+        lock (this._lock)
         {
-            if (FT.FT_New_Face(this._library, p, (nint)index, &face) != FT_Error.FT_Err_Ok)
-                face = null;
-        }
+            if (this._faces.TryGetValue((path, index), out var existing))
+                return existing;
 
-        this._faces.Add((path, index), face);
-        return face;
+            FT_FaceRec_* face = null;
+            var bytes = Encoding.UTF8.GetBytes(path + "\0");
+            fixed (byte* p = bytes)
+            {
+                if (FT.FT_New_Face(this._library, p, (nint)index, &face) != FT_Error.FT_Err_Ok)
+                    face = null;
+            }
+
+            this._faces.Add((path, index), face);
+            return face;
+        }
     }
 
     public static bool IsScalable(FT_FaceRec_* face) => (face->face_flags & (nint)FT_FACE_FLAG.FT_FACE_FLAG_SCALABLE) != 0;
@@ -131,6 +138,7 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         IReadOnlyDictionary<uint, float>? axes,
         float embolden)
     {
+        using var scope = this._lock.EnterScope();
         this.SetAxes(face, axes);
         var scale = this.SetSize(face, px);
         var strength = (nint)Misc.StdRound(embolden * px * 64);
@@ -205,6 +213,7 @@ internal sealed unsafe class FreeTypeGlyphRasterizer : IDisposable
         if (points.IsEmpty || width <= 0 || height <= 0)
             return coverage;
 
+        using var scope = this._lock.EnterScope();
         var ftPoints = new FT_Vector_[points.Length];
         for (var i = 0; i < points.Length; i++)
             ftPoints[i] = new() { x = (nint)Misc.StdRound(points[i].X * 64), y = (nint)Misc.StdRound((height - points[i].Y) * 64) };

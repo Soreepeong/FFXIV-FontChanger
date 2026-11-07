@@ -105,6 +105,8 @@ internal sealed unsafe class NamePlateText : IDisposable
             this._bakePlateDrawHook.Enable();
             this._replacer.TextInvalidated += this.OnTextInvalidated;
             this._finalizer.Add(() => this._replacer.TextInvalidated -= this.OnTextInvalidated);
+            this._replacer.AtlasRoomMade += this.ForceRebake;
+            this._finalizer.Add(() => this._replacer.AtlasRoomMade -= this.ForceRebake);
             Array.Fill(this._faces, new(TextFace.NamePlate, TextFace.NamePlateTitle));
             this._replacer.AddNodeFaces(this.GetNodeFaces);
             this._finalizer.Add(() => this._replacer.RemoveNodeFaces(this.GetNodeFaces));

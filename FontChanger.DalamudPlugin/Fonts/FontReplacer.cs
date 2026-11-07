@@ -2,10 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Dalamud.Utility;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts.Enums;
@@ -29,9 +32,20 @@ internal sealed unsafe partial class FontReplacer : IDisposable
     private readonly Dictionary<string, MaterializedFont> _presetFonts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<TextFace, Dictionary<string, MaterializedFont>> _faceFonts = [];
     private MaterializedFont _gameFont;
+    private FaceSourceCache _fontSources = new();
+
+    // Fonts are made on a task and swapped in at EndFrame. A request supersedes those before it, and their fonts are dropped.
+    private readonly Lock _loadSync = new();
+    private LoadedFonts? _loaded;
+    private long _loadSerial;
+    private bool _loadStopped;
+    private Task _loader = Task.CompletedTask;
 
     // A glyph of no width, for the characters of a shaped cluster after its first.
     private GlyphSlot* _emptyGlyph;
+
+    // Release, made once for the caches' sweeps.
+    private readonly Action<Pointer<AtkFontManager.Glyph>> _release;
 
     // What copy texture slots without a page hold, so that a game glyph slipping through draws nothing.
     private readonly KernelTextureWrapper _blankTexture;
@@ -48,6 +62,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
 
     public FontReplacer()
     {
+        this._release = g => this.Release(g);
         try
         {
             var pickFont = AtkFontManager.FontSet.Addresses.PickFont.Value;
@@ -63,7 +78,8 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             this.Services = this._finalizer.Add(new FontServices());
             this._fallbackFonts = this._finalizer.Add(new SystemFallbackFonts(this.Services));
             this._finalizer.Add(this.DisposeFonts);
-            this._gameFont = MaterializedFont.CreateGame(this.Services, true, this._fallbackFonts);
+            this._finalizer.Add(this.StopLoader);
+            this._gameFont = MaterializedFont.CreateGame(this.Services, true, this._fallbackFonts, this._fontSources);
             try
             {
                 FontNames.Initialize();
@@ -147,30 +163,30 @@ internal sealed unsafe partial class FontReplacer : IDisposable
     /// <summary>Raised on the framework thread when text drawn earlier no longer matches, for what keeps drawn text around (the nameplate bakes).</summary>
     public event Action? TextInvalidated;
 
-    /// <summary>Set between frames; makes every glyph again, even for the same value.</summary>
+    /// <summary>Raised on the framework thread once a full atlas has made room, as baked text may have kept the blanks it handed out.</summary>
+    public event Action? AtlasRoomMade;
+
+    /// <summary>
+    /// Set on the framework thread. The fonts are made on another thread, and the earlier ones stay until <see cref="EndFrame"/>
+    /// swaps them in. Every glyph is made again then, even for the same value.
+    /// </summary>
     public FontSettings Fonts
     {
         get;
         set
         {
             field = Misc.DebugAssertMainThread(value);
-            this._layout.Clear();
-            this.DisposeFonts();
-            this._sizedByRequest.Clear();
-            this._sizedFonts.Clear();
-            this._gameFont = MaterializedFont.CreateGame(this.Services, value.SystemFallback, this._fallbackFonts);
-            this.MaterializeFonts(this._presetFonts, value.Preset, value.SystemFallback);
-            foreach (var (face, preset) in value.Faces ?? new Dictionary<TextFace, Preset>())
+            LoadedFonts? superseded;
+            long serial;
+            lock (this._loadSync)
             {
-                var fonts = new Dictionary<string, MaterializedFont>(StringComparer.OrdinalIgnoreCase);
-                this.MaterializeFonts(fonts, preset, value.SystemFallback);
-                if (fonts.Count != 0)
-                    this._faceFonts[face] = fonts;
+                serial = ++this._loadSerial;
+                superseded = this._loaded;
+                this._loaded = null;
             }
 
-            // Copies made so far take the glyphs and metrics of their new fonts.
-            this.ResyncCopies();
-            this.RebuildGlyphs();
+            superseded?.Dispose();
+            this._loader = this._loader.ContinueWith(_ => this.Load(value, serial), TaskScheduler.Default);
         }
     }
 
@@ -295,7 +311,13 @@ internal sealed unsafe partial class FontReplacer : IDisposable
     public void EndFrame()
     {
         Misc.DebugAssertMainThread();
+        this.ApplyLoadedFonts();
         this.ApplyPendingPages();
+        if (this._planeReused)
+        {
+            this._planeReused = false;
+            this.AtlasRoomMade?.Invoke();
+        }
     }
 
     /// <summary>Between frames; nameplates already baked keep their pixels until the game bakes them again.</summary>
@@ -305,15 +327,10 @@ internal sealed unsafe partial class FontReplacer : IDisposable
         this._layout.Clear();
         this._fullAtlases.Clear();
         this._gameReads.Clear();
-        foreach (var sized in this._sizedFonts.Values)
-        {
-            sized.Glyphs.Clear();
-            sized.GameGlyphs.Clear();
-            sized.ConvertedGlyphs.Clear();
-            sized.WrapCells.Clear();
-        }
 
-        this.FreeGlyphs();
+        // Nothing of ours refers to the glyphs anymore, and they are freed once the game is done with them.
+        foreach (var sized in this._sizedFonts.Values)
+            this.ReleaseGlyphs(sized);
         foreach (var atlas in this._atlases.Values)
             atlas.Clear();
         ForgetPickedFonts();
@@ -345,19 +362,146 @@ internal sealed unsafe partial class FontReplacer : IDisposable
         }
     }
 
-    private void MaterializeFonts(Dictionary<string, MaterializedFont> fonts, Preset? preset, bool systemFallback)
+    /// <summary>Loader task, using nothing of the replacer but the services.</summary>
+    private void Load(FontSettings value, long serial)
     {
-        foreach (var (name, def) in preset?.Fonts ?? new Dictionary<string, Font>())
+        LoadedFonts? loaded = null;
+        try
         {
-            try
-            {
-                fonts[name] = new(this.Services, def, systemFallback, this._fallbackFonts);
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.Error(ex, "Setting up the font {name} failed; its text falls back", name);
-            }
+            loaded = LoadFonts(this.Services, this._fallbackFonts, value, () => Volatile.Read(ref this._loadStopped) || Interlocked.Read(ref this._loadSerial) != serial);
         }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Setting up the fonts failed; the earlier ones stay");
+        }
+
+        if (loaded is null)
+            return;
+
+        // Swapped, so that stale fonts are disposed after the lock.
+        lock (this._loadSync)
+        {
+            if (!this._loadStopped && this._loadSerial == serial)
+                (this._loaded, loaded) = (loaded, this._loaded);
+        }
+
+        loaded?.Dispose();
+    }
+
+    /// <summary>A font that can't be made is left out with a warning.</summary>
+    /// <returns>Null once <paramref name="stale"/>.</returns>
+    private static LoadedFonts? LoadFonts(FontServices services, SystemFallbackFonts fallbackFonts, FontSettings value, Func<bool> stale)
+    {
+        var loaded = new LoadedFonts();
+        var sources = loaded.Sources;
+        var complete = false;
+        try
+        {
+            loaded.Game = MaterializedFont.CreateGame(services, value.SystemFallback, fallbackFonts, sources);
+            loaded.Game.Prepare();
+            if (!Materialize(loaded.Preset, value.Preset))
+                return null;
+            foreach (var (face, preset) in value.Faces ?? new Dictionary<TextFace, Preset>())
+            {
+                var fonts = new Dictionary<string, MaterializedFont>(StringComparer.OrdinalIgnoreCase);
+                loaded.Faces[face] = fonts;
+                if (!Materialize(fonts, preset))
+                    return null;
+                if (fonts.Count == 0)
+                    loaded.Faces.Remove(face);
+            }
+
+            complete = !stale();
+            return complete ? loaded : null;
+        }
+        finally
+        {
+            if (!complete)
+                loaded.Dispose();
+        }
+
+        bool Materialize(Dictionary<string, MaterializedFont> fonts, Preset? preset)
+        {
+            foreach (var (name, def) in preset?.Fonts ?? new Dictionary<string, Font>())
+            {
+                if (stale())
+                    return false;
+
+                MaterializedFont? font = null;
+                try
+                {
+                    font = new(services, def, value.SystemFallback, fallbackFonts, sources);
+                    font.Prepare();
+                    fonts[name] = font;
+                }
+                catch (Exception ex)
+                {
+                    font?.Dispose();
+                    Plugin.Log.Warning(ex, "The font {name} can't be set up; its text falls back", name);
+                }
+            }
+
+            return true;
+        }
+    }
+
+    /// <summary>Between frames.</summary>
+    private void ApplyLoadedFonts()
+    {
+        LoadedFonts? loaded;
+        lock (this._loadSync)
+        {
+            loaded = this._loaded;
+            this._loaded = null;
+        }
+
+        if (loaded is null)
+            return;
+
+        // The sized fonts and laid out runs refer to the fonts replaced.
+        this._layout.Clear();
+        this.ClearSizedFonts();
+        this.DisposeFonts();
+        this._gameFont = loaded.Game!;
+        this._fontSources = loaded.Sources;
+        foreach (var (name, font) in loaded.Preset)
+            this._presetFonts[name] = font;
+        foreach (var (face, fonts) in loaded.Faces)
+            this._faceFonts[face] = fonts;
+
+        // Copies made so far take the glyphs and metrics of their new fonts.
+        this.ResyncCopies();
+        this.RebuildGlyphs();
+    }
+
+    /// <summary>Waits for the loader, which stops at its next font.</summary>
+    private void StopLoader()
+    {
+        lock (this._loadSync)
+            this._loadStopped = true;
+        this._loader.Wait();
+        lock (this._loadSync)
+        {
+            this._loaded?.Dispose();
+            this._loaded = null;
+        }
+    }
+
+    private void ReleaseGlyphs(SizedFont sized)
+    {
+        sized.Glyphs.Clear(this._release);
+        sized.GameGlyphs.Clear(this._release);
+        sized.ConvertedGlyphs.Clear(this._release);
+        sized.WrapCells.Clear(this._release);
+    }
+
+    /// <summary>Lets go of their glyphs first.</summary>
+    private void ClearSizedFonts()
+    {
+        foreach (var sized in this._sizedFonts.Values)
+            this.ReleaseGlyphs(sized);
+        this._sizedByRequest.Clear();
+        this._sizedFonts.Clear();
     }
 
     private void DisposeFonts()
@@ -367,6 +511,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
         this._presetFonts.Clear();
         this._faceFonts.Clear();
         this._gameFont?.Dispose();
+        this._fontSources.Dispose();
     }
 
     private bool CheckSupports4444()
@@ -400,8 +545,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
         this._lastEviction.Clear();
         lock (this._pendingPageAtlases)
             this._pendingPageAtlases.Clear();
-        this._sizedByRequest.Clear();
-        this._sizedFonts.Clear();
+        this.ClearSizedFonts();
         this.DisposeAtlases();
         this.ResyncCopies();
         ForgetPickedFonts();
@@ -414,4 +558,24 @@ internal sealed unsafe partial class FontReplacer : IDisposable
     /// </summary>
     internal readonly record struct FontSettings(
         Preset? Preset = null, bool SystemFallback = true, IReadOnlyDictionary<TextFace, Preset>? Faces = null);
+
+    /// <summary>Fonts made together, sharing their face sources.</summary>
+    private sealed class LoadedFonts : IDisposable
+    {
+        public FaceSourceCache Sources { get; } = new();
+
+        public MaterializedFont? Game { get; set; }
+
+        public Dictionary<string, MaterializedFont> Preset { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public Dictionary<TextFace, Dictionary<string, MaterializedFont>> Faces { get; } = [];
+
+        public void Dispose()
+        {
+            foreach (var font in this.Preset.Values.Concat(this.Faces.Values.SelectMany(f => f.Values)))
+                font.Dispose();
+            this.Game?.Dispose();
+            this.Sources.Dispose();
+        }
+    }
 }

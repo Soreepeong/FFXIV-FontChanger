@@ -48,4 +48,7 @@ internal interface IFaceSource : IDisposable
     int Shape(float px, ReadOnlySpan<char> text, ScriptToken script, List<ShapedCluster> clusters);
 
     RasterGlyph? Rasterize(float px, in GlyphRun run, in RasterizeOptions options = default);
+
+    /// <summary>Gets a value indicating whether <see cref="Rasterize"/> may run on several threads at once, while nothing else uses the source.</summary>
+    bool RasterizesConcurrently => false;
 }

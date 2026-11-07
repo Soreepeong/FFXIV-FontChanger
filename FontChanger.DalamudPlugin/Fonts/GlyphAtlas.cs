@@ -85,7 +85,27 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         *t = (ushort)((*t & ~(0xF << shift)) | (Lookup8To4[value] << shift));
     }
 
-    private byte GetChannel(byte* texel, int plane) => this.Format4444 ? Get4444(*(ushort*)texel, plane) : texel[BgraOffset(plane)];
+    // With the lock. Every channel in a subpixel atlas.
+    private void ZeroRect(Page p, int plane, int x, int y, int width, int height)
+    {
+        for (var row = y; row < y + height; row++)
+        {
+            var d = p.Shadow + (row * this.Pitch) + (x * this.BytesPerPixel);
+            if (this.Subpixel)
+            {
+                NativeMemory.Clear(d, (nuint)(width * this.BytesPerPixel));
+                continue;
+            }
+
+            for (var col = 0; col < width; col++)
+                this.SetChannel(d + (col * this.BytesPerPixel), plane, 0);
+        }
+
+        p.MarkDirty(x, y, x + width, y + height);
+    }
+
+    // With the lock.
+    private long DrawnOf(int plane) => this._pages[plane / PlanesPerPage].Drawn[plane % PlanesPerPage];
 
     public static byte Get4444(ushort texel, int plane) => (byte)(((texel >> Bgra4444ChannelShifts[plane]) & 0xF) * 17);
 
@@ -101,8 +121,6 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
     public int MaxPlanes => this.MaxPages * PlanesPerPage;
 
-    public static int PaddedArea(int width, int height) => (width + (2 * Padding)) * (height + (2 * Padding));
-
     public bool CanHold(int width, int height) => width + (2 * Padding) <= this.Width && height + (2 * Padding) <= this.Height;
 
     /// <summary>Keeps the textures, which fonts refer to; between frames, as no glyph of the old contents may be drawn afterwards.</summary>
@@ -115,6 +133,10 @@ internal sealed unsafe class GlyphAtlas : IDisposable
             {
                 NativeMemory.Clear(p.Shadow, (nuint)(this.Pitch * this.Height));
                 p.CursorsPerPlane.AsSpan().Clear();
+                for (var i = 0; i < PlanesPerPage; i++)
+                    p.Generations[i]++;
+                p.Recycled.AsSpan().Clear();
+                p.Drawn.AsSpan().Clear();
                 p.MarkDirty(0, 0, this.Width, this.Height);
             }
 
@@ -123,37 +145,51 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         }
     }
 
-    /// <summary>Between frames, as for <see cref="Clear"/>; glyphs are allocated in the plane from now on.</summary>
-    public void ClearPlane(int page, int plane)
+    /// <summary>
+    /// Between frames. The least recently drawn plane is allocated in from its start, and its glyphs are of an older generation
+    /// from now on.
+    /// </summary>
+    /// <returns>The plane, numbered page * <see cref="PlanesPerPage"/> + plane.</returns>
+    public int RecycleLeastRecentlyDrawn()
     {
         Misc.DebugAssertMainThread();
         lock (this._sync)
         {
-            var p = this._pages[page];
-            if (this.Subpixel)
+            var victim = this.FirstPlane;
+            for (var i = victim + this.PlaneStep; i < this._frontier && i / PlanesPerPage < this._pages.Count; i += this.PlaneStep)
             {
-                NativeMemory.Clear(p.Shadow, (nuint)(this.Pitch * this.Height));
-            }
-            else
-            {
-                for (var row = 0; row < this.Height; row++)
-                {
-                    var d = p.Shadow + (row * this.Pitch);
-                    for (var col = 0; col < this.Width; col++)
-                        this.SetChannel(d + (col * this.BytesPerPixel), plane, 0);
-                }
+                if (this.DrawnOf(i) < this.DrawnOf(victim))
+                    victim = i;
             }
 
+            var p = this._pages[victim / PlanesPerPage];
+            var plane = victim % PlanesPerPage;
             p.CursorsPerPlane[plane] = default;
-            p.MarkDirty(0, 0, this.Width, this.Height);
-            this._current = (page * PlanesPerPage) + plane;
+            p.Generations[plane]++;
+            p.Recycled[plane] = true;
+            this._current = victim;
+            return victim;
         }
     }
 
-    /// <summary>The plane is a channel index, and (x, y) the top left inside the padding.</summary>
-    public bool TryAllocate(int width, int height, out int page, out int plane, out int x, out int y)
+    /// <summary>Marks the plane drawn at <paramref name="tick"/>.</summary>
+    /// <returns>False if <paramref name="generation"/> is no longer the plane's, as it was reused since.</returns>
+    public bool Touch(int page, int plane, uint generation, long tick)
     {
-        page = plane = x = y = 0;
+        lock (this._sync)
+        {
+            var p = this._pages[page];
+            if (p.Generations[plane] != generation)
+                return false;
+            p.Drawn[plane] = tick;
+            return true;
+        }
+    }
+
+    /// <summary>The area is emptied first in a reused plane, and <paramref name="tick"/> marks the plane drawn.</summary>
+    public bool TryAllocate(int width, int height, long tick, out Allocation res)
+    {
+        res = default;
         var w = width + (2 * Padding);
         var h = height + (2 * Padding);
         if (!this.CanHold(width, height))
@@ -167,15 +203,18 @@ internal sealed unsafe class GlyphAtlas : IDisposable
             int needed;
             lock (this._sync)
             {
-                page = this._current / PlanesPerPage;
-                plane = this._current % PlanesPerPage;
-                ref var s = ref this._pages[page].CursorsPerPlane[plane];
+                var page = this._current / PlanesPerPage;
+                var plane = this._current % PlanesPerPage;
+                var p = this._pages[page];
+                ref var s = ref p.CursorsPerPlane[plane];
                 if (s.X + w > this.Width)
                     s = new() { Y = s.Y + s.Height };
                 if (s.Y + h <= this.Height)
                 {
-                    x = s.X + Padding;
-                    y = s.Y + Padding;
+                    res = new(page, plane, s.X + Padding, s.Y + Padding, p.Generations[plane]);
+                    if (p.Recycled[plane])
+                        this.ZeroRect(p, plane, s.X, s.Y, w, h);
+                    p.Drawn[plane] = tick;
                     s.X += w;
                     s.Height = Math.Max(s.Height, h);
                     return true;
@@ -248,43 +287,6 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
             p.MarkDirty(x, y, x + width, y + height);
         }
-    }
-
-    public byte[] Read(int page, int plane, int x, int y, int width, int height)
-    {
-        var alpha = new byte[width * height];
-        lock (this._sync)
-        {
-            var src = this._pages[page].Shadow + (y * this.Pitch) + (x * this.BytesPerPixel);
-            for (var row = 0; row < height; row++)
-            {
-                var s = src + (row * this.Pitch);
-                for (var col = 0; col < width; col++)
-                    alpha[(row * width) + col] = this.GetChannel(s + (col * this.BytesPerPixel), plane);
-            }
-        }
-
-        return alpha;
-    }
-
-    public byte[] ReadLcd(int page, int x, int y, int width, int height)
-    {
-        var lcd = new byte[width * height * 3];
-        lock (this._sync)
-        {
-            var src = this._pages[page].Shadow + (y * this.Pitch) + (x * this.BytesPerPixel);
-            for (var row = 0; row < height; row++)
-            {
-                var s = src + (row * this.Pitch);
-                for (var col = 0; col < width; col++)
-                {
-                    for (var c = 0; c < 3; c++)
-                        lcd[(((row * width) + col) * 3) + c] = this.GetChannel(s + (col * this.BytesPerPixel), c);
-                }
-            }
-        }
-
-        return lcd;
     }
 
     /// <summary>On the thread that calls Present.</summary>
@@ -396,6 +398,15 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
         public RowCursor[] CursorsPerPlane { get; } = new RowCursor[PlanesPerPage];
 
+        /// <summary>Bumped each time the plane is emptied or reused.</summary>
+        public uint[] Generations { get; } = new uint[PlanesPerPage];
+
+        /// <summary>Reused since the last Clear, keeping its earlier pixels where nothing was placed since.</summary>
+        public bool[] Recycled { get; } = new bool[PlanesPerPage];
+
+        /// <summary>The tick a glyph in the plane was last drawn or placed at.</summary>
+        public long[] Drawn { get; } = new long[PlanesPerPage];
+
         public int DirtyLeft { get; private set; }
 
         public int DirtyTop { get; private set; }
@@ -431,4 +442,12 @@ internal sealed unsafe class GlyphAtlas : IDisposable
 
         public record struct RowCursor(int X, int Y, int Height);
     }
+
+    /// <summary>Where a glyph was placed.</summary>
+    /// <param name="Page">The page.</param>
+    /// <param name="Plane">A channel index.</param>
+    /// <param name="X">The left inside the padding.</param>
+    /// <param name="Y">The top inside the padding.</param>
+    /// <param name="Generation">Of the plane, which a glyph placed there keeps. <seealso cref="Touch"/></param>
+    public readonly record struct Allocation(int Page, int Plane, int X, int Y, uint Generation);
 }

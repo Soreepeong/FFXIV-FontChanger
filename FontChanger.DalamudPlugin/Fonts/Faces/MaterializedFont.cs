@@ -30,6 +30,9 @@ internal sealed unsafe class MaterializedFont : IDisposable
     private readonly SystemFallbackFonts _fallbackFonts;
     private readonly bool _systemFallback;
 
+    // Shared by the fonts made together, and owns their sources.
+    private readonly FaceSourceCache _sources;
+
     // The font's sizes are relative to its first element's.
     private readonly float _referenceSize;
 
@@ -37,6 +40,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
     private readonly MaterializedFontElement? _primary;
     private readonly int _measureMode;
 
+    // Without the elements that couldn't be set up.
     private readonly MaterializedFontElement[] _elements;
     private readonly MaterializedFontElement _gameElement;
     private readonly Dictionary<(string Family, int Weight, int Stretch, int Style, float Scale), MaterializedFontElement> _fallbackElements = [];
@@ -49,61 +53,75 @@ internal sealed unsafe class MaterializedFont : IDisposable
     private readonly Dictionary<(Pointer<AtkFontManager.Font> Game, Rune Rune), MaterializedFontElement?> _elementCache = [];
     private int? _ownCodepointCount;
 
-    public MaterializedFont(FontServices services, Font def, bool systemFallback, SystemFallbackFonts fallbackFonts)
+    /// <summary>An element that can't be set up is left out with a warning; throws if none of them can.</summary>
+    public MaterializedFont(FontServices services, Font def, bool systemFallback, SystemFallbackFonts fallbackFonts, FaceSourceCache sources)
     {
         this._services = services;
         this._def = def;
         this._systemFallback = systemFallback;
         this._fallbackFonts = fallbackFonts;
+        this._sources = sources;
         this._referenceSize = def.Elements.Count != 0 && def.Elements[0].Size > 0 ? def.Elements[0].Size : 1;
         this._gameElement = new(new() { Size = this._referenceSize, Source = ElementSource.Game }, null, this._referenceSize);
 
+        // The first installed font's measuring mode is known before the sources are made with it, as shared sources can't change it afterwards.
+        var installed = def.Elements.Select(e => e.Source is ElementSource.DirectWrite or ElementSource.FreeType && IsInstalled(services, e.Lookup)).ToArray();
+        var first = Array.IndexOf(installed, true);
+        this._measureMode = first < 0 ? 0 : def.Elements[first].DirectWrite.MeasureMode;
+
         var elements = new List<MaterializedFontElement>();
-        try
+        for (var i = 0; i < def.Elements.Count; i++)
         {
-            foreach (var e in def.Elements)
-                elements.Add(new(e, CreateSource(e, services, def.Name), this._referenceSize));
-        }
-        catch
-        {
-            foreach (var e in elements)
-                e.Dispose();
-            throw;
+            var e = def.Elements[i];
+            try
+            {
+                var element = new MaterializedFontElement(e, this.CreateSource(e), this._referenceSize);
+                elements.Add(element);
+                if (this._primary is null && installed[i])
+                    this._primary = element;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Warning(ex, "{font}: element {index} ({family}) can't be set up and is left out", def.Name, i + 1, e.Lookup.FamilyName);
+            }
         }
 
+        if (elements.Count == 0 && def.Elements.Count != 0)
+            throw new InvalidOperationException("None of its elements can be set up.");
         this._elements = elements.ToArray();
-
-        // A font that isn't installed gets an EmptyFaceSource.
-        this._primary = Array.Find(
-            this._elements,
-            e => e.Def.Source is ElementSource.DirectWrite or ElementSource.FreeType && e.Source is not EmptyFaceSource);
-        this._measureMode = this._primary?.Def.DirectWrite.MeasureMode ?? 0;
-        foreach (var e in this._elements)
-            e.Source?.MeasureMode = this._measureMode;
     }
 
     /// <summary>Excludes codepoints drawn with the game's glyphs.</summary>
     public int OwnCodepointCount => this._ownCodepointCount ??= this.CountOwnCodepoints();
 
-    public static MaterializedFont CreateGame(FontServices services, bool systemFallback, SystemFallbackFonts fallbackFonts)
+    public static MaterializedFont CreateGame(FontServices services, bool systemFallback, SystemFallbackFonts fallbackFonts, FaceSourceCache sources)
     {
         var element = new FontElement { Size = 1, Source = ElementSource.Game, Ranges = RuneRange.From(0, 0x10FFFF) };
-        return new(services, new() { Name = "(game)", Elements = [element] }, systemFallback, fallbackFonts);
+        return new(services, new() { Name = "(game)", Elements = [element] }, systemFallback, fallbackFonts, sources);
     }
 
+    /// <summary>The sources are left to the <see cref="FaceSourceCache"/>.</summary>
     public void Dispose()
     {
-        foreach (var e in this._elements)
-            e.Dispose();
-        foreach (var e in this._fallbackElements.Values)
-            e.Dispose();
-        this._fallbackElements.Clear();
-        foreach (var e in this._fittedFallback.Values.SelectMany(e => e))
-            e.Dispose();
-        this._fittedFallback.Clear();
         foreach (var p in this._probes.Values)
             p?.Dispose();
         this._probes.Clear();
+    }
+
+    /// <summary>Does the slow parts of the first lookups ahead, on the thread the font is made on.</summary>
+    public void Prepare()
+    {
+        _ = this.OwnCodepointCount;
+        if (!this._systemFallback || this.GetGameSize() <= 0)
+            return;
+        try
+        {
+            _ = this.OpenFittingProbes();
+        }
+        catch (Exception)
+        {
+            // GetFittedFallback tries again, and logs why.
+        }
     }
 
     public bool TryGetElement(ReadOnlySpan<Rune> grapheme, AtkFontManager.Font* game, [NotNullWhen(true)] out MaterializedFontElement? element)
@@ -177,38 +195,61 @@ internal sealed unsafe class MaterializedFont : IDisposable
         return true;
     }
 
-    /// <summary>As FontChanger's FontElement::GetBaseFont; null for the replaced game font.</summary>
-    private static IFaceSource? CreateSource(FontElement def, FontServices services, string fontName)
+    private static bool IsInstalled(FontServices services, LookupStruct lookup)
     {
-        IFaceSource source;
-        switch (def.Source)
-        {
-            // FontChanger's game font elements name a family read from the game's files; those made here name none and
-            // mean the replaced font.
-            case ElementSource.Game when def.Lookup.FamilyName.Length != 0:
-                source = (IFaceSource?)GameFontDataFaceSource.Create(def, fontName) ?? new EmptyFaceSource(def.Size, def.EmptyAscent, def.EmptyLineHeight);
-                break;
+        if (!services.TryFindFont(lookup, out var match))
+            return false;
+        match.Dispose();
+        return true;
+    }
 
-            case ElementSource.Game:
-                return null;
+    /// <summary>As FontChanger's FontElement::GetBaseFont; null for the replaced game font.</summary>
+    private IFaceSource? CreateSource(FontElement def)
+    {
+        // FontChanger's game font elements name a family read from the game's files; those made here name none and mean
+        // the replaced font.
+        if (def.Source == ElementSource.Game && def.Lookup.FamilyName.Length == 0)
+            return null;
 
-            case ElementSource.DirectWrite or ElementSource.FreeType:
-                source = (IFaceSource?)OutlineFaceSource.Create(services, def, fontName) ?? new EmptyFaceSource(0, 0, 0);
-                break;
-
-            case ElementSource.GlyphImages:
-                source = ImageFaceSource.Create(def, services.Images);
-                break;
-
-            default:
-                source = new EmptyFaceSource(def.Size, def.EmptyAscent, def.EmptyLineHeight);
-                break;
-        }
+        var services = this._services;
+        var fontName = this._def.Name;
+        var source = this._sources.GetOrCreate(
+            def,
+            this._measureMode,
+            () => {
+                IFaceSource made = def.Source switch
+                {
+                    ElementSource.Game => (IFaceSource?)GameFontDataFaceSource.Create(def, fontName) ?? new EmptyFaceSource(def.Size, def.EmptyAscent, def.EmptyLineHeight),
+                    ElementSource.DirectWrite or ElementSource.FreeType => (IFaceSource?)OutlineFaceSource.Create(services, def, fontName) ?? new EmptyFaceSource(0, 0, 0),
+                    ElementSource.GlyphImages => ImageFaceSource.Create(def, services.Images),
+                    _ => new EmptyFaceSource(def.Size, def.EmptyAscent, def.EmptyLineHeight),
+                };
+                made.MeasureMode = this._measureMode;
+                return made;
+            })!;
 
         // As in FontChanger, glyphs are merged only around fonts that draw outlines or images.
         if (def.GlyphMerging is not { } merging || def.Source is not (ElementSource.DirectWrite or ElementSource.FreeType or ElementSource.GlyphImages))
             return source;
-        return MergingFaceSource.Create(source, def, merging, services, fontName);
+        var merged = this._sources.Own(MergingFaceSource.Create(source, def, merging, services, fontName));
+        merged.MeasureMode = this._measureMode;
+        return merged;
+    }
+
+    // The size of the game font of the font's name; 0 if there is none.
+    private float GetGameSize() =>
+        Math.Max(
+            0,
+            FontNames.FontNamesOf(Preset.FamilyOf(this._def.Name))
+                     .FirstOrDefault(f => string.Equals(f.Name, this._def.Name, StringComparison.OrdinalIgnoreCase))
+                     .Size);
+
+    /// <summary>Returns the drawn probe.</summary>
+    private IFontProbe OpenFittingProbes()
+    {
+        if (!this._gameProbe.Opened)
+            this._gameProbe = (GameFontProbe.Open(this._def.Name), true);
+        return this._drawnProbe ??= FontsFromSystemFont.ProbeFont(this._def, this.TryOpenProbe);
     }
 
     private static (int Ascent, int LineHeight) GetElementMetrics(MaterializedFontElement element, float px, AtkFontManager.Font* game)
@@ -305,22 +346,20 @@ internal sealed unsafe class MaterializedFont : IDisposable
                 Ranges = RuneRange.From(0, 0x10FFFF),
                 DirectWrite = primary?.DirectWrite ?? DirectWriteParams.Default,
             };
-            var source = OutlineFaceSource.Create(this._services, def, this._def.Name);
+            var source = this.CreateSource(def);
 
             // Rendered as the fallback font's own bitmaps and gasp table want at its size, not as the primary element's.
-            if (source is not null)
+            if (source is OutlineFaceSource outline)
             {
-                using var probe = source.CreateProbe();
+                using var probe = outline.CreateProbe();
                 var renderMode = FontsFromSystemFont.GetRenderMode(probe, def.Size);
                 if (renderMode != def.DirectWrite.RenderMode)
                 {
-                    source.Dispose();
                     def = def with { DirectWrite = def.DirectWrite with { RenderMode = renderMode } };
-                    source = OutlineFaceSource.Create(this._services, def, this._def.Name);
+                    source = this.CreateSource(def);
                 }
             }
 
-            source?.MeasureMode = this._measureMode;
             element = new(def, source, this._referenceSize);
             this._fallbackElements.Add(key, element);
         }
@@ -338,19 +377,13 @@ internal sealed unsafe class MaterializedFont : IDisposable
         fitted = [];
         try
         {
-            var size = FontNames.FontNamesOf(Preset.FamilyOf(this._def.Name))
-                                .FirstOrDefault(f => string.Equals(f.Name, this._def.Name, StringComparison.OrdinalIgnoreCase))
-                                .Size;
+            var size = this.GetGameSize();
             if (size > 0)
             {
-                if (!this._gameProbe.Opened)
-                    this._gameProbe = (GameFontProbe.Open(this._def.Name), true);
-                this._drawnProbe ??= FontsFromSystemFont.ProbeFont(this._def, this.TryOpenProbe);
-                fitted = FontsFromSystemFont.MakeFallbackElements(this._def, size, lookup, this.TryOpenProbe, this._drawnProbe, this._gameProbe.Probe)
-                                            .Select(e => new MaterializedFontElement(e, CreateSource(e, this._services, this._def.Name), this._referenceSize))
+                var drawnProbe = this.OpenFittingProbes();
+                fitted = FontsFromSystemFont.MakeFallbackElements(this._def, size, lookup, this.TryOpenProbe, drawnProbe, this._gameProbe.Probe)
+                                            .Select(e => new MaterializedFontElement(e, this.CreateSource(e), this._referenceSize))
                                             .ToArray();
-                foreach (var e in fitted)
-                    e.Source?.MeasureMode = this._measureMode;
             }
         }
         catch (Exception ex)

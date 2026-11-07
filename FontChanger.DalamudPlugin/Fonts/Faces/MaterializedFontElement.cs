@@ -14,13 +14,14 @@ namespace FontChanger.DalamudPlugin.Fonts.Faces;
 /// At a font size <c>px</c> an element draws at <c>px * Size / reference</c> and scales its pixel values by
 /// <c>px / reference</c>, the reference being the font's first element's size.
 /// </summary>
-internal sealed class MaterializedFontElement(FontElement def, IFaceSource? source, float referenceSize) : IDisposable
+internal sealed class MaterializedFontElement(FontElement def, IFaceSource? source, float referenceSize)
 {
     private readonly Dictionary<float, float> _referenceAdvances = [];
 
     public FontElement Def { get; } = def;
 
-    /// <summary>Null when the glyphs are copied from the replaced game font.</summary>
+    /// <summary>Null when the glyphs are copied from the replaced game font. May be shared with other elements.</summary>
+    /// <seealso cref="FaceSourceCache"/>
     public IFaceSource? Source { get; } = source;
 
     public bool DrawsGame => this.Source is null;
@@ -69,8 +70,6 @@ internal sealed class MaterializedFontElement(FontElement def, IFaceSource? sour
             Top = g.Top + this.GetVerticalShift(fontPx, font),
         };
     }
-
-    public void Dispose() => this.Source?.Dispose();
 
     /// <summary><paramref name="value"/> is in pixels at the font's reference size.</summary>
     private int ScalePixels(float value, float fontPx) => (int)Misc.StdRound(value * fontPx / referenceSize);
