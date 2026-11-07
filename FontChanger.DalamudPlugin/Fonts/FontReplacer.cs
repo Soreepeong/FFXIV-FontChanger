@@ -156,6 +156,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
             field = Misc.DebugAssertMainThread(value);
             this._layout.Clear();
             this.DisposeFonts();
+            this._sizedByRequest.Clear();
             this._sizedFonts.Clear();
             this._gameFont = MaterializedFont.CreateGame(this.Services, value.SystemFallback, this._fallbackFonts);
             this.MaterializeFonts(this._presetFonts, value.Preset, value.SystemFallback);
@@ -399,6 +400,7 @@ internal sealed unsafe partial class FontReplacer : IDisposable
         this._lastEviction.Clear();
         lock (this._pendingPageAtlases)
             this._pendingPageAtlases.Clear();
+        this._sizedByRequest.Clear();
         this._sizedFonts.Clear();
         this.DisposeAtlases();
         this.ResyncCopies();

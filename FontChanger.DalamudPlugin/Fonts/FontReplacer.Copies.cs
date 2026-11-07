@@ -20,6 +20,9 @@ internal sealed unsafe partial class FontReplacer
     private readonly Dictionary<Pointer<AtkFontManager.Font>, CopyInfo> _copies = [];
     private readonly Dictionary<(MaterializedFont Font, int HalfPx, string FontName, TextFace Face, bool Bold), SizedFont> _sizedFonts = [];
 
+    /// <summary>GetSized's results by its arguments, as finding the family's fonts for a request is slow and wrapping asks per character.</summary>
+    private readonly Dictionary<(Pointer<AtkFontManager.Font> Original, int HalfPx, TextFace Face, bool Bold), SizedFont> _sizedByRequest = [];
+
     // Each game font family gets an atlas of its own, so that one family's text can't push another's out; AXIS, the family of most
     // of the UI's text, has its own page size and count.
     private readonly Dictionary<string, GlyphAtlas> _atlases = new(StringComparer.OrdinalIgnoreCase);
@@ -31,6 +34,8 @@ internal sealed unsafe partial class FontReplacer
     /// <summary>Returns false if there were no copies (of <paramref name="only"/>, if given).</summary>
     private bool ResyncCopies(AtkFontManager.Font* only = null)
     {
+        // A family's fonts may have become ready since.
+        this._sizedByRequest.Clear();
         var any = false;
         foreach (var (copy, info) in this._copies)
         {
@@ -52,6 +57,10 @@ internal sealed unsafe partial class FontReplacer
     private SizedFont GetSized(Pointer<AtkFontManager.Font> original, int halfPx, TextFace face, bool bold)
     {
         face = this.ResolveFace(face);
+        var request = (original, halfPx, face, bold);
+        if (this._sizedByRequest.TryGetValue(request, out var known))
+            return known;
+
         var px = halfPx / 2f;
         var fonts = new List<(string Name, float Size, MaterializedFont Font, Pointer<AtkFontManager.Font> Game)>();
         if (FontNames.TryGetFontName(original, out var originalName))
@@ -97,6 +106,7 @@ internal sealed unsafe partial class FontReplacer
             this._sizedFonts.Add(key, sized);
         }
 
+        this._sizedByRequest[request] = sized;
         return sized;
     }
 

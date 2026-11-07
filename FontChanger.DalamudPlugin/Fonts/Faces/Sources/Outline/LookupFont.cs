@@ -158,17 +158,16 @@ internal sealed unsafe class LookupFont : IDisposable
         if (!this.IsVariable)
             return this.Face;
 
-        var key = this._autoOpticalSize ? Misc.StdRound(px * 4) / 4 : 0;
+        // Keyed by the clamped size, so that sizes past the axis's range share one face; making a face is slow.
+        var range = this._opticalSizeRange;
+        var key = this._autoOpticalSize ? Math.Clamp(Misc.StdRound(px * 4) / 4, range.minValue, range.maxValue) : 0;
         if (this._sizedFaces.TryGetValue(key, out var existing))
             return existing.Value;
 
         var values = new DWRITE_FONT_AXIS_VALUE[this._axes.Length + (this._autoOpticalSize ? 1 : 0)];
         this._axes.CopyTo(values, 0);
         if (this._autoOpticalSize)
-        {
-            var range = this._opticalSizeRange;
-            values[^1] = new() { axisTag = DWRITE_FONT_AXIS_TAG.DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE, value = Math.Clamp(key, range.minValue, range.maxValue) };
-        }
+            values[^1] = new() { axisTag = DWRITE_FONT_AXIS_TAG.DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE, value = key };
 
         var face = default(MyComPtr<IDWriteFontFace5>);
         fixed (DWRITE_FONT_AXIS_VALUE* p = values)

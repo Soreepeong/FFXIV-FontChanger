@@ -25,8 +25,10 @@ internal sealed unsafe class FontServices : IDisposable
         try
         {
             var iid = IID.IID_IDWriteFactory7;
+            // Isolated, as a shared factory keeps remapping the font cache service's cache as new sizes are shaped, which stalls for tens of
+            // milliseconds.
             fixed (IDWriteFactory7** factory = this._factory)
-                DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_SHARED, &iid, (IUnknown**)factory).ThrowOnError();
+                DWriteCreateFactory(DWRITE_FACTORY_TYPE.DWRITE_FACTORY_TYPE_ISOLATED, &iid, (IUnknown**)factory).ThrowOnError();
             fixed (IDWriteTextAnalyzer** analyzer = this._analyzer)
                 this._factory.Value->CreateTextAnalyzer(analyzer).ThrowOnError();
 
