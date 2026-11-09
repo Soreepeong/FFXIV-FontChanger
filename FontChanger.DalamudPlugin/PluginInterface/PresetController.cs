@@ -21,7 +21,8 @@ internal sealed class PresetController : IDisposable
     private static readonly TimeSpan ReloadDelay = TimeSpan.FromMilliseconds(500);
 
     private readonly Configuration.Configuration _configuration;
-    private readonly FontReplacer _replacer;
+    private readonly FontServices _services;
+    private readonly FontLoader _loader;
     private readonly Lock _loadSync = new();
     private readonly Dictionary<string, FileSystemWatcher> _presetWatchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, FileSystemWatcher> _folderWatchers = new(StringComparer.OrdinalIgnoreCase);
@@ -32,10 +33,11 @@ internal sealed class PresetController : IDisposable
     private bool _pendingSettingsLoad;
     private volatile bool _disposed;
 
-    public PresetController(Configuration.Configuration configuration, FontReplacer replacer)
+    public PresetController(Configuration.Configuration configuration, FontServices services, FontLoader loader)
     {
         this._configuration = configuration;
-        this._replacer = replacer;
+        this._services = services;
+        this._loader = loader;
         this._timer = new(_ => this.RunPending());
         this.Schedule(false);
     }
@@ -119,6 +121,9 @@ internal sealed class PresetController : IDisposable
         IsFace(family) ? FontNames.Families.SelectMany(FontNames.FontNamesOf) : FontNames.FontNamesOf(family);
 
     public void Reload() => this.Schedule(false);
+
+    /// <summary>The fonts requested last couldn't be made, and the earlier ones stay.</summary>
+    public void ReportFailure(string error) => this.Status = $"Applying failed ({error}); keeping the last loaded";
 
     private static ImmutableList<FontSource> GetChain(Configuration.Configuration configuration, string family) =>
         configuration.FamilySources.GetValueOrDefault(family, ImmutableList<FontSource>.Empty);
@@ -274,7 +279,7 @@ internal sealed class PresetController : IDisposable
             (combined?.GlyphImageFolders ?? []).Concat(faces.Values.SelectMany(p => p.GlyphImageFolders)).Distinct(StringComparer.OrdinalIgnoreCase));
         Plugin.Framework.RunOnFrameworkThread(() => {
             if (!this._disposed)
-                this._replacer.Fonts = new(combined, systemFallback, faces);
+                this._loader.Request(new(combined, systemFallback, faces));
         }).ContinueWith(
             task => {
                 Plugin.Log.Error(task.Exception!, "Applying the preset failed");
@@ -300,7 +305,7 @@ internal sealed class PresetController : IDisposable
             var key = (l.FamilyName, l.Weight, l.Stretch, l.Style);
             if (!opened.TryGetValue(key, out var cached))
             {
-                this._replacer.Services.TryOpenProbe(l, out cached);
+                this._services.TryOpenProbe(l, out cached);
                 opened[key] = cached;
             }
 

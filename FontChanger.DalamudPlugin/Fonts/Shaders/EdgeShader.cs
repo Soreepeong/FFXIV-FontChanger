@@ -6,6 +6,7 @@ using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
+using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Utilities;
 
@@ -27,8 +28,26 @@ internal sealed unsafe class EdgeShader : IDisposable
 
     private delegate byte LoadShadersDelegate(AtkServer* server);
 
+    /// <summary>
+    /// The plugin's shader draws a round edge of any width unless edges are the game's own 1 px. The game's shader, widened only
+    /// by claiming a narrower texture (blocky past about 1.5 px), is the fallback.
+    /// </summary>
+    public void Apply(EdgeSettings value)
+    {
+        value = value.Drawn();
+        try
+        {
+            this.SetSoftness(value.Enabled && value != new EdgeSettings { Enabled = true } ? value.Softness : null);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Using the plugin's edge shader failed; edges are widened with the game's");
+            this.SetSoftness(null);
+        }
+    }
+
     /// <summary>Null restores the game's shader.</summary>
-    public void SetSoftness(float? value)
+    private void SetSoftness(float? value)
     {
         Misc.DebugAssertMainThread();
 

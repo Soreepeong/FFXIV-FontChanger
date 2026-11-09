@@ -17,6 +17,8 @@ internal abstract class NominalFaceSource : IFaceSource
 
     public abstract IEnumerable<Rune> Codepoints { get; }
 
+    public virtual bool DrawsBitmaps => false;
+
     public abstract uint GetGlyphId(Rune rune);
 
     public virtual float GetAdvance(float px, uint glyphId)

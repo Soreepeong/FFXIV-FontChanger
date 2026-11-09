@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,10 +11,8 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 
-using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts;
 using FontChanger.DalamudPlugin.Fonts.Enums;
-using FontChanger.DalamudPlugin.Fonts.Shaders;
 using FontChanger.DalamudPlugin.Game;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;
@@ -23,12 +20,10 @@ namespace FontChanger.DalamudPlugin.PluginInterface;
 public sealed class Plugin : IAsyncDalamudPlugin
 {
     private const string CommandName = "/fontchanger";
-    private const long SubpixelRefreshMs = 2000;
 
     private readonly WindowSystem _windowSystem = new(Assembly.GetExecutingAssembly().GetName().Name);
     private readonly DisposeSafety.ScopedFinalizer _finalizer = new();
 
-    private long _lastSubpixelQuery;
     private ConfigWindow _configWindow = null!;
 
     public Plugin()
@@ -52,51 +47,20 @@ public sealed class Plugin : IAsyncDalamudPlugin
         await using var disposeOnException = new DisposeSafety.ScopedFinalizer().With(_finalizer);
 
         await Framework.RunOnFrameworkThread(() => {
-            this.Replacer = new();
-            Optional("Nameplate text", () => this.NamePlates = new(this.Replacer));
-            Optional("Chat log text", () => this.ChatLog = new(this.Replacer));
-            Optional("Line breaking", () => this.LineBreaker = new(this.Replacer));
-            this._finalizer.Add(() => Framework.RunOnFrameworkThread(() => {
-                this.LineBreaker?.Dispose();
-                this.ChatLog?.Dispose();
-                this.NamePlates?.Dispose();
-                this.Replacer.Dispose();
-            }));
-
-            this.Replacer.Atlas = this.Configuration.Atlas;
-            this.Replacer.Edge = this.Configuration.Edge;
-            this.Replacer.VerticalSubpixel = this.Configuration.VerticalSubpixel;
-            this.ApplySubpixel();
-            this.NamePlates?.Mode = this.Configuration.NamePlates;
-            foreach (var (face, name) in TextFaceNames.Faces)
-                this.SetFaceFontSize(face, this.Configuration.FaceFontSizes.GetValueOrDefault(name));
             foreach (var rule in this.Configuration.NamePlateRules)
                 RegisterNamePlateRule(rule);
-            return;
-
-            static void Optional(string part, Action create)
-            {
-                try
-                {
-                    create();
-                }
-                catch (Exception ex)
-                {
-                    Log.Warning(ex, "{Part} is off", part);
-                }
-            }
+            this.Coordinator = new(this.Configuration);
         });
-
-        this.Presets = this._finalizer.Add<PresetController>(new(this.Configuration, this.Replacer));
+        this._finalizer.Add(() => this.Coordinator.DisposeAsync().AsTask());
 
         this._windowSystem.AddWindow(this._configWindow = new(this));
         this._finalizer.Add(this._windowSystem.RemoveAllWindows);
 
-        PluginInterface.UiBuilder.Draw += this.Replacer.Upload;
-        this._finalizer.Add(() => PluginInterface.UiBuilder.Draw -= this.Replacer.Upload);
+        PluginInterface.UiBuilder.Draw += this.Coordinator.OnPresent;
+        this._finalizer.Add(() => PluginInterface.UiBuilder.Draw -= this.Coordinator.OnPresent);
 
-        Framework.Update += this.OnFrameworkUpdate;
-        this._finalizer.Add(() => Framework.Update -= this.OnFrameworkUpdate);
+        Framework.Update += this.Coordinator.OnUpdate;
+        this._finalizer.Add(() => Framework.Update -= this.Coordinator.OnUpdate);
 
         // Draw doubles as the Present callback, so it must keep running while the UI is hidden.
         PluginInterface.UiBuilder.DisableAutomaticUiHide = true;
@@ -151,17 +115,17 @@ public sealed class Plugin : IAsyncDalamudPlugin
     [PluginService]
     internal static INotificationManager NotificationManager { get; private set; } = null!;
 
-    internal FontReplacer Replacer { get; private set; } = null!;
+    internal FrameCoordinator Coordinator { get; private set; } = null!;
 
-    internal NamePlateText? NamePlates { get; private set; }
+    internal FontReplacer Replacer => this.Coordinator.Replacer;
 
-    internal ChatLogText? ChatLog { get; private set; }
+    internal NamePlateText? NamePlates => this.Coordinator.NamePlates;
 
-    internal LineBreaker? LineBreaker { get; private set; }
+    internal ChatLogText? ChatLog => this.Coordinator.ChatLog;
 
     internal Configuration.Configuration Configuration { get; }
 
-    internal PresetController Presets { get; private set; } = null!;
+    internal PresetController Presets => this.Coordinator.Presets;
 
     public ValueTask DisposeAsync() => this._finalizer.DisposeAsync();
 
@@ -176,30 +140,6 @@ public sealed class Plugin : IAsyncDalamudPlugin
         TextFaceNames.TryGetFace(TextFaceNames.NamePlateRuleTitleName(rule), out _);
     }
 
-    internal void SetFaceFontSize(TextFace face, int size)
-    {
-        if (TextFaceNames.ChatTabOf(face) is var tab and >= 0)
-            this.ChatLog?.SetFontSize(tab, size);
-    }
-
-    internal void ApplySubpixel()
-    {
-        this._lastSubpixelQuery = Environment.TickCount64;
-        try
-        {
-            this.Replacer.Subpixel =
-                SubpixelShaders.SettingsRecord.From(this.Configuration.Subpixel, this.Configuration.ClearType, PluginInterface.UiBuilder.WindowHandlePtr);
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Applying the subpixel text setting failed");
-        }
-    }
-
-    private void OnFrameworkUpdate(IFramework framework)
-    {
-        this.Replacer.EndFrame();
-        if (this.Configuration.Subpixel != SubpixelMode.Off && Environment.TickCount64 - this._lastSubpixelQuery >= SubpixelRefreshMs)
-            this.ApplySubpixel();
-    }
+    /// <summary>Saves the configuration, whose changes are applied at the next framework update.</summary>
+    internal void SaveConfiguration() => PluginInterface.SavePluginConfig(this.Configuration);
 }

@@ -8,6 +8,7 @@ using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 using FontChanger.DalamudPlugin.Configuration;
+using FontChanger.DalamudPlugin.Fonts;
 using FontChanger.DalamudPlugin.Fonts.Shaders;
 using FontChanger.DalamudPlugin.Utilities;
 
@@ -50,10 +51,15 @@ internal sealed partial class ConfigWindow : Window
 
     public override void Draw()
     {
-        var replacer = this._plugin.Replacer;
-        var enabled = replacer.Enabled;
+        var configuration = this._plugin.Configuration;
+        var enabled = configuration.Enabled;
         if (ImGui.Checkbox("Use Custom Fonts", ref enabled))
-            Plugin.Framework.RunOnTick(() => replacer.Enabled = enabled);
+        {
+            configuration.Enabled = enabled;
+            this.SaveConfiguration();
+        }
+
+        this.DrawFailed(Part.Replacer);
 
         var presets = this._plugin.Presets;
         ImGui.SameLine();
@@ -98,7 +104,6 @@ internal sealed partial class ConfigWindow : Window
         {
             configuration.Edge = pending;
             save = true;
-            Plugin.Framework.RunOnTick(() => t._plugin.Replacer.Edge = pending);
         }
 
         ImGui.Separator();
@@ -111,6 +116,8 @@ internal sealed partial class ConfigWindow : Window
             mode = subpixel ? SubpixelMode.System : SubpixelMode.Off;
             modeChanged = true;
         }
+
+        t.DrawFailed(Part.Subpixel);
 
         using (ImRaii.Disabled(!subpixel))
         {
@@ -135,7 +142,6 @@ internal sealed partial class ConfigWindow : Window
                 {
                     configuration.VerticalSubpixel = (VerticalSubpixelRenderer)renderer;
                     save = true;
-                    Plugin.Framework.RunOnTick(() => t._plugin.Replacer.VerticalSubpixel = (VerticalSubpixelRenderer)renderer);
                 }
             }
         }
@@ -151,10 +157,9 @@ internal sealed partial class ConfigWindow : Window
 
             configuration.Subpixel = mode;
             save = true;
-            Plugin.Framework.RunOnTick(t._plugin.ApplySubpixel);
         }
 
-        var applied = t._plugin.Replacer.Subpixel;
+        var applied = t._plugin.Coordinator.Applied.Subpixel;
         var clearType = t._pendingClearType
                         ?? (mode == SubpixelMode.System
                                 ? new(applied.Level, applied.Contrast, applied.Gamma, applied.GrayscaleContrast)
@@ -176,7 +181,6 @@ internal sealed partial class ConfigWindow : Window
         {
             configuration.ClearType = pendingClearType;
             save = true;
-            Plugin.Framework.RunOnTick(t._plugin.ApplySubpixel);
         }
 
         if (save) t.SaveConfiguration();
@@ -184,14 +188,14 @@ internal sealed partial class ConfigWindow : Window
 
     private static void DrawAdvancedTab(ConfigWindow t)
     {
-        if (t._plugin.NamePlates is { } namePlates)
+        var configuration = t._plugin.Configuration;
+        if (t._plugin.NamePlates is not null)
         {
-            var mode = (int)t._plugin.Configuration.NamePlates;
+            var mode = (int)configuration.NamePlates;
             if (Ig.Radios("Nameplate text rendering", ref mode, "None", "Once", "Live"))
             {
-                t._plugin.Configuration.NamePlates = (NamePlateMode)mode;
+                configuration.NamePlates = (NamePlateMode)mode;
                 t.SaveConfiguration();
-                Plugin.Framework.RunOnTick(() => namePlates.Mode = (NamePlateMode)mode);
             }
 
             ImGui.Separator();
@@ -200,7 +204,8 @@ internal sealed partial class ConfigWindow : Window
         ImGui.TextUnformatted("Glyph atlas pages");
 
         var changed = false;
-        var atlas = t._pendingAtlas ?? t._plugin.Replacer.Atlas;
+        var applied = configuration.Atlas.Clamped();
+        var atlas = t._pendingAtlas ?? applied;
 
         Span<int> axisSize = [atlas.AxisPageWidth, atlas.AxisPageHeight];
         changed |= ImGui.InputInt("AXIS page size", axisSize, 256);
@@ -233,14 +238,12 @@ internal sealed partial class ConfigWindow : Window
             }.Clamped();
         }
 
-        using (ImRaii.Disabled(t._pendingAtlas is null || t._pendingAtlas == t._plugin.Replacer.Atlas))
+        using (ImRaii.Disabled(t._pendingAtlas is null || t._pendingAtlas == applied))
         {
             if (ImGui.Button("Apply"))
             {
-                var pending = t._pendingAtlas!.Value;
+                configuration.Atlas = t._pendingAtlas!.Value;
                 t._pendingAtlas = null;
-                Plugin.Framework.RunOnTick(() => t._plugin.Replacer.Atlas = pending);
-                t._plugin.Configuration.Atlas = pending;
                 t.SaveConfiguration();
             }
         }
@@ -263,6 +266,15 @@ internal sealed partial class ConfigWindow : Window
         return value;
     }
 
+    // Beside the part's checkbox.
+    private void DrawFailed(Part part)
+    {
+        if (!this._plugin.Coordinator.Applied.Failed(part))
+            return;
+        ImGui.SameLine();
+        ImGui.TextDisabled("(off after an error until reloaded)");
+    }
+
     private void SaveOpen(bool open)
     {
         if (this._plugin.Configuration.ConfigWindowOpen == open)
@@ -271,5 +283,5 @@ internal sealed partial class ConfigWindow : Window
         this.SaveConfiguration();
     }
 
-    private void SaveConfiguration() => Plugin.PluginInterface.SavePluginConfig(this._plugin.Configuration);
+    private void SaveConfiguration() => this._plugin.SaveConfiguration();
 }

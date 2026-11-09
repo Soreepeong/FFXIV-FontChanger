@@ -12,6 +12,8 @@ public sealed class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 1;
 
+    public bool Enabled { get; set; } = true;
+
     [JsonProperty(TypeNameHandling = TypeNameHandling.None)]
     public ImmutableDictionary<string, ImmutableList<FontSource>> FamilySources
     {

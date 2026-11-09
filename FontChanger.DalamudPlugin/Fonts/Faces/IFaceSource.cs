@@ -51,4 +51,7 @@ internal interface IFaceSource : IDisposable
 
     /// <summary>Gets a value indicating whether <see cref="Rasterize"/> may run on several threads at once, while nothing else uses the source.</summary>
     bool RasterizesConcurrently => false;
+
+    /// <summary>Gets a value indicating whether its glyphs are bitmaps already, which drawing only scales.</summary>
+    bool DrawsBitmaps => false;
 }

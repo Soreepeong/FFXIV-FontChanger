@@ -4,7 +4,6 @@ using System.Runtime.InteropServices;
 
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
-using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -45,9 +44,6 @@ internal sealed unsafe class ChatLogText : IDisposable
     // Outlives the PreRefresh listener, which can only replace the refresh's values with a pointer.
     private AtkValue* _refreshValue;
 
-    // The game wraps a tab's messages only when they change.
-    private bool _relayoutPending = true;
-
     public ChatLogText(FontReplacer replacer)
     {
         this._replacer = replacer;
@@ -55,10 +51,6 @@ internal sealed unsafe class ChatLogText : IDisposable
         {
             this._replacer.AddNodeFaces(this.GetNodeFaces);
             this._finalizer.Add(() => this._replacer.RemoveNodeFaces(this.GetNodeFaces));
-            this._replacer.TextInvalidated += this.OnTextInvalidated;
-            this._finalizer.Add(() => this._replacer.TextInvalidated -= this.OnTextInvalidated);
-            Plugin.Framework.Update += this.OnFrameworkUpdate;
-            this._finalizer.Add(() => Plugin.Framework.Update -= this.OnFrameworkUpdate);
             this._refreshValue = (AtkValue*)NativeMemory.AllocZeroed((nuint)sizeof(AtkValue));
             this._finalizer.Add(() => NativeMemory.Free(this._refreshValue));
             Plugin.AddonLifecycle.RegisterListener(AddonEvent.PreRefresh, PanelNames, this.OnPreRefresh);
@@ -117,7 +109,8 @@ internal sealed unsafe class ChatLogText : IDisposable
         return panel is not null && panel->AtkUnitBase.IsReady ? panel : null;
     }
 
-    private void ReadPanels()
+    /// <summary>Between frames, every frame, as panels come and go.</summary>
+    public void ReadPanels()
     {
         this._tabs.Clear();
         for (var tab = 0; tab < PanelNames.Length; tab++)
@@ -153,15 +146,9 @@ internal sealed unsafe class ChatLogText : IDisposable
     private NodeFaces? GetNodeFaces(Pointer<AtkTextNode> node) =>
         this._tabs.TryGetValue((nint)node.Value, out var tab) ? new NodeFaces(TextFaceNames.ChatTab(tab)) : null;
 
-    private void OnTextInvalidated() => this._relayoutPending = true;
-
-    // Between frames, as the game's update may be what invalidated the text (a font it built).
-    private void OnFrameworkUpdate(IFramework framework)
+    /// <summary>Between frames, as the game wraps a tab's messages only when they change.</summary>
+    public void Relayout()
     {
-        this.ReadPanels();
-        if (!this._relayoutPending)
-            return;
-        this._relayoutPending = false;
         var stage = AtkStage.Instance();
         for (var tab = 0; tab < PanelNames.Length; tab++)
         {

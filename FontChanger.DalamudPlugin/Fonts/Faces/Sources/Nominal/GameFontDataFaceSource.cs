@@ -35,6 +35,8 @@ internal sealed class GameFontDataFaceSource : NominalFaceSource
 
     public override IEnumerable<Rune> Codepoints => this._fdt.Glyphs.Where(static g => Rune.IsValid(g.CharInt)).Select(static g => new Rune(g.CharInt));
 
+    public override bool DrawsBitmaps => true;
+
     public static GameFontDataFaceSource? Create(FontElement def, string fontName)
     {
         // On a tie, the smaller: fonts are listed smallest first.

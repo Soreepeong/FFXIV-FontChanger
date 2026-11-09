@@ -131,7 +131,6 @@ internal sealed partial class ConfigWindow
                                                   ? configuration.FaceFontSizes.Remove(family)
                                                   : configuration.FaceFontSizes.SetItem(family, released.Size);
                 this.SaveConfiguration();
-                Plugin.Framework.RunOnTick(() => this._plugin.SetFaceFontSize(face, released.Size));
             }
 
             if (ImGui.IsItemHovered())

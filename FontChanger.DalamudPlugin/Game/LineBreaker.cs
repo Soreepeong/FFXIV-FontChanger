@@ -11,7 +11,6 @@ using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.DalamudPlugin.Utilities.Unicode;
 
-using Lumina.Text;
 using Lumina.Text.Payloads;
 using Lumina.Text.ReadOnly;
 
@@ -83,7 +82,7 @@ internal sealed unsafe class LineBreaker : IDisposable
         try
         {
             if (first)
-                this._splittingOwnWord = this._replacer.Enabled && NeedsClusters(word);
+                this._splittingOwnWord = this._replacer.IsEnabled && NeedsClusters(word);
             if (this._splittingOwnWord)
                 return this.Split(wrapper, width, word, measuredWord, lineStart != 0);
         }

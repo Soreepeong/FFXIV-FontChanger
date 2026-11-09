@@ -51,6 +51,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
     private IFontProbe? _drawnProbe;
     private (IFontProbe? Probe, bool Opened) _gameProbe;
     private readonly Dictionary<(Pointer<AtkFontManager.Font> Game, Rune Rune), MaterializedFontElement?> _elementCache = [];
+    private readonly Dictionary<(float Px, Pointer<AtkFontManager.Font> Game), FontAlignment> _alignments = [];
     private int? _ownCodepointCount;
 
     /// <summary>An element that can't be set up is left out with a warning; throws if none of them can.</summary>
@@ -108,6 +109,13 @@ internal sealed unsafe class MaterializedFont : IDisposable
         this._probes.Clear();
     }
 
+    /// <summary>A game font was rebuilt, possibly from another file, so which of its glyphs exist is looked up again.</summary>
+    public void ForgetGameFonts()
+    {
+        this._elementCache.Clear();
+        this._alignments.Clear();
+    }
+
     /// <summary>Does the slow parts of the first lookups ahead, on the thread the font is made on.</summary>
     public void Prepare()
     {
@@ -161,9 +169,13 @@ internal sealed unsafe class MaterializedFont : IDisposable
 
     public FontAlignment GetAlignment(float px, AtkFontManager.Font* game)
     {
+        var key = (px, (Pointer<AtkFontManager.Font>)game);
+        if (this._alignments.TryGetValue(key, out var known))
+            return known;
+
         var (ascent, lineHeight) = this.GetLineMetrics(px, game);
         var first = this._elements.Length == 0 ? null : this._elements[0];
-        return new(
+        return this._alignments[key] = new(
             ascent,
             lineHeight,
             first?.GetRomanBaselineY(px, ascent) ?? ascent,

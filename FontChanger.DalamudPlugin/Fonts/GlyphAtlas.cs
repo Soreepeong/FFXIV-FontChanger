@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
@@ -32,13 +31,15 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     private static readonly byte[] Lookup8To4 = Enumerable.Range(0, 256).Select(v => (byte)(((v * 15) + 127) / 255)).ToArray();
 
     private readonly List<Page> _pages = [];
-    private readonly Lock _sync = new();
 
     private MyComPtr<ID3D11DeviceContext> _context;
 
     // Planes are numbered page * PlanesPerPage + plane; those from the frontier on are unused since Clear, those before it full.
     private int _current;
     private int _frontier;
+
+    // Something was allocated since Clear, so the pages have pixels to clear.
+    private bool _used = true;
 
     /// <summary>Sides up to 4096, as glyph positions take 12 bits.</summary>
     public GlyphAtlas(int width, int height, int maxPages, string name, bool subpixel, AtlasTextureFormat format)
@@ -54,7 +55,15 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         this._frontier = this.FirstPlane + this.PlaneStep;
     }
 
-    public event Action? PageAdded;
+    public enum AllocationResult
+    {
+        Placed,
+
+        /// <summary>Placed on a page added for it, which the copies drawing from the atlas have no texture slot of yet.</summary>
+        PlacedOnNewPage,
+
+        Full,
+    }
 
     public int Width { get; }
 
@@ -85,7 +94,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         *t = (ushort)((*t & ~(0xF << shift)) | (Lookup8To4[value] << shift));
     }
 
-    // With the lock. Every channel in a subpixel atlas.
+    // Every channel in a subpixel atlas.
     private void ZeroRect(Page p, int plane, int x, int y, int width, int height)
     {
         for (var row = y; row < y + height; row++)
@@ -104,7 +113,6 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         p.MarkDirty(x, y, x + width, y + height);
     }
 
-    // With the lock.
     private long DrawnOf(int plane) => this._pages[plane / PlanesPerPage].Drawn[plane % PlanesPerPage];
 
     public static byte Get4444(ushort texel, int plane) => (byte)(((texel >> Bgra4444ChannelShifts[plane]) & 0xF) * 17);
@@ -127,22 +135,24 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     public void Clear()
     {
         Misc.DebugAssertMainThread();
-        lock (this._sync)
+        foreach (var p in this._pages)
         {
-            foreach (var p in this._pages)
+            if (this._used)
             {
                 NativeMemory.Clear(p.Shadow, (nuint)(this.Pitch * this.Height));
-                p.CursorsPerPlane.AsSpan().Clear();
-                for (var i = 0; i < PlanesPerPage; i++)
-                    p.Generations[i]++;
-                p.Recycled.AsSpan().Clear();
-                p.Drawn.AsSpan().Clear();
                 p.MarkDirty(0, 0, this.Width, this.Height);
             }
 
-            this._current = this.FirstPlane;
-            this._frontier = this.FirstPlane + this.PlaneStep;
+            p.CursorsPerPlane.AsSpan().Clear();
+            for (var i = 0; i < PlanesPerPage; i++)
+                p.Generations[i]++;
+            p.Recycled.AsSpan().Clear();
+            p.Drawn.AsSpan().Clear();
         }
+
+        this._current = this.FirstPlane;
+        this._frontier = this.FirstPlane + this.PlaneStep;
+        this._used = false;
     }
 
     /// <summary>
@@ -153,87 +163,68 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     public int RecycleLeastRecentlyDrawn()
     {
         Misc.DebugAssertMainThread();
-        lock (this._sync)
+        var victim = this.FirstPlane;
+        for (var i = victim + this.PlaneStep; i < this._frontier && i / PlanesPerPage < this._pages.Count; i += this.PlaneStep)
         {
-            var victim = this.FirstPlane;
-            for (var i = victim + this.PlaneStep; i < this._frontier && i / PlanesPerPage < this._pages.Count; i += this.PlaneStep)
-            {
-                if (this.DrawnOf(i) < this.DrawnOf(victim))
-                    victim = i;
-            }
-
-            var p = this._pages[victim / PlanesPerPage];
-            var plane = victim % PlanesPerPage;
-            p.CursorsPerPlane[plane] = default;
-            p.Generations[plane]++;
-            p.Recycled[plane] = true;
-            this._current = victim;
-            return victim;
+            if (this.DrawnOf(i) < this.DrawnOf(victim))
+                victim = i;
         }
+
+        var p = this._pages[victim / PlanesPerPage];
+        var plane = victim % PlanesPerPage;
+        p.CursorsPerPlane[plane] = default;
+        p.Generations[plane]++;
+        p.Recycled[plane] = true;
+        this._current = victim;
+        return victim;
     }
 
     /// <summary>Marks the plane drawn at <paramref name="tick"/>.</summary>
     /// <returns>False if <paramref name="generation"/> is no longer the plane's, as it was reused since.</returns>
     public bool Touch(int page, int plane, uint generation, long tick)
     {
-        lock (this._sync)
-        {
-            var p = this._pages[page];
-            if (p.Generations[plane] != generation)
-                return false;
-            p.Drawn[plane] = tick;
-            return true;
-        }
+        var p = this._pages[page];
+        if (p.Generations[plane] != generation)
+            return false;
+        p.Drawn[plane] = tick;
+        return true;
     }
 
     /// <summary>The area is emptied first in a reused plane, and <paramref name="tick"/> marks the plane drawn.</summary>
-    public bool TryAllocate(int width, int height, long tick, out Allocation res)
+    public AllocationResult TryAllocate(int width, int height, long tick, out Allocation res)
     {
+        Misc.DebugAssertMainThread();
         res = default;
         var w = width + (2 * Padding);
         var h = height + (2 * Padding);
-        if (!this.CanHold(width, height))
-            return false;
-
-        if (!this.TryEnsurePages(1))
-            return false;
+        var pages = this._pages.Count;
+        if (!this.CanHold(width, height) || !this.TryEnsurePages(1))
+            return AllocationResult.Full;
 
         while (true)
         {
-            int needed;
-            lock (this._sync)
+            var page = this._current / PlanesPerPage;
+            var plane = this._current % PlanesPerPage;
+            var p = this._pages[page];
+            ref var s = ref p.CursorsPerPlane[plane];
+            if (s.X + w > this.Width)
+                s = new() { Y = s.Y + s.Height };
+            if (s.Y + h <= this.Height)
             {
-                var page = this._current / PlanesPerPage;
-                var plane = this._current % PlanesPerPage;
-                var p = this._pages[page];
-                ref var s = ref p.CursorsPerPlane[plane];
-                if (s.X + w > this.Width)
-                    s = new() { Y = s.Y + s.Height };
-                if (s.Y + h <= this.Height)
-                {
-                    res = new(page, plane, s.X + Padding, s.Y + Padding, p.Generations[plane]);
-                    if (p.Recycled[plane])
-                        this.ZeroRect(p, plane, s.X, s.Y, w, h);
-                    p.Drawn[plane] = tick;
-                    s.X += w;
-                    s.Height = Math.Max(s.Height, h);
-                    return true;
-                }
-
-                if (this._frontier >= this.MaxPlanes)
-                    return false;
-                needed = (this._frontier / PlanesPerPage) + 1;
-                if (needed <= this._pages.Count)
-                {
-                    this._current = this._frontier;
-                    this._frontier += this.PlaneStep;
-                    continue;
-                }
+                res = new(page, plane, s.X + Padding, s.Y + Padding, p.Generations[plane]);
+                if (p.Recycled[plane])
+                    this.ZeroRect(p, plane, s.X, s.Y, w, h);
+                p.Drawn[plane] = tick;
+                s.X += w;
+                s.Height = Math.Max(s.Height, h);
+                this._used = true;
+                return this._pages.Count != pages ? AllocationResult.PlacedOnNewPage : AllocationResult.Placed;
             }
 
-            // Added outside the lock, as adding a page raises PageAdded.
-            if (!this.TryEnsurePages(needed))
-                return false;
+            if (this._frontier >= this.MaxPlanes || !this.TryEnsurePages((this._frontier / PlanesPerPage) + 1))
+                return AllocationResult.Full;
+            this._current = this._frontier;
+            this._frontier += this.PlaneStep;
         }
     }
 
@@ -254,83 +245,74 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         ReadOnlySpan<byte> lcd = default)
     {
         var columns = Math.Min(alphaStride, width - alphaX);
-        lock (this._sync)
+        var p = this._pages[page];
+        var dst = p.Shadow + (y * this.Pitch) + (x * this.BytesPerPixel);
+        if (this.Subpixel)
         {
-            var p = this._pages[page];
-            var dst = p.Shadow + (y * this.Pitch) + (x * this.BytesPerPixel);
-            if (this.Subpixel)
+            var hasLcd = !lcd.IsEmpty && lcd.Length >= alpha.Length * 3;
+            for (var row = 0; row < height; row++)
             {
-                var hasLcd = !lcd.IsEmpty && lcd.Length >= alpha.Length * 3;
-                for (var row = 0; row < height; row++)
+                var d = dst + (row * this.Pitch) + (alphaX * this.BytesPerPixel);
+                for (var col = 0; col < columns; col++)
                 {
-                    var d = dst + (row * this.Pitch) + (alphaX * this.BytesPerPixel);
-                    for (var col = 0; col < columns; col++)
-                    {
-                        var i = (row * alphaStride) + col;
-                        var texel = d + (col * this.BytesPerPixel);
-                        this.SetChannel(texel, SubpixelPlane, alpha[i]);
-                        for (var c = 0; c < 3; c++)
-                            this.SetChannel(texel, c, hasLcd ? lcd[(i * 3) + c] : alpha[i]);
-                    }
+                    var i = (row * alphaStride) + col;
+                    var texel = d + (col * this.BytesPerPixel);
+                    this.SetChannel(texel, SubpixelPlane, alpha[i]);
+                    for (var c = 0; c < 3; c++)
+                        this.SetChannel(texel, c, hasLcd ? lcd[(i * 3) + c] : alpha[i]);
                 }
             }
-            else
-            {
-                for (var row = 0; row < height; row++)
-                {
-                    var src = alpha.Slice(row * alphaStride, alphaStride);
-                    var d = dst + (row * this.Pitch) + (alphaX * this.BytesPerPixel);
-                    for (var col = 0; col < columns; col++)
-                        this.SetChannel(d + (col * this.BytesPerPixel), plane, src[col]);
-                }
-            }
-
-            p.MarkDirty(x, y, x + width, y + height);
         }
+        else
+        {
+            for (var row = 0; row < height; row++)
+            {
+                var src = alpha.Slice(row * alphaStride, alphaStride);
+                var d = dst + (row * this.Pitch) + (alphaX * this.BytesPerPixel);
+                for (var col = 0; col < columns; col++)
+                    this.SetChannel(d + (col * this.BytesPerPixel), plane, src[col]);
+            }
+        }
+
+        p.MarkDirty(x, y, x + width, y + height);
     }
 
-    /// <summary>On the thread that calls Present.</summary>
+    /// <summary>At Present.</summary>
     public void Upload()
     {
         Misc.DebugAssertMainThread();
-        lock (this._sync)
+        if (!this._context)
+            return;
+        foreach (var p in this._pages)
         {
-            if (!this._context)
-                return;
-            foreach (var p in this._pages)
+            if (p.DirtyRight <= p.DirtyLeft)
+                continue;
+            var box = new D3D11_BOX
             {
-                if (p.DirtyRight <= p.DirtyLeft)
-                    continue;
-                var box = new D3D11_BOX
-                {
-                    left = (uint)p.DirtyLeft,
-                    top = (uint)p.DirtyTop,
-                    front = 0,
-                    right = (uint)p.DirtyRight,
-                    bottom = (uint)p.DirtyBottom,
-                    back = 1,
-                };
-                this._context.Value->UpdateSubresource(
-                    p.Resource.Value,
-                    0,
-                    &box,
-                    p.Shadow + (p.DirtyTop * this.Pitch) + (p.DirtyLeft * this.BytesPerPixel),
-                    (uint)this.Pitch,
-                    0);
-                p.ClearDirty();
-            }
+                left = (uint)p.DirtyLeft,
+                top = (uint)p.DirtyTop,
+                front = 0,
+                right = (uint)p.DirtyRight,
+                bottom = (uint)p.DirtyBottom,
+                back = 1,
+            };
+            this._context.Value->UpdateSubresource(
+                p.Resource.Value,
+                0,
+                &box,
+                p.Shadow + (p.DirtyTop * this.Pitch) + (p.DirtyLeft * this.BytesPerPixel),
+                (uint)this.Pitch,
+                0);
+            p.ClearDirty();
         }
     }
 
     public void Dispose()
     {
-        lock (this._sync)
-        {
-            foreach (var p in this._pages)
-                p.Dispose();
-            this._pages.Clear();
-            this._context.Dispose();
-        }
+        foreach (var p in this._pages)
+            p.Dispose();
+        this._pages.Clear();
+        this._context.Dispose();
     }
 
     public bool TryEnsurePages(int count)
@@ -338,32 +320,16 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         if (count > this.MaxPages)
             return false;
 
-        while (true)
+        while (this._pages.Count < count)
         {
-            int added;
-            lock (this._sync)
-                added = this._pages.Count;
-            if (added >= count)
-                return true;
-
-            var page = new Page(this.Width, this.Height, $"FontChanger.DalamudPlugin {this.Name} page {added}", this.Format4444);
-            lock (this._sync)
-            {
-                // Another thread added one meanwhile.
-                if (this._pages.Count != added)
-                {
-                    page.Dispose();
-                    continue;
-                }
-
-                this._pages.Add(page);
-                if (!this._context)
-                    this._context = page.Resource.Value->GetImmediateContext();
-            }
-
+            var added = this._pages.Count;
+            this._pages.Add(new(this.Width, this.Height, $"FontChanger.DalamudPlugin {this.Name} page {added}", this.Format4444));
+            if (!this._context)
+                this._context = this._pages[0].Resource.Value->GetImmediateContext();
             Plugin.Log.Information("Added {name} atlas page {n} of {max} ({width} x {height})", this.Name, added + 1, this.MaxPages, this.Width, this.Height);
-            this.PageAdded?.Invoke();
         }
+
+        return true;
     }
 
     private sealed class Page : IDisposable

@@ -7,7 +7,6 @@ using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Hooking;
-using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -90,7 +89,7 @@ internal sealed unsafe class NamePlateText : IDisposable
             this._finalizer.Add(() => {
                 try
                 {
-                    this.ForceRebake();
+                    this.Rebake();
                 }
                 catch (Exception ex)
                 {
@@ -103,18 +102,12 @@ internal sealed unsafe class NamePlateText : IDisposable
             this._prepareHook.Enable();
             this._drawBakedHook.Enable();
             this._bakePlateDrawHook.Enable();
-            this._replacer.TextInvalidated += this.OnTextInvalidated;
-            this._finalizer.Add(() => this._replacer.TextInvalidated -= this.OnTextInvalidated);
-            this._replacer.AtlasRoomMade += this.ForceRebake;
-            this._finalizer.Add(() => this._replacer.AtlasRoomMade -= this.ForceRebake);
             Array.Fill(this._faces, new(TextFace.NamePlate, TextFace.NamePlateTitle));
             this._replacer.AddNodeFaces(this.GetNodeFaces);
             this._finalizer.Add(() => this._replacer.RemoveNodeFaces(this.GetNodeFaces));
             Plugin.AddonLifecycle.RegisterListener(AddonEvent.PreRequestedUpdate, AddonName, this.OnPreRequestedUpdate);
             this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PreRequestedUpdate, AddonName, this.OnPreRequestedUpdate));
-            Plugin.Framework.Update += this.OnFrameworkUpdate;
-            this._finalizer.Add(() => Plugin.Framework.Update -= this.OnFrameworkUpdate);
-            this.ForceRebake();
+            this.Rebake();
         }
         catch
         {
@@ -148,11 +141,11 @@ internal sealed unsafe class NamePlateText : IDisposable
             if (this._mode == value)
                 return;
             this._mode = value;
-            this.ForceRebake();
+            this.Rebake();
         }
     }
 
-    private NamePlateMode EffectiveMode => this._replacer.Enabled ? this._mode : NamePlateMode.Game;
+    private NamePlateMode EffectiveMode => this._replacer.IsEnabled ? this._mode : NamePlateMode.Game;
 
     public void Dispose()
     {
@@ -160,8 +153,51 @@ internal sealed unsafe class NamePlateText : IDisposable
         this._finalizer.Dispose();
     }
 
-    // The plates are reachable only through the renderer a hook last saw, which is embedded in the NamePlate addon.
-    private void ForceRebake()
+    /// <summary>Between frames, as text drawn earlier no longer matches. If the plates can't be reached, <see cref="Update"/> does it once they can.</summary>
+    public void Remeasure()
+    {
+        this._remeasurePending = true;
+        this.Rebake();
+        this.Update();
+    }
+
+    /// <summary>Between frames, every frame.</summary>
+    public void Update()
+    {
+        if (!this._remeasurePending || this._lastRenderer is null)
+            return;
+        var addon = (AddonNamePlate*)((byte*)this._lastRenderer - AddonBakePlateOffset);
+        if (!IsLoaded(&addon->AtkUnitBase))
+            return;
+
+        this._remeasurePending = false;
+        try
+        {
+            // The update measures again the text that differs from its node's. Plates not shown are left alone, as the game may
+            // show them again without updating them.
+            var objects = addon->NamePlateObjectArray;
+            var array = NamePlateNumberArray.Instance();
+            if (objects is null || array is null)
+                return;
+            var shown = Math.Clamp(array->ActiveNamePlateCount, 0, NumNamePlateObjects);
+            for (var i = 0; i < shown; i++)
+            {
+                var index = array->ObjectData[i].NamePlateObjectIndex;
+                if (index >= 0 && index < NumNamePlateObjects && objects[index].NameText is not null)
+                    objects[index].NameText->NodeText.Clear();
+            }
+
+            addon->UpdateAllNamePlates();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Measuring the nameplates' text again failed");
+        }
+    }
+
+    /// <summary>The plates are baked again when next drawn.</summary>
+    /// <remarks>They are reachable only through the renderer a hook last saw, which is embedded in the NamePlate addon.</remarks>
+    public void Rebake()
     {
         if (this._lastRenderer is null)
         {
@@ -206,7 +242,7 @@ internal sealed unsafe class NamePlateText : IDisposable
             this.ReadNameTexts((AddonNamePlate*)((byte*)renderer - AddonBakePlateOffset));
         this._lastRenderer = renderer;
         if (this._rebakePending)
-            this.ForceRebake();
+            this.Rebake();
     }
 
     private void ReadNameTexts(AddonNamePlate* addon)
@@ -293,46 +329,6 @@ internal sealed unsafe class NamePlateText : IDisposable
 
     private NodeFaces? GetNodeFaces(Pointer<AtkTextNode> node) =>
         this._objectIndices.TryGetValue((nint)node.Value, out var index) ? this._faces[index] : null;
-
-    private void OnTextInvalidated()
-    {
-        this._remeasurePending = true;
-        this.ForceRebake();
-    }
-
-    // Between frames, as the game's update may be what invalidated the text (a font it built).
-    private void OnFrameworkUpdate(IFramework framework)
-    {
-        if (!this._remeasurePending || this._lastRenderer is null)
-            return;
-        var addon = (AddonNamePlate*)((byte*)this._lastRenderer - AddonBakePlateOffset);
-        if (!IsLoaded(&addon->AtkUnitBase))
-            return;
-
-        this._remeasurePending = false;
-        try
-        {
-            // The update measures again the text that differs from its node's. Plates not shown are left alone, as the game may
-            // show them again without updating them.
-            var objects = addon->NamePlateObjectArray;
-            var array = NamePlateNumberArray.Instance();
-            if (objects is null || array is null)
-                return;
-            var shown = Math.Clamp(array->ActiveNamePlateCount, 0, NumNamePlateObjects);
-            for (var i = 0; i < shown; i++)
-            {
-                var index = array->ObjectData[i].NamePlateObjectIndex;
-                if (index >= 0 && index < NumNamePlateObjects && objects[index].NameText is not null)
-                    objects[index].NameText->NodeText.Clear();
-            }
-
-            addon->UpdateAllNamePlates();
-        }
-        catch (Exception ex)
-        {
-            Plugin.Log.Error(ex, "Measuring the nameplates' text again failed");
-        }
-    }
 
     // The transform is a 2x2 matrix of floats, row by row.
     private static ref float Transform(AtkResNode* node, int index) => ref ((float*)&node->Transform)[index];

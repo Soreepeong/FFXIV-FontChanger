@@ -34,6 +34,9 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
     private Hook<BindShadersDelegate>? _bindShadersHook;
     private Hook<SetDrawStateDelegate>? _setDrawStateHook;
 
+    private readonly FrameLog _log;
+
+    // The settings, with the shader swaps made for them.
     private volatile bool _enabled;
     private SettingsRecord _settings;
 
@@ -42,14 +45,10 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
     private bool _alternate;
     private bool _passActive;
 
-    // The game's last state, forgotten at EndFrame as its texture may be gone by then.
-    private AtkServer* _lastServer;
-    private AtkServer.DrawState _lastState;
-    private byte _lastDivisor = 1;
-    private bool _lastSubpixelTexture;
-    private bool _hasState;
+    private readonly DrawStateMemo _last = new();
     private bool _warnedBlend;
-    private PackedBlendStateDesc _stagedBlend;
+
+    public SubpixelShaders(FrameLog log) => this._log = log;
 
     private delegate void BindShadersDelegate(AtkServer* server, AtkServer.ShaderPass pass, byte alternate);
 
@@ -57,8 +56,25 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
 
     public bool Active => Misc.DebugAssertMainThread(this._enabled);
 
+    /// <summary>Turned off if <paramref name="value"/> can't be applied.</summary>
+    /// <returns>Whether it is on.</returns>
+    public bool TryApply(SettingsRecord value)
+    {
+        try
+        {
+            this.Apply(value);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Subpixel text is off");
+            this.Apply(new());
+        }
+
+        return this._enabled;
+    }
+
     /// <summary>The hooks are made the first time it is on.</summary>
-    public void Apply(SettingsRecord value)
+    private void Apply(SettingsRecord value)
     {
         Misc.DebugAssertMainThread();
         if (this._settings.Equals(value))
@@ -77,10 +93,11 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             this.RestoreAndReleaseAllInLock();
     }
 
-    public void EndFrame()
+    /// <summary>At Present, as the texture of the game's last draw state may be gone by the next frame.</summary>
+    public void ForgetDrawState()
     {
         lock (this._lock)
-            this._hasState = false;
+            this._last.Has = false;
     }
 
     public void Dispose()
@@ -176,23 +193,26 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
                 this._passActive = this.EnsureShaderSwap(server, p);
 
             // SetDrawState isn't called when only the pass changes.
-            if (this._hasState && this._lastServer == server)
+            var last = this._last;
+            if (last.Has && last.Server == server)
             {
-                var blend = this.Decide(server, this._lastState, this._lastSubpixelTexture);
-                if (!SameBlend(blend, this._stagedBlend))
+                var blend = this.Decide(server, last.State, last.SubpixelTexture);
+                if (!SameBlend(blend, last.Staged))
                 {
-                    var state = this._lastState;
+                    var state = last.State;
                     state.BlendState = blend;
-                    this._setDrawStateHook!.Original(server, &state, this._lastDivisor);
-                    this._stagedBlend = blend;
+                    this._setDrawStateHook!.Original(server, &state, last.Divisor);
+                    last.Staged = blend;
                 }
             }
         }
         catch (Exception ex)
         {
-            Plugin.Log.Error(ex, "Subpixel text failed; turning it off");
+            // The settings go too, so that applying them again turns it back on.
             this._enabled = false;
+            this._settings = default;
             this.RestoreAndReleaseAllInLock();
+            this._log.Fail(Part.Subpixel, ex, "Subpixel text failed");
         }
     }
 
@@ -201,13 +221,14 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         PackedBlendStateDesc blend;
         lock (this._lock)
         {
-            this._lastServer = server;
-            this._lastState = *state;
-            this._lastDivisor = divisor;
-            this._lastSubpixelTexture = state->Texture is not null && (state->Texture->ActualWidth & 1) != 0;
-            this._hasState = true;
-            blend = this.Decide(server, *state, this._lastSubpixelTexture);
-            this._stagedBlend = blend;
+            var last = this._last;
+            last.Server = server;
+            last.State = *state;
+            last.Divisor = divisor;
+            last.SubpixelTexture = state->Texture is not null && (state->Texture->ActualWidth & 1) != 0;
+            last.Has = true;
+            blend = this.Decide(server, *state, last.SubpixelTexture);
+            last.Staged = blend;
         }
 
         if (SameBlend(blend, state->BlendState))
@@ -297,5 +318,18 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
     private sealed record PassShader(AtkServer.ShaderPass Pass, string File, string Code)
     {
         public PixelShaderSwap Swap { get; } = new();
+    }
+
+    /// <summary>The game's last SetDrawState, valid until the frame ends.</summary>
+    private sealed class DrawStateMemo
+    {
+        public bool Has;
+        public AtkServer* Server;
+        public AtkServer.DrawState State;
+        public byte Divisor = 1;
+        public bool SubpixelTexture;
+
+        // The blend state given to the game for it.
+        public PackedBlendStateDesc Staged;
     }
 }

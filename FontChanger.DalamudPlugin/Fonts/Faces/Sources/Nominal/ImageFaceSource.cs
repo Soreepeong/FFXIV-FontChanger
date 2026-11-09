@@ -94,6 +94,8 @@ internal sealed class ImageFaceSource : NominalFaceSource
 
     public override IEnumerable<Rune> Codepoints => this._glyphs.Keys;
 
+    public override bool DrawsBitmaps => true;
+
     public static ImageFaceSource Create(FontElement element, ImageRenderer renderer)
     {
         var def = element.GlyphImages ?? new();
