@@ -28,7 +28,7 @@ internal sealed class ShapingContext
 
     public bool[] TextItalic { get; private set; } = new bool[256];
 
-    /// <summary>Gets, per byte, whether an italic macro has it in italics. Only bytes that start a character are set.</summary>
+    /// <summary>Gets, per byte of the run, whether an italic macro has it in italics.</summary>
     public bool[] ByteItalic { get; } = new bool[MaxRunBytes];
 
     /// <summary>Gets the bytes of characters composed into the one before, with that one's byte.</summary>

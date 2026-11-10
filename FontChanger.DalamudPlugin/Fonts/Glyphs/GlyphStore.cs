@@ -266,9 +266,9 @@ internal unsafe struct Cell
         glyph->Width = 0;
     }
 
-    /// <summary>Marks its plane drawn at <paramref name="tick"/> if the plane still has its pixels.</summary>
+    /// <summary>Marks its plane drawn in <paramref name="frame"/> if the plane still has its pixels.</summary>
     /// <returns>Whether the plane still has its pixels.</returns>
-    public readonly bool Touch(AtkFontManager.Glyph* glyph, long tick) => this.Atlas!.Touch(glyph->TextureIndex, glyph->Channel, this.Generation, tick);
+    public readonly bool Touch(AtkFontManager.Glyph* glyph, long frame) => this.Atlas!.Touch(glyph->TextureIndex, glyph->Channel, this.Generation, frame);
 
     private readonly void Write(AtkFontManager.Glyph* glyph)
     {

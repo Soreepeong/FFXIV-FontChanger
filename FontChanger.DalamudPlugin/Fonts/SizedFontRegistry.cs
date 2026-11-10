@@ -9,13 +9,18 @@ using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Faces;
 using FontChanger.DalamudPlugin.Fonts.Glyphs;
 using FontChanger.DalamudPlugin.Game;
+using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.Fonts;
 
 /// <summary>The sized fonts made so far, and the glyphs they cache.</summary>
-internal sealed unsafe class SizedFontRegistry(FontSet fonts, AtlasSet atlases, GlyphStore store)
+internal sealed unsafe class SizedFontRegistry(FontSet fonts, AtlasSet atlases, GlyphStore store, FrameState state)
 {
+    // Glyphs cached by every sized font together.
+    private const int GlyphCapacity = 16384;
+
     private readonly Dictionary<(MaterializedFont Font, int HalfPx, string FontName, TextFace Face, bool Bold), SizedFont> _sizedFonts = [];
+    private int _sweepAt = GlyphCapacity;
 
     // Get's results by its arguments, as finding the family's fonts for a request is slow and wrapping asks per character. Which
     // of the family's fonts were ready is in them.
@@ -77,7 +82,7 @@ internal sealed unsafe class SizedFontRegistry(FontSet fonts, AtlasSet atlases, 
                 face == TextFace.Default ? Preset.FamilyOf(fontName)
                 : TextFaceNames.IsNamePlates(face) ? TextFaceNames.NamePlates
                 : TextFaceNames.NameOf(face));
-            sized = new(font, px, ascent, lineHeight, game, atlas, fonts.Select(f => (f.Font, f.Game)).ToList(), bold);
+            sized = new(font, px, ascent, lineHeight, game, atlas, fonts.Select(f => (f.Font, f.Game)).ToList(), bold, state);
             this._sizedFonts.Add(key, sized);
         }
 
@@ -85,10 +90,20 @@ internal sealed unsafe class SizedFontRegistry(FontSet fonts, AtlasSet atlases, 
         return sized;
     }
 
-    public void Sweep(long frame)
+    /// <summary>The glyphs used least recently of all sized fonts go, if they hold more than their shared capacity.</summary>
+    public void Sweep()
     {
+        var count = this.CountGlyphs();
+        if (count <= this._sweepAt)
+            return;
+
+        var used = new List<long>(count);
         foreach (var sized in this._sizedFonts.Values)
-            sized.SweepGlyphs(frame, store.ReleaseAction);
+            sized.CollectUsed(used);
+        var threshold = AgedMap.Threshold(used, GlyphCapacity, state.Frame);
+        foreach (var sized in this._sizedFonts.Values)
+            sized.ReleaseGlyphsUsedBefore(threshold, store.ReleaseAction);
+        this._sweepAt = AgedMap.NextSweepAt(this.CountGlyphs(), GlyphCapacity);
     }
 
     public void ReleaseAllGlyphs()
@@ -103,6 +118,7 @@ internal sealed unsafe class SizedFontRegistry(FontSet fonts, AtlasSet atlases, 
         this.ReleaseAllGlyphs();
         this._byRequest.Clear();
         this._sizedFonts.Clear();
+        this._sweepAt = GlyphCapacity;
     }
 
     /// <summary>After <see cref="Clear"/>. The old fonts are disposed.</summary>
@@ -111,5 +127,13 @@ internal sealed unsafe class SizedFontRegistry(FontSet fonts, AtlasSet atlases, 
         var old = this.Fonts;
         this.Fonts = fonts;
         old.Dispose();
+    }
+
+    private int CountGlyphs()
+    {
+        var count = 0;
+        foreach (var sized in this._sizedFonts.Values)
+            count += sized.GlyphCount;
+        return count;
     }
 }

@@ -11,6 +11,8 @@ namespace FontChanger.DalamudPlugin.Fonts;
 /// <summary>Fonts made together, sharing their face sources.</summary>
 internal sealed class FontSet : IDisposable
 {
+    private bool? _hasNamePlateFaces;
+
     private FontSet()
     {
     }
@@ -36,11 +38,12 @@ internal sealed class FontSet : IDisposable
 
     public bool HasOwnFonts(TextFace face) => this.Faces.ContainsKey(face);
 
-    // A plate whose own face has no fonts still picks a copy in the nameplates' atlas, which its title's glyphs must be in.
+    // A plate whose own face has no fonts still picks a copy in the nameplates' atlas, which its title's glyphs must be in. The faces
+    // are complete once the set is handed to the main thread.
     public bool HasFonts(TextFace face) =>
         face == TextFace.Default ||
         this.Faces.ContainsKey(face) ||
-        (face == TextFace.NamePlate && this.Faces.Keys.Any(TextFaceNames.IsNamePlates));
+        (face == TextFace.NamePlate && (this._hasNamePlateFaces ??= this.Faces.Keys.Any(TextFaceNames.IsNamePlates)));
 
     public TextFace ResolveFace(TextFace face)
     {

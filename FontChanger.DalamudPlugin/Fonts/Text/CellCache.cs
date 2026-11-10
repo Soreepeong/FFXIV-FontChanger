@@ -12,36 +12,37 @@ using FontChanger.DalamudPlugin.Utilities;
 namespace FontChanger.DalamudPlugin.Fonts.Text;
 
 /// <summary>Clusters' rasters, and the cells and spacers made of them.</summary>
-internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, FrameClock clock)
+internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, FrameState state)
 {
     // Keyed by sized font too, as families may share a font but each places cells in its own atlas with its own metrics.
-    private readonly AgedMap<(RasterKey Raster, SizedFont Sized, int Pad, int Advance), Pointer<AtkFontManager.Glyph>> _cells = new();
-    private readonly AgedMap<(SizedFont Sized, int Advance), Pointer<AtkFontManager.Glyph>> _spacers = new();
+    private readonly AgedMap<(RasterKey Raster, SizedFont Sized, int Pad, int Advance), Pointer<AtkFontManager.Glyph>> _cells = new(state);
+    private readonly AgedMap<(SizedFont Sized, int Advance), Pointer<AtkFontManager.Glyph>> _spacers = new(state);
 
     // Of outline sources only, as bitmaps are only scaled.
-    private readonly AgedMap<RasterKey, RasterGlyph> _rasters = new();
+    private readonly AgedMap<RasterKey, RasterGlyph> _rasters = new(state);
 
     public Pointer<AtkFontManager.Glyph> GetSpacer(SizedFont sized, int advance)
     {
         var key = (sized, advance);
-        var frame = clock.Frame;
-        if (this._spacers.TryGetValue(key, frame, out var cell))
+        if (this._spacers.TryGetValue(key, out var cell))
             return cell;
-        return this._spacers.Add(key, factory.Spacer(sized, advance), frame);
+        return this._spacers.Add(key, factory.Spacer(sized, advance));
     }
+
+    public int GetEdgeMargin(SizedFont sized) => factory.GetEdgeMargin(sized);
 
     public RasterKey KeyOf(SizedFont sized, Cluster c) => c.RasterKey ??= new(sized, c);
 
     /// <summary>Whether the cluster still needs rasterizing, which the shaper may do ahead on the thread pool.</summary>
     public bool NeedsRaster(SizedFont sized, Cluster c) =>
-        c.Raster is null && (c.Source!.DrawsBitmaps || !this._rasters.TryGetValue(this.KeyOf(sized, c), clock.Frame, out _));
+        c.Raster is null && (c.Source!.DrawsBitmaps || !this._rasters.TryGetValue(this.KeyOf(sized, c), out _));
 
     /// <summary>Relative to the pen. The advance is final only for a monospaced cluster, as <see cref="GetCell"/> sets the others'.</summary>
     public RasterGlyph GetRaster(SizedFont sized, Cluster c)
     {
         if (c.Raster is { } known)
             return known;
-        if (!c.Source!.DrawsBitmaps && this._rasters.TryGetValue(this.KeyOf(sized, c), clock.Frame, out var raster))
+        if (!c.Source!.DrawsBitmaps && this._rasters.TryGetValue(this.KeyOf(sized, c), out var raster))
             return (c.Raster = raster).Value;
         return this.AddRaster(sized, c, c.Rasterize());
     }
@@ -57,7 +58,7 @@ internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, F
         // The edge margin puts ink left of the pen, so the cell starts earlier (PlaceClusters), keeping the spacing.
         raster = factory.Finish(sized, raster);
         c.Raster = raster;
-        return c.Source!.DrawsBitmaps ? raster : this._rasters.Add(c.RasterKey!, raster, clock.Frame);
+        return c.Source!.DrawsBitmaps ? raster : this._rasters.Add(c.RasterKey!, raster);
     }
 
     /// <summary>The cell's box starts <paramref name="pad"/> pixels left of the cluster's pen.</summary>
@@ -65,8 +66,7 @@ internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, F
     {
         var raster = this.GetRaster(sized, c);
         var key = (c.RasterKey!, sized, pad, advance);
-        var frame = clock.Frame;
-        if (this._cells.TryGetValue(key, frame, out var cell))
+        if (this._cells.TryGetValue(key, out var cell))
             return cell;
 
         raster = raster with { Advance = advance, Left = raster.Left + pad };
@@ -79,14 +79,14 @@ internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, F
         cell = factory.FromRaster(sized, raster, utf8);
         if (c.RealItalic)
             store.CellOf(cell).RealItalic = true;
-        return this._cells.Add(key, cell, frame);
+        return this._cells.Add(key, cell);
     }
 
-    public void Sweep(long frame)
+    public void Sweep()
     {
-        this._cells.Sweep(frame, store.HeldOnce, store.ReleaseAction);
-        this._spacers.Sweep(frame, store.HeldOnce, store.ReleaseAction);
-        this._rasters.Sweep(frame, null, null);
+        this._cells.Sweep(store.HeldOnce, store.ReleaseAction);
+        this._spacers.Sweep(store.HeldOnce, store.ReleaseAction);
+        this._rasters.Sweep(null, null);
     }
 
     public void Clear()
@@ -115,6 +115,7 @@ internal sealed unsafe class RasterKey(SizedFont sized, Cluster c) : IEquatable<
     private readonly uint[] _glyphs = c.GlyphIds;
     private readonly float[] _advances = c.Advances;
     private readonly GlyphOffset[]? _offsets = c.Offsets;
+    private int? _hash;
 
     /// <summary>Gets the alignment of the picked font, whose game font's metrics it may take.</summary>
     public FontAlignment Alignment { get; } = c.GlyphSource is { } g ? g.Font.GetAlignment(sized.Px, g.Game) : default;
@@ -135,7 +136,10 @@ internal sealed unsafe class RasterKey(SizedFont sized, Cluster c) : IEquatable<
 
     public override bool Equals(object? obj) => this.Equals(obj as RasterKey);
 
-    public override int GetHashCode()
+    // Looked up several times per cluster.
+    public override int GetHashCode() => this._hash ??= this.ComputeHash();
+
+    private int ComputeHash()
     {
         var hash = default(HashCode);
         hash.Add(this._px);

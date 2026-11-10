@@ -4,7 +4,6 @@ using System.Linq;
 using Dalamud.Utility;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts.Enums;
@@ -20,7 +19,13 @@ using TerraFX.Interop.DirectX;
 namespace FontChanger.DalamudPlugin.Fonts;
 
 /// <summary>Replaces the game's fonts. It makes the parts, holds their settings, and does their work at Present.</summary>
-/// <remarks>Its setters return how much must be made again, which the caller resets.</remarks>
+/// <remarks>
+/// <ul>
+/// <li>Its setters skip what didn't change, and return how much must be made again, which the caller passes to <see cref="Reset"/>.</li>
+/// <li><see cref="Reset"/> is the one way to make glyphs, sized fonts, atlases or fonts again, called between frames or in a
+/// hook outside any layout. Nameplates already baked keep their pixels until baked again.</li>
+/// </ul>
+/// </remarks>
 internal sealed unsafe class FontReplacer : IDisposable
 {
     // Runs in reverse, so that what the hooks hand the game outlives them.
@@ -32,23 +37,24 @@ internal sealed unsafe class FontReplacer : IDisposable
     // What copy texture slots without a page hold, so that a game glyph slipping through draws nothing.
     private readonly KernelTextureWrapper _blankTexture;
 
-    private readonly FrameClock _clock;
-    private readonly EnabledState _enabled;
+    private readonly FrameState _state;
     private readonly FontSetFlags _flags = new();
     private readonly FontHooks _fontHooks;
     private readonly GlyphStore _store;
     private readonly AtlasSet _atlases;
     private readonly SizedFontRegistry _sized;
-    private readonly GameGlyphReader _reader;
     private readonly CopyFonts _copies;
     private readonly GlyphFactory _factory;
     private readonly CellPlacer _placer;
     private readonly GameTextLayout _layout;
     private bool? _supports4444;
 
-    public FontReplacer(FrameLog log, FrameClock clock)
+    // As last asked for, which an error may have turned off since.
+    private bool? _enabled;
+
+    public FontReplacer(FrameState state)
     {
-        this._clock = clock;
+        this._state = state;
         try
         {
             this.Services = this._finalizer.Add(new FontServices());
@@ -65,18 +71,15 @@ internal sealed unsafe class FontReplacer : IDisposable
             this._store = this._finalizer.Add(new GlyphStore());
             this._blankTexture = this._finalizer.Add(CreateBlankTexture());
             this._atlases = this._finalizer.Add(new AtlasSet(() => this.Supports4444));
-            this._sized = new(FontSet.CreateGame(this.Services, true, this.FallbackFonts), this._atlases, this._store);
+            this._sized = new(FontSet.CreateGame(this.Services, true, this.FallbackFonts), this._atlases, this._store, state);
             this._finalizer.Add(() => this._sized.Fonts.Dispose());
-            this._reader = this._finalizer.Add(new GameGlyphReader(this._store));
-            this._copies = this._finalizer.Add(new CopyFonts(this._sized, this._blankTexture));
-            this._factory = new(this._store, clock);
-            this._placer = new(this._store, this._copies, this._reader);
-            this._layout = new(this.Services, this._store, this._factory, clock);
-            this.Resetter = new(this._layout, this._sized, this._placer, this._reader, this._atlases, this._copies);
-            this._enabled = new(log);
+            this._copies = this._finalizer.Add(new CopyFonts(this._sized, this._blankTexture, state));
+            this._placer = this._finalizer.Add(new CellPlacer(this._store, this._copies));
+            this._factory = new(this._store);
+            this._layout = new(this.Services, this._store, this._factory, state);
             this._fontHooks = this._hooks.Add(
-                new FontHooks(this._copies, this._sized, this._layout, this._factory, this._placer, this._store, clock, this._enabled, this._flags));
-            this._hooks.Add(new FontLifecycleHooks(this._reader, this.Resetter, this._enabled, log));
+                new FontHooks(this._copies, this._sized, this._layout, this._factory, this._placer, this._store, state, this._flags));
+            this._hooks.Add(new FontLifecycleHooks(scope => this.Reset(scope), state));
 
             // Caches built so far hold the game's glyphs.
             this._fontHooks.UpdateFontCaches();
@@ -101,27 +104,31 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     public SystemFallbackFonts FallbackFonts { get; }
 
-    public Resetter Resetter { get; }
-
     /// <summary>Gets a value indicating whether fonts are replaced, which an error turns off at once.</summary>
-    public bool IsEnabled => this._enabled.IsOn;
+    public bool IsEnabled => this._state.IsOn;
 
     /// <summary>Gets a value indicating whether DXGI 1.2 devices support B4G4R4A4, but the game also runs on Direct3D 11 devices without it.</summary>
     public bool Supports4444 => this._supports4444 ??= this.CheckSupports4444();
 
     public bool HasOwnFonts(TextFace face) => this._sized.Fonts.HasOwnFonts(Misc.DebugAssertMainThread(face));
 
-    public void AddNodeFaces(Func<Pointer<AtkTextNode>, NodeFaces?> faces) => this._flags.AddNodeFaces(faces);
+    /// <summary>Gives a text node faces of its own until <see cref="RemoveNodeFaces"/>.</summary>
+    public void SetNodeFaces(nint node, NodeFaces faces) => this._flags.SetNodeFaces(node, faces);
 
-    public void RemoveNodeFaces(Func<Pointer<AtkTextNode>, NodeFaces?> faces) => this._flags.RemoveNodeFaces(faces);
+    public void RemoveNodeFaces(nint node) => this._flags.RemoveNodeFaces(node);
+
+    public bool TryGetNodeFaces(AtkTextNode* node, out NodeFaces faces) => this._flags.TryGetNodeFaces(node, out faces);
 
     public void ApplyNodeFace(AtkFontManager.FontSet* set, AtkTextNode* node, NodeFaces faces) => this._flags.ApplyNodeFace(set, node, faces);
 
-    /// <summary>Applied even if an error turned it off already, so that the font caches follow.</summary>
+    /// <summary>Applied when it differs from what was last asked for, even if an error turned it off already, so that the font caches follow.</summary>
     public ResetScope SetEnabled(bool value)
     {
         Misc.DebugAssertMainThread();
-        this._enabled.IsOn = value;
+        if (this._enabled == value)
+            return ResetScope.None;
+        this._enabled = value;
+        this._state.IsOn = value;
         CopyFonts.ForgetPicked();
         this._fontHooks.UpdateFontCaches();
         return ResetScope.Text;
@@ -158,10 +165,10 @@ internal sealed unsafe class FontReplacer : IDisposable
     public ResetScope SetSubpixel(SubpixelOrder order, bool active)
     {
         Misc.DebugAssertMainThread();
+        if (order == this.Services.SubpixelOrder && active == this._atlases.Subpixel)
+            return ResetScope.None;
         this._atlases.Subpixel = active;
         var atlasesChange = this._atlases.All.Any(a => a.Subpixel != active);
-        if (order == this.Services.SubpixelOrder && !atlasesChange)
-            return ResetScope.None;
         this.Services.SubpixelOrder = order;
         return atlasesChange ? ResetScope.Atlases : ResetScope.Glyphs;
     }
@@ -176,34 +183,68 @@ internal sealed unsafe class FontReplacer : IDisposable
         return this.Services.SubpixelOrder.IsVertical ? ResetScope.Glyphs : ResetScope.None;
     }
 
-    /// <summary>At Present, after this frame's glyphs were placed.</summary>
-    public void ReadGameGlyphs() => this._reader.ReadAll();
-
-    /// <summary>At Present. Every glyph is made again if room can't be made.</summary>
-    /// <returns>Whether glyphs of full atlases are placed again, so that baked text may hold blanks.</returns>
-    public bool EvictFullPlanes()
+    /// <summary>Makes what <paramref name="scope"/> names again, each step once and in order.</summary>
+    /// <param name="scope">How much to make again.</param>
+    /// <param name="fonts">If given, replaces the fonts, and the old ones are disposed.</param>
+    public void Reset(ResetScope scope, FontSet? fonts = null)
     {
+        if (fonts is not null)
+            scope |= ResetScope.Fonts;
+        if (!scope.HasFlag(ResetScope.Glyphs))
+            return;
+
+        // Nothing of ours refers to the glyphs anymore, and they are freed once the game is done with them.
+        this._layout.Clear();
+        if (scope.HasFlag(ResetScope.SizedFonts))
+        {
+            // The game's textures may have gone too.
+            this._placer.ClearAll();
+            this._sized.Clear();
+            this._sized.Fonts.ForgetGameFonts();
+        }
+        else
+        {
+            this._placer.Clear();
+            this._sized.ReleaseAllGlyphs();
+        }
+
+        // Copies refer to the old atlases' pages until marked stale below.
+        if (scope.HasFlag(ResetScope.Atlases))
+            this._atlases.Dispose();
+        else
+            this._atlases.ClearAll();
+
+        if (fonts is not null)
+            this._sized.SwapFonts(fonts);
+        if (scope.HasFlag(ResetScope.SizedFonts))
+            this._copies.MarkStale();
+        CopyFonts.ForgetPicked();
+    }
+
+    /// <summary>
+    /// At Present, after this frame's text was laid out: reads game glyphs' pixels, makes room in full atlases (every glyph is
+    /// made again if it can't be), uploads the atlases, and sweeps the caches.
+    /// </summary>
+    /// <remarks>Caches are swept after the game's reads, which hold glyphs without a reference. Runs go first, then the cells they let go of.</remarks>
+    public void Present()
+    {
+        this._placer.ReadGameGlyphs();
         try
         {
-            return this._placer.EvictFull(this._clock.Tick);
+            if (this._placer.EvictFull())
+                this._state.PlaneReused();
         }
         catch (Exception ex)
         {
             Plugin.Log.Error(ex, "Making room in a glyph atlas failed; making every glyph again");
-            this.Resetter.Reset(ResetScope.Glyphs);
-            return true;
+            this.Reset(ResetScope.Glyphs);
+            this._state.PlaneReused();
         }
-    }
 
-    public void UploadAtlases() => this._atlases.Upload();
-
-    /// <summary>At Present, after the game's reads, which hold glyphs without a reference. Runs go first, then the cells they let go of.</summary>
-    public void Sweep()
-    {
-        var frame = this._clock.Frame;
-        this._layout.Sweep(frame);
-        this._sized.Sweep(frame);
-        this._store.FreeUnreferenced(frame);
+        this._atlases.Upload();
+        this._layout.Sweep();
+        this._sized.Sweep();
+        this._store.FreeUnreferenced(this._state.Frame);
     }
 
     /// <summary>Removes the hooks and has every font set pick its own font again. <see cref="Dispose"/> frees the rest once the game holds none of it.</summary>

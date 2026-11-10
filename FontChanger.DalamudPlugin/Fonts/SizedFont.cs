@@ -20,7 +20,8 @@ internal sealed unsafe class SizedFont(
     Pointer<AtkFontManager.Font> gameFont,
     GlyphAtlas atlas,
     IReadOnlyList<(MaterializedFont Font, Pointer<AtkFontManager.Font> Game)> fonts,
-    bool bold)
+    bool bold,
+    FrameState state)
 {
     public bool Bold { get; } = bold;
 
@@ -39,20 +40,13 @@ internal sealed unsafe class SizedFont(
     /// <summary>Largest first; only <see cref="Font"/> at the size of one of the family's fonts.</summary>
     public IReadOnlyList<(MaterializedFont Font, Pointer<AtkFontManager.Font> Game)> Fonts { get; } = fonts;
 
-    /// <summary>By packed UTF-8 value; 0 for a glyph left to the game.</summary>
-    /// <remarks>This and the other glyph caches hold each glyph once.</remarks>
-    public AgedMap<uint, Pointer<AtkFontManager.Glyph>> Glyphs { get; } = new();
-
-    /// <summary>Copied from the game fonts of <see cref="Fonts"/>, by packed UTF-8 value; 0 if none could be.</summary>
-    public AgedMap<uint, Pointer<AtkFontManager.Glyph>> GameGlyphs { get; } = new();
-
-    public AgedMap<(Pointer<AtkFontManager.Font> Font, Pointer<AtkFontManager.Glyph> Glyph), Pointer<AtkFontManager.Glyph>> ConvertedGlyphs { get; } =
-        new();
+    /// <summary>A character's glyph, whatever made it, by packed UTF-8 value; 0 if none could be made.</summary>
+    /// <remarks>Holds each glyph once. The registry sweeps it, against one capacity for every sized font.</remarks>
+    public AgedMap<uint, Pointer<AtkFontManager.Glyph>> Glyphs { get; } = new(state, int.MaxValue);
 
     public Dictionary<Rune, GlyphSource> Picks { get; } = [];
 
-    /// <summary>Glyphs of no pixels that advance as far as wrapping measures, by advance.</summary>
-    public AgedMap<int, Pointer<AtkFontManager.Glyph>> WrapCells { get; } = new();
+    public int GlyphCount => this.Glyphs.Count;
 
     /// <summary>
     /// Of several fonts, the largest whose element other than the game's has the grapheme, else the game's, else one without
@@ -90,19 +84,9 @@ internal sealed unsafe class SizedFont(
         return pick;
     }
 
-    public void SweepGlyphs(long frame, Action<Pointer<AtkFontManager.Glyph>> release)
-    {
-        this.Glyphs.Sweep(frame, null, release);
-        this.GameGlyphs.Sweep(frame, null, release);
-        this.ConvertedGlyphs.Sweep(frame, null, release);
-        this.WrapCells.Sweep(frame, null, release);
-    }
+    public void CollectUsed(List<long> used) => this.Glyphs.CollectUsed(used);
 
-    public void ReleaseGlyphs(Action<Pointer<AtkFontManager.Glyph>> release)
-    {
-        this.Glyphs.Clear(release);
-        this.GameGlyphs.Clear(release);
-        this.ConvertedGlyphs.Clear(release);
-        this.WrapCells.Clear(release);
-    }
+    public void ReleaseGlyphsUsedBefore(long frame, Action<Pointer<AtkFontManager.Glyph>> release) => this.Glyphs.DropUsedBefore(frame, null, release);
+
+    public void ReleaseGlyphs(Action<Pointer<AtkFontManager.Glyph>> release) => this.Glyphs.Clear(release);
 }

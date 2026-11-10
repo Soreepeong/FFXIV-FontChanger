@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading;
 
 using Dalamud.Hooking;
 
@@ -22,8 +21,6 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
     private const string SubpixelCode = "FontChanger.DalamudPlugin.Fonts.Shaders.FontSubpixelPS.cso";
     private const string SubpixelHighlightCode = "FontChanger.DalamudPlugin.Fonts.Shaders.FontSubpixelHighlightPS.cso";
 
-    private readonly Lock _lock = new();
-
     private readonly PassShader[] _passes =
     [
         new(AtkServer.ShaderPass.Font, "FontPS.shcd", SubpixelCode),
@@ -34,11 +31,11 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
     private Hook<BindShadersDelegate>? _bindShadersHook;
     private Hook<SetDrawStateDelegate>? _setDrawStateHook;
 
-    private readonly FrameLog _log;
+    private readonly FrameState _state;
 
     // The settings, with the shader swaps made for them.
-    private volatile bool _enabled;
     private SettingsRecord _settings;
+    private SettingsRecord? _asked;
 
     // From the last BindShaders.
     private AtkServer* _server;
@@ -48,18 +45,23 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
     private readonly DrawStateMemo _last = new();
     private bool _warnedBlend;
 
-    public SubpixelShaders(FrameLog log) => this._log = log;
+    public SubpixelShaders(FrameState state) => this._state = state;
 
     private delegate void BindShadersDelegate(AtkServer* server, AtkServer.ShaderPass pass, byte alternate);
 
     private delegate void SetDrawStateDelegate(AtkServer* server, AtkServer.DrawState* state, byte divisor);
 
-    public bool Active => Misc.DebugAssertMainThread(this._enabled);
+    public bool Active => Misc.DebugAssertMainThread(this.Enabled);
 
-    /// <summary>Turned off if <paramref name="value"/> can't be applied.</summary>
+    private bool Enabled => this._settings.Order != SubpixelOrder.None;
+
+    /// <summary>Turned off if <paramref name="value"/> can't be applied, which isn't tried again until another value is asked for.</summary>
     /// <returns>Whether it is on.</returns>
     public bool TryApply(SettingsRecord value)
     {
+        if (this._asked == value)
+            return this.Enabled;
+        this._asked = value;
         try
         {
             this.Apply(value);
@@ -70,7 +72,7 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             this.Apply(new());
         }
 
-        return this._enabled;
+        return this.Enabled;
     }
 
     /// <summary>The hooks are made the first time it is on.</summary>
@@ -83,33 +85,24 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         if (value.Order != SubpixelOrder.None && this._bindShadersHook is null)
             this.Resolve();
 
-        using var _ = this._lock.EnterScope();
         var shaderChanged = value with { Order = this._settings.Order } != this._settings;
         this._settings = value;
-        this._enabled = value.Order != SubpixelOrder.None;
 
         // The next BindShaders makes the shaders with the new settings.
-        if (!this._enabled || shaderChanged)
-            this.RestoreAndReleaseAllInLock();
+        if (!this.Enabled || shaderChanged)
+            this.RestoreAndReleaseAll();
     }
 
     /// <summary>At Present, as the texture of the game's last draw state may be gone by the next frame.</summary>
-    public void ForgetDrawState()
-    {
-        lock (this._lock)
-            this._last.Has = false;
-    }
+    public void ForgetDrawState() => this._last.Has = false;
 
     public void Dispose()
     {
         this._bindShadersHook?.Dispose();
         this._setDrawStateHook?.Dispose();
-        lock (this._lock)
-        {
-            this.RestoreAndReleaseAllInLock();
-            foreach (var p in this._passes)
-                p.Swap.Dispose();
-        }
+        this.RestoreAndReleaseAll();
+        foreach (var p in this._passes)
+            p.Swap.Dispose();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -183,13 +176,15 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
     private void BindShadersDetour(AtkServer* server, AtkServer.ShaderPass pass, byte alternate)
     {
         this._bindShadersHook!.Original(server, pass, alternate);
-        using var _ = this._lock.EnterScope();
+        Misc.DebugAssertMainThread();
+        if (!this.Enabled)
+            return;
         try
         {
             this._server = server;
             this._alternate = alternate != 0;
             this._passActive = false;
-            if (this._enabled && !this._alternate && this.FindPass(pass) is { } p)
+            if (!this._alternate && this.FindPass(pass) is { } p)
                 this._passActive = this.EnsureShaderSwap(server, p);
 
             // SetDrawState isn't called when only the pass changes.
@@ -209,28 +204,30 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         catch (Exception ex)
         {
             // The settings go too, so that applying them again turns it back on.
-            this._enabled = false;
             this._settings = default;
-            this.RestoreAndReleaseAllInLock();
-            this._log.Fail(Part.Subpixel, ex, "Subpixel text failed");
+            this._asked = null;
+            this.RestoreAndReleaseAll();
+            this._state.Fail(Part.Subpixel, ex, "Subpixel text failed");
         }
     }
 
     private void SetDrawStateDetour(AtkServer* server, AtkServer.DrawState* state, byte divisor)
     {
-        PackedBlendStateDesc blend;
-        lock (this._lock)
+        Misc.DebugAssertMainThread();
+        if (!this.Enabled)
         {
-            var last = this._last;
-            last.Server = server;
-            last.State = *state;
-            last.Divisor = divisor;
-            last.SubpixelTexture = state->Texture is not null && (state->Texture->ActualWidth & 1) != 0;
-            last.Has = true;
-            blend = this.Decide(server, *state, last.SubpixelTexture);
-            last.Staged = blend;
+            this._setDrawStateHook!.Original(server, state, divisor);
+            return;
         }
 
+        var last = this._last;
+        last.Server = server;
+        last.State = *state;
+        last.Divisor = divisor;
+        last.SubpixelTexture = state->Texture is not null && (state->Texture->ActualWidth & 1) != 0;
+        last.Has = true;
+        var blend = this.Decide(server, *state, last.SubpixelTexture);
+        last.Staged = blend;
         if (SameBlend(blend, state->BlendState))
         {
             this._setDrawStateHook!.Original(server, state, divisor);
@@ -245,9 +242,8 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
 
     private PackedBlendStateDesc Decide(AtkServer* server, in AtkServer.DrawState state, bool subpixelTexture)
     {
-        this._lock.DebugAssertLockHeld();
         var value = state.BlendState;
-        if (!this._enabled || !this._passActive || this._alternate || !subpixelTexture)
+        if (!this.Enabled || !this._passActive || this._alternate || !subpixelTexture)
             return value;
 
         if (state.BlendState.SrcBlend != (byte)D3D11_BLEND.D3D11_BLEND_SRC_ALPHA)
@@ -272,7 +268,6 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
 
     private bool EnsureShaderSwap(AtkServer* server, PassShader p)
     {
-        this._lock.DebugAssertLockHeld();
         var current = GetShaderObjectOrNull(server, p.Pass, null);
         p.Swap.ForgetIfReplacedElsewhere(current);
         if (current is null)
@@ -302,9 +297,8 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         return PixelShaderSwap.CreateShader(game, code);
     }
 
-    private void RestoreAndReleaseAllInLock()
+    private void RestoreAndReleaseAll()
     {
-        this._lock.DebugAssertLockHeld();
         foreach (var p in this._passes)
         {
             if (p.Swap.Target is not null)

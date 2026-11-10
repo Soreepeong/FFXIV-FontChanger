@@ -1,17 +1,14 @@
-using System;
-
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace FontChanger.DalamudPlugin.Fonts.Hooks;
 
 /// <summary>The character LayOutCharacter is laying out, for GetGlyph, which isn't told which character of the text it is.</summary>
+/// <remarks>Static rather than per thread, as the game lays text out and draws only on the main thread.</remarks>
 internal unsafe struct LayoutCall
 {
-    [ThreadStatic]
     public static LayoutCall Current;
 
     /// <summary>While the text wrapper lays text out.</summary>
-    [ThreadStatic]
     public static bool Wrapping;
 
     public byte* Character;

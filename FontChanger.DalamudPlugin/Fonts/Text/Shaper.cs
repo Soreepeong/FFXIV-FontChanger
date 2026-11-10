@@ -21,17 +21,24 @@ namespace FontChanger.DalamudPlugin.Fonts.Text;
 /// <summary>Shapes a run of the game's text into a glyph per byte.</summary>
 internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache cells, Pointer<AtkFontManager.Glyph> emptyGlyph)
 {
+    /// <summary>The advance <see cref="Measure"/> gives a byte left to the game.</summary>
+    public const int Missing = -1;
+
     // Graphemes longer than this are picked an element by their first runes.
     private const int MaxGraphemeRunes = 16;
 
     private readonly ShapingContext _ctx = new();
 
+    // RasterizeConcurrently's, reused.
+    private readonly List<Cluster> _pending = [];
+    private readonly HashSet<RasterKey> _seen = [];
+
     /// <summary>Gets, per byte of the run last read, whether an italic macro has it in italics.</summary>
     public ReadOnlySpan<bool> ByteItalic => this._ctx.ByteItalic;
 
-    /// <summary>Reads the run at <paramref name="p"/> for <see cref="Shape"/>.</summary>
-    /// <returns>The run's count of UTF-16 code units, and its length in bytes in <paramref name="length"/>.</returns>
-    public int ReadRun(byte* p, ItalicMode italic, out int length)
+    /// <summary>Finds the run at <paramref name="p"/>, and if <paramref name="decode"/>, reads it for <see cref="Shape"/>.</summary>
+    /// <returns>The run's count of UTF-16 code units if decoded, and its length in bytes in <paramref name="length"/>.</returns>
+    public int ReadRun(byte* p, ItalicMode italic, bool decode, out int length)
     {
         var ctx = this._ctx;
         var count = 0;
@@ -62,16 +69,23 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
                     inItalic = on != 0;
                 }
 
+                if (decode)
+                    ctx.ByteItalic.AsSpan(i, total).Fill(inItalic);
                 i += total;
                 continue;
             }
-
-            ctx.ByteItalic[i] = inItalic;
 
             // Stepped as the game does.
             var charLength = GameUtf8.CharacterLength(p + i);
             if (charLength == 0 || i + charLength > ShapingContext.MaxRunBytes)
                 break;
+            if (!decode)
+            {
+                i += charLength;
+                continue;
+            }
+
+            ctx.ByteItalic.AsSpan(i, charLength).Fill(inItalic);
 
             // Control characters and broken sequences shape as a replacement character, which keeps them per character.
             var r = Rune.ReplacementChar;
@@ -95,6 +109,32 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
     public void Shape(SizedFont sized, byte* p, int count, Pointer<AtkFontManager.Glyph>[] glyphs, ItalicMode italic)
     {
         var ctx = this._ctx;
+        this.Cluster(sized, count, italic);
+        this.PlaceClusters(ctx, p, glyphs);
+        foreach (var (b, owner) in ctx.Absorbed)
+            glyphs[b] = glyphs[owner].IsNull ? default : emptyGlyph;
+    }
+
+    /// <summary>
+    /// How far each byte of the run <see cref="ReadRun"/> read advances, as <see cref="Shape"/> would place it, without
+    /// rasterizing. <see cref="Missing"/> marks a byte left to the game.
+    /// </summary>
+    /// <param name="sized">The sized font.</param>
+    /// <param name="count">The run's count of code units.</param>
+    /// <param name="advances">Per byte of the run.</param>
+    /// <param name="italic">The run's italics.</param>
+    public void Measure(SizedFont sized, int count, int[] advances, ItalicMode italic)
+    {
+        var ctx = this._ctx;
+        this.Cluster(sized, count, italic);
+        this.MeasureClusters(ctx, advances);
+        foreach (var (b, owner) in ctx.Absorbed)
+            advances[b] = advances[owner] == Missing ? Missing : 0;
+    }
+
+    private void Cluster(SizedFont sized, int count, ItalicMode italic)
+    {
+        var ctx = this._ctx;
         ctx.Sized = sized;
         ctx.Absorbed.Clear();
         count = ComposeHangul(ctx, count);
@@ -116,10 +156,6 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
             ctx.TextItalic.AsSpan(0, count).Clear();
             this.Collect(ctx, count, true);
         }
-
-        this.PlaceClusters(ctx, p, glyphs);
-        foreach (var (b, owner) in ctx.Absorbed)
-            glyphs[b] = glyphs[owner].IsNull ? default : emptyGlyph;
     }
 
     /// <summary>
@@ -303,8 +339,10 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
         var textStart = textOffset + shaped.TextStart;
         var textEnd = textOffset + shaped.TextEnd;
 
-        // What shaping moved the glyphs by besides their own advances, towards the next cluster.
-        var kerning = source.GetScreenAdvance(px, new(glyphs, shaped.Advances, offsets)) - GetOwnWidth(source, px, glyphs, offsets);
+        // What shaping moved the glyphs by besides their own advances, towards the next cluster. Only monospacing replaces the
+        // advances, keeping that.
+        var mono = element.Def.Monospacing;
+        var kerning = mono is null ? 0 : source.GetScreenAdvance(px, new(glyphs, shaped.Advances, offsets)) - GetOwnWidth(source, px, glyphs, offsets);
 
         // In a node's italics, shaped upright, a glyph of one character is drawn with its font's italic, if it has one.
         if (italicImages && glyphs.Length == 1 &&
@@ -320,7 +358,6 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
         }
 
         var width = source.GetScreenAdvance(px, new(glyphs, shaped.Advances, offsets));
-        var mono = element.Def.Monospacing;
         var rawAdvance = mono is null ? 0 : (int)Misc.StdRound(width - kerning);
 
         // As in xivres's wrapping_fixed_size_font, a monospaced cluster that drops its kerning drops that of the cluster before it too.
@@ -458,9 +495,46 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
                             : emptyGlyph;
             }
         }
-
-        static int Share(int advance, int parts, int part) => (advance * (part + 1) / parts) - (advance * part / parts);
     }
+
+    /// <summary>As <see cref="PlaceClusters"/> advances, but from the clusters' pens, as cells' left bearings don't change a line's width.</summary>
+    private void MeasureClusters(ShapingContext ctx, int[] advances)
+    {
+        advances.AsSpan().Fill(Missing);
+        var margin = cells.GetEdgeMargin(ctx.Sized);
+        var clusters = ctx.Clusters;
+        var count = clusters.Count;
+        for (var i = 0; i < count; i++)
+        {
+            var c = clusters[i];
+            if (c.Missing)
+                continue;
+            var end = i + 1 < count && !clusters[i + 1].Missing ? clusters[i + 1].X0 : c.X1;
+            var advance = Math.Max(end - c.X0, 0);
+
+            // A cell that can't start earlier advances by its edge margin more (GetCell), assumed of every such cluster.
+            if (i == 0 || clusters[i - 1].Missing)
+                advance += margin;
+
+            ctx.ElementStarts.Clear();
+            for (var t = c.TextStart; t < c.TextEnd; t += ctx.NextGrapheme(t, c.TextEnd))
+                ctx.ElementStarts.Add(t);
+            var elements = ctx.ElementStarts.Count;
+            var element = 0;
+            for (var t = c.TextStart; t < c.TextEnd; t++)
+            {
+                var startsElement = element + 1 < elements && ctx.ElementStarts[element + 1] == t;
+                if (startsElement)
+                    element++;
+                var b = ctx.TextToByte[t];
+                if (b >= 0)
+                    advances[b] = t == c.TextStart || startsElement ? Share(advance, elements, element) : 0;
+            }
+        }
+    }
+
+    // A ligature's text elements share its advance evenly.
+    private static int Share(int advance, int parts, int part) => (advance * (part + 1) / parts) - (advance * part / parts);
 
     /// <summary>
     /// The clusters not rasterized yet whose sources allow it are rasterized on the thread pool together, which this thread
@@ -468,8 +542,10 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
     /// </summary>
     private void RasterizeConcurrently(ShapingContext ctx)
     {
-        var pending = new List<Cluster>();
-        var seen = new HashSet<RasterKey>();
+        var pending = this._pending;
+        var seen = this._seen;
+        pending.Clear();
+        seen.Clear();
         foreach (var c in ctx.Clusters)
         {
             if (!c.Missing && c.Source!.RasterizesConcurrently && cells.NeedsRaster(ctx.Sized, c) && seen.Add(cells.KeyOf(ctx.Sized, c)))

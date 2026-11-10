@@ -12,7 +12,7 @@ namespace FontChanger.DalamudPlugin.Fonts.Glyphs;
 
 /// <summary>Makes glyphs, whose pixels are placed only once they are drawn.</summary>
 /// <remarks>Every glyph returned is held once by the caller, unless it is null.</remarks>
-internal sealed unsafe class GlyphFactory(GlyphStore store, FrameClock clock)
+internal sealed unsafe class GlyphFactory(GlyphStore store)
 {
     /// <summary>Gets or sets the edge, which glyphs get margins for.</summary>
     public EdgeSettings Edge { get; set; } = new();
@@ -80,39 +80,26 @@ internal sealed unsafe class GlyphFactory(GlyphStore store, FrameClock clock)
     /// From the largest of the sized font's game fonts that has it, copied into the atlas because the edge steps by texels of
     /// the width all of a font's textures share, which is the atlas's.
     /// </summary>
-    /// <returns>Held by <see cref="SizedFont.GameGlyphs"/>, not the caller.</returns>
+    /// <returns>Null if none has it.</returns>
     public AtkFontManager.Glyph* GameGlyphOf(SizedFont sized, uint utf8Value)
     {
-        if (sized.GameGlyphs.TryGetValue(utf8Value, clock.Frame, out var made))
-            return made;
-
-        AtkFontManager.Glyph* glyph = null;
-        if (GameUtf8.TryUnpack(utf8Value, out var rune))
+        if (!GameUtf8.TryUnpack(utf8Value, out var rune))
+            return null;
+        foreach (var (_, font) in sized.Fonts)
         {
-            foreach (var (_, font) in sized.Fonts)
-            {
-                glyph = this.FromGameGlyph(sized, font, font.Value->FindGlyph(rune), utf8Value);
-                if (glyph is not null)
-                    break;
-            }
+            var glyph = this.FromGameGlyph(sized, font, font.Value->FindGlyph(rune), utf8Value);
+            if (glyph is not null)
+                return glyph;
         }
 
-        return sized.GameGlyphs.Add(utf8Value, glyph, clock.Frame);
+        return null;
     }
 
     /// <summary>The game font's own glyph, which has a texture index of the game font's textures.</summary>
-    /// <returns>Held by <see cref="SizedFont.ConvertedGlyphs"/>, not the caller.</returns>
-    public AtkFontManager.Glyph* Convert(SizedFont sized, Pointer<AtkFontManager.Font> font, Pointer<AtkFontManager.Glyph> game, uint utf8Value)
-    {
-        var key = (font, game);
-        if (sized.ConvertedGlyphs.TryGetValue(key, clock.Frame, out var made))
-            return made;
-        var glyph = this.FromGameGlyph(sized, font, game, utf8Value);
-        if (glyph is null)
-            glyph = this.Spacer(sized, (int)Misc.StdRound((game.Value->Width + game.Value->OffsetX) * GetGameScale(sized, font)), utf8Value);
-
-        return sized.ConvertedGlyphs.Add(key, glyph, clock.Frame);
-    }
+    public AtkFontManager.Glyph* Convert(SizedFont sized, Pointer<AtkFontManager.Font> font, Pointer<AtkFontManager.Glyph> game, uint utf8Value) =>
+        this.FromGameGlyph(sized, font, game, utf8Value) is var glyph and not null
+            ? glyph
+            : this.Spacer(sized, (int)Misc.StdRound((game.Value->Width + game.Value->OffsetX) * GetGameScale(sized, font)), utf8Value);
 
     // 1 within the half-pixel rounding of copy sizes.
     private static float GetGameScale(SizedFont sized, AtkFontManager.Font* font) =>

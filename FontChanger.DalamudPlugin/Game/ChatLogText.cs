@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 using Dalamud.Game.Addon.Lifecycle;
@@ -8,7 +7,6 @@ using Dalamud.Utility;
 
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Fonts;
 using FontChanger.DalamudPlugin.Fonts.Enums;
@@ -37,7 +35,8 @@ internal sealed unsafe class ChatLogText : IDisposable
 
     private readonly FontReplacer _replacer;
     private readonly DisposeSafety.ScopedFinalizer _finalizer = new();
-    private readonly Dictionary<nint, int> _tabs = [];
+    // By tab, the panels' text nodes given faces.
+    private readonly nint[] _panelTexts = new nint[TextFaceNames.ChatTabCount];
     private readonly int[] _fontSizes = new int[TextFaceNames.ChatTabCount];
     private readonly int[] _gameFontSizes = new int[TextFaceNames.ChatTabCount];
 
@@ -49,19 +48,27 @@ internal sealed unsafe class ChatLogText : IDisposable
         this._replacer = replacer;
         try
         {
-            this._replacer.AddNodeFaces(this.GetNodeFaces);
-            this._finalizer.Add(() => this._replacer.RemoveNodeFaces(this.GetNodeFaces));
+            this._finalizer.Add(this.ForgetPanels);
             this._refreshValue = (AtkValue*)NativeMemory.AllocZeroed((nuint)sizeof(AtkValue));
             this._finalizer.Add(() => NativeMemory.Free(this._refreshValue));
             Plugin.AddonLifecycle.RegisterListener(AddonEvent.PreRefresh, PanelNames, this.OnPreRefresh);
             this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PreRefresh, PanelNames, this.OnPreRefresh));
+            Plugin.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, PanelNames, this.OnPostSetup);
+            this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, PanelNames, this.OnPostSetup));
+            Plugin.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, PanelNames, this.OnPreFinalize);
+            this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, PanelNames, this.OnPreFinalize));
 
             // First when undone, so that the refreshes giving the game's sizes back still go through the listener.
             this._finalizer.Add(() => {
                 for (var tab = 0; tab < this._fontSizes.Length; tab++)
                     this.SetFontSize(tab, 0);
             });
-            this.ReadPanels();
+            for (var tab = 0; tab < PanelNames.Length; tab++)
+            {
+                var panel = Plugin.GameGui.GetAddonByName<AddonChatLogPanel>(PanelNames[tab]);
+                if (panel is not null)
+                    this.SetPanelText(tab, (nint)panel->ChatText);
+            }
         }
         catch
         {
@@ -109,16 +116,32 @@ internal sealed unsafe class ChatLogText : IDisposable
         return panel is not null && panel->AtkUnitBase.IsReady ? panel : null;
     }
 
-    /// <summary>Between frames, every frame, as panels come and go.</summary>
-    public void ReadPanels()
+    /// <summary>0 for none.</summary>
+    private void SetPanelText(int tab, nint node)
     {
-        this._tabs.Clear();
-        for (var tab = 0; tab < PanelNames.Length; tab++)
-        {
-            var panel = GetPanel(tab);
-            if (panel is not null && panel->ChatText is not null)
-                this._tabs[(nint)panel->ChatText] = tab;
-        }
+        if (this._panelTexts[tab] != 0)
+            this._replacer.RemoveNodeFaces(this._panelTexts[tab]);
+        this._panelTexts[tab] = node;
+        if (node != 0)
+            this._replacer.SetNodeFaces(node, new(TextFaceNames.ChatTab(tab)));
+    }
+
+    private void ForgetPanels()
+    {
+        for (var tab = 0; tab < this._panelTexts.Length; tab++)
+            this.SetPanelText(tab, 0);
+    }
+
+    private void OnPostSetup(AddonEvent type, AddonArgs args)
+    {
+        if (Array.IndexOf(PanelNames, args.AddonName) is var tab and >= 0)
+            this.SetPanelText(tab, (nint)((AddonChatLogPanel*)args.Addon.Address)->ChatText);
+    }
+
+    private void OnPreFinalize(AddonEvent type, AddonArgs args)
+    {
+        if (Array.IndexOf(PanelNames, args.AddonName) is var tab and >= 0)
+            this.SetPanelText(tab, 0);
     }
 
     // The refresh's first value is the tab's font size.
@@ -142,9 +165,6 @@ internal sealed unsafe class ChatLogText : IDisposable
         refresh.AtkValues = (nint)this._refreshValue;
         refresh.AtkValueCount = 1;
     }
-
-    private NodeFaces? GetNodeFaces(Pointer<AtkTextNode> node) =>
-        this._tabs.TryGetValue((nint)node.Value, out var tab) ? new NodeFaces(TextFaceNames.ChatTab(tab)) : null;
 
     /// <summary>Between frames, as the game wraps a tab's messages only when they change.</summary>
     public void Relayout()

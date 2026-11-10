@@ -97,8 +97,15 @@ internal static unsafe class FontNames
         var handle = (ResourceHandle*)font->TextureResourceHandles[0].Value;
         if (handle is null || handle->FileName.Length is 0 or > 4096)
             return false;
-        var fileName = Encoding.UTF8.GetString(handle->FileName.AsSpan(0, (int)handle->FileName.Length));
-        return fileName.Contains("font_lobby", StringComparison.OrdinalIgnoreCase);
+        var fileName = handle->FileName.AsSpan(0, (int)handle->FileName.Length);
+        var lobby = "font_lobby"u8;
+        for (var i = 0; i + lobby.Length <= fileName.Length; i++)
+        {
+            if (Ascii.EqualsIgnoreCase(fileName.Slice(i, lobby.Length), lobby))
+                return true;
+        }
+
+        return false;
     }
 
     private static float SizeFromFdtFileName(string name) => GameFonts.TryFind(name, out var font) ? font.Size : 0;

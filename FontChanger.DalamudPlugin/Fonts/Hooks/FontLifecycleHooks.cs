@@ -1,16 +1,11 @@
 using System;
-using System.Collections.Generic;
 
 using Dalamud.Hooking;
 using Dalamud.Utility;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using FFXIVClientStructs.Interop;
 
-using FontChanger.DalamudPlugin.Fonts.Glyphs;
 using FontChanger.DalamudPlugin.PluginInterface;
-
-using KernelTexture = FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.Texture;
 
 namespace FontChanger.DalamudPlugin.Fonts.Hooks;
 
@@ -27,20 +22,18 @@ namespace FontChanger.DalamudPlugin.Fonts.Hooks;
 /// </remarks>
 internal sealed unsafe class FontLifecycleHooks : IDisposable
 {
-    private readonly GameGlyphReader _reader;
-    private readonly Resetter _resetter;
-    private readonly EnabledState _enabled;
-    private readonly FrameLog _log;
+    private readonly Action<ResetScope> _reset;
+    private readonly FrameState _state;
     private readonly DisposeSafety.ScopedFinalizer _finalizer = new();
     private readonly Hook<BuildFontDelegate> _buildFontHook;
     private readonly Hook<UnloadFontsDelegate> _unloadFontsHook;
 
-    public FontLifecycleHooks(GameGlyphReader reader, Resetter resetter, EnabledState enabled, FrameLog log)
+    /// <param name="reset">Makes what was made from the fonts again.</param>
+    /// <param name="state">What the parts share.</param>
+    public FontLifecycleHooks(Action<ResetScope> reset, FrameState state)
     {
-        this._reader = reader;
-        this._resetter = resetter;
-        this._enabled = enabled;
-        this._log = log;
+        this._reset = reset;
+        this._state = state;
         try
         {
             this._buildFontHook = this._finalizer.Add(
@@ -66,49 +59,28 @@ internal sealed unsafe class FontLifecycleHooks : IDisposable
     private int BuildFontDetour(AtkFontManager* manager, ushort index)
     {
         var result = this._buildFontHook.Original(manager, index);
-        try
-        {
-            // UnloadFonts came first, and reads are done at Present.
-            if (!this._reader.IsEmpty)
-                Plugin.Log.Warning("A font was built with game glyph reads pending");
-            this._resetter.Reset(ResetScope.SizedFonts);
-            this._log.GameFontChanged();
-        }
-        catch (Exception ex)
-        {
-            this._enabled.Fail(ex, "Refreshing the copies of a rebuilt font failed");
-        }
-
+        this.FontsChanged("Refreshing the copies of a rebuilt font failed");
         return result;
     }
 
     private int UnloadFontsDetour(AtkFontManager* manager)
     {
+        var result = this._unloadFontsHook.Original(manager);
+        this.FontsChanged("Letting go of the unloaded fonts failed");
+        return result;
+    }
+
+    // After the original, so that copies borrow what the game left, not what it was about to free.
+    private void FontsChanged(string failure)
+    {
         try
         {
-            var textures = new HashSet<Pointer<KernelTexture>>();
-            for (var i = 0; manager->Fonts is not null && i < manager->FontCount; i++)
-            {
-                var font = manager->Fonts + i;
-                if (!font->Flags.HasFlag(AtkFontManager.FontFlags.Built))
-                    continue;
-                for (var t = 0; t < font->TextureCount && t < AtkFontManager.Font.MaxTextures; t++)
-                {
-                    if (font->Textures[t].Value is not null)
-                        textures.Add(font->Textures[t]);
-                }
-            }
-
-            this._reader.Forget(textures);
-            this._resetter.Reset(ResetScope.SizedFonts);
-            this._log.GameFontChanged();
+            this._reset(ResetScope.SizedFonts);
+            this._state.GameFontChanged();
         }
         catch (Exception ex)
         {
-            this._reader.Clear();
-            this._enabled.Fail(ex, "Letting go of the fonts being unloaded failed");
+            this._state.Fail(ex, failure);
         }
-
-        return this._unloadFontsHook.Original(manager);
     }
 }

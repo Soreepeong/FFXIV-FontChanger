@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Utilities;
@@ -23,7 +22,9 @@ internal sealed unsafe class FontSetFlags
     private const int LineBufferSize = 0x2000;
 
     private readonly (NodeFaces Faces, nint Text, int Length)[] _setFaces = new (NodeFaces, nint, int)[AtkFontManager.FontSetCount];
-    private readonly List<Func<Pointer<AtkTextNode>, NodeFaces?>> _nodeFaces = [];
+
+    // Text nodes with faces of their own, set by those who know them (nameplates, chat tabs).
+    private readonly Dictionary<nint, NodeFaces> _nodeFaces = [];
 
     // Where positive, the game picks its font for this times the unscaled size, and scales the advances back.
     public static ref float PickScaleOf(AtkFontManager.FontSet* set) => ref *(float*)((byte*)set + 0x15C);
@@ -32,26 +33,18 @@ internal sealed unsafe class FontSetFlags
 
     public static bool IsBold(AtkFontAnalyzerState* state) => state is not null && (state->Flags & BoldFlag) != 0;
 
-    /// <summary>The first to give a node's faces wins.</summary>
-    public void AddNodeFaces(Func<Pointer<AtkTextNode>, NodeFaces?> faces) => this._nodeFaces.Add(Misc.DebugAssertMainThread(faces));
+    public void SetNodeFaces(nint node, NodeFaces faces) => this._nodeFaces[Misc.DebugAssertMainThread(node)] = faces;
 
-    public void RemoveNodeFaces(Func<Pointer<AtkTextNode>, NodeFaces?> faces) => this._nodeFaces.Remove(Misc.DebugAssertMainThread(faces));
+    public void RemoveNodeFaces(nint node) => this._nodeFaces.Remove(Misc.DebugAssertMainThread(node));
 
-    public NodeFaces GetNodeFaces(AtkTextNode* node)
-    {
-        foreach (var resolve in this._nodeFaces)
-        {
-            if (resolve(node) is { } faces)
-                return faces;
-        }
+    /// <summary>Default for a node no one set faces of.</summary>
+    public NodeFaces GetNodeFaces(AtkTextNode* node) => this._nodeFaces.GetValueOrDefault((nint)node);
 
-        return default;
-    }
+    public bool TryGetNodeFaces(AtkTextNode* node, out NodeFaces faces) => this._nodeFaces.TryGetValue((nint)node, out faces);
 
     public void ApplyNodeFace(AtkFontManager.FontSet* set, AtkTextNode* node, NodeFaces faces)
     {
-        var index = IndexOf(set);
-        if (faces.Face == TextFace.Default || index < 0)
+        if (faces.Face == TextFace.Default || IndexOf(set) is not (var index and >= 0))
         {
             set->DrawFlags &= ~FaceFlag;
             return;

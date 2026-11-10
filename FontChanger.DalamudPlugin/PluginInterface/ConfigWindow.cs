@@ -159,7 +159,7 @@ internal sealed partial class ConfigWindow : Window
             save = true;
         }
 
-        var applied = t._plugin.Coordinator.Applied.Subpixel;
+        var applied = t._plugin.Coordinator.AppliedSubpixel;
         var clearType = t._pendingClearType
                         ?? (mode == SubpixelMode.System
                                 ? new(applied.Level, applied.Contrast, applied.Gamma, applied.GrayscaleContrast)
@@ -269,7 +269,7 @@ internal sealed partial class ConfigWindow : Window
     // Beside the part's checkbox.
     private void DrawFailed(Part part)
     {
-        if (!this._plugin.Coordinator.Applied.Failed(part))
+        if (!this._plugin.Coordinator.Failed(part))
             return;
         ImGui.SameLine();
         ImGui.TextDisabled("(off after an error until reloaded)");

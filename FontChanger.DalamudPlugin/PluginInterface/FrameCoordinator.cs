@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 using Dalamud.Plugin.Services;
@@ -8,6 +10,7 @@ using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Glyphs;
 using FontChanger.DalamudPlugin.Fonts.Shaders;
 using FontChanger.DalamudPlugin.Game;
+using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;
 
@@ -15,15 +18,18 @@ namespace FontChanger.DalamudPlugin.PluginInterface;
 /// <remarks>
 /// <ul>
 /// <li><see cref="OnUpdate"/> runs at the framework update before the game's. It does settings, fonts and resets, then what keeps laid out text.</li>
-/// <li>Hooks run in the game's update and draw between the two, and record in a <see cref="FrameLog"/> what others must react to.</li>
+/// <li>Hooks run in the game's update and draw between the two, and record in a <see cref="FrameState"/> what others must react to.</li>
 /// <li><see cref="OnPresent"/> runs before the plugin's windows draw. It does the atlases and the caches.</li>
 /// </ul>
 /// </remarks>
 internal sealed class FrameCoordinator : IAsyncDisposable
 {
+    // The configuration's names of the chat tabs' faces, by tab.
+    private static readonly string[] ChatTabFaceNames =
+        Enumerable.Range(0, TextFaceNames.ChatTabCount).Select(tab => TextFaceNames.NameOf(TextFaceNames.ChatTab(tab))).ToArray();
+
     private readonly Configuration.Configuration _configuration;
-    private readonly FrameLog _log = new();
-    private readonly FrameClock _clock = new();
+    private readonly FrameState _state = new();
     private readonly SubpixelShaders _subpixel;
     private readonly SubpixelSource _subpixelSource = new();
     private readonly EdgeShader _edge = new();
@@ -34,8 +40,8 @@ internal sealed class FrameCoordinator : IAsyncDisposable
     public FrameCoordinator(Configuration.Configuration configuration)
     {
         this._configuration = configuration;
-        this._subpixel = new(this._log);
-        this.Replacer = new(this._log, this._clock);
+        this._subpixel = new(this._state);
+        this.Replacer = new(this._state);
         try
         {
             this.NamePlates = Optional("Nameplate text", () => new NamePlateText(this.Replacer));
@@ -75,7 +81,11 @@ internal sealed class FrameCoordinator : IAsyncDisposable
 
     public PresetController Presets { get; } = null!;
 
-    public AppliedSettings Applied { get; } = new();
+    /// <summary>Gets what subpixel rendering was last applied with, such as the system's ClearType settings.</summary>
+    public SubpixelShaders.SettingsRecord AppliedSubpixel { get; private set; }
+
+    /// <summary>A part that failed stays off until the plugin is loaded again.</summary>
+    public bool Failed(Part part) => this._state.Failed(part);
 
     /// <summary>Waits out the frames the game may still use glyphs and copies for before freeing them.</summary>
     public async ValueTask DisposeAsync()
@@ -85,75 +95,52 @@ internal sealed class FrameCoordinator : IAsyncDisposable
         await Plugin.Framework.RunOnFrameworkThread(() => Step("font replacer", this.Replacer.Dispose));
     }
 
+    /// <summary>Applies the settings, each part skipping what didn't change.</summary>
     public void OnUpdate(IFramework framework)
     {
-        var log = this._log.Drain();
-        foreach (var part in log.Failures)
-            this.Applied.Fail(part);
+        var log = this._state.Drain();
 
-        var settings = this.Applied.Diff(this._configuration, this._subpixelSource.Get(this._configuration));
+        var c = this._configuration;
         var (fonts, error) = this._loader.TryTake();
         if (error is not null)
             this.Presets.ReportFailure(error);
 
         // Every cause is known before anything is made again, so that it is made once.
-        var scope = ResetScope.None;
-        if (settings?.Enabled is { } enabled)
-            scope |= this.Replacer.SetEnabled(enabled);
-        if (settings?.Edge is { } edge)
-        {
-            this._edge.Apply(edge);
-            scope |= this.Replacer.SetEdge(edge);
-        }
+        var scope = this.Replacer.SetEnabled(c.Enabled && !this._state.Failed(Part.Replacer));
+        this._edge.Apply(c.Edge);
+        scope |= this.Replacer.SetEdge(c.Edge);
 
-        if (settings?.Subpixel is { } subpixel)
-        {
-            var active = this._subpixel.TryApply(subpixel);
-            scope |= this.Replacer.SetSubpixel(active ? subpixel.Order : SubpixelOrder.None, active);
-        }
-
-        if (settings?.VerticalSubpixel is { } vertical)
-            scope |= this.Replacer.SetVerticalSubpixel(vertical);
-        if (settings?.Atlas is { } atlas)
-            scope |= this.Replacer.SetAtlas(atlas);
+        var subpixel = this._state.Failed(Part.Subpixel) ? default : this._subpixelSource.Get(c);
+        var active = this._subpixel.TryApply(subpixel);
+        this.AppliedSubpixel = subpixel;
+        scope |= this.Replacer.SetSubpixel(active ? subpixel.Order : SubpixelOrder.None, active);
+        scope |= this.Replacer.SetVerticalSubpixel(c.VerticalSubpixel);
+        scope |= this.Replacer.SetAtlas(c.Atlas);
         if (log.GameFontsChanged)
             scope |= ResetScope.Text;
-        this.Replacer.Resetter.Reset(scope, fonts);
+        this.Replacer.Reset(scope, fonts);
 
-        this.ChatLog?.ReadPanels();
         if (scope.HasFlag(ResetScope.Text) || fonts is not null)
             this.RedoText();
         else if (log.PlaneReused)
             this.NamePlates?.Rebake();
 
-        if (settings is not null)
-        {
-            if (settings.NamePlates is { } mode && this.NamePlates is not null)
-                this.NamePlates.Mode = mode;
-            for (var tab = 0; tab < settings.ChatFontSizes?.Length; tab++)
-            {
-                if (settings.ChatFontSizes[tab] is { } size)
-                    this.ChatLog?.SetFontSize(tab, size);
-            }
-
-            this.Applied.Accept(settings);
-        }
+        if (this.NamePlates is not null)
+            this.NamePlates.Mode = c.NamePlates;
+        for (var tab = 0; tab < ChatTabFaceNames.Length; tab++)
+            this.ChatLog?.SetFontSize(tab, c.FaceFontSizes.GetValueOrDefault(ChatTabFaceNames[tab]));
 
         this.NamePlates?.Update();
     }
 
     public void OnPresent()
     {
-        this._clock.BeginPresent();
-        this.Replacer.ReadGameGlyphs();
-        if (this.Replacer.EvictFullPlanes())
-            this._log.PlaneReused();
-        this.Replacer.UploadAtlases();
+        Misc.DebugAssertMainThread();
+        this.Replacer.Present();
 
         // This frame's UI draw commands are processed by now (Present, which is called even while the UI is hidden).
         this._subpixel.ForgetDrawState();
-        this.Replacer.Sweep();
-        this._clock.EndFrame();
+        this._state.EndFrame();
     }
 
     private static void Step(string name, Action? step)

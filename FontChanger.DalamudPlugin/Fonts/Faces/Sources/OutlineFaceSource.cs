@@ -62,8 +62,8 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
 
     public IEnumerable<Rune> Codepoints => this._codepoints ??= this.ReadCodepoints();
 
-    /// <summary>FreeType is behind its rasterizer's lock, DirectWrite's factory is thread safe, and the lookup's faces are made behind its lock.</summary>
-    public bool RasterizesConcurrently => true;
+    /// <summary>When DirectWrite draws, as its factory is thread safe and the lookup's faces are made behind its lock. FreeType draws behind one lock.</summary>
+    public bool RasterizesConcurrently => this._freeTypeFace is null;
 
     private FontServices Services { get; }
 

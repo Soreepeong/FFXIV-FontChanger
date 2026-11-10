@@ -38,9 +38,6 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     private int _current;
     private int _frontier;
 
-    // Something was allocated since Clear, so the pages have pixels to clear.
-    private bool _used = true;
-
     /// <summary>Sides up to 4096, as glyph positions take 12 bits.</summary>
     public GlyphAtlas(int width, int height, int maxPages, string name, bool subpixel, AtlasTextureFormat format)
     {
@@ -132,27 +129,21 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     public bool CanHold(int width, int height) => width + (2 * Padding) <= this.Width && height + (2 * Padding) <= this.Height;
 
     /// <summary>Keeps the textures, which fonts refer to; between frames, as no glyph of the old contents may be drawn afterwards.</summary>
+    /// <remarks>The old pixels stay until each area is allocated again, which empties it first.</remarks>
     public void Clear()
     {
         Misc.DebugAssertMainThread();
         foreach (var p in this._pages)
         {
-            if (this._used)
-            {
-                NativeMemory.Clear(p.Shadow, (nuint)(this.Pitch * this.Height));
-                p.MarkDirty(0, 0, this.Width, this.Height);
-            }
-
             p.CursorsPerPlane.AsSpan().Clear();
             for (var i = 0; i < PlanesPerPage; i++)
                 p.Generations[i]++;
-            p.Recycled.AsSpan().Clear();
+            p.Recycled.AsSpan().Fill(true);
             p.Drawn.AsSpan().Clear();
         }
 
         this._current = this.FirstPlane;
         this._frontier = this.FirstPlane + this.PlaneStep;
-        this._used = false;
     }
 
     /// <summary>
@@ -179,19 +170,19 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         return victim;
     }
 
-    /// <summary>Marks the plane drawn at <paramref name="tick"/>.</summary>
+    /// <summary>Marks the plane drawn in <paramref name="frame"/>.</summary>
     /// <returns>False if <paramref name="generation"/> is no longer the plane's, as it was reused since.</returns>
-    public bool Touch(int page, int plane, uint generation, long tick)
+    public bool Touch(int page, int plane, uint generation, long frame)
     {
         var p = this._pages[page];
         if (p.Generations[plane] != generation)
             return false;
-        p.Drawn[plane] = tick;
+        p.Drawn[plane] = frame;
         return true;
     }
 
-    /// <summary>The area is emptied first in a reused plane, and <paramref name="tick"/> marks the plane drawn.</summary>
-    public AllocationResult TryAllocate(int width, int height, long tick, out Allocation res)
+    /// <summary>The area is emptied first in a reused plane, and <paramref name="frame"/> marks the plane drawn.</summary>
+    public AllocationResult TryAllocate(int width, int height, long frame, out Allocation res)
     {
         Misc.DebugAssertMainThread();
         res = default;
@@ -214,10 +205,9 @@ internal sealed unsafe class GlyphAtlas : IDisposable
                 res = new(page, plane, s.X + Padding, s.Y + Padding, p.Generations[plane]);
                 if (p.Recycled[plane])
                     this.ZeroRect(p, plane, s.X, s.Y, w, h);
-                p.Drawn[plane] = tick;
+                p.Drawn[plane] = frame;
                 s.X += w;
                 s.Height = Math.Max(s.Height, h);
-                this._used = true;
                 return this._pages.Count != pages ? AllocationResult.PlacedOnNewPage : AllocationResult.Placed;
             }
 
@@ -367,10 +357,10 @@ internal sealed unsafe class GlyphAtlas : IDisposable
         /// <summary>Bumped each time the plane is emptied or reused.</summary>
         public uint[] Generations { get; } = new uint[PlanesPerPage];
 
-        /// <summary>Reused since the last Clear, keeping its earlier pixels where nothing was placed since.</summary>
+        /// <summary>Reused or cleared, keeping its earlier pixels where nothing was placed since.</summary>
         public bool[] Recycled { get; } = new bool[PlanesPerPage];
 
-        /// <summary>The tick a glyph in the plane was last drawn or placed at.</summary>
+        /// <summary>The frame a glyph in the plane was last drawn or placed in.</summary>
         public long[] Drawn { get; } = new long[PlanesPerPage];
 
         public int DirtyLeft { get; private set; }

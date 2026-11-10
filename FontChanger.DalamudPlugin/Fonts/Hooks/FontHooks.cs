@@ -9,16 +9,13 @@ using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Glyphs;
 using FontChanger.DalamudPlugin.Fonts.Text;
 using FontChanger.DalamudPlugin.PluginInterface;
+using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.Fonts.Hooks;
 
 /// <summary>Has font sets pick copies, and answers glyph lookups in them. Anything that fails turns replacing off.</summary>
 internal sealed unsafe class FontHooks : IDisposable
 {
-    // A glyph's box is a line high and at most 255 pixels. Text whose lines are taller is drawn from a smaller copy, scaled up by the
-    // renderer.
-    private const int MaxDrawnLineHeight = byte.MaxValue;
-
     // AtkResNode.Type of the first component node type. Those after are components too.
     private const ushort FirstComponentNodeType = 1000;
 
@@ -30,10 +27,8 @@ internal sealed unsafe class FontHooks : IDisposable
     private const string PrepareNodeSignature = "E8 ?? ?? ?? ?? 48 83 BF ?? ?? ?? ?? 00 74 ?? 48 8B CE E8";
 
     private readonly CopyFonts _copies;
-    private readonly SizedFontRegistry _sized;
     private readonly GlyphStore _store;
-    private readonly FrameClock _clock;
-    private readonly EnabledState _enabled;
+    private readonly FrameState _state;
     private readonly FontSetFlags _flags;
     private readonly GlyphLookup _lookup;
     private readonly DisposeSafety.ScopedFinalizer _finalizer = new();
@@ -55,15 +50,12 @@ internal sealed unsafe class FontHooks : IDisposable
         GlyphFactory factory,
         CellPlacer placer,
         GlyphStore store,
-        FrameClock clock,
-        EnabledState enabled,
+        FrameState state,
         FontSetFlags flags)
     {
         this._copies = copies;
-        this._sized = sized;
         this._store = store;
-        this._clock = clock;
-        this._enabled = enabled;
+        this._state = state;
         this._flags = flags;
         try
         {
@@ -88,7 +80,7 @@ internal sealed unsafe class FontHooks : IDisposable
             else
                 Plugin.Log.Warning("Text drawing setup not found: chat tabs are drawn in their family's fonts");
 
-            this._lookup = new(copies, sized, layout, factory, placer, store, clock, flags, this._getGlyphHook.Original);
+            this._lookup = new(copies, sized, layout, factory, placer, store, state, flags, this._getGlyphHook.Original);
             this._getGlyphHook.Enable();
             this._pickFontHook.Enable();
             this._buildFontCacheHook.Enable();
@@ -154,7 +146,7 @@ internal sealed unsafe class FontHooks : IDisposable
             if (type == (ushort)NodeType.Text)
             {
                 var text = (AtkTextNode*)node;
-                if (this._enabled.IsOn)
+                if (this._state.IsOn)
                 {
                     if (text->FontCacheHandle != 0)
                         text->FreeFontCache();
@@ -175,7 +167,7 @@ internal sealed unsafe class FontHooks : IDisposable
 
     private void BuildFontCacheDetour(AtkTextNode* node)
     {
-        if (this._enabled.IsOn)
+        if (this._state.IsOn)
             node->FreeFontCache();
         else
             this._buildFontCacheHook.Original(node);
@@ -203,7 +195,7 @@ internal sealed unsafe class FontHooks : IDisposable
         // Hinting rounds glyphs of different sizes differently, so text measured in the node's units (a speech balloon's) is laid
         // out with the glyphs it is drawn with, of its size on screen. Nameplate bakes are left alone, being drawn at a scale of
         // their own.
-        if (this._enabled.IsOn && considerScale == 0 && FontSetFlags.PickScaleOf(set) <= 0 && !TextFaceNames.IsNamePlates(faces.Face))
+        if (this._state.IsOn && considerScale == 0 && FontSetFlags.PickScaleOf(set) <= 0 && !TextFaceNames.IsNamePlates(faces.Face))
         {
             ref readonly var m = ref node->Transform;
             var scale = MathF.Sqrt((m.M21 * m.M21) + (m.M22 * m.M22));
@@ -220,8 +212,9 @@ internal sealed unsafe class FontHooks : IDisposable
     /// </summary>
     private int TextWrapLayoutDetour(nint wrapper, byte* text)
     {
+        Misc.DebugAssertMainThread();
         var outer = LayoutCall.Wrapping;
-        LayoutCall.Wrapping = this._enabled.IsOn;
+        LayoutCall.Wrapping = this._state.IsOn;
         try
         {
             return this._textWrapLayoutHook!.Original(wrapper, text);
@@ -239,11 +232,10 @@ internal sealed unsafe class FontHooks : IDisposable
             return font;
 
         // The picker's cache is keyed by its own size, not the one copies are chosen by, so a copy picked before is decided again.
-        if (this._copies.TryGet(font, out var picked))
-            font = picked.Original;
+        font = this._copies.OriginalOf(font);
 
         // A font not built yet (its glyph map may be gone) is left alone.
-        if (!this._enabled.IsOn || !font->Flags.HasFlag(AtkFontManager.FontFlags.Ready))
+        if (!this._state.IsOn || !font->Flags.HasFlag(AtkFontManager.FontFlags.Ready))
             return font;
 
         try
@@ -260,35 +252,30 @@ internal sealed unsafe class FontHooks : IDisposable
                     size *= GlyphLookup.WrapScales[^1];
             }
 
-            var halfPx = GlyphLookup.HalfPxOf(size);
-            var face = this._sized.Fonts.ResolveFace(this._flags.FaceOf(set));
-            var drawn = size;
-            if (this._sized.Get(font, halfPx, face, false).LineHeight is var lineHeight && lineHeight > MaxDrawnLineHeight)
-            {
-                // Line metrics are rounded, so the size whose lines fit is checked.
-                halfPx = Math.Max(GlyphLookup.MinHalfPx, halfPx * MaxDrawnLineHeight / lineHeight);
-                while (halfPx > GlyphLookup.MinHalfPx && this._sized.Get(font, halfPx, face, false).LineHeight > MaxDrawnLineHeight)
-                    halfPx--;
-                drawn = halfPx / 2f;
-            }
-
-            var copy = this._copies.GetOrCreate(font, halfPx, face);
+            // Text with faces of its own (nameplates, chat tabs) and wrapped text keep what they are laid out with.
+            var face = this._flags.FaceOf(set);
+            var copy = this._copies.Pick(font, size, face, face == TextFace.Default && !LayoutCall.Wrapping, out var halfPx, out var clamped);
 
             // Any renderer scale but exactly 1 resamples bilinearly (soft text), while a quarter pixel of size error doesn't show.
-            if (halfPx < GlyphLookup.MaxHalfPx && halfPx > GlyphLookup.MinHalfPx)
-                copy->Size = drawn;
+            if (halfPx < CopyFonts.MaxHalfPx && halfPx > CopyFonts.MinHalfPx)
+                copy->Size = clamped ? halfPx / 2f : size;
             set->CurrentFont = copy;
             return copy;
         }
         catch (Exception ex)
         {
-            this._enabled.Fail(ex, "Replacing a font failed");
+            // Failing forgets every set's pick, this one's too, which the game is about to lay out with.
+            var pickedSize = set->CurrentFontSize;
+            this._state.Fail(ex, "Replacing a font failed");
+            set->CurrentFont = font;
+            set->CurrentFontSize = pickedSize;
             return font;
         }
     }
 
     private byte* LayOutCharacterDetour(AtkFontAnalyzerBase* analyzer, byte** text, AtkFontAnalyzerState* state)
     {
+        Misc.DebugAssertMainThread();
         var outer = LayoutCall.Current;
         var vtbl = *(nint*)analyzer;
         LayoutCall.Current = new()
@@ -316,7 +303,7 @@ internal sealed unsafe class FontHooks : IDisposable
             return this._getGlyphHook.Original(set, utf8Value, font);
 
         var glyph = this._lookup.Get(set, utf8Value, info);
-        this._store.Hand(glyph, this._clock.Frame);
+        this._store.Hand(glyph, this._state.Frame);
         return glyph;
     }
 }

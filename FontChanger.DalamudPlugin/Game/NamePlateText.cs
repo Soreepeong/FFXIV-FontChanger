@@ -22,6 +22,9 @@ using FontChanger.DalamudPlugin.Utilities;
 
 using static FFXIVClientStructs.FFXIV.Client.UI.AddonNamePlate;
 
+using ClientCharacter = FFXIVClientStructs.FFXIV.Client.Game.Character.Character;
+using ClientGameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
+
 namespace FontChanger.DalamudPlugin.Game;
 
 /// <summary>
@@ -54,11 +57,14 @@ internal sealed unsafe class NamePlateText : IDisposable
     // Keyed by the object's BakeData, which is its first member.
     private readonly Dictionary<Pointer<BakeData>, float> _bakeScales = [];
 
-    // By name text node, as measuring isn't told whose text it measures.
-    private readonly Dictionary<nint, int> _objectIndices = [];
+    // By object index, the name text nodes given faces, as measuring isn't told whose text it measures.
+    private readonly nint[] _nameTexts = new nint[NumNamePlateObjects];
 
     // By object index, as of the game's last update. The character's name's line isn't the title's.
     private readonly NodeFaces[] _faces = new NodeFaces[NumNamePlateObjects];
+
+    // By object index, what the faces were chosen for, so that they are chosen again only when it changes.
+    private readonly PlateCharacter[] _characters = new PlateCharacter[NumNamePlateObjects];
 
     private BakePlateRenderer* _lastRenderer;
     private bool _rebakePending;
@@ -103,10 +109,11 @@ internal sealed unsafe class NamePlateText : IDisposable
             this._drawBakedHook.Enable();
             this._bakePlateDrawHook.Enable();
             Array.Fill(this._faces, new(TextFace.NamePlate, TextFace.NamePlateTitle));
-            this._replacer.AddNodeFaces(this.GetNodeFaces);
-            this._finalizer.Add(() => this._replacer.RemoveNodeFaces(this.GetNodeFaces));
+            this._finalizer.Add(this.ForgetNameTexts);
             Plugin.AddonLifecycle.RegisterListener(AddonEvent.PreRequestedUpdate, AddonName, this.OnPreRequestedUpdate);
             this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PreRequestedUpdate, AddonName, this.OnPreRequestedUpdate));
+            Plugin.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, AddonName, this.OnPreFinalize);
+            this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, AddonName, this.OnPreFinalize));
             this.Rebake();
         }
         catch
@@ -156,6 +163,8 @@ internal sealed unsafe class NamePlateText : IDisposable
     /// <summary>Between frames, as text drawn earlier no longer matches. If the plates can't be reached, <see cref="Update"/> does it once they can.</summary>
     public void Remeasure()
     {
+        // The fonts the faces were chosen by may have changed.
+        Array.Clear(this._characters);
         this._remeasurePending = true;
         this.Rebake();
         this.Update();
@@ -247,15 +256,48 @@ internal sealed unsafe class NamePlateText : IDisposable
 
     private void ReadNameTexts(AddonNamePlate* addon)
     {
-        this._objectIndices.Clear();
         var objects = addon->NamePlateObjectArray;
         if (objects is null)
+        {
+            this.ForgetNameTexts();
             return;
+        }
+
+        // All removals first, in case a node moved to another index.
         for (var i = 0; i < NumNamePlateObjects; i++)
         {
-            if (objects[i].NameText is not null)
-                this._objectIndices[(nint)objects[i].NameText] = i;
+            if (this._nameTexts[i] != 0 && this._nameTexts[i] != (nint)objects[i].NameText)
+                this._replacer.RemoveNodeFaces(this._nameTexts[i]);
         }
+
+        for (var i = 0; i < NumNamePlateObjects; i++)
+        {
+            var node = (nint)objects[i].NameText;
+            if (node == this._nameTexts[i])
+                continue;
+            this._nameTexts[i] = node;
+            if (node != 0)
+                this._replacer.SetNodeFaces(node, this._faces[i]);
+        }
+    }
+
+    private void OnPreFinalize(AddonEvent type, AddonArgs args)
+    {
+        this.ForgetNameTexts();
+        Array.Clear(this._characters);
+        this._bakeScales.Clear();
+        this._lastRenderer = null;
+    }
+
+    private void ForgetNameTexts()
+    {
+        foreach (var node in this._nameTexts)
+        {
+            if (node != 0)
+                this._replacer.RemoveNodeFaces(node);
+        }
+
+        Array.Clear(this._nameTexts);
     }
 
     // OnRequestedUpdate measures plates' text, possibly before any is drawn.
@@ -295,10 +337,17 @@ internal sealed unsafe class NamePlateText : IDisposable
             var objectInfo = atk->NamePlateInfoEntries[index].ObjectId.ObjectId != 0xE0000000 && i < ui3d->NamePlateObjectInfoCount
                                  ? ui3d->NamePlateObjectInfoPointers[i].Value
                                  : null;
-            var obj = objectInfo is null || objectInfo->GameObject is null ? null : Plugin.ObjectTable[objectInfo->GameObject->ObjectIndex];
+            var gameObject = objectInfo is null ? null : objectInfo->GameObject;
+            if (this._characters[index].Matches(gameObject, data.NamePlateKind))
+                continue;
+            this._characters[index] = new(gameObject, data.NamePlateKind);
+
+            var obj = gameObject is null ? null : Plugin.ObjectTable[gameObject->ObjectIndex];
             var faces = this.ChooseFaces(obj, data.NamePlateKind);
             var old = this._faces[index];
             this._faces[index] = faces;
+            if (this._nameTexts[index] != 0)
+                this._replacer.SetNodeFaces(this._nameTexts[index], faces);
             if (old.Face == faces.Face && old.OtherLines == faces.OtherLines)
                 continue;
             if (objects[index].NameText is not null)
@@ -327,8 +376,6 @@ internal sealed unsafe class NamePlateText : IDisposable
     private TextFace? WithFonts(string rule) =>
         TextFaceNames.TryGetNamePlateRule(rule, out var face) && this._replacer.HasOwnFonts(face) ? face : null;
 
-    private NodeFaces? GetNodeFaces(Pointer<AtkTextNode> node) =>
-        this._objectIndices.TryGetValue((nint)node.Value, out var index) ? this._faces[index] : null;
 
     // The transform is a 2x2 matrix of floats, row by row.
     private static ref float Transform(AtkResNode* node, int index) => ref ((float*)&node->Transform)[index];
@@ -377,7 +424,7 @@ internal sealed unsafe class NamePlateText : IDisposable
     private void PrepareDetour(BakePlateRenderer* renderer, float* rect, AtkFontManager.FontSet* set, AtkTextNode* node)
     {
         this._prepareHook.Original(renderer, rect, set, node);
-        this._replacer.ApplyNodeFace(set, node, this.GetNodeFaces(node) ?? new NodeFaces(TextFace.NamePlate));
+        this._replacer.ApplyNodeFace(set, node, this._replacer.TryGetNodeFaces(node, out var faces) ? faces : new NodeFaces(TextFace.NamePlate));
 
         // The original sets the node scale to 1, so a region allocated at another scale needs its own.
         var bake = renderer->CurrentBakeData;
@@ -451,6 +498,39 @@ internal sealed unsafe class NamePlateText : IDisposable
         finally
         {
             *liveMode = saved;
+        }
+    }
+
+    /// <summary>What a plate's faces are chosen by: its character's name and world, and its kind.</summary>
+    private readonly struct PlateCharacter
+    {
+        private readonly bool _set;
+        private readonly nint _object;
+        private readonly UIObjectKind _kind;
+        private readonly ushort _world;
+        private readonly byte[]? _name;
+
+        public PlateCharacter(ClientGameObject* obj, UIObjectKind kind)
+        {
+            this._set = true;
+            this._object = (nint)obj;
+            this._kind = kind;
+            this._world = obj is null ? (ushort)0 : WorldOf(obj);
+            this._name = obj is null ? null : NameOf(obj).ToArray();
+        }
+
+        public bool Matches(ClientGameObject* obj, UIObjectKind kind) =>
+            this._set && this._object == (nint)obj && this._kind == kind &&
+            (obj is null || (WorldOf(obj) == this._world && NameOf(obj).SequenceEqual(this._name)));
+
+        private static ushort WorldOf(ClientGameObject* obj) =>
+            obj->ObjectKind == FFXIVClientStructs.FFXIV.Client.Game.Object.ObjectKind.Pc ? ((ClientCharacter*)obj)->HomeWorld : (ushort)0;
+
+        private static ReadOnlySpan<byte> NameOf(ClientGameObject* obj)
+        {
+            ReadOnlySpan<byte> name = obj->Name;
+            var end = name.IndexOf((byte)0);
+            return end < 0 ? name : name[..end];
         }
     }
 }
