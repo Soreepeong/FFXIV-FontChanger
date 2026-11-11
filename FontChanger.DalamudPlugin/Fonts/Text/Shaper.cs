@@ -9,6 +9,7 @@ using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Faces;
+using FontChanger.DalamudPlugin.Fonts.Glyphs;
 using FontChanger.DalamudPlugin.Fonts.Records;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Utilities;
@@ -421,8 +422,8 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
 
             // A cluster after one left to the per-character path can't move into it.
             var raster = cells.GetRaster(sized, c);
-            if (i > 0 && !clusters[i - 1].Missing && raster is { Width: > 0, Left: < 0 })
-                starts[i] = Math.Max(c.X0 + raster.Left, starts[i - 1]);
+            if (i > 0 && !clusters[i - 1].Missing && GlyphBox.InkLeftOfPen(raster) is var overhang and > 0)
+                starts[i] = Math.Max(c.X0 - overhang, starts[i - 1]);
         }
 
         for (var i = 0; i < count; i++)

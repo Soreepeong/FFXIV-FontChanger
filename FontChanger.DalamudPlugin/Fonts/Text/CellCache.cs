@@ -80,8 +80,8 @@ internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, F
 
         // A cell that couldn't move left is drawn right of where shaping put its margin, so what follows moves along to
         // keep its distance to the ink.
-        if (raster.Width != 0 && raster.Left < 0)
-            raster = raster with { Advance = raster.Advance + Math.Min(-raster.Left, factory.GetEdgeMargin(sized)) };
+        if (GlyphBox.InkLeftOfPen(raster) is var overhang and > 0)
+            raster = raster with { Advance = raster.Advance + Math.Min(overhang, factory.GetEdgeMargin(sized)) };
         var utf8 = b < 0 ? 0u : GameUtf8.Pack(bytes + b);
         cell = factory.FromRaster(sized, raster, utf8);
         if (c.RealItalic)

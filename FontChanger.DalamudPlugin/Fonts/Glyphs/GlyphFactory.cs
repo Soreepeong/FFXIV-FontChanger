@@ -28,34 +28,18 @@ internal sealed unsafe class GlyphFactory(GlyphStore store, FrameState state)
     /// <summary>With <paramref name="source"/>, <paramref name="r"/> is blank and its pixels are read from the game's texture once placed.</summary>
     public AtkFontManager.Glyph* FromRaster(SizedFont sized, RasterGlyph r, uint utf8Value, GameTextureSource? source = null)
     {
-        // The game has no left bearing, so overhanging ink moves right into the box. Past 255 wide, it is cut on the right.
-        var boxLeft = Math.Min(r.Left, 0);
-        var width = r.Width == 0 ? 0 : Math.Min(r.Left + r.Width - boxLeft, byte.MaxValue);
-
-        // A box is a full line high, as the game's are, so that italics slant alike. Ink beyond the line grows the box.
-        var inkTop = sized.Ascent + r.Top;
-        var top = 0;
-        var height = sized.LineHeight;
-        if (width != 0)
-        {
-            top = Math.Clamp(inkTop, sbyte.MinValue, 0);
-            height = Math.Min(Math.Max(sized.LineHeight, inkTop + r.Height) - top, byte.MaxValue);
-        }
-
+        var box = GlyphBox.Fit(r, sized.Ascent, sized.LineHeight);
         var glyph = store.Allocate();
         glyph->Utf8Value = utf8Value;
 
         // One without a box stays here, so that it adds no draw from the blank slot.
         glyph->Packed = (0, 0, 0, 0);
-        glyph->Width = (byte)width;
-        glyph->Height = (byte)height;
-        glyph->OffsetX = (sbyte)Math.Clamp(r.Advance - width, sbyte.MinValue, sbyte.MaxValue);
-        glyph->OffsetY = (sbyte)top;
+        box.WriteTo(glyph);
 
         // Text is measured far more than drawn (every text change, at the node's unscaled size too), so a glyph is placed only
         // once it is drawn.
-        if (width != 0)
-            store.CellOf(glyph).Pend(glyph, sized.Atlas, r, boxLeft, inkTop - top, source);
+        if (box.HasBox)
+            store.CellOf(glyph).Pend(glyph, sized.Atlas, r, box.Left, box.InkTop, source);
         return glyph;
     }
 
