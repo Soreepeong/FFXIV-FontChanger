@@ -65,10 +65,9 @@ internal sealed unsafe class FontServices : IDisposable
 
     public SubpixelOrder SubpixelOrder
     {
-        get;
+        get => this.DirectWrite.SubpixelOrder;
         set
         {
-            field = Misc.DebugAssertMainThread(value);
             this.DirectWrite.SubpixelOrder = value;
             this.FreeType.SubpixelOrder = value;
         }

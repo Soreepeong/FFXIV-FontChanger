@@ -13,7 +13,6 @@ using Dalamud.Utility;
 
 using FontChanger.DalamudPlugin.Fonts;
 using FontChanger.DalamudPlugin.Fonts.Enums;
-using FontChanger.DalamudPlugin.Game;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;
 
@@ -119,10 +118,6 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
     internal FontReplacer Replacer => this.Coordinator.Replacer;
 
-    internal NamePlateText? NamePlates => this.Coordinator.NamePlates;
-
-    internal ChatLogText? ChatLog => this.Coordinator.ChatLog;
-
     internal Configuration.Configuration Configuration { get; }
 
     internal PresetController Presets => this.Coordinator.Presets;
@@ -130,8 +125,6 @@ public sealed class Plugin : IAsyncDalamudPlugin
     public ValueTask DisposeAsync() => this._finalizer.DisposeAsync();
 
     private void OnCommand(string command, string args) => this._configWindow.Toggle();
-
-    internal bool HasFace(TextFace face) => TextFaceNames.IsNamePlates(face) ? this.NamePlates is not null : this.ChatLog is not null;
 
     // A rule's title may have fonts without its plate's, so plates are matched to the rule whether or not its faces have fonts.
     internal static void RegisterNamePlateRule(string rule)

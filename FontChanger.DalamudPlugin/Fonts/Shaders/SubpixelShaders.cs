@@ -35,7 +35,6 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
 
     // The settings, with the shader swaps made for them.
     private SettingsRecord _settings;
-    private SettingsRecord? _asked;
 
     // From the last BindShaders.
     private AtkServer* _server;
@@ -55,13 +54,9 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
 
     private bool Enabled => this._settings.Order != SubpixelOrder.None;
 
-    /// <summary>Turned off if <paramref name="value"/> can't be applied, which isn't tried again until another value is asked for.</summary>
-    /// <returns>Whether it is on.</returns>
-    public bool TryApply(SettingsRecord value)
+    /// <summary>Turned off if <paramref name="value"/> can't be applied.</summary>
+    public void TryApply(SettingsRecord value)
     {
-        if (this._asked == value)
-            return this.Enabled;
-        this._asked = value;
         try
         {
             this.Apply(value);
@@ -71,8 +66,6 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             Plugin.Log.Error(ex, "Subpixel text is off");
             this.Apply(new());
         }
-
-        return this.Enabled;
     }
 
     /// <summary>The hooks are made the first time it is on.</summary>
@@ -203,9 +196,8 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         }
         catch (Exception ex)
         {
-            // The settings go too, so that applying them again turns it back on.
+            // Off at once, and the failure keeps it off until the plugin is loaded again.
             this._settings = default;
-            this._asked = null;
             this.RestoreAndReleaseAll();
             this._state.Fail(Part.Subpixel, ex, "Subpixel text failed");
         }

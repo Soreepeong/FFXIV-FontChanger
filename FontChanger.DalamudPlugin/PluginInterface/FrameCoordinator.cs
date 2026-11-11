@@ -34,6 +34,8 @@ internal sealed class FrameCoordinator : IAsyncDisposable
     private readonly SubpixelSource _subpixelSource = new();
     private readonly EdgeShader _edge = new();
     private readonly FontLoader _loader = null!;
+    private readonly NamePlateText? _namePlates;
+    private readonly ChatLogText? _chatLog;
     private readonly LineBreaker? _lineBreaker;
 
     /// <summary>On the framework thread.</summary>
@@ -44,8 +46,8 @@ internal sealed class FrameCoordinator : IAsyncDisposable
         this.Replacer = new(this._state);
         try
         {
-            this.NamePlates = Optional("Nameplate text", () => new NamePlateText(this.Replacer));
-            this.ChatLog = Optional("Chat log text", () => new ChatLogText(this.Replacer));
+            this._namePlates = Optional("Nameplate text", () => new NamePlateText(this.Replacer));
+            this._chatLog = Optional("Chat log text", () => new ChatLogText(this.Replacer));
             this._lineBreaker = Optional("Line breaking", () => new LineBreaker(this.Replacer));
             this._loader = new(this.Replacer.Services, this.Replacer.FallbackFonts);
             this.Presets = new(configuration, this._loader);
@@ -75,17 +77,18 @@ internal sealed class FrameCoordinator : IAsyncDisposable
 
     public FontReplacer Replacer { get; }
 
-    public NamePlateText? NamePlates { get; }
-
-    public ChatLogText? ChatLog { get; }
-
     public PresetController Presets { get; } = null!;
 
     /// <summary>Gets what subpixel rendering was last applied with, such as the system's ClearType settings.</summary>
     public SubpixelShaders.SettingsRecord AppliedSubpixel { get; private set; }
 
-    /// <summary>A part that failed stays off until the plugin is loaded again.</summary>
-    public bool Failed(Part part) => this._state.Failed(part);
+    /// <summary>A part that failed, at its setup or since, stays off until the plugin is loaded again.</summary>
+    public bool Failed(Part part) => part switch
+    {
+        Part.NamePlates => this._namePlates is null,
+        Part.ChatLog => this._chatLog is null,
+        _ => this._state.Failed(part),
+    };
 
     /// <summary>Waits out the frames the game may still use glyphs and copies for before freeing them.</summary>
     public async ValueTask DisposeAsync()
@@ -105,13 +108,17 @@ internal sealed class FrameCoordinator : IAsyncDisposable
 
         // Every cause is known before anything is made again, so that it is made once.
         var scope = this.Replacer.SetEnabled(c.Enabled && !this._state.Failed(Part.Replacer));
-        this._edge.Apply(c.Edge);
+
+        // The shaders get a value once, so that one that can't be applied isn't tried again until it changes.
+        if (c.Edge.Drawn() != this._state.Edge)
+            this._edge.Apply(c.Edge);
         scope |= this.Replacer.SetEdge(c.Edge);
 
         var subpixel = this._state.Failed(Part.Subpixel) ? default : this._subpixelSource.Get(c);
-        var active = this._subpixel.TryApply(subpixel);
+        if (subpixel != this.AppliedSubpixel)
+            this._subpixel.TryApply(subpixel);
         this.AppliedSubpixel = subpixel;
-        scope |= this.Replacer.SetSubpixel(active ? subpixel.Order : SubpixelOrder.None, active);
+        scope |= this.Replacer.SetSubpixel(this._subpixel.Active ? subpixel.Order : SubpixelOrder.None);
         scope |= this.Replacer.SetVerticalSubpixel(c.VerticalSubpixel);
         scope |= this.Replacer.SetAtlas(c.Atlas);
         if (log.GameFontsChanged)
@@ -121,12 +128,12 @@ internal sealed class FrameCoordinator : IAsyncDisposable
         if (scope.HasFlag(ResetScope.Text) || fonts is not null)
             this.RedoText();
         else if (log.PlaneReused)
-            this.NamePlates?.Rebake();
+            this._namePlates?.Rebake();
 
-        if (this.NamePlates is not null)
-            this.NamePlates.Mode = c.NamePlates;
+        if (this._namePlates is not null)
+            this._namePlates.Mode = c.NamePlates;
         for (var tab = 0; tab < ChatTabFaceNames.Length; tab++)
-            this.ChatLog?.SetFontSize(tab, c.FaceFontSizes.GetValueOrDefault(ChatTabFaceNames[tab]));
+            this._chatLog?.SetFontSize(tab, c.FaceFontSizes.GetValueOrDefault(ChatTabFaceNames[tab]));
     }
 
     public void OnPresent()
@@ -154,8 +161,8 @@ internal sealed class FrameCoordinator : IAsyncDisposable
     /// <summary>What keeps laid out text lays it out again.</summary>
     private void RedoText()
     {
-        this.NamePlates?.Remeasure();
-        this.ChatLog?.Relayout();
+        this._namePlates?.Remeasure();
+        this._chatLog?.Relayout();
     }
 
     /// <summary>Everything but the replacer's glyphs and copies, which the game may still use.</summary>
@@ -169,8 +176,8 @@ internal sealed class FrameCoordinator : IAsyncDisposable
             this.RedoText();
         });
         Step("line breaking", this._lineBreaker is { } lineBreaker ? lineBreaker.Dispose : null);
-        Step("chat log text", this.ChatLog is { } chatLog ? chatLog.Dispose : null);
-        Step("nameplate text", this.NamePlates is { } namePlates ? namePlates.Dispose : null);
+        Step("chat log text", this._chatLog is { } chatLog ? chatLog.Dispose : null);
+        Step("nameplate text", this._namePlates is { } namePlates ? namePlates.Dispose : null);
         Step("edge shader", this._edge.Dispose);
         Step("subpixel shaders", this._subpixel.Dispose);
         Step("hooks", this.Replacer.Unhook);

@@ -5,6 +5,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Interface.Utility.Raii;
 
+using FontChanger.DalamudPlugin.Fonts;
 using FontChanger.DalamudPlugin.Fonts.Enums;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;
@@ -13,7 +14,7 @@ internal sealed partial class ConfigWindow
 {
     private static void DrawNamePlateTab(ConfigWindow t)
     {
-        if (t._plugin.NamePlates is null)
+        if (t._plugin.Coordinator.Failed(Part.NamePlates))
         {
             ImGui.TextWrapped("Nameplate text isn't drawn by the plugin in this version of the game.");
             return;

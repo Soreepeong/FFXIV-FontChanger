@@ -12,14 +12,11 @@ namespace FontChanger.DalamudPlugin.Fonts.Glyphs;
 
 /// <summary>Makes glyphs, whose pixels are placed only once they are drawn.</summary>
 /// <remarks>Every glyph returned is held once by the caller, unless it is null.</remarks>
-internal sealed unsafe class GlyphFactory(GlyphStore store)
+internal sealed unsafe class GlyphFactory(GlyphStore store, FrameState state)
 {
-    /// <summary>Gets or sets the edge, which glyphs get margins for.</summary>
-    public EdgeSettings Edge { get; set; } = new();
-
     public static int GetEdgeMargin(EdgeSettings edge, float px) => Math.Max(0, (int)MathF.Ceiling(edge.GetReach(px)) - 1);
 
-    public int GetEdgeMargin(SizedFont sized) => GetEdgeMargin(this.Edge, sized.Px);
+    public int GetEdgeMargin(SizedFont sized) => GetEdgeMargin(state.Edge, sized.Px);
 
     /// <summary>Adds empty margins for a wide edge, as the edge is only drawn within a glyph's box and the pixel around it.</summary>
     public RasterGlyph Finish(SizedFont sized, RasterGlyph r)

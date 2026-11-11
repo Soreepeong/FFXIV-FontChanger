@@ -15,6 +15,7 @@ using Dalamud.Interface.Utility.Raii;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 
 using FontChanger.DalamudPlugin.Configuration;
+using FontChanger.DalamudPlugin.Fonts;
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Utilities;
@@ -40,7 +41,7 @@ internal sealed partial class ConfigWindow
         var families = FontNames.Families;
         if (t._selectedFamily is null ||
             !(families.Contains(t._selectedFamily) ||
-              (TextFaceNames.TryGetFace(t._selectedFamily, out var selectedFace) && !TextFaceNames.IsNamePlates(selectedFace) && t._plugin.HasFace(selectedFace))))
+              (TextFaceNames.TryGetFace(t._selectedFamily, out var selectedFace) && !TextFaceNames.IsNamePlates(selectedFace) && !t._plugin.Coordinator.Failed(Part.ChatLog))))
             t.SelectFamily(families.Count != 0 ? families[0] : null);
 
         t.DrawFamiliesAndChain(static t => t.DrawFamilyList());
@@ -68,7 +69,7 @@ internal sealed partial class ConfigWindow
         var first = true;
         foreach (var (face, name) in TextFaceNames.Faces)
         {
-            if (TextFaceNames.IsNamePlates(face) || !this._plugin.HasFace(face))
+            if (TextFaceNames.IsNamePlates(face) || this._plugin.Coordinator.Failed(Part.ChatLog))
                 continue;
             if (first)
                 ImGui.Separator();

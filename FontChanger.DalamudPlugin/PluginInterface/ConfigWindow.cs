@@ -189,7 +189,7 @@ internal sealed partial class ConfigWindow : Window
     private static void DrawAdvancedTab(ConfigWindow t)
     {
         var configuration = t._plugin.Configuration;
-        if (t._plugin.NamePlates is not null)
+        if (!t._plugin.Coordinator.Failed(Part.NamePlates))
         {
             var mode = (int)configuration.NamePlates;
             if (Ig.Radios("Nameplate text rendering", ref mode, "None", "Once", "Live"))

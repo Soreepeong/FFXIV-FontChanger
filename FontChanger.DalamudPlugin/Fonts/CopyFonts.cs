@@ -5,7 +5,6 @@ using System.Runtime.InteropServices;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.Interop;
 
-using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Utilities;
@@ -48,9 +47,6 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
     // The copy GetGlyph asked about last, as it asks per character.
     private AtkFontManager.Font* _lastCopy;
     private CopyInfo? _lastInfo;
-
-    /// <summary>Gets or sets the edge, which copies claim their texture width by.</summary>
-    public EdgeSettings Edge { get; set; } = new();
 
     public static int HalfPxOf(float px) => Math.Clamp((int)Misc.StdRound(px * 2), MinHalfPx, MaxHalfPx);
 
@@ -249,7 +245,7 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
 
         // The edge and glare shaders step by one texel of this width (it goes into every vertex), which must be the pages'. Claiming
         // a narrower width widens the edge as many times, and the plugin's edge shader takes the step as its radius.
-        var width = (ushort)Math.Clamp(Misc.StdRound(s.Atlas.Width / this.Edge.GetWidth(s.Px)), 256, ushort.MaxValue);
+        var width = (ushort)Math.Clamp(Misc.StdRound(s.Atlas.Width / state.Edge.GetWidth(s.Px)), 256, ushort.MaxValue);
         copy->TextureWidth = width;
         copy->TextureHeight = width;
 

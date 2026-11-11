@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 
+using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.PluginInterface;
 
 namespace FontChanger.DalamudPlugin.Fonts;
@@ -10,11 +11,13 @@ internal enum Part
 {
     Replacer,
     Subpixel,
+    NamePlates,
+    ChatLog,
 }
 
 /// <summary>
-/// What the parts share: the frame that caches and atlas planes are aged by, whether fonts are replaced, and what hooks and
-/// Present saw that other parts must react to at the next framework update.
+/// What the parts share: the frame that caches and atlas planes are aged by, whether fonts are replaced, the edge, and what
+/// hooks and Present saw that other parts must react to at the next framework update.
 /// </summary>
 internal sealed class FrameState
 {
@@ -27,6 +30,9 @@ internal sealed class FrameState
 
     /// <summary>Gets or sets a value indicating whether fonts are replaced, read by every hook.</summary>
     public bool IsOn { get; set; } = true;
+
+    /// <summary>Gets or sets the edge as drawn, which glyphs get margins for and copies claim their texture width by.</summary>
+    public EdgeSettings Edge { get; set; } = new();
 
     public void EndFrame() => this.Frame++;
 
@@ -50,7 +56,7 @@ internal sealed class FrameState
         this._failed.Add(part);
     }
 
-    /// <summary>Until the plugin is loaded again.</summary>
+    /// <summary>Until the plugin is loaded again. A failed setup is known only to <see cref="FrameCoordinator.Failed"/>.</summary>
     public bool Failed(Part part) => this._failed.Contains(part);
 
     public Snapshot Drain()

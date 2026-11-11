@@ -25,7 +25,6 @@ internal sealed unsafe class EdgeShader : IDisposable
     private Hook<LoadShadersDelegate>? _loadShadersHook;
     private float _softness;
     private bool _used;
-    private EdgeSettings? _applied;
 
     private delegate byte LoadShadersDelegate(AtkServer* server);
 
@@ -33,13 +32,9 @@ internal sealed unsafe class EdgeShader : IDisposable
     /// The plugin's shader draws a round edge of any width unless edges are the game's own 1 px. The game's shader, widened only
     /// by claiming a narrower texture (blocky past about 1.5 px), is the fallback.
     /// </summary>
-    /// <remarks>A value applied already, even if it failed, isn't applied again.</remarks>
     public void Apply(EdgeSettings value)
     {
         value = value.Drawn();
-        if (this._applied == value)
-            return;
-        this._applied = value;
         try
         {
             this.SetSoftness(value.Enabled && value != new EdgeSettings { Enabled = true } ? value.Softness : null);

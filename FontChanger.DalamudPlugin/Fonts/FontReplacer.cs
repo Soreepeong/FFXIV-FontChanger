@@ -72,7 +72,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             this._finalizer.Add(() => this._sized.Fonts.Dispose());
             this._copies = this._finalizer.Add(new CopyFonts(this._sized, this._blankTexture, state));
             this._placer = this._finalizer.Add(new CellPlacer(this._store, this._copies));
-            this._factory = new(this._store);
+            this._factory = new(this._store, state);
             this._layout = new(this.Services, this._store, this._factory, state);
             this._fontHooks = this._hooks.Add(
                 new FontHooks(this._copies, this._sized, this._layout, this._factory, this._placer, this._store, state, this.Context));
@@ -130,13 +130,12 @@ internal sealed unsafe class FontReplacer : IDisposable
     {
         Misc.DebugAssertMainThread();
         value = value.Drawn();
-        var old = this._factory.Edge;
+        var old = this._state.Edge;
         if (value == old)
             return ResetScope.None;
 
         var marginChanged = this._sized.All.Any(s => GlyphFactory.GetEdgeMargin(value, s.Px) != GlyphFactory.GetEdgeMargin(old, s.Px));
-        this._factory.Edge = value;
-        this._copies.Edge = value;
+        this._state.Edge = value;
         this._copies.SyncAll();
         return marginChanged ? ResetScope.Glyphs : ResetScope.Text;
     }
@@ -151,13 +150,13 @@ internal sealed unsafe class FontReplacer : IDisposable
         return ResetScope.Atlases;
     }
 
-    /// <param name="order">Of the glyphs, None unless <paramref name="active"/>.</param>
-    /// <param name="active">Whether the subpixel shaders are on, which atlases are made for.</param>
-    public ResetScope SetSubpixel(SubpixelOrder order, bool active)
+    /// <param name="order">Of the glyphs, None unless the subpixel shaders are on, which atlases are made for.</param>
+    public ResetScope SetSubpixel(SubpixelOrder order)
     {
         Misc.DebugAssertMainThread();
-        if (order == this.Services.SubpixelOrder && active == this._atlases.Subpixel)
+        if (order == this.Services.SubpixelOrder)
             return ResetScope.None;
+        var active = order != SubpixelOrder.None;
         this._atlases.Subpixel = active;
         var atlasesChange = this._atlases.All.Any(a => a.Subpixel != active);
         this.Services.SubpixelOrder = order;
