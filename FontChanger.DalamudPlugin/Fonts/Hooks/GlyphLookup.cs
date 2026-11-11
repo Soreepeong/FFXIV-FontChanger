@@ -22,6 +22,8 @@ internal sealed unsafe class GlyphLookup(
     LayoutContext context,
     GlyphLookup.GameGlyphDelegate gameGlyph)
 {
+    private readonly WrapMeasure _wrap = new(sized, layout, store, context);
+
     /// <summary>The game's own lookup in a font.</summary>
     public delegate AtkFontManager.Glyph* GameGlyphDelegate(AtkFontManager.FontSet* set, uint utf8Value, AtkFontManager.Font* font);
 
@@ -29,77 +31,18 @@ internal sealed unsafe class GlyphLookup(
     {
         var drawn = this.GetDrawnSized(set, info);
         var wrapping = context.IsWrapMeasure(set);
-        var glyph = wrapping ? this.GetWrapRunGlyph(set, utf8Value, info, drawn) : null;
+        var glyph = wrapping ? this._wrap.GetRunGlyph(set, utf8Value, info, drawn) : null;
         if (glyph is not null)
             return glyph;
 
         glyph = this.GetCopyGlyph(set, utf8Value, info, drawn, true);
         if (glyph is null)
             glyph = this.GetMissingGlyph(set, utf8Value, info, drawn);
-        return wrapping ? this.GetWrapGlyph(set, utf8Value, info, drawn, glyph) : glyph;
+        return wrapping ? this._wrap.Widen(this, set, utf8Value, info, drawn, glyph) : glyph;
     }
 
     private AtkFontManager.Glyph* WithPixels(AtkFontManager.Glyph* glyph) =>
         context.MeasuringOnly ? glyph : placer.WithPixels(glyph, state.Frame);
-
-    /// <summary>The sized fonts of the UI scales for the text being wrapped, <paramref name="drawn"/> (the largest) last.</summary>
-    /// <seealso cref="LayoutContext.WrapScales"/>
-    private SizedFont[] GetWrapSizes(AtkFontManager.FontSet* set, CopyInfo info, SizedFont drawn) =>
-        info.GetWrapSizes(sized, LayoutContext.WrapScales, set->ScaledSizeY, context.IsBold, drawn);
-
-    /// <summary>
-    /// While wrapping, the character LayOutCharacter is at gets its cell of its run laid out at every UI scale.
-    /// </summary>
-    /// <returns>Null if the character is looked up by itself.</returns>
-    /// <seealso cref="GameTextLayout.TryGetWrapGlyph"/>
-    private AtkFontManager.Glyph* GetWrapRunGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont drawn)
-    {
-        var p = context.Character;
-        if (p is null || GameUtf8.Pack(p) != utf8Value)
-            return null;
-        try
-        {
-            return layout.TryGetWrapGlyph(this.GetWrapSizes(set, info, drawn), LayoutContext.WrapScales, p, context.ItalicModeOf(set)).Value;
-        }
-        catch (Exception ex)
-        {
-            Plugin.Log.Error(ex, "Laying out a run at the UI scales failed; it is measured a character at a time");
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// While wrapping, for a character looked up by itself, in the copy of the largest UI scale, a glyph of no pixels as wide as
-    /// <paramref name="glyph"/> is at the widest of the UI scales.
-    /// </summary>
-    private AtkFontManager.Glyph* GetWrapGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont drawn, AtkFontManager.Glyph* glyph)
-    {
-        if (glyph is null || glyph == store.EmptyGlyph)
-            return glyph;
-
-        // In the copy's pixels, which are those of the largest scale. Width + OffsetX is how far the game advances.
-        var largest = LayoutContext.WrapScales[^1];
-        var own = glyph->Width + glyph->OffsetX;
-        var widest = own;
-        try
-        {
-            var sizes = this.GetWrapSizes(set, info, drawn);
-            for (var i = 0; i < sizes.Length - 1; i++)
-            {
-                var other = this.GetCopyGlyph(set, utf8Value, info, sizes[i], false);
-                if (other is not null && other != store.EmptyGlyph)
-                    widest = Math.Max(widest, (int)MathF.Ceiling((other->Width + other->OffsetX) * largest / LayoutContext.WrapScales[i]));
-            }
-        }
-        catch (Exception ex)
-        {
-            Plugin.Log.Error(ex, "Measuring 0x{utf8:X} at the other UI scales failed", utf8Value);
-            return glyph;
-        }
-
-        // A spacer advances at most sbyte.MaxValue.
-        return widest == own || widest > sbyte.MaxValue ? glyph : layout.GetSpacer(drawn, widest).Value;
-    }
 
     /// <summary>Null if neither the copy nor its game font has a glyph of the character.</summary>
     /// <param name="set">The font set.</param>
@@ -108,7 +51,7 @@ internal sealed unsafe class GlyphLookup(
     /// <param name="font">The sized font to look in.</param>
     /// <param name="shape">Whether the character LayOutCharacter is at gets its shaped cluster's glyph.</param>
     /// <returns>The glyph.</returns>
-    private AtkFontManager.Glyph* GetCopyGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont font, bool shape)
+    public AtkFontManager.Glyph* GetCopyGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont font, bool shape)
     {
         // Not for a lookup of the game's fallback characters.
         var p = context.Character;

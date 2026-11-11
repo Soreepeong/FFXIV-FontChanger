@@ -21,9 +21,6 @@ internal sealed unsafe class LayoutContext
     // Set by TextFlags.Bold (when drawing) and the bold macro. The game reads it nowhere.
     public const AtkFontManager.DrawFlags BoldFlag = (AtkFontManager.DrawFlags)(1u << 26);
 
-    // The UI scales (High Resolution UI) text wrapped unscaled may be drawn at, the largest last.
-    public static readonly float[] WrapScales = [1f, 1.5f, 2f, 3f];
-
     // The game neither sets nor reads it, and restores the set's flags after each layout, so it can't outlive the text it marks.
     private const AtkFontManager.DrawFlags FaceFlag = (AtkFontManager.DrawFlags)(1u << 25);
 
@@ -86,7 +83,7 @@ internal sealed unsafe class LayoutContext
     public void LeaveWrap(bool outer) => this.Wrapping = outer;
 
     /// <summary>Whether the text wrapper is laying out text it has no scale of, which is wrapped to fit at every UI scale.</summary>
-    /// <seealso cref="WrapScales"/>
+    /// <seealso cref="WrapMeasure"/>
     public bool IsWrapMeasure(AtkFontManager.FontSet* set) =>
         this.Wrapping && set->NodeScaleX == 1 && set->NodeScaleY == 1 && !HasPickScale(set);
 
@@ -99,7 +96,7 @@ internal sealed unsafe class LayoutContext
     public float PickSizeOf(AtkFontManager.FontSet* set)
     {
         if (this.IsWrapMeasure(set))
-            return set->ScaledSizeY * WrapScales[^1];
+            return set->ScaledSizeY * WrapMeasure.LargestScale;
         return set->NodeScaleX == 1 && set->NodeScaleY == 1 && HasPickScale(set) ? UnscaledSizeYOf(set) * PickScaleOf(set) : set->ScaledSizeY;
     }
 
