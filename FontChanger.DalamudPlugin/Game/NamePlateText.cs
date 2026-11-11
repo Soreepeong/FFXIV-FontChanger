@@ -45,8 +45,6 @@ internal sealed unsafe class NamePlateText : IDisposable
     // A plate shown this much larger than its bake is baked again; within this of its bake scale it is drawn at exactly 1.
     private const float ScaleTolerance = 0.02f;
 
-    private static readonly nint AddonBakePlateOffset = typeof(AddonNamePlate).FieldOffsetOf(nameof(AddonNamePlate.BakePlate));
-
     private readonly FontReplacer _replacer;
     private readonly DisposeSafety.ScopedFinalizer _finalizer = new();
     private readonly Hook<AllocateBakeDelegate> _allocateBakeHook;
@@ -65,12 +63,6 @@ internal sealed unsafe class NamePlateText : IDisposable
 
     // By object index, what the faces were chosen for, so that they are chosen again only when it changes.
     private readonly PlateCharacter[] _characters = new PlateCharacter[NumNamePlateObjects];
-
-    private BakePlateRenderer* _lastRenderer;
-    private bool _rebakePending;
-
-    // The game measures a plate's text only when the text changes.
-    private bool _remeasurePending = true;
 
     private NamePlateMode _mode = NamePlateMode.BakedAtFullSize;
 
@@ -114,6 +106,11 @@ internal sealed unsafe class NamePlateText : IDisposable
             this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PreRequestedUpdate, AddonName, this.OnPreRequestedUpdate));
             Plugin.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, AddonName, this.OnPreFinalize);
             this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, AddonName, this.OnPreFinalize));
+
+            // An addon already loaded may draw its plates before its next update.
+            var addon = FindAddon();
+            if (addon is not null)
+                this.ReadNameTexts(addon);
             this.Rebake();
         }
         catch
@@ -160,28 +157,22 @@ internal sealed unsafe class NamePlateText : IDisposable
         this._finalizer.Dispose();
     }
 
-    /// <summary>Between frames, as text drawn earlier no longer matches. If the plates can't be reached, <see cref="Update"/> does it once they can.</summary>
+    /// <summary>Between frames, as text drawn earlier no longer matches.</summary>
+    /// <remarks>The game measures a plate's text only when the text changes. An addon loaded later measures all of it.</remarks>
     public void Remeasure()
     {
         // The fonts the faces were chosen by may have changed.
         Array.Clear(this._characters);
-        this._remeasurePending = true;
         this.Rebake();
-        this.Update();
-    }
-
-    /// <summary>Between frames, every frame.</summary>
-    public void Update()
-    {
-        if (!this._remeasurePending || this._lastRenderer is null)
-            return;
-        var addon = (AddonNamePlate*)((byte*)this._lastRenderer - AddonBakePlateOffset);
-        if (!IsLoaded(&addon->AtkUnitBase))
+        var addon = FindAddon();
+        if (addon is null)
             return;
 
-        this._remeasurePending = false;
         try
         {
+            // The update below measures without the listener that reads them.
+            this.ReadNameTexts(addon);
+
             // The update measures again the text that differs from its node's. Plates not shown are left alone, as the game may
             // show them again without updating them.
             var objects = addon->NamePlateObjectArray;
@@ -205,53 +196,22 @@ internal sealed unsafe class NamePlateText : IDisposable
     }
 
     /// <summary>The plates are baked again when next drawn.</summary>
-    /// <remarks>They are reachable only through the renderer a hook last saw, which is embedded in the NamePlate addon.</remarks>
+    /// <remarks>An addon loaded later bakes all of them.</remarks>
     public void Rebake()
     {
-        if (this._lastRenderer is null)
-        {
-            this._rebakePending = true;
-            return;
-        }
-
-        var addon = (AddonNamePlate*)((byte*)this._lastRenderer - AddonBakePlateOffset);
-        if (!IsLoaded(&addon->AtkUnitBase))
-        {
-            this._rebakePending = true;
-            return;
-        }
-
-        this._rebakePending = false;
-        var objects = addon->NamePlateObjectArray;
+        var addon = FindAddon();
+        var objects = addon is null ? null : addon->NamePlateObjectArray;
         if (objects is null)
             return;
         for (var i = 0; i < NumNamePlateObjects; i++)
             objects[i].NeedsToBeBaked = true;
     }
 
-    private static bool IsLoaded(AtkUnitBase* unit)
+    /// <returns>Null while the addon isn't loaded and set up.</returns>
+    private static AddonNamePlate* FindAddon()
     {
-        var stage = AtkStage.Instance();
-        var manager = stage is null ? null : stage->RaptureAtkUnitManager;
-        if (manager is null)
-            return false;
-        ref var loaded = ref manager->AtkUnitManager.AllLoadedUnitsList;
-        for (var i = 0; i < loaded.Count; i++)
-        {
-            if (loaded.Entries[i].Value == unit)
-                return true;
-        }
-
-        return false;
-    }
-
-    private void SeeRenderer(BakePlateRenderer* renderer)
-    {
-        if (this._lastRenderer != renderer)
-            this.ReadNameTexts((AddonNamePlate*)((byte*)renderer - AddonBakePlateOffset));
-        this._lastRenderer = renderer;
-        if (this._rebakePending)
-            this.Rebake();
+        var addon = Plugin.GameGui.GetAddonByName<AddonNamePlate>(AddonName);
+        return addon is not null && addon->AtkUnitBase.IsReady ? addon : null;
     }
 
     private void ReadNameTexts(AddonNamePlate* addon)
@@ -286,7 +246,6 @@ internal sealed unsafe class NamePlateText : IDisposable
         this.ForgetNameTexts();
         Array.Clear(this._characters);
         this._bakeScales.Clear();
-        this._lastRenderer = null;
     }
 
     private void ForgetNameTexts()
@@ -400,7 +359,6 @@ internal sealed unsafe class NamePlateText : IDisposable
     // OnRequestedUpdate calls this for plates with NeedsToBeBaked, which it clears on success.
     private byte AllocateBakeDetour(BakePlateRenderer* renderer, NamePlateObject* obj)
     {
-        this.SeeRenderer(renderer);
         Pointer<BakeData> bake = &obj->BakeData;
         var previous = this._bakeScales.GetValueOrDefault(bake);
         this._bakeScales.Remove(bake);
@@ -437,7 +395,6 @@ internal sealed unsafe class NamePlateText : IDisposable
 
     private void DrawBakedDetour(BakePlateRenderer* renderer, AtkResNode* node, BakeData* bake)
     {
-        this.SeeRenderer(renderer);
         if (!this._bakeScales.TryGetValue(bake, out var scale))
         {
             this._drawBakedHook.Original(renderer, node, bake);
@@ -481,7 +438,6 @@ internal sealed unsafe class NamePlateText : IDisposable
     // Live mode borrows the renderer's own live mode, which the game's text render mode setting normally controls.
     private void BakePlateDrawDetour(BakePlateRenderer* renderer, AtkTextNode* node)
     {
-        this.SeeRenderer(renderer);
         if (this.EffectiveMode != NamePlateMode.Live)
         {
             this._bakePlateDrawHook.Original(renderer, node);

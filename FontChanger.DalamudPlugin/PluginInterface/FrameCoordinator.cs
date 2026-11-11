@@ -127,8 +127,6 @@ internal sealed class FrameCoordinator : IAsyncDisposable
             this.NamePlates.Mode = c.NamePlates;
         for (var tab = 0; tab < ChatTabFaceNames.Length; tab++)
             this.ChatLog?.SetFontSize(tab, c.FaceFontSizes.GetValueOrDefault(ChatTabFaceNames[tab]));
-
-        this.NamePlates?.Update();
     }
 
     public void OnPresent()
