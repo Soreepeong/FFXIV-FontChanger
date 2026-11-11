@@ -261,13 +261,13 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
 
     /// <summary>
     /// The blank texture fills the slots after the pages, so that the renderer has a vertex buffer and a texture for every texture
-    /// index.
+    /// index. The atlas's <see cref="GlyphAtlas.BlankSlot"/> never gets a page.
     /// </summary>
     private void ApplyPages(AtkFontManager.Font* copy, GlyphAtlas atlas)
     {
         Misc.DebugAssertMainThread();
         var blank = blankTexture.Kernel;
-        var pages = Math.Min(atlas.PageCount, AtkFontManager.Font.MaxTextures);
+        var pages = Math.Min(atlas.PageCount, GlyphAtlas.MaxTextureSlots);
         for (var i = 0; i < AtkFontManager.Font.MaxTextures; i++)
             copy->Textures[i] = i < pages ? atlas.GetKernelTexture(i) : blank;
         copy->TextureCount = AtkFontManager.Font.MaxTextures;

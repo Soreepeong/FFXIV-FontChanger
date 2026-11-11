@@ -47,6 +47,8 @@ internal sealed unsafe class GlyphFactory(GlyphStore store)
 
         var glyph = store.Allocate();
         glyph->Utf8Value = utf8Value;
+
+        // One without a box stays here, so that it adds no draw from the blank slot.
         glyph->Packed = (0, 0, 0, 0);
         glyph->Width = (byte)width;
         glyph->Height = (byte)height;
@@ -56,7 +58,7 @@ internal sealed unsafe class GlyphFactory(GlyphStore store)
         // Text is measured far more than drawn (every text change, at the node's unscaled size too), so a glyph is placed only
         // once it is drawn.
         if (width != 0)
-            store.CellOf(glyph).Pend(sized.Atlas, r, boxLeft, inkTop - top, source);
+            store.CellOf(glyph).Pend(glyph, sized.Atlas, r, boxLeft, inkTop - top, source);
         return glyph;
     }
 

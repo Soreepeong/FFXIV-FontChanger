@@ -20,7 +20,8 @@ namespace FontChanger.DalamudPlugin.Fonts;
 // widths (how FontSubpixelPS tells them apart) and take R, G, B for subpixel coverage and A for grayscale.
 internal sealed unsafe class GlyphAtlas : IDisposable
 {
-    public const int MaxTextureSlots = AtkFontManager.Font.MaxTextures;
+    /// <summary>The most pages an atlas has, which leaves every copy a texture slot for <see cref="BlankSlot"/>.</summary>
+    public const int MaxTextureSlots = AtkFontManager.Font.MaxTextures - 1;
     public const int PlanesPerPage = 4;
     public const int SubpixelPlane = 3;
 
@@ -71,6 +72,13 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     public bool Subpixel { get; }
 
     public int MaxPages { get; }
+
+    /// <summary>
+    /// Gets the first texture slot none of the atlas's pages takes, which holds the blank texture in every copy drawing from it.
+    /// A glyph with a box but no pixels in the atlas samples it.
+    /// </summary>
+    /// <remarks>Kept low, as a texture index past a font's texture count has no vertex buffer, should a game font ever draw the glyph.</remarks>
+    public int BlankSlot => this.MaxPages;
 
     private bool Format4444 { get; }
 

@@ -42,7 +42,7 @@ internal sealed unsafe class CellPlacer(GlyphStore store, CopyFonts copies) : ID
         {
             if (cell.Touch(glyph, frame))
                 return glyph;
-            cell.MarkStale();
+            cell.MarkStale(glyph);
         }
 
         if (cell.Stage != CellStage.Pending)
@@ -76,7 +76,7 @@ internal sealed unsafe class CellPlacer(GlyphStore store, CopyFonts copies) : ID
         }
 
         this._full.Add(atlas);
-        return this.GetBlank(glyph);
+        return glyph;
     }
 
     /// <summary>At Present, after this frame's glyphs were placed.</summary>
@@ -151,17 +151,5 @@ internal sealed unsafe class CellPlacer(GlyphStore store, CopyFonts copies) : ID
         var alpha = new byte[box.Width * box.Height];
         RasterGlyph.BlitMax(alpha, box.Width, box.Height, scaled, scaled.Left - box.Left, scaled.Top - box.Top);
         return box with { Alpha = alpha };
-    }
-
-    private AtkFontManager.Glyph* GetBlank(AtkFontManager.Glyph* glyph)
-    {
-        var blank = store.CellOf(glyph).Blank;
-        if (blank is not null)
-            return blank;
-        var b = store.Allocate();
-        *b = *glyph;
-        store.CellOf(b).Drop(b);
-        store.CellOf(glyph).Blank = b;
-        return b;
     }
 }

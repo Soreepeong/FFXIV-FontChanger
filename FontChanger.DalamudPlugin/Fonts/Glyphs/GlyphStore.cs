@@ -121,12 +121,9 @@ internal sealed unsafe class GlyphStore : IDisposable
                 continue;
             }
 
-            // Its blank then waits for its own grace period.
-            var blank = cell.Blank;
             cell = default;
             *this.SlotAt(id) = new() { Id = id };
             this._freeIds.Push(id);
-            this.Release(blank);
         }
 
         this._unreferenced.RemoveRange(0, count);
@@ -159,7 +156,7 @@ internal sealed unsafe class GlyphStore : IDisposable
 /// <summary>Where a glyph's pixels are.</summary>
 internal enum CellStage : byte
 {
-    /// <summary>No pixels, as of an empty glyph, a spacer or a blank.</summary>
+    /// <summary>No pixels, as of an empty glyph or a spacer.</summary>
     Empty,
 
     /// <summary>Its pixels wait for room in the atlas, which they get when it is drawn.</summary>
@@ -175,7 +172,12 @@ internal enum CellStage : byte
 }
 
 /// <summary>A glyph's pixels and lifetime.</summary>
-/// <remarks>The methods are the only way between its stages.</remarks>
+/// <remarks>
+/// <ul>
+/// <li>The methods are the only way between its stages.</li>
+/// <li>A glyph with a box samples its atlas's <see cref="GlyphAtlas.BlankSlot"/> while not <see cref="IsPlaced"/>.</li>
+/// </ul>
+/// </remarks>
 internal unsafe struct Cell
 {
     public CellStage Stage;
@@ -198,13 +200,10 @@ internal unsafe struct Cell
     // Of its plane when placed.
     public uint Generation;
 
-    // Drawn instead while its pixels find no room. Held with Keep.
-    public AtkFontManager.Glyph* Blank;
-
     // A real italic glyph, which the game must not shear.
     public bool RealItalic;
 
-    // Caches, shaped runs and the glyph whose blank it is holding it.
+    // Caches and shaped runs holding it.
     public int Refs;
 
     // The frame it was last handed to the game in.
@@ -215,7 +214,8 @@ internal unsafe struct Cell
 
     public readonly bool IsPlaced => this.Stage is CellStage.Placed or CellStage.AwaitingRead;
 
-    public void Pend(GlyphAtlas atlas, RasterGlyph raster, int boxLeft, int inkTop, GameTextureSource? source)
+    /// <summary>For a glyph with a box, whose pixels are placed when it is drawn.</summary>
+    public void Pend(AtkFontManager.Glyph* glyph, GlyphAtlas atlas, RasterGlyph raster, int boxLeft, int inkTop, GameTextureSource? source)
     {
         this.Stage = CellStage.Pending;
         this.Atlas = atlas;
@@ -223,6 +223,7 @@ internal unsafe struct Cell
         this.BoxLeft = boxLeft;
         this.InkTop = inkTop;
         this.Source = source;
+        this.PointAtBlank(glyph);
     }
 
     /// <summary>Writes its pixels, or leaves them to be read if they come from the game.</summary>
@@ -248,11 +249,13 @@ internal unsafe struct Cell
         this.Write(glyph);
     }
 
-    /// <summary>Its plane was reused, so it is placed again when next drawn.</summary>
-    public void MarkStale()
+    /// <summary>Its plane was reused, so it is placed again when next drawn, and until then draws none of what the plane holds now.</summary>
+    public void MarkStale(AtkFontManager.Glyph* glyph)
     {
-        if (this.Stage == CellStage.Placed)
-            this.Stage = CellStage.Pending;
+        if (this.Stage != CellStage.Placed)
+            return;
+        this.Stage = CellStage.Pending;
+        this.PointAtBlank(glyph);
     }
 
     public void Drop(AtkFontManager.Glyph* glyph)
@@ -260,15 +263,16 @@ internal unsafe struct Cell
         this.Stage = CellStage.Dropped;
         this.Raster = default;
         this.Source = null;
-
-        // OffsetX takes the width, so that the advance stays as measured.
-        glyph->OffsetX = (sbyte)Math.Clamp(glyph->OffsetX + glyph->Width, sbyte.MinValue, sbyte.MaxValue);
-        glyph->Width = 0;
+        this.PointAtBlank(glyph);
     }
 
     /// <summary>Marks its plane drawn in <paramref name="frame"/> if the plane still has its pixels.</summary>
     /// <returns>Whether the plane still has its pixels.</returns>
     public readonly bool Touch(AtkFontManager.Glyph* glyph, long frame) => this.Atlas!.Touch(glyph->TextureIndex, glyph->Channel, this.Generation, frame);
+
+    /// <summary>The glyph draws nothing in its box, at the same advance.</summary>
+    /// <remarks>Only for a cell with pixels, which has an atlas.</remarks>
+    private readonly void PointAtBlank(AtkFontManager.Glyph* glyph) => glyph->Packed = (0, 0, 0, this.Atlas!.BlankSlot);
 
     private readonly void Write(AtkFontManager.Glyph* glyph)
     {

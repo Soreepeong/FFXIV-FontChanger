@@ -33,7 +33,7 @@ internal sealed class FrameState
     /// <summary>The game built or unloaded fonts.</summary>
     public void GameFontChanged() => this._gameFontsChanged = true;
 
-    /// <summary>A full atlas made room, so baked text may hold blanks it handed out.</summary>
+    /// <summary>A full atlas made room, so baked text may lack the glyphs that found none.</summary>
     public void PlaneReused() => this._planeReused = true;
 
     /// <summary>Stops replacing at once, and has the rest turned off at the next framework update.</summary>
