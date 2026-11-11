@@ -16,7 +16,7 @@ namespace FontChanger.DalamudPlugin.Fonts;
 /// After <see cref="MarkStale"/>, each copy takes its new sized font and borrows from its game font again when next used, as
 /// every font set picks again before drawing.
 /// </remarks>
-internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWrapper blankTexture, FrameState state) : IDisposable
+internal sealed unsafe class ReplacementFontTable(SizedFontRegistry sized, OwnedKernelTexture blankTexture, FrameState state) : IDisposable
 {
     // Sizes in half pixels. Below 4 px nothing is legible.
     public const int MinHalfPx = 8;
@@ -31,7 +31,7 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
     private const int SettleFrames = 4;
 
     private readonly Dictionary<(Pointer<AtkFontManager.Font> Original, int HalfPx, TextFace Face), Pointer<AtkFontManager.Font>> _byKey = [];
-    private readonly Dictionary<Pointer<AtkFontManager.Font>, CopyInfo> _copies = [];
+    private readonly Dictionary<Pointer<AtkFontManager.Font>, ReplacementFont> _copies = [];
 
     // Picks by the size and face asked for, which the size is clamped and the face resolved from.
     private readonly Dictionary<(Pointer<AtkFontManager.Font> Original, int HalfPx, TextFace Face), (Pointer<AtkFontManager.Font> Copy, int HalfPx)> _picks = [];
@@ -46,7 +46,7 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
 
     // The copy GetGlyph asked about last, as it asks per character.
     private AtkFontManager.Font* _lastCopy;
-    private CopyInfo? _lastInfo;
+    private ReplacementFont? _lastInfo;
 
     public static int HalfPxOf(float px) => Math.Clamp((int)Misc.StdRound(px * 2), MinHalfPx, MaxHalfPx);
 
@@ -66,7 +66,7 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
     }
 
     /// <summary>Brought up to date if stale.</summary>
-    public bool TryGet(AtkFontManager.Font* copy, out CopyInfo info)
+    public bool TryGet(AtkFontManager.Font* copy, out ReplacementFont info)
     {
         if (copy is null || copy != this._lastCopy)
         {
@@ -134,7 +134,7 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
         }
 
         var copy = (AtkFontManager.Font*)NativeMemory.Alloc((nuint)sizeof(AtkFontManager.Font));
-        var info = new CopyInfo(original, halfPx, face, sized.Get(original, halfPx, face, false)) { Generation = this._generation };
+        var info = new ReplacementFont(original, halfPx, face, sized.Get(original, halfPx, face, false)) { Generation = this._generation };
         this.Sync(copy, info);
         this._copies.Add(copy, info);
         this._byKey.Add(key, copy);
@@ -216,7 +216,7 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
         return true;
     }
 
-    private void Resync(AtkFontManager.Font* copy, CopyInfo info)
+    private void Resync(AtkFontManager.Font* copy, ReplacementFont info)
     {
         info.Resize(sized.Get(info.Original, info.HalfPx, info.Face, false));
         info.Generation = this._generation;
@@ -227,7 +227,7 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
     /// Borrows the game font's glyph map, glyphs and flags, keeping the copy's own size, metrics and texture slots. BuildFont
     /// frees what was borrowed, so it is taken again then.
     /// </summary>
-    private void Sync(AtkFontManager.Font* copy, CopyInfo info)
+    private void Sync(AtkFontManager.Font* copy, ReplacementFont info)
     {
         var s = info.Sized;
         *copy = *(AtkFontManager.Font*)info.Original;
@@ -270,7 +270,7 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
     }
 }
 
-internal sealed class CopyInfo(Pointer<AtkFontManager.Font> original, int halfPx, TextFace face, SizedFont sized)
+internal sealed class ReplacementFont(Pointer<AtkFontManager.Font> original, int halfPx, TextFace face, SizedFont sized)
 {
     private SizedFont? _bold;
     private bool _boldFailed;
@@ -288,7 +288,7 @@ internal sealed class CopyInfo(Pointer<AtkFontManager.Font> original, int halfPx
 
     public SizedFont Sized { get; private set; } = sized;
 
-    /// <summary>Gets or sets the <see cref="CopyFonts"/> generation it is up to date with.</summary>
+    /// <summary>Gets or sets the <see cref="ReplacementFontTable"/> generation it is up to date with.</summary>
     public int Generation { get; set; }
 
     public void Resize(SizedFont value)
@@ -315,7 +315,7 @@ internal sealed class CopyInfo(Pointer<AtkFontManager.Font> original, int halfPx
 
         var sizes = new SizedFont[scales.Length];
         for (var i = 0; i < sizes.Length - 1; i++)
-            sizes[i] = registry.Get(this.Original, CopyFonts.HalfPxOf(sizeY * scales[i]), this.Face, bold);
+            sizes[i] = registry.Get(this.Original, ReplacementFontTable.HalfPxOf(sizeY * scales[i]), this.Face, bold);
         sizes[^1] = drawn;
         (this._wrapSizes, this._wrapSizeY, this._wrapBold) = (sizes, sizeY, bold);
         return sizes;

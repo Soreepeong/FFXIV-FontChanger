@@ -20,14 +20,14 @@ internal sealed record GameTextureSource(Pointer<KernelTexture> Texture, int X, 
 /// Puts a glyph's pixels in its atlas when it is drawn, reads those of glyphs copied from the game's fonts at Present, and makes
 /// room in full atlases.
 /// </summary>
-internal sealed unsafe class CellPlacer(GlyphStore store, CopyFonts copies) : IDisposable
+internal sealed unsafe class GlyphAtlasPlacer(GlyphStore store, ReplacementFontTable copies) : IDisposable
 {
     // When an atlas is full, its least recently drawn plane is reused, at most this often.
     private const long EvictIntervalMs = 1000;
 
     private readonly HashSet<GlyphAtlas> _full = [];
     private readonly Dictionary<GlyphAtlas, long> _lastEviction = [];
-    private readonly TextureReader _textures = new();
+    private readonly GameTextureReader _textures = new();
     private readonly List<Pointer<AtkFontManager.Glyph>> _pendingReads = [];
 
     /// <summary>A glyph that finds no room draws nothing this time, at the same advance, and room is made at the next Present.</summary>
@@ -45,7 +45,7 @@ internal sealed unsafe class CellPlacer(GlyphStore store, CopyFonts copies) : ID
             cell.MarkStale(glyph);
         }
 
-        if (cell.Stage != CellStage.Pending)
+        if (cell.Stage != GlyphPixelStage.Pending)
             return glyph;
         var atlas = cell.Atlas!;
         if (!atlas.CanHold(glyph->Width, glyph->Height))
@@ -63,7 +63,7 @@ internal sealed unsafe class CellPlacer(GlyphStore store, CopyFonts copies) : ID
                     goto case GlyphAtlas.AllocationResult.Placed;
                 case GlyphAtlas.AllocationResult.Placed:
                     cell.Place(glyph, a);
-                    if (cell.Stage == CellStage.AwaitingRead)
+                    if (cell.Stage == GlyphPixelStage.AwaitingRead)
                         this._pendingReads.Add(glyph);
                     return glyph;
             }
@@ -86,7 +86,7 @@ internal sealed unsafe class CellPlacer(GlyphStore store, CopyFonts copies) : ID
         {
             var glyph = g.Value;
             ref var cell = ref store.CellOf(glyph);
-            if (cell.Stage != CellStage.AwaitingRead)
+            if (cell.Stage != GlyphPixelStage.AwaitingRead)
                 continue;
             try
             {

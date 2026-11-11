@@ -23,9 +23,9 @@ namespace FontChanger.DalamudPlugin.Fonts.Faces;
 /// As xivres merged_fixed_size_font, elements take codepoints in order: AddNew those no earlier element has, AddAll any,
 /// Replace only those an earlier element has.
 /// </summary>
-internal sealed unsafe class MaterializedFont : IDisposable
+internal sealed unsafe class LoadedFont : IDisposable
 {
-    private readonly FontServices _services;
+    private readonly DirectWriteServices _services;
     private readonly Font _def;
     private readonly SystemFallbackFonts _fallbackFonts;
     private readonly bool _systemFallback;
@@ -37,25 +37,25 @@ internal sealed unsafe class MaterializedFont : IDisposable
     private readonly float _referenceSize;
 
     // The first installed font's element: system fallback matches its family, and its DWRITE_MEASURING_MODE is the whole font's.
-    private readonly MaterializedFontElement? _primary;
+    private readonly LoadedFontElement? _primary;
     private readonly int _measureMode;
 
     // Without the elements that couldn't be set up.
-    private readonly MaterializedFontElement[] _elements;
-    private readonly MaterializedFontElement _gameElement;
-    private readonly Dictionary<(string Family, int Weight, int Stretch, int Style, float Scale), MaterializedFontElement> _fallbackElements = [];
+    private readonly LoadedFontElement[] _elements;
+    private readonly LoadedFontElement _gameElement;
+    private readonly Dictionary<(string Family, int Weight, int Stretch, int Style, float Scale), LoadedFontElement> _fallbackElements = [];
 
     // Fallback fonts fitted as chain items would be, on the first character each draws, and what fitting them opens.
-    private readonly Dictionary<(string Family, int Weight, int Stretch, int Style), MaterializedFontElement[]> _fittedFallback = [];
+    private readonly Dictionary<(string Family, int Weight, int Stretch, int Style), LoadedFontElement[]> _fittedFallback = [];
     private readonly Dictionary<(string Family, int Weight, int Stretch, int Style), FontProbe?> _probes = [];
     private IFontProbe? _drawnProbe;
     private (IFontProbe? Probe, bool Opened) _gameProbe;
-    private readonly Dictionary<(Pointer<AtkFontManager.Font> Game, Rune Rune), MaterializedFontElement?> _elementCache = [];
+    private readonly Dictionary<(Pointer<AtkFontManager.Font> Game, Rune Rune), LoadedFontElement?> _elementCache = [];
     private readonly Dictionary<(float Px, Pointer<AtkFontManager.Font> Game), FontAlignment> _alignments = [];
     private int? _ownCodepointCount;
 
     /// <summary>An element that can't be set up is left out with a warning; throws if none of them can.</summary>
-    public MaterializedFont(FontServices services, Font def, bool systemFallback, SystemFallbackFonts fallbackFonts, FaceSourceCache sources)
+    public LoadedFont(DirectWriteServices services, Font def, bool systemFallback, SystemFallbackFonts fallbackFonts, FaceSourceCache sources)
     {
         this._services = services;
         this._def = def;
@@ -70,13 +70,13 @@ internal sealed unsafe class MaterializedFont : IDisposable
         var first = Array.IndexOf(installed, true);
         this._measureMode = first < 0 ? 0 : def.Elements[first].DirectWrite.MeasureMode;
 
-        var elements = new List<MaterializedFontElement>();
+        var elements = new List<LoadedFontElement>();
         for (var i = 0; i < def.Elements.Count; i++)
         {
             var e = def.Elements[i];
             try
             {
-                var element = new MaterializedFontElement(e, this.CreateSource(e), this._referenceSize);
+                var element = new LoadedFontElement(e, this.CreateSource(e), this._referenceSize);
                 elements.Add(element);
                 if (this._primary is null && installed[i])
                     this._primary = element;
@@ -95,7 +95,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
     /// <summary>Excludes codepoints drawn with the game's glyphs.</summary>
     public int OwnCodepointCount => this._ownCodepointCount ??= this.CountOwnCodepoints();
 
-    public static MaterializedFont CreateGame(FontServices services, bool systemFallback, SystemFallbackFonts fallbackFonts, FaceSourceCache sources)
+    public static LoadedFont CreateGame(DirectWriteServices services, bool systemFallback, SystemFallbackFonts fallbackFonts, FaceSourceCache sources)
     {
         var element = new FontElement { Size = 1, Source = ElementSource.Game, Ranges = RuneRange.From(0, 0x10FFFF) };
         return new(services, new() { Name = "(game)", Elements = [element] }, systemFallback, fallbackFonts, sources);
@@ -132,7 +132,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
         }
     }
 
-    public bool TryGetElement(ReadOnlySpan<Rune> grapheme, AtkFontManager.Font* game, [NotNullWhen(true)] out MaterializedFontElement? element)
+    public bool TryGetElement(ReadOnlySpan<Rune> grapheme, AtkFontManager.Font* game, [NotNullWhen(true)] out LoadedFontElement? element)
     {
         element = null;
         if (grapheme.IsEmpty)
@@ -207,7 +207,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
         return true;
     }
 
-    private static bool IsInstalled(FontServices services, LookupStruct lookup)
+    private static bool IsInstalled(DirectWriteServices services, LookupStruct lookup)
     {
         if (!services.TryFindFont(lookup, out var match))
             return false;
@@ -242,7 +242,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
         // As in FontChanger, glyphs are merged only around fonts that draw outlines or images.
         if (def.GlyphMerging is not { } merging || def.Source is not (ElementSource.DirectWrite or ElementSource.FreeType or ElementSource.GlyphImages))
             return source;
-        var merged = this._sources.Own(MergingFaceSource.Create(source, def, merging, this._services, fontName));
+        var merged = this._sources.Own(MergedGlyphFaceSource.Create(source, def, merging, this._services, fontName));
         merged.MeasureMode = this._measureMode;
         return merged;
     }
@@ -251,7 +251,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
     private float GetGameSize() =>
         Math.Max(
             0,
-            FontNames.FontNamesOf(Preset.FamilyOf(this._def.Name))
+            GameFontTable.FontNamesOf(Preset.FamilyOf(this._def.Name))
                      .FirstOrDefault(f => string.Equals(f.Name, this._def.Name, StringComparison.OrdinalIgnoreCase))
                      .Size);
 
@@ -263,7 +263,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
         return this._drawnProbe ??= FontsFromSystemFont.ProbeFont(this._def, this.TryOpenProbe);
     }
 
-    private static (int Ascent, int LineHeight) GetElementMetrics(MaterializedFontElement element, float px, AtkFontManager.Font* game)
+    private static (int Ascent, int LineHeight) GetElementMetrics(LoadedFontElement element, float px, AtkFontManager.Font* game)
     {
         if (!element.DrawsGame)
             return element.GetLineMetrics(px);
@@ -273,7 +273,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
         return ((int)Misc.StdRound(game->Ascent * scale), (int)Misc.StdRound(game->LineHeight * scale));
     }
 
-    private static bool Has(MaterializedFontElement element, ReadOnlySpan<Rune> grapheme, AtkFontManager.Font* game)
+    private static bool Has(LoadedFontElement element, ReadOnlySpan<Rune> grapheme, AtkFontManager.Font* game)
     {
         foreach (var rune in grapheme)
         {
@@ -304,16 +304,16 @@ internal sealed unsafe class MaterializedFont : IDisposable
         return drawn.Count;
     }
 
-    private MaterializedFontElement? FindElement(ReadOnlySpan<Rune> grapheme, AtkFontManager.Font* game)
+    private LoadedFontElement? FindElement(ReadOnlySpan<Rune> grapheme, AtkFontManager.Font* game)
     {
         if (this.FindAssigned(grapheme, game) is { } assigned)
             return assigned;
         return this._systemFallback ? this.GetFallbackElement(grapheme) : this._gameElement;
     }
 
-    private MaterializedFontElement? FindAssigned(ReadOnlySpan<Rune> grapheme, AtkFontManager.Font* game)
+    private LoadedFontElement? FindAssigned(ReadOnlySpan<Rune> grapheme, AtkFontManager.Font* game)
     {
-        MaterializedFontElement? assigned = null;
+        LoadedFontElement? assigned = null;
         foreach (var e in this._elements)
         {
             var mode = e.Def.MergeMode;
@@ -326,7 +326,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
         return assigned;
     }
 
-    private MaterializedFontElement? GetFallbackElement(ReadOnlySpan<Rune> grapheme)
+    private LoadedFontElement? GetFallbackElement(ReadOnlySpan<Rune> grapheme)
     {
         Span<char> text = stackalloc char[grapheme.Length * 2];
         var length = 0;
@@ -379,7 +379,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
     }
 
     // Fitted to the size the font's chain items were made at, the game font's.
-    private MaterializedFontElement[] GetFittedFallback(LookupStruct lookup)
+    private LoadedFontElement[] GetFittedFallback(LookupStruct lookup)
     {
         var key = (lookup.FamilyName.ToLowerInvariant(), lookup.Weight, lookup.Stretch, lookup.Style);
         if (this._fittedFallback.TryGetValue(key, out var fitted))
@@ -393,7 +393,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
             {
                 var drawnProbe = this.OpenFittingProbes();
                 fitted = FontsFromSystemFont.MakeFallbackElements(this._def, size, lookup, this.TryOpenProbe, drawnProbe, this._gameProbe.Probe)
-                                            .Select(e => new MaterializedFontElement(e, this.CreateSource(e), this._referenceSize))
+                                            .Select(e => new LoadedFontElement(e, this.CreateSource(e), this._referenceSize))
                                             .ToArray();
             }
         }

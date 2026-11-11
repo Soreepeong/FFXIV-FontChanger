@@ -26,10 +26,10 @@ internal sealed unsafe class SystemFallbackFonts : IDisposable
         "Segoe UI Symbol", "Segoe UI Emoji",
     ];
 
-    private readonly FontServices _services;
+    private readonly DirectWriteServices _services;
     private MyComPtr<IDWriteFontFallback1> _fallback;
 
-    public SystemFallbackFonts(FontServices services)
+    public SystemFallbackFonts(DirectWriteServices services)
     {
         this._services = services;
         using var builder = default(MyComPtr<IDWriteFontFallbackBuilder>);

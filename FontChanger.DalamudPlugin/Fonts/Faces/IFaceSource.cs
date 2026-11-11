@@ -8,7 +8,7 @@ using FontChanger.DalamudPlugin.Fonts.Records;
 namespace FontChanger.DalamudPlugin.Fonts.Faces;
 
 /// <summary>
-/// As xivres fixed_size_font, before <see cref="MaterializedFontElement.Wrap"/> places the glyphs: sizes are the element's,
+/// As xivres fixed_size_font, before <see cref="LoadedFontElement.Wrap"/> places the glyphs: sizes are the element's,
 /// and glyphs are relative to the pen on the baseline.
 /// </summary>
 internal interface IFaceSource : IDisposable

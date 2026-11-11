@@ -14,13 +14,13 @@ using FontChanger.DalamudPlugin.Utilities;
 namespace FontChanger.DalamudPlugin.PluginInterface;
 
 /// <summary>Edits the settings the fonts are made from, and asks the loader for fonts when they or a watched file change.</summary>
-internal sealed class PresetController : IDisposable
+internal sealed class FontSourceEditor : IDisposable
 {
     // Edited files may be written in several steps, so they load a little later and a failure keeps the last loaded presets.
     private const long ReloadDelayMs = 500;
 
     private readonly Configuration.Configuration _configuration;
-    private readonly FontLoader _loader;
+    private readonly FontSetLoader _loader;
     private readonly Dictionary<string, FileSystemWatcher> _presetWatchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, FileSystemWatcher> _folderWatchers = new(StringComparer.OrdinalIgnoreCase);
 
@@ -33,7 +33,7 @@ internal sealed class PresetController : IDisposable
     private FontRequest? _requested;
     private int _reloads;
 
-    public PresetController(Configuration.Configuration configuration, FontLoader loader)
+    public FontSourceEditor(Configuration.Configuration configuration, FontSetLoader loader)
     {
         this._configuration = configuration;
         this._loader = loader;
@@ -50,7 +50,7 @@ internal sealed class PresetController : IDisposable
     /// watched file was edited.
     /// </summary>
     /// <returns>The fonts to apply, if any were made since the last call.</returns>
-    public FontSet? Update()
+    public LoadedFontSet? Update()
     {
         Misc.DebugAssertMainThread();
         var c = this._configuration;
@@ -114,7 +114,7 @@ internal sealed class PresetController : IDisposable
     public void CopyToOthers(string family) => this.Change(c => {
         var chain = GetChain(c, family);
         var sources = c.FamilySources.ToBuilder();
-        foreach (var other in FontNames.Families)
+        foreach (var other in GameFontTable.Families)
         {
             if (string.Equals(other, family, StringComparison.OrdinalIgnoreCase))
                 continue;

@@ -11,11 +11,11 @@ using TerraFX.Interop.DirectX;
 
 namespace FontChanger.DalamudPlugin.Game;
 
-internal sealed unsafe class KernelTextureWrapper : IDisposable
+internal sealed unsafe class OwnedKernelTexture : IDisposable
 {
     private MyComPtr<ID3D11Resource> _resource;
 
-    public KernelTextureWrapper(int width, int height, string name, bool format4444 = false)
+    public OwnedKernelTexture(int width, int height, string name, bool format4444 = false)
     {
         var specification = format4444
                                 ? new(width, height, (int)DXGI_FORMAT.DXGI_FORMAT_B4G4R4A4_UNORM, width * 2)
@@ -26,7 +26,7 @@ internal sealed unsafe class KernelTextureWrapper : IDisposable
             ((ID3D11ShaderResourceView*)wrap.Handle.Handle)->GetResource(resource);
     }
 
-    ~KernelTextureWrapper() => this.ReleaseUnmanagedResources();
+    ~OwnedKernelTexture() => this.ReleaseUnmanagedResources();
 
     public Texture* Kernel { get; private set; }
 

@@ -9,7 +9,7 @@ namespace FontChanger.DalamudPlugin.Fonts;
 /// Each game font family gets an atlas of its own, so that one family's text can't push another's out. AXIS, the family of most
 /// of the UI's text, has its own page size and count.
 /// </summary>
-internal sealed class AtlasSet(Func<bool> supports4444) : IDisposable
+internal sealed class FamilyAtlases(Func<bool> supports4444) : IDisposable
 {
     private readonly Dictionary<string, GlyphAtlas> _atlases = new(StringComparer.OrdinalIgnoreCase);
 

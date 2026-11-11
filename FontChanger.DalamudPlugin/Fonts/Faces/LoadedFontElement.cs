@@ -14,7 +14,7 @@ namespace FontChanger.DalamudPlugin.Fonts.Faces;
 /// At a font size <c>px</c> an element draws at <c>px * Size / reference</c> and scales its pixel values by
 /// <c>px / reference</c>, the reference being the font's first element's size.
 /// </summary>
-internal sealed class MaterializedFontElement(FontElement def, IFaceSource? source, float referenceSize)
+internal sealed class LoadedFontElement(FontElement def, IFaceSource? source, float referenceSize)
 {
     private readonly Dictionary<float, float> _referenceAdvances = [];
 

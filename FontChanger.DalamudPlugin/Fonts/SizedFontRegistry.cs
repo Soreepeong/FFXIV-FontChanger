@@ -14,19 +14,19 @@ using FontChanger.DalamudPlugin.Utilities;
 namespace FontChanger.DalamudPlugin.Fonts;
 
 /// <summary>The sized fonts made so far, and the glyphs they cache.</summary>
-internal sealed unsafe class SizedFontRegistry(FontSet fonts, AtlasSet atlases, GlyphStore store, FrameState state)
+internal sealed unsafe class SizedFontRegistry(LoadedFontSet fonts, FamilyAtlases atlases, GlyphStore store, FrameState state)
 {
     // Glyphs cached by every sized font together.
     private const int GlyphCapacity = 16384;
 
-    private readonly Dictionary<(MaterializedFont Font, int HalfPx, string FontName, TextFace Face, bool Bold), SizedFont> _sizedFonts = [];
+    private readonly Dictionary<(LoadedFont Font, int HalfPx, string FontName, TextFace Face, bool Bold), SizedFont> _sizedFonts = [];
     private int _sweepAt = GlyphCapacity;
 
     // Get's results by its arguments, as finding the family's fonts for a request is slow and wrapping asks per character. Which
     // of the family's fonts were ready is in them.
     private readonly Dictionary<(Pointer<AtkFontManager.Font> Original, int HalfPx, TextFace Face, bool Bold), SizedFont> _byRequest = [];
 
-    public FontSet Fonts { get; private set; } = fonts;
+    public LoadedFontSet Fonts { get; private set; } = fonts;
 
     public IEnumerable<SizedFont> All => this._sizedFonts.Values;
 
@@ -42,13 +42,13 @@ internal sealed unsafe class SizedFontRegistry(FontSet fonts, AtlasSet atlases, 
             return known;
 
         var px = halfPx / 2f;
-        var fonts = new List<(string Name, float Size, MaterializedFont Font, Pointer<AtkFontManager.Font> Game)>();
-        if (FontNames.TryGetFontName(original, out var originalName))
+        var fonts = new List<(string Name, float Size, LoadedFont Font, Pointer<AtkFontManager.Font> Game)>();
+        if (GameFontTable.TryGetFontName(original, out var originalName))
         {
-            foreach (var (name, size) in FontNames.FontNamesOf(Preset.FamilyOf(originalName)).OrderByDescending(f => f.Size))
+            foreach (var (name, size) in GameFontTable.FontNamesOf(Preset.FamilyOf(originalName)).OrderByDescending(f => f.Size))
             {
                 var loaded = original;
-                if (!string.Equals(name, originalName, StringComparison.OrdinalIgnoreCase) && !FontNames.TryFindFont(name, out loaded))
+                if (!string.Equals(name, originalName, StringComparison.OrdinalIgnoreCase) && !GameFontTable.TryFindFont(name, out loaded))
                     continue;
                 if (loaded.IsNull || !loaded.Value->Flags.HasFlag(AtkFontManager.FontFlags.Ready) || loaded.Value->Size <= 0)
                     continue;
@@ -122,7 +122,7 @@ internal sealed unsafe class SizedFontRegistry(FontSet fonts, AtlasSet atlases, 
     }
 
     /// <summary>After <see cref="Clear"/>. The old fonts are disposed.</summary>
-    public void SwapFonts(FontSet fonts)
+    public void SwapFonts(LoadedFontSet fonts)
     {
         var old = this.Fonts;
         this.Fonts = fonts;

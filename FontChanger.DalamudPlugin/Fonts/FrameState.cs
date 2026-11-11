@@ -13,7 +13,7 @@ namespace FontChanger.DalamudPlugin.Fonts;
 /// </summary>
 internal sealed class FrameState
 {
-    private readonly HashSet<Part> _failed = [];
+    private readonly HashSet<PluginFeature> _failed = [];
     private bool _gameFontsChanged;
     private bool _planeReused;
 
@@ -38,18 +38,18 @@ internal sealed class FrameState
     public void Fail(Exception ex, string message)
     {
         this.IsOn = false;
-        CopyFonts.ForgetPicked();
-        this.Fail(Part.Replacer, ex, message);
+        ReplacementFontTable.ForgetPicked();
+        this.Fail(PluginFeature.Replacer, ex, message);
     }
 
-    public void Fail(Part part, Exception ex, string message)
+    public void Fail(PluginFeature pluginFeature, Exception ex, string message)
     {
         Plugin.Log.Error(ex, "{message}; turning it off", message);
-        this._failed.Add(part);
+        this._failed.Add(pluginFeature);
     }
 
     /// <summary>Until the plugin is loaded again. A failed setup is known only to <see cref="FrameCoordinator.Failed"/>.</summary>
-    public bool Failed(Part part) => this._failed.Contains(part);
+    public bool Failed(PluginFeature pluginFeature) => this._failed.Contains(pluginFeature);
 
     public Snapshot Drain()
     {

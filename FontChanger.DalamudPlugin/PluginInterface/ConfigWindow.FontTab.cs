@@ -37,10 +37,10 @@ internal sealed partial class ConfigWindow
         var systemFallback = presets.SystemFallback;
         if (ImGui.Checkbox("Use System Fallback Fonts", ref systemFallback)) presets.SetSystemFallback(systemFallback);
 
-        var families = FontNames.Families;
+        var families = GameFontTable.Families;
         if (t._selectedFamily is null ||
             !(families.Contains(t._selectedFamily) ||
-              (TextFaceNames.TryGetFace(t._selectedFamily, out var selectedFace) && !TextFaceNames.IsNamePlates(selectedFace) && !t._plugin.Coordinator.Failed(Part.ChatLog))))
+              (TextFaceNames.TryGetFace(t._selectedFamily, out var selectedFace) && !TextFaceNames.IsNamePlates(selectedFace) && !t._plugin.Coordinator.Failed(PluginFeature.ChatLog))))
             t.SelectFamily(families.Count != 0 ? families[0] : null);
 
         t.DrawFamiliesAndChain(static t => t.DrawFamilyList());
@@ -62,13 +62,13 @@ internal sealed partial class ConfigWindow
 
     private void DrawFamilyList()
     {
-        foreach (var f in FontNames.Families)
+        foreach (var f in GameFontTable.Families)
             this.DrawFamilyItem(f, f);
 
         var first = true;
         foreach (var (face, name) in TextFaceNames.Faces)
         {
-            if (TextFaceNames.IsNamePlates(face) || this._plugin.Coordinator.Failed(Part.ChatLog))
+            if (TextFaceNames.IsNamePlates(face) || this._plugin.Coordinator.Failed(PluginFeature.ChatLog))
                 continue;
             if (first)
                 ImGui.Separator();
@@ -122,8 +122,8 @@ internal sealed partial class ConfigWindow
             var size = this._pendingFontSize is { } pending && pending.Family == family
                            ? pending.Size
                            : configuration.FaceFontSizes.GetValueOrDefault(family);
-            if (ImGui.SliderInt("Font size", ref size, ChatLogText.MinFontSize - 1, ChatLogText.MaxFontSize, size < ChatLogText.MinFontSize ? "Game's" : "%d px"))
-                this._pendingFontSize = (family, size < ChatLogText.MinFontSize ? 0 : size);
+            if (ImGui.SliderInt("Font size", ref size, ChatLogFonts.MinFontSize - 1, ChatLogFonts.MaxFontSize, size < ChatLogFonts.MinFontSize ? "Game's" : "%d px"))
+                this._pendingFontSize = (family, size < ChatLogFonts.MinFontSize ? 0 : size);
             if (!ImGui.IsItemActive() && this._pendingFontSize is { } released && released.Family == family)
             {
                 this._pendingFontSize = null;

@@ -334,7 +334,7 @@ internal sealed unsafe class GlyphAtlas : IDisposable
     {
         private readonly int _width;
         private readonly int _height;
-        private readonly KernelTextureWrapper _texture;
+        private readonly OwnedKernelTexture _texture;
 
         public Page(int width, int height, string name, bool format4444)
         {

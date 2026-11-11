@@ -226,7 +226,7 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
     {
         this._settings = default;
         this.RestoreAndReleaseAll();
-        this._state.Fail(Part.Subpixel, ex, "Subpixel text failed");
+        this._state.Fail(PluginFeature.Subpixel, ex, "Subpixel text failed");
     }
 
     private void SetDrawStateDetour(AtkServer* server, AtkServer.DrawState* state, byte divisor)

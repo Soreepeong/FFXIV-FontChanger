@@ -16,7 +16,7 @@ namespace FontChanger.DalamudPlugin.Fonts.Faces.Sources.Outline;
 /// As FontChanger's ElementFonts.cpp ResolveFont and ResolveSynthesis, explicit synthesis starts from the real face and
 /// synthesizes what it lacks.
 /// </summary>
-internal sealed unsafe class LookupFont : IDisposable
+internal sealed unsafe class ResolvedSystemFont : IDisposable
 {
     /// <summary>The slope of DirectWrite's oblique simulation (about 18.77 degrees), which FreeType slants by too.</summary>
     public const float ObliqueSlope = 0.33985f;
@@ -40,7 +40,7 @@ internal sealed unsafe class LookupFont : IDisposable
     private MyComPtr<IDWriteFontFace5> _face;
 
     /// <summary>Takes a reference of its own to the font.</summary>
-    private LookupFont(IDWriteFont3* font, LookupStruct lookup, ElementSource source)
+    private ResolvedSystemFont(IDWriteFont3* font, LookupStruct lookup, ElementSource source)
     {
         this._font = new(font, true);
         try
@@ -134,7 +134,7 @@ internal sealed unsafe class LookupFont : IDisposable
     // DirectWrite has variable fonts from Windows 10 21H1.
     private bool IsVariable => this._resource;
 
-    public static LookupFont? Create(FontServices services, LookupStruct lookup, ElementSource source)
+    public static ResolvedSystemFont? Create(DirectWriteServices services, LookupStruct lookup, ElementSource source)
     {
         if (!services.TryFindFont(lookup, out var font))
             return null;
@@ -333,7 +333,7 @@ internal sealed unsafe class LookupFont : IDisposable
         }
     }
 
-    private static MyComPtr<IDWriteFont3> GetRealFont(FontServices services, IDWriteFont3* font)
+    private static MyComPtr<IDWriteFont3> GetRealFont(DirectWriteServices services, IDWriteFont3* font)
     {
         using var face = default(MyComPtr<IDWriteFontFace5>);
         font->CreateFontFace(face.GetAddressOf()).ThrowOnError();

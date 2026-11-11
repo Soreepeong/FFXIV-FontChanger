@@ -9,7 +9,7 @@ using FontChanger.DalamudPlugin.Utilities;
 namespace FontChanger.DalamudPlugin.Fonts.Faces.Sources;
 
 /// <summary>Glyph IDs are codepoints, one glyph each, placed at whole pixels.</summary>
-internal abstract class NominalFaceSource : IFaceSource
+internal abstract class BitmapFaceSource : IFaceSource
 {
     // Measuring an advance draws the glyph, which is kept so that drawing it for good needn't repeat that.
     private readonly Dictionary<(float Px, uint Id), float> _advances = [];

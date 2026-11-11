@@ -36,7 +36,7 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
     private bool? _isSlanted;
 
     /// <summary>Takes <paramref name="font"/>, which it disposes.</summary>
-    private OutlineFaceSource(FontServices services, FontElement def, LookupFont font, FT_FaceRec_* freeTypeFace, string fontName)
+    private OutlineFaceSource(DirectWriteServices services, FontElement def, ResolvedSystemFont font, FT_FaceRec_* freeTypeFace, string fontName)
     {
         this.Services = services;
         this.Def = def;
@@ -66,11 +66,11 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
     /// <summary>When DirectWrite draws, as its factory is thread safe and the lookup's faces are made behind its lock. FreeType draws behind one lock.</summary>
     public bool RasterizesConcurrently => this._freeTypeFace is null;
 
-    private FontServices Services { get; }
+    private DirectWriteServices Services { get; }
 
     private FontElement Def { get; }
 
-    private LookupFont Font { get; }
+    private ResolvedSystemFont Font { get; }
 
     private Matrix2x2 Transform { get; }
 
@@ -82,9 +82,9 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
             IsRealItalic(this.Font.Face) ||
             (this.Font.Face->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) != 0;
 
-    public static OutlineFaceSource? Create(FontServices services, FontElement def, string fontName)
+    public static OutlineFaceSource? Create(DirectWriteServices services, FontElement def, string fontName)
     {
-        var font = LookupFont.Create(services, def.Lookup, def.Source);
+        var font = ResolvedSystemFont.Create(services, def.Lookup, def.Source);
         if (font is null)
         {
             Plugin.Log.Warning("{font}: font {family} not found", fontName, def.Lookup.FamilyName);
@@ -160,11 +160,11 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
     }
 
     /// <summary>Null unless the lookup finds a font that <paramref name="differs"/>.</summary>
-    private OutlineFaceSource? MakeVariant(LookupStruct lookup, Func<LookupFont, bool> differs, string what)
+    private OutlineFaceSource? MakeVariant(LookupStruct lookup, Func<ResolvedSystemFont, bool> differs, string what)
     {
         try
         {
-            var font = LookupFont.Create(this.Services, lookup, this.Def.Source);
+            var font = ResolvedSystemFont.Create(this.Services, lookup, this.Def.Source);
             if (font is not null && differs(font))
             {
                 var made = FromFont(this.Services, this.Def with { Lookup = lookup }, font, this._fontName);
@@ -223,7 +223,7 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
     }
 
     /// <summary>Takes <paramref name="font"/>.</summary>
-    private static OutlineFaceSource FromFont(FontServices services, FontElement def, LookupFont font, string fontName)
+    private static OutlineFaceSource FromFont(DirectWriteServices services, FontElement def, ResolvedSystemFont font, string fontName)
     {
         // DirectWrite doesn't draw fonts with only bitmaps.
         var ftFace = services.FreeType.Open(font.Face);
@@ -238,7 +238,7 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
         (face->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) == 0 &&
         face->GetStyle() != DWRITE_FONT_STYLE.DWRITE_FONT_STYLE_NORMAL;
 
-    private bool IsBolder(LookupFont font)
+    private bool IsBolder(ResolvedSystemFont font)
     {
         const DWRITE_FONT_SIMULATIONS Bold = DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_BOLD;
         return font.Face->GetWeight() > this.Font.Face->GetWeight() ||

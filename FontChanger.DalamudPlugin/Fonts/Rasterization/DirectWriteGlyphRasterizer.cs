@@ -122,7 +122,7 @@ internal sealed unsafe class DirectWriteGlyphRasterizer(IDWriteFactory7* factory
         // DirectWrite's oblique simulation slants before the transformation; its bold simulation adds 1/50 em both ways.
         var simulations = face->GetSimulations();
         if ((simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) != 0)
-            transform *= new Matrix2x2(1, -LookupFont.ObliqueSlope, 0, 1);
+            transform *= new Matrix2x2(1, -ResolvedSystemFont.ObliqueSlope, 0, 1);
         var embolden = (simulations & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_BOLD) != 0 ? 1 / 50f : 0;
 
         // GDI's modes hint both ways and the natural ones vertically only, always with the font's own hinting as

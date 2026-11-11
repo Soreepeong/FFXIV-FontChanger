@@ -22,7 +22,7 @@ namespace FontChanger.DalamudPlugin.Fonts.Text;
 /// <li>Active runs last for a frame, so that a cache sweep never takes one.</li>
 /// </ul>
 /// </remarks>
-internal sealed unsafe class GameTextLayout
+internal sealed unsafe class ShapedRunCache
 {
     private const int MaxActiveRuns = 8;
 
@@ -31,7 +31,7 @@ internal sealed unsafe class GameTextLayout
 
     private readonly GlyphStore _store;
     private readonly Pointer<AtkFontManager.Glyph> _emptyGlyph;
-    private readonly CellCache _cells;
+    private readonly ClusterGlyphCache _cells;
     private readonly Shaper _shaper;
     private readonly AgedMap<RunKey, ShapedRun> _runs;
 
@@ -42,7 +42,7 @@ internal sealed unsafe class GameTextLayout
     private readonly Stack<ActiveRun> _freeActive = [];
     private readonly Action<ShapedRun> _dropRun;
 
-    public GameTextLayout(FontServices services, GlyphStore store, GlyphFactory factory, FrameState state)
+    public ShapedRunCache(DirectWriteServices services, GlyphStore store, GlyphFactory factory, FrameState state)
     {
         this._store = store;
         this._emptyGlyph = store.EmptyGlyph;

@@ -9,30 +9,30 @@ using FontChanger.DalamudPlugin.Fonts.Text;
 namespace FontChanger.DalamudPlugin.Fonts;
 
 /// <summary>Fonts made together, sharing their face sources.</summary>
-internal sealed class FontSet : IDisposable
+internal sealed class LoadedFontSet : IDisposable
 {
     private bool? _hasNamePlateFaces;
 
-    private FontSet()
+    private LoadedFontSet()
     {
     }
 
     public FaceSourceCache Sources { get; } = new();
 
     /// <summary>Gets the font of the game fonts the preset has no font of.</summary>
-    public MaterializedFont Game { get; private set; } = null!;
+    public LoadedFont Game { get; private set; } = null!;
 
-    public Dictionary<string, MaterializedFont> Preset { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, LoadedFont> Preset { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public Dictionary<TextFace, Dictionary<string, MaterializedFont>> Faces { get; } = [];
+    public Dictionary<TextFace, Dictionary<string, LoadedFont>> Faces { get; } = [];
 
-    private IEnumerable<MaterializedFont> All => this.Preset.Values.Concat(this.Faces.Values.SelectMany(f => f.Values)).Append(this.Game);
+    private IEnumerable<LoadedFont> All => this.Preset.Values.Concat(this.Faces.Values.SelectMany(f => f.Values)).Append(this.Game);
 
     /// <summary>Only the game font's, to which the others are added.</summary>
-    public static FontSet CreateGame(FontServices services, bool systemFallback, SystemFallbackFonts fallbackFonts)
+    public static LoadedFontSet CreateGame(DirectWriteServices services, bool systemFallback, SystemFallbackFonts fallbackFonts)
     {
-        var set = new FontSet();
-        set.Game = MaterializedFont.CreateGame(services, systemFallback, fallbackFonts, set.Sources);
+        var set = new LoadedFontSet();
+        set.Game = LoadedFont.CreateGame(services, systemFallback, fallbackFonts, set.Sources);
         return set;
     }
 
@@ -52,7 +52,7 @@ internal sealed class FontSet : IDisposable
         return face;
     }
 
-    public MaterializedFont FontOf(string fontName, TextFace face)
+    public LoadedFont FontOf(string fontName, TextFace face)
     {
         for (; face != TextFace.Default; face = TextFaceNames.FallbackOf(face))
         {

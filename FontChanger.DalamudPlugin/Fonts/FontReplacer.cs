@@ -33,17 +33,17 @@ internal sealed unsafe class FontReplacer : IDisposable
     private readonly DisposeSafety.ScopedFinalizer _hooks = new();
 
     // What copy texture slots without a page hold, so that a game glyph slipping through draws nothing.
-    private readonly KernelTextureWrapper _blankTexture;
+    private readonly OwnedKernelTexture _blankTexture;
 
     private readonly FrameState _state;
-    private readonly FontHooks _fontHooks;
+    private readonly TextLayoutHooks _fontHooks;
     private readonly GlyphStore _store;
-    private readonly AtlasSet _atlases;
+    private readonly FamilyAtlases _atlases;
     private readonly SizedFontRegistry _sized;
-    private readonly CopyFonts _copies;
+    private readonly ReplacementFontTable _copies;
     private readonly GlyphFactory _factory;
-    private readonly CellPlacer _placer;
-    private readonly GameTextLayout _layout;
+    private readonly GlyphAtlasPlacer _placer;
+    private readonly ShapedRunCache _layout;
     private bool? _supports4444;
 
     // As last asked for, which an error may have turned off since.
@@ -54,11 +54,11 @@ internal sealed unsafe class FontReplacer : IDisposable
         this._state = state;
         try
         {
-            this.Services = this._finalizer.Add(new FontServices());
+            this.Services = this._finalizer.Add(new DirectWriteServices());
             this.FallbackFonts = this._finalizer.Add(new SystemFallbackFonts(this.Services));
             try
             {
-                FontNames.Initialize();
+                GameFontTable.Initialize();
             }
             catch (Exception ex)
             {
@@ -67,16 +67,16 @@ internal sealed unsafe class FontReplacer : IDisposable
 
             this._store = this._finalizer.Add(new GlyphStore());
             this._blankTexture = this._finalizer.Add(CreateBlankTexture());
-            this._atlases = this._finalizer.Add(new AtlasSet(() => this.Supports4444));
-            this._sized = new(FontSet.CreateGame(this.Services, true, this.FallbackFonts), this._atlases, this._store, state);
+            this._atlases = this._finalizer.Add(new FamilyAtlases(() => this.Supports4444));
+            this._sized = new(LoadedFontSet.CreateGame(this.Services, true, this.FallbackFonts), this._atlases, this._store, state);
             this._finalizer.Add(() => this._sized.Fonts.Dispose());
-            this._copies = this._finalizer.Add(new CopyFonts(this._sized, this._blankTexture, state));
-            this._placer = this._finalizer.Add(new CellPlacer(this._store, this._copies));
+            this._copies = this._finalizer.Add(new ReplacementFontTable(this._sized, this._blankTexture, state));
+            this._placer = this._finalizer.Add(new GlyphAtlasPlacer(this._store, this._copies));
             this._factory = new(this._store, state);
             this._layout = new(this.Services, this._store, this._factory, state);
             this._fontHooks = this._hooks.Add(
-                new FontHooks(this._copies, this._sized, this._layout, this._factory, this._placer, this._store, state, this.Context));
-            this._hooks.Add(new FontLifecycleHooks(scope => this.Reset(scope), state));
+                new TextLayoutHooks(this._copies, this._sized, this._layout, this._factory, this._placer, this._store, state, this.Context));
+            this._hooks.Add(new GameFontBuildHooks(scope => this.Reset(scope), state));
 
             // Caches built so far hold the game's glyphs.
             this._fontHooks.UpdateFontCaches();
@@ -97,7 +97,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         }
     }
 
-    public FontServices Services { get; }
+    public DirectWriteServices Services { get; }
 
     public SystemFallbackFonts FallbackFonts { get; }
 
@@ -120,7 +120,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             return ResetScope.None;
         this._enabled = value;
         this._state.IsOn = value;
-        CopyFonts.ForgetPicked();
+        ReplacementFontTable.ForgetPicked();
         this._fontHooks.UpdateFontCaches();
         return ResetScope.Text;
     }
@@ -176,7 +176,7 @@ internal sealed unsafe class FontReplacer : IDisposable
     /// <summary>Makes what <paramref name="scope"/> names again, each step once and in order.</summary>
     /// <param name="scope">How much to make again.</param>
     /// <param name="fonts">If given, replaces the fonts, and the old ones are disposed.</param>
-    public void Reset(ResetScope scope, FontSet? fonts = null)
+    public void Reset(ResetScope scope, LoadedFontSet? fonts = null)
     {
         if (fonts is not null)
             scope |= ResetScope.Fonts;
@@ -208,7 +208,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             this._sized.SwapFonts(fonts);
         if (scope.HasFlag(ResetScope.SizedFonts))
             this._copies.MarkStale();
-        CopyFonts.ForgetPicked();
+        ReplacementFontTable.ForgetPicked();
     }
 
     /// <summary>
@@ -247,7 +247,7 @@ internal sealed unsafe class FontReplacer : IDisposable
         }
         finally
         {
-            CopyFonts.ForgetPicked();
+            ReplacementFontTable.ForgetPicked();
         }
     }
 
@@ -258,10 +258,10 @@ internal sealed unsafe class FontReplacer : IDisposable
         this._finalizer.Dispose();
     }
 
-    private static KernelTextureWrapper CreateBlankTexture()
+    private static OwnedKernelTexture CreateBlankTexture()
     {
         const int Side = 4;
-        var texture = new KernelTextureWrapper(Side, Side, "FontChanger.DalamudPlugin blank");
+        var texture = new OwnedKernelTexture(Side, Side, "FontChanger.DalamudPlugin blank");
         try
         {
             using var context = texture.Resource.Value->GetImmediateContext();

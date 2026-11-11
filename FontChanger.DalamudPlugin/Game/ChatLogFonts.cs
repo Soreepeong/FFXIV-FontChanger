@@ -19,7 +19,7 @@ namespace FontChanger.DalamudPlugin.Game;
 /// Each tab has a ChatLogPanel of its own, the tab's index in its name, which the main window shows while the tab is selected and
 /// which is the tab's window once moved out.
 /// </summary>
-internal sealed unsafe class ChatLogText : IDisposable
+internal sealed unsafe class ChatLogFonts : IDisposable
 {
     public const int MinFontSize = 8;
     public const int MaxFontSize = 96;
@@ -40,7 +40,7 @@ internal sealed unsafe class ChatLogText : IDisposable
     // Outlives the PreRefresh listener, which can only replace the refresh's values with a pointer.
     private readonly AtkValue* _refreshValue;
 
-    public ChatLogText(FontReplacer replacer)
+    public ChatLogFonts(FontReplacer replacer)
     {
         this._replacer = replacer;
         try

@@ -16,9 +16,9 @@ namespace FontChanger.DalamudPlugin.Fonts.Faces.Sources;
 internal sealed unsafe partial class OutlineFaceSource
 {
     /// <summary><paramref name="transform"/> takes the element's transformation's place; synthesis's still applies.</summary>
-    public MergingFaceSource.IMergeTextFont CreateMergeTextFont(float size, Matrix2x2 transform) => new TextFont(this, size, transform * this.Font.Transform);
+    public MergedGlyphFaceSource.IMergeTextFont CreateMergeTextFont(float size, Matrix2x2 transform) => new TextFont(this, size, transform * this.Font.Transform);
 
-    private sealed class TextFont(OutlineFaceSource font, float size, Matrix2x2 transform) : MergingFaceSource.IMergeTextFont
+    private sealed class TextFont(OutlineFaceSource font, float size, Matrix2x2 transform) : MergedGlyphFaceSource.IMergeTextFont
     {
         private readonly List<TextRun> _runs = [];
         private readonly List<ShapedCluster> _clusters = [];
@@ -27,7 +27,7 @@ internal sealed unsafe partial class OutlineFaceSource
 
         public bool Has(Rune rune) => font.GetGlyphId(rune) != 0;
 
-        public MergingFaceSource.MergeTextLine LayOut(string text, int letterSpacing)
+        public MergedGlyphFaceSource.MergeTextLine LayOut(string text, int letterSpacing)
         {
             var spacing = transform.M11 != 0 ? letterSpacing / transform.M11 : 0;
             var (glyphs, advances, offsets) = this.Shape(text, spacing);

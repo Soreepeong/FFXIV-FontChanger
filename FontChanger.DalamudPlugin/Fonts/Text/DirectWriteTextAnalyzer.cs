@@ -14,7 +14,7 @@ using TerraFX.Interop.Windows;
 
 namespace FontChanger.DalamudPlugin.Fonts.Text;
 
-internal sealed unsafe class DirectWriteTextAnalyzer(FontServices services)
+internal sealed unsafe class DirectWriteTextAnalyzer(DirectWriteServices services)
 {
     private DWRITE_SCRIPT_ANALYSIS[] _scripts = new DWRITE_SCRIPT_ANALYSIS[256];
 

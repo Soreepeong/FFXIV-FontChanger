@@ -31,11 +31,11 @@ internal sealed class FrameCoordinator : IAsyncDisposable
     private readonly Configuration.Configuration _configuration;
     private readonly FrameState _state = new();
     private readonly SubpixelShaders _subpixel;
-    private readonly SubpixelSource _subpixelSource = new();
+    private readonly SubpixelSettingsSource _subpixelSource = new();
     private readonly EdgeShader _edge = new();
-    private readonly FontLoader _loader;
+    private readonly FontSetLoader _loader;
     private readonly NamePlateText? _namePlates;
-    private readonly ChatLogText? _chatLog;
+    private readonly ChatLogFonts? _chatLog;
     private readonly LineBreaker? _lineBreaker;
 
     /// <summary>On the framework thread.</summary>
@@ -47,7 +47,7 @@ internal sealed class FrameCoordinator : IAsyncDisposable
         try
         {
             this._namePlates = Optional("Nameplate text", () => new NamePlateText(this.Replacer));
-            this._chatLog = Optional("Chat log text", () => new ChatLogText(this.Replacer));
+            this._chatLog = Optional("Chat log text", () => new ChatLogFonts(this.Replacer));
             this._lineBreaker = Optional("Line breaking", () => new LineBreaker(this.Replacer));
             this._loader = new(this.Replacer.Services, this.Replacer.FallbackFonts);
             this.Presets = new(configuration, this._loader);
@@ -77,17 +77,17 @@ internal sealed class FrameCoordinator : IAsyncDisposable
 
     public FontReplacer Replacer { get; }
 
-    public PresetController Presets { get; }
+    public FontSourceEditor Presets { get; }
 
     /// <summary>Gets what subpixel rendering was last applied with, such as the system's ClearType settings.</summary>
     public SubpixelShaders.SettingsRecord AppliedSubpixel { get; private set; }
 
     /// <summary>A part that failed, at its setup or since, stays off until the plugin is loaded again.</summary>
-    public bool Failed(Part part) => part switch
+    public bool Failed(PluginFeature pluginFeature) => pluginFeature switch
     {
-        Part.NamePlates => this._namePlates is null,
-        Part.ChatLog => this._chatLog is null,
-        _ => this._state.Failed(part),
+        PluginFeature.NamePlates => this._namePlates is null,
+        PluginFeature.ChatLog => this._chatLog is null,
+        _ => this._state.Failed(pluginFeature),
     };
 
     /// <summary>Waits out the frames the game may still use glyphs and copies for before freeing them.</summary>
@@ -107,7 +107,7 @@ internal sealed class FrameCoordinator : IAsyncDisposable
         var fonts = this.Presets.Update();
 
         // Every cause is known before anything is made again, so that it is made once.
-        var scope = this.Replacer.SetEnabled(c.Enabled && !this._state.Failed(Part.Replacer));
+        var scope = this.Replacer.SetEnabled(c.Enabled && !this._state.Failed(PluginFeature.Replacer));
 
         // The shaders get a value once, so that one that can't be applied isn't tried again until it changes.
         if (c.Edge.Drawn() != this._state.Edge)
@@ -115,7 +115,7 @@ internal sealed class FrameCoordinator : IAsyncDisposable
         this._edge.Ensure();
         scope |= this.Replacer.SetEdge(c.Edge);
 
-        var subpixel = this._state.Failed(Part.Subpixel) ? default : this._subpixelSource.Get(c);
+        var subpixel = this._state.Failed(PluginFeature.Subpixel) ? default : this._subpixelSource.Get(c);
         if (subpixel != this.AppliedSubpixel)
             this._subpixel.TryApply(subpixel);
         this.AppliedSubpixel = subpixel;

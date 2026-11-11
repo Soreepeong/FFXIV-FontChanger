@@ -6,7 +6,7 @@ using FontChanger.DalamudPlugin.Fonts.Shaders;
 namespace FontChanger.DalamudPlugin.PluginInterface;
 
 /// <summary>The subpixel settings wanted, read from the system every <see cref="RefreshMs"/> while on, and at once when the setting changes.</summary>
-internal sealed class SubpixelSource
+internal sealed class SubpixelSettingsSource
 {
     private const long RefreshMs = 2000;
 

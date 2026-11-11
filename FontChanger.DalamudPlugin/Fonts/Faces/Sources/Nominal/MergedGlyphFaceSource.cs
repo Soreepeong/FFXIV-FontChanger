@@ -14,12 +14,12 @@ using FontChanger.Presets.Utilities;
 namespace FontChanger.DalamudPlugin.Fonts.Faces.Sources.Nominal;
 
 /// <summary>Port of xivres glyph_merging_fixed_size_font; glyph IDs are codepoints.</summary>
-internal sealed partial class MergingFaceSource(
+internal sealed partial class MergedGlyphFaceSource(
     IFaceSource inner,
     FontElement def,
     GlyphMergingStruct merging,
-    FontServices services,
-    OutlineFaceSource? textOutline) : NominalFaceSource
+    DirectWriteServices services,
+    OutlineFaceSource? textOutline) : BitmapFaceSource
 {
     // Shapes are in 1/1000 em with y growing downwards and the baseline at y = 880, as in the Lodestone web font
     // (FFXIV_Lodestone_SSF) the built-in ones follow.
@@ -54,7 +54,7 @@ internal sealed partial class MergingFaceSource(
 
     public override IEnumerable<Rune> Codepoints => merging.Glyphs.Keys;
 
-    public static MergingFaceSource Create(IFaceSource inner, FontElement def, GlyphMergingStruct merging, FontServices services, string fontName)
+    public static MergedGlyphFaceSource Create(IFaceSource inner, FontElement def, GlyphMergingStruct merging, DirectWriteServices services, string fontName)
     {
         // On a glyph images element, a lookup family names the font for the texts instead of the images.
         var textOutline = inner is ImageFaceSource && def.Lookup.FamilyName.Length != 0

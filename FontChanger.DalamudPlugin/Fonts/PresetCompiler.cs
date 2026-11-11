@@ -21,7 +21,7 @@ internal static class PresetCompiler
     /// <param name="request">What the fonts are made from.</param>
     /// <param name="keepOnFailure">Whether a source that can't be loaded leaves the fonts loaded last in place.</param>
     /// <returns>The fonts' settings, null if the fonts loaded last are kept, and what to show and watch.</returns>
-    public static (FontSettings? Settings, LoadReport Report) Compile(FontServices services, FontRequest request, bool keepOnFailure)
+    public static (FontSettings? Settings, LoadReport Report) Compile(DirectWriteServices services, FontRequest request, bool keepOnFailure)
     {
         var disabled = request.DisabledFamilies;
         var families = request.FamilySources
@@ -119,11 +119,11 @@ internal static class PresetCompiler
 
     // A face's text may be in any family's fonts.
     private static IEnumerable<(string Name, float Size)> FontNamesOf(string family) =>
-        IsFace(family) ? FontNames.Families.SelectMany(FontNames.FontNamesOf) : FontNames.FontNamesOf(family);
+        IsFace(family) ? GameFontTable.Families.SelectMany(GameFontTable.FontNamesOf) : GameFontTable.FontNamesOf(family);
 
     // The fonts are made to go under those of the sources above, which are listed top first.
     private static Preset? MakeFonts(
-        FontServices services,
+        DirectWriteServices services,
         string family,
         FamilyFont font,
         bool monospacedDigits,

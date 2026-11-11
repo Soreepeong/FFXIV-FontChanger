@@ -14,13 +14,13 @@ using static TerraFX.Interop.DirectX.DirectX;
 
 namespace FontChanger.DalamudPlugin.Fonts;
 
-internal sealed unsafe class FontServices : IDisposable
+internal sealed unsafe class DirectWriteServices : IDisposable
 {
     private MyComPtr<IDWriteFactory7> _factory;
     private MyComPtr<IDWriteFontCollection3> _systemFonts;
     private MyComPtr<IDWriteTextAnalyzer> _analyzer;
 
-    public FontServices()
+    public DirectWriteServices()
     {
         try
         {

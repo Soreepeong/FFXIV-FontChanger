@@ -174,7 +174,7 @@ internal sealed partial class ConfigWindow
     // Rounded away from zero, as the fonts are made.
     private static IEnumerable<string> DescribePixels(string family, params (string Label, float Fraction)[] values)
     {
-        var sizes = FontNames.FontNamesOf(family).Select(f => f.Size).Distinct().Order().ToList();
+        var sizes = GameFontTable.FontNamesOf(family).Select(f => f.Size).Distinct().Order().ToList();
         foreach (var (label, fraction) in values)
         {
             if (fraction == 0 || sizes.Count == 0)

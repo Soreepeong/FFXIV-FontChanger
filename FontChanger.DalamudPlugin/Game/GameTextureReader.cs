@@ -19,7 +19,7 @@ namespace FontChanger.DalamudPlugin.Game;
 
 /// <summary>Reads the game's textures, each copied to memory at its first read, as each read back waits for the GPU.</summary>
 /// <remarks>Must be used on the thread that calls Present, as it uses the immediate context.</remarks>
-internal sealed unsafe class TextureReader : IDisposable
+internal sealed unsafe class GameTextureReader : IDisposable
 {
     private readonly Dictionary<Pointer<KernelTexture>, TextureCopy> _copies = [];
 

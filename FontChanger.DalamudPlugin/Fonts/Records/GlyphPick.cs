@@ -6,4 +6,4 @@ using FontChanger.DalamudPlugin.Fonts.Faces;
 namespace FontChanger.DalamudPlugin.Fonts.Records;
 
 /// <summary><see cref="Element"/> is null for the system's fonts.</summary>
-internal sealed record GlyphSource(MaterializedFont Font, Pointer<AtkFontManager.Font> Game, MaterializedFontElement? Element);
+internal sealed record GlyphPick(LoadedFont Font, Pointer<AtkFontManager.Font> Game, LoadedFontElement? Element);

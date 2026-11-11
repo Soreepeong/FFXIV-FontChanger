@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace FontChanger.DalamudPlugin.Fonts.Faces.Sources.Nominal;
 
-internal sealed partial class MergingFaceSource
+internal sealed partial class MergedGlyphFaceSource
 {
     /// <summary>Points in shape units with FreeType's outline tags; each contour starts on the curve and closes by itself.</summary>
     private sealed class ShapePath

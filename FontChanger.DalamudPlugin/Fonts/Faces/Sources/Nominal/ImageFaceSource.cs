@@ -22,7 +22,7 @@ namespace FontChanger.DalamudPlugin.Fonts.Faces.Sources.Nominal;
 /// the baseline at <c>BaselineY</c> (unless their root's data-xivfont-units-per-em and data-xivfont-baseline say
 /// otherwise and the element doesn't), and bitmaps in pixels at their exported size with the baseline at its ascent.
 /// </summary>
-internal sealed class ImageFaceSource : NominalFaceSource
+internal sealed class ImageFaceSource : BitmapFaceSource
 {
     private const float DefaultUnitsPerEm = 1000;
     private const float DefaultBaselineY = 880;
@@ -162,7 +162,7 @@ internal sealed class ImageFaceSource : NominalFaceSource
 
     public override (int Ascent, int LineHeight) GetLineMetrics(float px) => this.GetLineMetrics(px, this._transform);
 
-    public MergingFaceSource.IMergeTextFont CreateMergeTextFont(float size, Matrix2x2 transform) => new TextFont(this, size, transform);
+    public MergedGlyphFaceSource.IMergeTextFont CreateMergeTextFont(float size, Matrix2x2 transform) => new TextFont(this, size, transform);
 
     protected override RasterGlyph? RasterizeGlyph(float px, uint glyphId) =>
         Rune.IsValid(glyphId) ? this.Rasterize(new((int)glyphId), px, this._transform) : null;
@@ -374,13 +374,13 @@ internal sealed class ImageFaceSource : NominalFaceSource
 
     private sealed record SvgMetrics(float? UnitsPerEm, float? BaselineY, float? Advance);
 
-    private sealed class TextFont(ImageFaceSource images, float size, Matrix2x2 transform) : MergingFaceSource.IMergeTextFont
+    private sealed class TextFont(ImageFaceSource images, float size, Matrix2x2 transform) : MergedGlyphFaceSource.IMergeTextFont
     {
         public int Ascent { get; } = images.GetLineMetrics(size, transform).Ascent;
 
         public bool Has(Rune rune) => images.GetGlyphId(rune) != 0;
 
-        public MergingFaceSource.MergeTextLine LayOut(string text, int letterSpacing)
+        public MergedGlyphFaceSource.MergeTextLine LayOut(string text, int letterSpacing)
         {
             var pieces = new List<RasterGlyph>();
             var codepoints = text.EnumerateRunes().ToArray();

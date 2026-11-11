@@ -12,7 +12,7 @@ using FontChanger.DalamudPlugin.Utilities;
 namespace FontChanger.DalamudPlugin.Fonts.Text;
 
 /// <summary>Clusters' rasters, and the cells and spacers made of them.</summary>
-internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, FrameState state)
+internal sealed unsafe class ClusterGlyphCache(GlyphStore store, GlyphFactory factory, FrameState state)
 {
     // Keyed by sized font too, as families may share a font but each places cells in its own atlas with its own metrics.
     private readonly AgedMap<(RasterKey Raster, SizedFont Sized, int Pad, int Advance), Pointer<AtkFontManager.Glyph>> _cells = new(state);
@@ -31,10 +31,10 @@ internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, F
 
     public int GetEdgeMargin(SizedFont sized) => factory.GetEdgeMargin(sized);
 
-    public RasterKey KeyOf(SizedFont sized, Cluster c) => c.RasterKey ??= new(sized, c);
+    public RasterKey KeyOf(SizedFont sized, PlacedCluster c) => c.RasterKey ??= new(sized, c);
 
     /// <summary>Whether the cluster still needs rasterizing, which the shaper may do ahead on the thread pool.</summary>
-    public bool NeedsRaster(SizedFont sized, Cluster c)
+    public bool NeedsRaster(SizedFont sized, PlacedCluster c)
     {
         if (c.Raster is not null)
             return false;
@@ -45,7 +45,7 @@ internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, F
     }
 
     /// <summary>Relative to the pen. The advance is final only for a monospaced cluster, as <see cref="GetCell"/> sets the others'.</summary>
-    public RasterGlyph GetRaster(SizedFont sized, Cluster c)
+    public RasterGlyph GetRaster(SizedFont sized, PlacedCluster c)
     {
         if (c.Raster is { } known)
             return known;
@@ -55,9 +55,9 @@ internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, F
     }
 
     /// <summary>Places what the source rasterized as the element does, and caches it.</summary>
-    public RasterGlyph AddRaster(SizedFont sized, Cluster c, RasterGlyph? raw)
+    public RasterGlyph AddRaster(SizedFont sized, PlacedCluster c, RasterGlyph? raw)
     {
-        var glyphSource = c.GlyphSource!;
+        var glyphSource = c.Pick!;
         var run = new GlyphRun(c.GlyphIds, c.Advances, c.Offsets);
         var raster = raw ?? new(c.RawAdvance, 0, 0, 0, 0, []);
         raster = glyphSource.Element!.Wrap(raster, sized.Px, this.KeyOf(sized, c).Alignment, c.Source!, run, c.Origin);
@@ -69,7 +69,7 @@ internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, F
     }
 
     /// <summary>The cell's box starts <paramref name="pad"/> pixels left of the cluster's pen.</summary>
-    public Pointer<AtkFontManager.Glyph> GetCell(SizedFont sized, Cluster c, byte* bytes, int b, int pad, int advance)
+    public Pointer<AtkFontManager.Glyph> GetCell(SizedFont sized, PlacedCluster c, byte* bytes, int b, int pad, int advance)
     {
         var raster = this.GetRaster(sized, c);
         var key = (c.RasterKey!, sized, pad, advance);
@@ -111,10 +111,10 @@ internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, F
 /// <li>The edge margin, subpixel order and vertical renderer aren't in it, as changing any makes every glyph again.</li>
 /// </ul>
 /// </remarks>
-internal sealed unsafe class RasterKey(SizedFont sized, Cluster c) : IEquatable<RasterKey>
+internal sealed unsafe class RasterKey(SizedFont sized, PlacedCluster c) : IEquatable<RasterKey>
 {
     private readonly float _px = sized.Px;
-    private readonly MaterializedFontElement? _element = c.GlyphSource?.Element;
+    private readonly LoadedFontElement? _element = c.Pick?.Element;
     private readonly IFaceSource? _source = c.Source;
     private readonly float _emSize = c.Px;
     private readonly float _origin = c.Origin;
@@ -125,7 +125,7 @@ internal sealed unsafe class RasterKey(SizedFont sized, Cluster c) : IEquatable<
     private int? _hash;
 
     /// <summary>Gets the alignment of the picked font, whose game font's metrics it may take.</summary>
-    public FontAlignment Alignment { get; } = c.GlyphSource is { } g ? g.Font.GetAlignment(sized.Px, g.Game) : default;
+    public FontAlignment Alignment { get; } = c.Pick is { } g ? g.Font.GetAlignment(sized.Px, g.Game) : default;
 
     public bool Equals(RasterKey? other) =>
         ReferenceEquals(this, other) ||

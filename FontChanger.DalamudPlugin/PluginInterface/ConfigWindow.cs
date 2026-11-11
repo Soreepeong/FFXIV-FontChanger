@@ -59,7 +59,7 @@ internal sealed partial class ConfigWindow : Window
             this.SaveConfiguration();
         }
 
-        this.DrawFailed(Part.Replacer);
+        this.DrawFailed(PluginFeature.Replacer);
 
         var presets = this._plugin.Presets;
         ImGui.SameLine();
@@ -117,7 +117,7 @@ internal sealed partial class ConfigWindow : Window
             modeChanged = true;
         }
 
-        t.DrawFailed(Part.Subpixel);
+        t.DrawFailed(PluginFeature.Subpixel);
 
         using (ImRaii.Disabled(!subpixel))
         {
@@ -189,7 +189,7 @@ internal sealed partial class ConfigWindow : Window
     private static void DrawAdvancedTab(ConfigWindow t)
     {
         var configuration = t._plugin.Configuration;
-        if (!t._plugin.Coordinator.Failed(Part.NamePlates))
+        if (!t._plugin.Coordinator.Failed(PluginFeature.NamePlates))
         {
             var mode = (int)configuration.NamePlates;
             if (Ig.Radios("Nameplate text rendering", ref mode, "None", "Once", "Live"))
@@ -267,9 +267,9 @@ internal sealed partial class ConfigWindow : Window
     }
 
     // Beside the part's checkbox.
-    private void DrawFailed(Part part)
+    private void DrawFailed(PluginFeature pluginFeature)
     {
-        if (!this._plugin.Coordinator.Failed(part))
+        if (!this._plugin.Coordinator.Failed(pluginFeature))
             return;
         ImGui.SameLine();
         ImGui.TextDisabled("(off after an error until reloaded)");

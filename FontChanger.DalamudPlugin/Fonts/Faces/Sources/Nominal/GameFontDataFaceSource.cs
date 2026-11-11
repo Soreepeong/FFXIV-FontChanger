@@ -15,7 +15,7 @@ using Lumina.Data.Files;
 
 namespace FontChanger.DalamudPlugin.Fonts.Faces.Sources.Nominal;
 
-internal sealed class GameFontDataFaceSource : NominalFaceSource
+internal sealed class GameFontDataFaceSource : BitmapFaceSource
 {
     private static readonly Dictionary<string, (byte[] Pixels, int Width, int Height)?> Textures = [];
     private static int _instances;

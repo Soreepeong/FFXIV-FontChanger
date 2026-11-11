@@ -25,7 +25,7 @@ internal sealed unsafe class GlyphStore : IDisposable
 
     // The game reads glyphs from these blocks, so they must not move. _cells is indexed by GlyphSlot.Id. Freed slots are reused.
     private readonly List<Pointer<GlyphSlot>> _slotBlocks = [];
-    private readonly List<Cell> _cells = [];
+    private readonly List<GlyphSlotState> _cells = [];
     private readonly Stack<int> _freeIds = [];
 
     // Glyphs nothing of ours holds anymore.
@@ -97,7 +97,7 @@ internal sealed unsafe class GlyphStore : IDisposable
     }
 
     /// <summary>The reference is good until the next <see cref="Allocate"/>.</summary>
-    public ref Cell CellOf(AtkFontManager.Glyph* glyph) => ref CollectionsMarshal.AsSpan(this._cells)[((GlyphSlot*)glyph)->Id];
+    public ref GlyphSlotState CellOf(AtkFontManager.Glyph* glyph) => ref CollectionsMarshal.AsSpan(this._cells)[((GlyphSlot*)glyph)->Id];
 
     /// <summary>After the game's reads, which hold glyphs without a reference.</summary>
     public void FreeUnreferenced(long frame)
@@ -152,7 +152,7 @@ internal sealed unsafe class GlyphStore : IDisposable
 }
 
 /// <summary>Where a glyph's pixels are.</summary>
-internal enum CellStage : byte
+internal enum GlyphPixelStage : byte
 {
     /// <summary>No pixels, as of an empty glyph or a spacer.</summary>
     Empty,
@@ -176,9 +176,9 @@ internal enum CellStage : byte
 /// <li>A glyph with a box samples its atlas's <see cref="GlyphAtlas.BlankSlot"/> while not <see cref="IsPlaced"/>.</li>
 /// </ul>
 /// </remarks>
-internal unsafe struct Cell
+internal unsafe struct GlyphSlotState
 {
-    public CellStage Stage;
+    public GlyphPixelStage Stage;
 
     public GlyphAtlas? Atlas;
 
@@ -210,12 +210,12 @@ internal unsafe struct Cell
     // In GlyphStore's list of unreferenced glyphs.
     public bool Queued;
 
-    public readonly bool IsPlaced => this.Stage is CellStage.Placed or CellStage.AwaitingRead;
+    public readonly bool IsPlaced => this.Stage is GlyphPixelStage.Placed or GlyphPixelStage.AwaitingRead;
 
     /// <summary>For a glyph with a box, whose pixels are placed when it is drawn.</summary>
     public void Pend(AtkFontManager.Glyph* glyph, GlyphAtlas atlas, RasterGlyph raster, int boxLeft, int inkTop, GameTextureSource? source)
     {
-        this.Stage = CellStage.Pending;
+        this.Stage = GlyphPixelStage.Pending;
         this.Atlas = atlas;
         this.Raster = raster;
         this.BoxLeft = boxLeft;
@@ -231,11 +231,11 @@ internal unsafe struct Cell
         this.Generation = a.Generation;
         if (this.Source is not null)
         {
-            this.Stage = CellStage.AwaitingRead;
+            this.Stage = GlyphPixelStage.AwaitingRead;
             return;
         }
 
-        this.Stage = CellStage.Placed;
+        this.Stage = GlyphPixelStage.Placed;
         this.Write(glyph);
     }
 
@@ -243,22 +243,22 @@ internal unsafe struct Cell
     {
         this.Raster = raster;
         this.Source = null;
-        this.Stage = CellStage.Placed;
+        this.Stage = GlyphPixelStage.Placed;
         this.Write(glyph);
     }
 
     /// <summary>Its plane was reused, so it is placed again when next drawn, and until then draws none of what the plane holds now.</summary>
     public void MarkStale(AtkFontManager.Glyph* glyph)
     {
-        if (this.Stage != CellStage.Placed)
+        if (this.Stage != GlyphPixelStage.Placed)
             return;
-        this.Stage = CellStage.Pending;
+        this.Stage = GlyphPixelStage.Pending;
         this.PointAtBlank(glyph);
     }
 
     public void Drop(AtkFontManager.Glyph* glyph)
     {
-        this.Stage = CellStage.Dropped;
+        this.Stage = GlyphPixelStage.Dropped;
         this.Raster = default;
         this.Source = null;
         this.PointAtBlank(glyph);

@@ -120,7 +120,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
     internal Configuration.Configuration Configuration { get; }
 
-    internal PresetController Presets => this.Coordinator.Presets;
+    internal FontSourceEditor Presets => this.Coordinator.Presets;
 
     public ValueTask DisposeAsync() => this._finalizer.DisposeAsync();
 

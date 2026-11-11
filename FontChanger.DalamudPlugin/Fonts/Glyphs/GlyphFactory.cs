@@ -94,7 +94,7 @@ internal sealed unsafe class GlyphFactory(GlyphStore store, FrameState state)
             return null;
         var textureIndex = game.Value->TextureIndex;
         var texture = textureIndex < font.Value->TextureCount && textureIndex < AtkFontManager.Font.MaxTextures ? font.Value->Textures[textureIndex] : default;
-        if (texture.IsNull || !TextureReader.CanRead(texture))
+        if (texture.IsNull || !GameTextureReader.CanRead(texture))
             return null;
         var scale = GetGameScale(sized, font);
         var top = game.Value->OffsetY - font.Value->Ascent;

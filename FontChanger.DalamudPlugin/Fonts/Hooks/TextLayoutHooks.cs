@@ -15,17 +15,17 @@ using FontChanger.DalamudPlugin.Utilities;
 namespace FontChanger.DalamudPlugin.Fonts.Hooks;
 
 /// <summary>Has font sets pick copies, and answers glyph lookups in them. Anything that fails turns replacing off.</summary>
-internal sealed unsafe class FontHooks : IDisposable
+internal sealed unsafe class TextLayoutHooks : IDisposable
 {
-    private readonly CopyFonts _copies;
+    private readonly ReplacementFontTable _copies;
     private readonly GlyphStore _store;
     private readonly FrameState _state;
     private readonly LayoutContext _context;
-    private readonly GlyphLookup _lookup;
+    private readonly ReplacementGlyphLookup _lookup;
     private readonly DisposeSafety.ScopedFinalizer _finalizer = new();
 
     private readonly Hook<PickFontDelegate> _pickFontHook;
-    private readonly Hook<GlyphLookup.GameGlyphDelegate> _getGlyphHook;
+    private readonly Hook<ReplacementGlyphLookup.GameGlyphDelegate> _getGlyphHook;
     private readonly Hook<FontCacheDelegate> _buildFontCacheHook;
     private readonly Hook<LayOutCharacterDelegate> _layOutCharacterHook;
     private readonly Hook<AtkTextLayoutAdditions.PrepareMeasureDelegate>? _prepareMeasureHook;
@@ -34,12 +34,12 @@ internal sealed unsafe class FontHooks : IDisposable
     private readonly nint _rendererVtbl;
     private readonly nint _renderCountVtbl;
 
-    public FontHooks(
-        CopyFonts copies,
+    public TextLayoutHooks(
+        ReplacementFontTable copies,
         SizedFontRegistry sized,
-        GameTextLayout layout,
+        ShapedRunCache layout,
         GlyphFactory factory,
-        CellPlacer placer,
+        GlyphAtlasPlacer placer,
         GlyphStore store,
         FrameState state,
         LayoutContext context)
@@ -52,7 +52,7 @@ internal sealed unsafe class FontHooks : IDisposable
         {
             this._rendererVtbl = AtkFontAnalyzerRenderer.Addresses.StaticVirtualTable.Value;
             this._renderCountVtbl = AtkFontAnalyzerRenderCount.Addresses.StaticVirtualTable.Value;
-            this._getGlyphHook = this.CreateHook<GlyphLookup.GameGlyphDelegate>(AtkFontManager.FontSet.Addresses.GetGlyph.Value, this.GetGlyphDetour);
+            this._getGlyphHook = this.CreateHook<ReplacementGlyphLookup.GameGlyphDelegate>(AtkFontManager.FontSet.Addresses.GetGlyph.Value, this.GetGlyphDetour);
             this._pickFontHook = this.CreateHook<PickFontDelegate>(AtkFontManager.FontSet.Addresses.PickFont.Value, this.PickFontDetour);
             this._buildFontCacheHook = this.CreateHook<FontCacheDelegate>(AtkTextNode.Addresses.BuildFontCache.Value, this.BuildFontCacheDetour);
             this._layOutCharacterHook = this.CreateHook<LayOutCharacterDelegate>(AtkFontAnalyzerBase.Addresses.LayOutCharacter.Value, this.LayOutCharacterDetour);
@@ -231,7 +231,7 @@ internal sealed unsafe class FontHooks : IDisposable
             var copy = this._copies.Pick(font, size, face, face == TextFace.Default && !this._context.Wrapping, out var halfPx, out var clamped);
 
             // Any renderer scale but exactly 1 resamples bilinearly (soft text), while a quarter pixel of size error doesn't show.
-            if (halfPx is < CopyFonts.MaxHalfPx and > CopyFonts.MinHalfPx)
+            if (halfPx is < ReplacementFontTable.MaxHalfPx and > ReplacementFontTable.MinHalfPx)
                 copy->Size = clamped ? halfPx / 2f : size;
             set->CurrentFont = copy;
             return copy;

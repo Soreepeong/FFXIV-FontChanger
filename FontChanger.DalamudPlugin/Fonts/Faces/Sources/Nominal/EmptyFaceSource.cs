@@ -7,7 +7,7 @@ using FontChanger.DalamudPlugin.Utilities;
 namespace FontChanger.DalamudPlugin.Fonts.Faces.Sources.Nominal;
 
 /// <summary>Port of xivres empty_fixed_size_font; <c>ascent</c> and <c>lineHeight</c> are in pixels at <c>size</c>.</summary>
-internal sealed class EmptyFaceSource(float size, float ascent, float lineHeight) : NominalFaceSource
+internal sealed class EmptyFaceSource(float size, float ascent, float lineHeight) : BitmapFaceSource
 {
     public override IEnumerable<Rune> Codepoints => [];
 

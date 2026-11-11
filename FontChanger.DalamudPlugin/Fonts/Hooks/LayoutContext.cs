@@ -78,7 +78,7 @@ internal sealed unsafe class LayoutContext
     public void LeaveWrap(bool outer) => this.Wrapping = outer;
 
     /// <summary>Whether the text wrapper is laying out text it has no scale of, which is wrapped to fit at every UI scale.</summary>
-    /// <seealso cref="WrapMeasure"/>
+    /// <seealso cref="UiScaleWrapMeasurer"/>
     public bool IsWrapMeasure(AtkFontManager.FontSet* set) =>
         this.Wrapping && set->NodeScaleX == 1 && set->NodeScaleY == 1 && !HasPickScale(set);
 
@@ -91,7 +91,7 @@ internal sealed unsafe class LayoutContext
     public float PickSizeOf(AtkFontManager.FontSet* set)
     {
         if (this.IsWrapMeasure(set))
-            return set->ScaledSizeY * WrapMeasure.LargestScale;
+            return set->ScaledSizeY * UiScaleWrapMeasurer.LargestScale;
         return set->NodeScaleX == 1 && set->NodeScaleY == 1 && HasPickScale(set)
                    ? set->UnscaledSizeY * set->PickScale
                    : set->ScaledSizeY;

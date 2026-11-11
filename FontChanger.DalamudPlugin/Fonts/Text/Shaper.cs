@@ -20,7 +20,7 @@ using Lumina.Text.ReadOnly;
 namespace FontChanger.DalamudPlugin.Fonts.Text;
 
 /// <summary>Shapes a run of the game's text into a glyph per byte.</summary>
-internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache cells, Pointer<AtkFontManager.Glyph> emptyGlyph)
+internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, ClusterGlyphCache cells, Pointer<AtkFontManager.Glyph> emptyGlyph)
 {
     /// <summary>The advance <see cref="Measure"/> gives a byte left to the game.</summary>
     public const int Missing = -1;
@@ -31,7 +31,7 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
     private readonly ShapingContext _ctx = new();
 
     // RasterizeConcurrently's, reused.
-    private readonly List<Cluster> _pending = [];
+    private readonly List<PlacedCluster> _pending = [];
     private readonly HashSet<RasterKey> _seen = [];
 
     /// <summary>Gets, per byte of the run last read, whether an italic macro has it in italics.</summary>
@@ -243,7 +243,7 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
     }
 
     private void CollectPiece(
-        ShapingContext ctx, GlyphSource? glyphSource, int start, int end, TextRun run, bool inItalic, bool italicImages, ref float pen)
+        ShapingContext ctx, GlyphPick? glyphSource, int start, int end, TextRun run, bool inItalic, bool italicImages, ref float pen)
     {
         var element = glyphSource?.Element;
         var source = element?.Source;
@@ -290,7 +290,7 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
 
     private void AddCluster(
         ShapingContext ctx,
-        GlyphSource glyphSource,
+        GlyphPick glyphSource,
         IFaceSource source,
         float px,
         ShapedCluster shaped,
@@ -330,7 +330,7 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
         if (mono is { DropKerning: true } && rawAdvance > 0)
         {
             kerning = 0;
-            if (ctx.Clusters is [.., var previous] && previous.TextEnd == textStart && previous.GlyphSource == glyphSource && previous.Kerning != 0)
+            if (ctx.Clusters is [.., var previous] && previous.TextEnd == textStart && previous.Pick == glyphSource && previous.Kerning != 0)
             {
                 pen -= previous.Kerning;
                 previous.X1 = (int)Misc.StdRound(pen);
@@ -339,7 +339,7 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
         }
 
         var x0 = Misc.StdRound(pen);
-        var cluster = new Cluster
+        var cluster = new PlacedCluster
         {
             Source = source,
             Px = px,
@@ -353,7 +353,7 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
             X0 = (int)x0,
             TextStart = textStart,
             TextEnd = textEnd,
-            GlyphSource = glyphSource,
+            Pick = glyphSource,
         };
 
         if (mono is not null)

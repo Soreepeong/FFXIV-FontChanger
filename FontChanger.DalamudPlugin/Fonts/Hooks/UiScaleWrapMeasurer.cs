@@ -14,7 +14,7 @@ namespace FontChanger.DalamudPlugin.Fonts.Hooks;
 /// is measured at every UI scale and advances as far as at its widest.
 /// </summary>
 /// <seealso cref="LayoutContext.IsWrapMeasure"/>
-internal sealed unsafe class WrapMeasure(SizedFontRegistry sized, GameTextLayout layout, GlyphStore store, LayoutContext context)
+internal sealed unsafe class UiScaleWrapMeasurer(SizedFontRegistry sized, ShapedRunCache layout, GlyphStore store, LayoutContext context)
 {
     // The UI scales (High Resolution UI) text wrapped unscaled may be drawn at, the largest last.
     private static readonly float[] Scales = [1f, 1.5f, 2f, 3f];
@@ -26,8 +26,8 @@ internal sealed unsafe class WrapMeasure(SizedFontRegistry sized, GameTextLayout
     /// While wrapping, the character LayOutCharacter is at gets its cell of its run laid out at every UI scale.
     /// </summary>
     /// <returns>Null if the character is looked up by itself.</returns>
-    /// <seealso cref="GameTextLayout.TryGetWrapGlyph"/>
-    public AtkFontManager.Glyph* GetRunGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont drawn)
+    /// <seealso cref="ShapedRunCache.TryGetWrapGlyph"/>
+    public AtkFontManager.Glyph* GetRunGlyph(AtkFontManager.FontSet* set, uint utf8Value, ReplacementFont info, SizedFont drawn)
     {
         var p = context.Character;
         if (p is null || GameUtf8.Pack(p) != utf8Value)
@@ -55,7 +55,7 @@ internal sealed unsafe class WrapMeasure(SizedFontRegistry sized, GameTextLayout
     /// <param name="glyph">The character's glyph at the largest scale.</param>
     /// <returns>The glyph to measure with.</returns>
     public AtkFontManager.Glyph* Widen(
-        GlyphLookup lookup, AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont drawn, AtkFontManager.Glyph* glyph)
+        ReplacementGlyphLookup lookup, AtkFontManager.FontSet* set, uint utf8Value, ReplacementFont info, SizedFont drawn, AtkFontManager.Glyph* glyph)
     {
         if (glyph is null || glyph == store.EmptyGlyph)
             return glyph;
@@ -85,6 +85,6 @@ internal sealed unsafe class WrapMeasure(SizedFontRegistry sized, GameTextLayout
     }
 
     /// <summary>The sized fonts of the UI scales for the text being wrapped, <paramref name="drawn"/> (the largest) last.</summary>
-    private SizedFont[] GetSizes(AtkFontManager.FontSet* set, CopyInfo info, SizedFont drawn) =>
+    private SizedFont[] GetSizes(AtkFontManager.FontSet* set, ReplacementFont info, SizedFont drawn) =>
         info.GetWrapSizes(sized, Scales, set->ScaledSizeY, context.IsBold, drawn);
 }

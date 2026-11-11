@@ -14,19 +14,19 @@ namespace FontChanger.DalamudPlugin.Fonts;
 /// <summary>Shared by the copies of a family's fonts of one size, such as a font and its lobby version.</summary>
 /// <remarks>A bold one keeps the upright one's line metrics, so that lines partly in bold line up.</remarks>
 internal sealed unsafe class SizedFont(
-    MaterializedFont font,
+    LoadedFont font,
     float px,
     int ascent,
     int lineHeight,
     Pointer<AtkFontManager.Font> gameFont,
     GlyphAtlas atlas,
-    IReadOnlyList<(MaterializedFont Font, Pointer<AtkFontManager.Font> Game)> fonts,
+    IReadOnlyList<(LoadedFont Font, Pointer<AtkFontManager.Font> Game)> fonts,
     bool bold,
     FrameState state)
 {
     public bool Bold { get; } = bold;
 
-    public MaterializedFont Font { get; } = font;
+    public LoadedFont Font { get; } = font;
 
     public GlyphAtlas Atlas { get; } = atlas;
 
@@ -39,13 +39,13 @@ internal sealed unsafe class SizedFont(
     public int LineHeight { get; } = lineHeight;
 
     /// <summary>Largest first; only <see cref="Font"/> at the size of one of the family's fonts.</summary>
-    public IReadOnlyList<(MaterializedFont Font, Pointer<AtkFontManager.Font> Game)> Fonts { get; } = fonts;
+    public IReadOnlyList<(LoadedFont Font, Pointer<AtkFontManager.Font> Game)> Fonts { get; } = fonts;
 
     /// <summary>A character's glyph, whatever made it, by packed UTF-8 value; 0 if none could be made.</summary>
     /// <remarks>Holds each glyph once. The registry sweeps it, against one capacity for every sized font.</remarks>
     public AgedMap<uint, Pointer<AtkFontManager.Glyph>> Glyphs { get; } = new(state, int.MaxValue);
 
-    public Dictionary<Rune, GlyphSource> Picks { get; } = [];
+    public Dictionary<Rune, GlyphPick> Picks { get; } = [];
 
     public int GlyphCount => this.Glyphs.Count;
 
@@ -53,15 +53,15 @@ internal sealed unsafe class SizedFont(
     /// Of several fonts, the largest whose element other than the game's has the grapheme, else the game's, else one without
     /// any for it.
     /// </summary>
-    public GlyphSource Pick(ReadOnlySpan<Rune> grapheme)
+    public GlyphPick Pick(ReadOnlySpan<Rune> grapheme)
     {
         if (grapheme.Length == 1 && this.Picks.TryGetValue(grapheme[0], out var known))
             return known;
         this.Font.TryGetElement(grapheme, this.GameFont, out var gameElement);
-        var pick = new GlyphSource(this.Font, this.GameFont, gameElement);
+        var pick = new GlyphPick(this.Font, this.GameFont, gameElement);
         if (this.Fonts.Count > 1)
         {
-            GlyphSource? none = null, game = null, own = null;
+            GlyphPick? none = null, game = null, own = null;
             foreach (var (font, original) in this.Fonts)
             {
                 font.TryGetElement(grapheme, original, out var element);

@@ -11,7 +11,7 @@ using FFXIVClientStructs.Interop;
 namespace FontChanger.DalamudPlugin.Game;
 
 // Lobby fonts load from one of two tables, picked by a module setting that isn't kept, so the table is found by matching font sizes.
-internal static unsafe class FontNames
+internal static unsafe class GameFontTable
 {
     private static string[]? _gameNames;
     private static string[]? _lobbyNamesA;

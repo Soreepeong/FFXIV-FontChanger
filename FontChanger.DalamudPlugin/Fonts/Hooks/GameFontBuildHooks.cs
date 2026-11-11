@@ -21,7 +21,7 @@ namespace FontChanger.DalamudPlugin.Fonts.Hooks;
 /// <li>Both run in the game's update, outside any layout, so resetting there is as safe as between frames.</li>
 /// </ul>
 /// </remarks>
-internal sealed unsafe class FontLifecycleHooks : IDisposable
+internal sealed unsafe class GameFontBuildHooks : IDisposable
 {
     private readonly Action<ResetScope> _reset;
     private readonly FrameState _state;
@@ -31,7 +31,7 @@ internal sealed unsafe class FontLifecycleHooks : IDisposable
 
     /// <param name="reset">Makes what was made from the fonts again.</param>
     /// <param name="state">What the parts share.</param>
-    public FontLifecycleHooks(Action<ResetScope> reset, FrameState state)
+    public GameFontBuildHooks(Action<ResetScope> reset, FrameState state)
     {
         this._reset = reset;
         this._state = state;

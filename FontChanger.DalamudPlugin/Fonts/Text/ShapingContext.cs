@@ -24,7 +24,7 @@ internal sealed class ShapingContext
 
     public int[] TextToByte { get; private set; } = new int[256];
 
-    public GlyphSource?[] TextSource { get; private set; } = new GlyphSource?[256];
+    public GlyphPick?[] TextSource { get; private set; } = new GlyphPick?[256];
 
     public bool[] TextItalic { get; private set; } = new bool[256];
 
@@ -34,7 +34,7 @@ internal sealed class ShapingContext
     /// <summary>Gets the bytes of characters composed into the one before, with that one's byte.</summary>
     public List<(int Byte, int Owner)> Absorbed { get; } = [];
 
-    public List<Cluster> Clusters { get; } = [];
+    public List<PlacedCluster> Clusters { get; } = [];
 
     public List<TextRun> TextRuns { get; } = [];
 
@@ -62,7 +62,7 @@ internal sealed class ShapingContext
 }
 
 /// <summary>A shaped cluster, placed one after another by advances on screen (with the elements' transformations, emboldening, letter spacing and monospacing).</summary>
-internal sealed record Cluster
+internal sealed record PlacedCluster
 {
     /// <summary>Gets the source, null if the cluster is left to the per-character path.</summary>
     public IFaceSource? Source { get; init; }
@@ -102,7 +102,7 @@ internal sealed record Cluster
     public int TextEnd { get; init; }
 
     /// <summary>Gets the glyph source of the cluster's first character.</summary>
-    public GlyphSource? GlyphSource { get; init; }
+    public GlyphPick? Pick { get; init; }
 
     public bool Missing => this.Source is null;
 
@@ -111,7 +111,7 @@ internal sealed record Cluster
 
     public RasterGlyph? Rasterize() => this.Source!.Rasterize(this.Px, new(this.GlyphIds, this.Advances, this.Offsets), new(this.Origin, this.RawAdvance));
 
-    public Cluster MovedBy(float start, float end)
+    public PlacedCluster MovedBy(float start, float end)
     {
         var pen = this.X0 + this.Origin + start;
         var x0 = Misc.StdRound(pen);

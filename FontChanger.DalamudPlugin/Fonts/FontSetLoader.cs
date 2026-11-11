@@ -14,10 +14,10 @@ using FontChanger.Presets.Records;
 namespace FontChanger.DalamudPlugin.Fonts;
 
 /// <summary>Reads the sources and makes the fonts on a task, which the framework thread takes once made. A request supersedes those before it.</summary>
-internal sealed class FontLoader(FontServices services, SystemFallbackFonts fallbackFonts) : IDisposable
+internal sealed class FontSetLoader(DirectWriteServices services, SystemFallbackFonts fallbackFonts) : IDisposable
 {
     private readonly Lock _sync = new();
-    private FontSet? _ready;
+    private LoadedFontSet? _ready;
     private string? _error;
     private LoadReport? _report;
     private long _serial;
@@ -36,10 +36,10 @@ internal sealed class FontLoader(FontServices services, SystemFallbackFonts fall
     /// <param name="request">What to make fonts from, null to only take.</param>
     /// <param name="keepOnFailure">Whether a source that can't be loaded leaves the fonts made last in place, as for an edited file.</param>
     /// <returns>The fonts, if any were made, why making them failed, and what reading the sources came to.</returns>
-    public (FontSet? Fonts, string? Error, LoadReport? Report) Take(FontRequest? request, bool keepOnFailure)
+    public (LoadedFontSet? Fonts, string? Error, LoadReport? Report) Take(FontRequest? request, bool keepOnFailure)
     {
         Misc.DebugAssertMainThread();
-        (FontSet? Fonts, string? Error, LoadReport? Report) taken;
+        (LoadedFontSet? Fonts, string? Error, LoadReport? Report) taken;
         long serial;
         lock (this._sync)
         {
@@ -81,9 +81,9 @@ internal sealed class FontLoader(FontServices services, SystemFallbackFonts fall
 
     /// <summary>A font that can't be made is left out with a warning.</summary>
     /// <returns>Null once <paramref name="stale"/>.</returns>
-    private static FontSet? Build(FontServices services, SystemFallbackFonts fallbackFonts, FontSettings value, Func<bool> stale)
+    private static LoadedFontSet? Build(DirectWriteServices services, SystemFallbackFonts fallbackFonts, FontSettings value, Func<bool> stale)
     {
-        var set = FontSet.CreateGame(services, value.SystemFallback, fallbackFonts);
+        var set = LoadedFontSet.CreateGame(services, value.SystemFallback, fallbackFonts);
         var complete = false;
         try
         {
@@ -92,7 +92,7 @@ internal sealed class FontLoader(FontServices services, SystemFallbackFonts fall
                 return null;
             foreach (var (face, preset) in value.Faces ?? new Dictionary<TextFace, Preset>())
             {
-                var fonts = new Dictionary<string, MaterializedFont>(StringComparer.OrdinalIgnoreCase);
+                var fonts = new Dictionary<string, LoadedFont>(StringComparer.OrdinalIgnoreCase);
                 set.Faces[face] = fonts;
                 if (!Materialize(fonts, preset))
                     return null;
@@ -109,14 +109,14 @@ internal sealed class FontLoader(FontServices services, SystemFallbackFonts fall
                 set.Dispose();
         }
 
-        bool Materialize(Dictionary<string, MaterializedFont> fonts, Preset? preset)
+        bool Materialize(Dictionary<string, LoadedFont> fonts, Preset? preset)
         {
             foreach (var (name, def) in preset?.Fonts ?? new Dictionary<string, Font>())
             {
                 if (stale())
                     return false;
 
-                MaterializedFont? font = null;
+                LoadedFont? font = null;
                 try
                 {
                     font = new(services, def, value.SystemFallback, fallbackFonts, set.Sources);
@@ -136,7 +136,7 @@ internal sealed class FontLoader(FontServices services, SystemFallbackFonts fall
 
     private void Load(FontRequest value, bool keepOnFailure, long serial)
     {
-        FontSet? made = null;
+        LoadedFontSet? made = null;
         string? error = null;
         bool stale;
         lock (this._sync)

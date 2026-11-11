@@ -11,23 +11,23 @@ using FontChanger.DalamudPlugin.Utilities;
 namespace FontChanger.DalamudPlugin.Fonts.Hooks;
 
 /// <summary>Which glyph GetGlyph returns for a copy.</summary>
-internal sealed unsafe class GlyphLookup(
-    CopyFonts copies,
+internal sealed unsafe class ReplacementGlyphLookup(
+    ReplacementFontTable copies,
     SizedFontRegistry sized,
-    GameTextLayout layout,
+    ShapedRunCache layout,
     GlyphFactory factory,
-    CellPlacer placer,
+    GlyphAtlasPlacer placer,
     GlyphStore store,
     FrameState state,
     LayoutContext context,
-    GlyphLookup.GameGlyphDelegate gameGlyph)
+    ReplacementGlyphLookup.GameGlyphDelegate gameGlyph)
 {
-    private readonly WrapMeasure _wrap = new(sized, layout, store, context);
+    private readonly UiScaleWrapMeasurer _wrap = new(sized, layout, store, context);
 
     /// <summary>The game's own lookup in a font.</summary>
     public delegate AtkFontManager.Glyph* GameGlyphDelegate(AtkFontManager.FontSet* set, uint utf8Value, AtkFontManager.Font* font);
 
-    public AtkFontManager.Glyph* Get(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info)
+    public AtkFontManager.Glyph* Get(AtkFontManager.FontSet* set, uint utf8Value, ReplacementFont info)
     {
         var drawn = this.GetDrawnSized(set, info);
         var wrapping = context.IsWrapMeasure(set);
@@ -51,7 +51,7 @@ internal sealed unsafe class GlyphLookup(
     /// <param name="font">The sized font to look in.</param>
     /// <param name="shape">Whether the character LayOutCharacter is at gets its shaped cluster's glyph.</param>
     /// <returns>The glyph.</returns>
-    public AtkFontManager.Glyph* GetCopyGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont font, bool shape)
+    public AtkFontManager.Glyph* GetCopyGlyph(AtkFontManager.FontSet* set, uint utf8Value, ReplacementFont info, SizedFont font, bool shape)
     {
         // Not for a lookup of the game's fallback characters.
         var p = context.Character;
@@ -84,7 +84,7 @@ internal sealed unsafe class GlyphLookup(
 
     /// <summary>The sized font's own glyph, else a copy of its game fonts' or of the game's lookup's.</summary>
     /// <returns>Held once by the caller, or null if there is none.</returns>
-    private AtkFontManager.Glyph* MakeGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont font)
+    private AtkFontManager.Glyph* MakeGlyph(AtkFontManager.FontSet* set, uint utf8Value, ReplacementFont info, SizedFont font)
     {
         try
         {
@@ -125,7 +125,7 @@ internal sealed unsafe class GlyphLookup(
     }
 
     // A glyph takes its textures from the font the game picked, so a line's face is used only where it shares that font's atlas.
-    private SizedFont GetDrawnSized(AtkFontManager.FontSet* set, CopyInfo info)
+    private SizedFont GetDrawnSized(AtkFontManager.FontSet* set, ReplacementFont info)
     {
         try
         {
@@ -146,7 +146,7 @@ internal sealed unsafe class GlyphLookup(
 
     // LayOutCharacter would take its substitutes from the font's glyph map directly, getting game glyphs of texture indices the
     // copy has no textures of, so the copy's own glyphs of them (else one of no width) are given instead.
-    private AtkFontManager.Glyph* GetMissingGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont drawn)
+    private AtkFontManager.Glyph* GetMissingGlyph(AtkFontManager.FontSet* set, uint utf8Value, ReplacementFont info, SizedFont drawn)
     {
         foreach (var substitute in GameUtf8.MissingGlyphSubstitutes)
         {
