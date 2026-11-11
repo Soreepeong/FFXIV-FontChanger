@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.Fonts.Enums;
+using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Utilities;
 
 namespace FontChanger.DalamudPlugin.Fonts.Hooks;
@@ -19,14 +20,10 @@ namespace FontChanger.DalamudPlugin.Fonts.Hooks;
 internal sealed unsafe class LayoutContext
 {
     // Set by TextFlags.Bold (when drawing) and the bold macro. The game reads it nowhere.
-    public const AtkFontManager.DrawFlags BoldFlag = (AtkFontManager.DrawFlags)(1u << 26);
+    public const AtkFontManager.DrawFlags BoldFlag = AtkFontSetAdditions.UnusedDrawFlag26;
 
     // The game neither sets nor reads it, and restores the set's flags after each layout, so it can't outlive the text it marks.
-    private const AtkFontManager.DrawFlags FaceFlag = (AtkFontManager.DrawFlags)(1u << 25);
-
-    // AtkFontManager's buffer that multiline text is drawn from, a line at a time.
-    private const int LineBufferOffset = 0x48;
-    private const int LineBufferSize = 0x2000;
+    private const AtkFontManager.DrawFlags FaceFlag = AtkFontSetAdditions.UnusedDrawFlag25;
 
     private readonly (NodeFaces Faces, nint Text, int Length)[] _setFaces = new (NodeFaces, nint, int)[AtkFontManager.FontSetCount];
 
@@ -47,12 +44,9 @@ internal sealed unsafe class LayoutContext
     /// <summary>Gets a value indicating whether the character is in bold.</summary>
     public bool IsBold => this._call.State is not null && (this._call.State->Flags & BoldFlag) != 0;
 
-    // Where positive, the game picks its font for this times the unscaled size, and scales the advances back.
-    public static ref float PickScaleOf(AtkFontManager.FontSet* set) => ref *(float*)((byte*)set + 0x15C);
-
     public static bool HasPickScale(AtkFontManager.FontSet* set)
     {
-        var scale = PickScaleOf(set);
+        var scale = AtkFontSetAdditions.PickScale(set);
         return scale > 0 && float.IsFinite(scale);
     }
 
@@ -97,7 +91,9 @@ internal sealed unsafe class LayoutContext
     {
         if (this.IsWrapMeasure(set))
             return set->ScaledSizeY * WrapMeasure.LargestScale;
-        return set->NodeScaleX == 1 && set->NodeScaleY == 1 && HasPickScale(set) ? UnscaledSizeYOf(set) * PickScaleOf(set) : set->ScaledSizeY;
+        return set->NodeScaleX == 1 && set->NodeScaleY == 1 && HasPickScale(set)
+                   ? AtkFontSetAdditions.UnscaledSizeY(set) * AtkFontSetAdditions.PickScale(set)
+                   : set->ScaledSizeY;
     }
 
     /// <summary>The italics of the character.</summary>
@@ -163,12 +159,12 @@ internal sealed unsafe class LayoutContext
         if (faces.MainLine is not { } main)
             return TextFace.Default;
 
-        var buffer = *(byte**)((byte*)AtkStage.Instance()->AtkFontManager + LineBufferOffset);
+        var buffer = AtkFontManagerAdditions.LineBuffer(AtkStage.Instance()->AtkFontManager);
         ReadOnlySpan<byte> line;
         if ((nint)p >= text && (nint)p < text + length)
             line = LineAround(new((byte*)text, length), (int)((nint)p - text));
-        else if (buffer is not null && p >= buffer && p < buffer + LineBufferSize)
-            line = LineAround(new(buffer, LineBufferSize), (int)(p - buffer));
+        else if (buffer is not null && p >= buffer && p < buffer + AtkFontManagerAdditions.LineBufferSize)
+            line = LineAround(new(buffer, AtkFontManagerAdditions.LineBufferSize), (int)(p - buffer));
         else
             return TextFace.Default;
         return line.IndexOf(main) < 0 ? faces.OtherLines : TextFace.Default;
@@ -180,8 +176,6 @@ internal sealed unsafe class LayoutContext
             return text[start..(end < 0 ? text.Length : at + end)];
         }
     }
-
-    private static float UnscaledSizeYOf(AtkFontManager.FontSet* set) => *(float*)((byte*)set + 0x124);
 
     private static int IndexOf(AtkFontManager.FontSet* set)
     {

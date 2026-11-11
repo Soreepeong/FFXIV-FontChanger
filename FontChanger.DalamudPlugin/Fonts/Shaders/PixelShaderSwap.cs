@@ -4,6 +4,7 @@ using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
+using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Utilities;
 
@@ -14,8 +15,6 @@ namespace FontChanger.DalamudPlugin.Fonts.Shaders;
 /// <summary>The game may replace the swapped shader at any time, when it reloads its shaders.</summary>
 internal sealed unsafe class PixelShaderSwap
 {
-    private static readonly nint ModuleFontManagerOffset = typeof(AtkModule).FieldOffsetOf(nameof(AtkModule.AtkFontManager));
-
     private MyComPtr<ID3D11PixelShader> _pluginShader;
     private MyComPtr<ID3D11PixelShader> _originalShader;
     private PixelShader* _target;
@@ -25,7 +24,7 @@ internal sealed unsafe class PixelShaderSwap
     {
         var stage = AtkStage.Instance();
         var fontManager = stage is null ? null : stage->AtkFontManager;
-        var module = fontManager is null ? null : (AtkModule*)((byte*)fontManager - ModuleFontManagerOffset);
+        var module = fontManager is null ? null : AtkModuleAdditions.FromFontManager(fontManager);
         return module is null ? null : module->AtkServer;
     }
 

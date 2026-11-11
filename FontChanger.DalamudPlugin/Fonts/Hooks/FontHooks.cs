@@ -8,6 +8,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Glyphs;
 using FontChanger.DalamudPlugin.Fonts.Text;
+using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Utilities;
 
@@ -16,16 +17,6 @@ namespace FontChanger.DalamudPlugin.Fonts.Hooks;
 /// <summary>Has font sets pick copies, and answers glyph lookups in them. Anything that fails turns replacing off.</summary>
 internal sealed unsafe class FontHooks : IDisposable
 {
-    // AtkResNode.Type of the first component node type. Those after are components too.
-    private const ushort FirstComponentNodeType = 1000;
-
-    // Its callers lay the text out with the font set it returns, and restore the set afterwards.
-    // Calls, which matched every version since 5.55, unlike PrepareNode's prologue (since 7.30).
-    private const string PrepareMeasureSignature = "E8 ?? ?? ?? ?? 48 8B D8 F7 80 ?? ?? ?? ?? 00 00 00 10";
-    // The text wrapper's layout, at its only call.
-    private const string TextWrapLayoutSignature = "E8 ?? ?? ?? ?? 48 8B 4B 70 8B F8";
-    private const string PrepareNodeSignature = "E8 ?? ?? ?? ?? 48 83 BF ?? ?? ?? ?? 00 74 ?? 48 8B CE E8";
-
     private readonly CopyFonts _copies;
     private readonly GlyphStore _store;
     private readonly FrameState _state;
@@ -37,9 +28,9 @@ internal sealed unsafe class FontHooks : IDisposable
     private readonly Hook<GlyphLookup.GameGlyphDelegate> _getGlyphHook;
     private readonly Hook<FontCacheDelegate> _buildFontCacheHook;
     private readonly Hook<LayOutCharacterDelegate> _layOutCharacterHook;
-    private readonly Hook<PrepareMeasureDelegate>? _prepareMeasureHook;
-    private readonly Hook<TextWrapLayoutDelegate>? _textWrapLayoutHook;
-    private readonly Hook<PrepareNodeDelegate>? _prepareNodeHook;
+    private readonly Hook<AtkTextLayoutAdditions.PrepareMeasureDelegate>? _prepareMeasureHook;
+    private readonly Hook<AtkTextLayoutAdditions.TextWrapLayoutDelegate>? _textWrapLayoutHook;
+    private readonly Hook<AtkTextLayoutAdditions.PrepareNodeDelegate>? _prepareNodeHook;
     private readonly nint _rendererVtbl;
     private readonly nint _renderCountVtbl;
 
@@ -65,18 +56,18 @@ internal sealed unsafe class FontHooks : IDisposable
             this._pickFontHook = this.CreateHook<PickFontDelegate>(AtkFontManager.FontSet.Addresses.PickFont.Value, this.PickFontDetour);
             this._buildFontCacheHook = this.CreateHook<FontCacheDelegate>(AtkTextNode.Addresses.BuildFontCache.Value, this.BuildFontCacheDetour);
             this._layOutCharacterHook = this.CreateHook<LayOutCharacterDelegate>(AtkFontAnalyzerBase.Addresses.LayOutCharacter.Value, this.LayOutCharacterDetour);
-            if (Plugin.SigScanner.TryScanText(PrepareMeasureSignature, out var prepareMeasure))
-                this._prepareMeasureHook = this.CreateHook<PrepareMeasureDelegate>(prepareMeasure, this.PrepareMeasureDetour);
+            if (Plugin.SigScanner.TryScanText(AtkTextLayoutAdditions.PrepareMeasureSignature, out var prepareMeasure))
+                this._prepareMeasureHook = this.CreateHook<AtkTextLayoutAdditions.PrepareMeasureDelegate>(prepareMeasure, this.PrepareMeasureDetour);
             else
                 Plugin.Log.Warning("Text measuring setup not found: faces and a node's bold are measured as the game's");
 
-            if (Plugin.SigScanner.TryScanText(TextWrapLayoutSignature, out var textWrapLayout))
-                this._textWrapLayoutHook = this.CreateHook<TextWrapLayoutDelegate>(textWrapLayout, this.TextWrapLayoutDetour);
+            if (Plugin.SigScanner.TryScanText(AtkTextLayoutAdditions.TextWrapLayoutSignature, out var textWrapLayout))
+                this._textWrapLayoutHook = this.CreateHook<AtkTextLayoutAdditions.TextWrapLayoutDelegate>(textWrapLayout, this.TextWrapLayoutDetour);
             else
                 Plugin.Log.Warning("Text wrapper's layout not found: text is wrapped with the glyphs of its unscaled size");
 
-            if (Plugin.SigScanner.TryScanText(PrepareNodeSignature, out var prepareNode))
-                this._prepareNodeHook = this.CreateHook<PrepareNodeDelegate>(prepareNode, this.PrepareNodeDetour);
+            if (Plugin.SigScanner.TryScanText(AtkTextLayoutAdditions.PrepareNodeSignature, out var prepareNode))
+                this._prepareNodeHook = this.CreateHook<AtkTextLayoutAdditions.PrepareNodeDelegate>(prepareNode, this.PrepareNodeDetour);
             else
                 Plugin.Log.Warning("Text drawing setup not found: chat tabs are drawn in their family's fonts");
 
@@ -101,12 +92,6 @@ internal sealed unsafe class FontHooks : IDisposable
     private delegate void FontCacheDelegate(AtkTextNode* node);
 
     private delegate byte* LayOutCharacterDelegate(AtkFontAnalyzerBase* analyzer, byte** text, AtkFontAnalyzerState* state);
-
-    private delegate AtkFontManager.FontSet* PrepareMeasureDelegate(AtkTextNode* node, byte considerScale);
-
-    private delegate int TextWrapLayoutDelegate(nint wrapper, byte* text);
-
-    private delegate void PrepareNodeDelegate(nint renderer, nint outArea, AtkFontManager.FontSet* set, AtkTextNode* node);
 
     public void Dispose() => this._finalizer.Dispose();
 
@@ -156,7 +141,7 @@ internal sealed unsafe class FontHooks : IDisposable
                     this._buildFontCacheHook.Original(text);
                 }
             }
-            else if (type >= FirstComponentNodeType)
+            else if (type >= AtkResNodeAdditions.FirstComponentNodeType)
             {
                 var component = ((AtkComponentNode*)node)->Component;
                 if (component is not null)
@@ -200,7 +185,7 @@ internal sealed unsafe class FontHooks : IDisposable
             ref readonly var m = ref node->Transform;
             var scale = MathF.Sqrt((m.M21 * m.M21) + (m.M22 * m.M22));
             if (float.IsFinite(scale) && scale > 0 && MathF.Abs(scale - 1) > 0.001f)
-                LayoutContext.PickScaleOf(set) = scale;
+                AtkFontSetAdditions.PickScale(set) = scale;
         }
 
         return set;

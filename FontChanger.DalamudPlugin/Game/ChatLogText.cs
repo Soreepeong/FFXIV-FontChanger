@@ -26,9 +26,6 @@ internal sealed unsafe class ChatLogText : IDisposable
 
     private static readonly string[] PanelNames = ["ChatLogPanel_0", "ChatLogPanel_1", "ChatLogPanel_2", "ChatLogPanel_3"];
 
-    // LogViewer's OnRequestedUpdate lays its messages out again only if this is set or they changed.
-    private const int LogViewerLayoutPendingOffset = 0x98;
-
     // LogViewer takes line spacing from a table of font sizes up to this. For larger ones, it moves the node's by the size change.
     private const int MaxTableFontSize = 20;
     private const float LineSpacingPerPixel = 26 / 20f;
@@ -175,7 +172,7 @@ internal sealed unsafe class ChatLogText : IDisposable
             var panel = GetPanel(tab);
             if (panel is null)
                 continue;
-            *((byte*)&panel->LogViewer + LogViewerLayoutPendingOffset) = 1;
+            LogViewerAdditions.LayoutPending(&panel->LogViewer) = 1;
             panel->AtkUnitBase.OnRequestedUpdate(stage->GetNumberArrayData(), stage->GetStringArrayData());
         }
     }

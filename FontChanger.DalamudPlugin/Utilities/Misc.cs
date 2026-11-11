@@ -44,15 +44,6 @@ public static unsafe class Misc
         return g;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static AtkFontManager.Glyph* FindGlyph(this ref AtkFontManager.Font font, Rune rune) =>
-        !rune.IsBmp
-        || font.GlyphMap is null
-        || !font.Flags.HasFlag(AtkFontManager.FontFlags.Ready)
-        || !font.GlyphMap->TryGetValue(GameUtf8.Pack(rune), out var found) || found.Value is null
-            ? null
-            : found.Value;
-
     public static nint FieldOffsetOf(this Type type, string fieldName) =>
         type.GetField(fieldName)?.GetCustomAttribute<FieldOffsetAttribute>()?.Value
         ?? throw new InvalidOperationException($"{type.Name}.{fieldName} has no FieldOffset attribute.");

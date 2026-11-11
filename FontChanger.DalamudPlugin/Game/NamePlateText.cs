@@ -293,7 +293,7 @@ internal sealed unsafe class NamePlateText : IDisposable
                 continue;
 
             // As Dalamud's nameplate API finds it: NPCs have no entity ID, and an invalid object's plate (in some cutscenes) no object.
-            var objectInfo = atk->NamePlateInfoEntries[index].ObjectId.ObjectId != 0xE0000000 && i < ui3d->NamePlateObjectInfoCount
+            var objectInfo = atk->NamePlateInfoEntries[index].ObjectId.ObjectId != NamePlateAdditions.NoObjectId && i < ui3d->NamePlateObjectInfoCount
                                  ? ui3d->NamePlateObjectInfoPointers[i].Value
                                  : null;
             var gameObject = objectInfo is null ? null : objectInfo->GameObject;
@@ -311,7 +311,7 @@ internal sealed unsafe class NamePlateText : IDisposable
                 continue;
             if (objects[index].NameText is not null)
                 objects[index].NameText->NodeText.Clear();
-            data.UpdateFlags |= 1;
+            data.UpdateFlags |= NamePlateAdditions.UpdateFlagUpdate;
         }
     }
 
@@ -408,7 +408,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         var shown = MathF.Sqrt((transform[0] * transform[0]) + (transform[1] * transform[1]));
 
         // Plates shown over 100 percent up close or when targeted outgrow their bake, and are drawn live until baked again.
-        var obj = (NamePlateObject*)bake;
+        var obj = NamePlateAdditions.ObjectOf(bake);
         if (shown > scale * (1 + ScaleTolerance) && !obj->NeedsToBeBaked && this.EffectiveMode == NamePlateMode.BakedAtFullSize)
             obj->NeedsToBeBaked = true;
 
