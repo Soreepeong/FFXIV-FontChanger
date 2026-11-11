@@ -37,7 +37,6 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
     private SettingsRecord _settings;
 
     // From the last BindShaders.
-    private AtkServer* _server;
     private bool _alternate;
     private bool _passActive;
 
@@ -68,6 +67,38 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         }
     }
 
+    /// <summary>
+    /// Once a frame, as the game takes the shaders out when it loads its shaders again, and has none before it first loads them.
+    /// </summary>
+    /// <remarks>If the shaders can't be made, it is off until the plugin is loaded again, as after a failure in the hooks.</remarks>
+    public void Ensure()
+    {
+        Misc.DebugAssertMainThread();
+        var server = this.Enabled ? PixelShaderSwap.GetServer() : null;
+        if (server is null)
+            return;
+        try
+        {
+            var s = this._settings;
+            foreach (var p in this._passes)
+            {
+                p.Swap.Ensure(
+                    GetShaderObjectOrNull(server, p.Pass, out var resource),
+                    resource,
+                    p.File,
+                    p.Code,
+                    (ShaderCode.ClearTypeLevelSentinel, s.Level),
+                    (ShaderCode.ContrastSentinel, s.Contrast),
+                    (ShaderCode.GammaSentinel, s.Gamma),
+                    (ShaderCode.GrayscaleContrastSentinel, s.GrayscaleContrast));
+            }
+        }
+        catch (Exception ex)
+        {
+            this.Fail(ex);
+        }
+    }
+
     /// <summary>The hooks are made the first time it is on.</summary>
     private void Apply(SettingsRecord value)
     {
@@ -81,7 +112,7 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         var shaderChanged = value with { Order = this._settings.Order } != this._settings;
         this._settings = value;
 
-        // The next BindShaders makes the shaders with the new settings.
+        // Ensure makes the shaders again with the new settings.
         if (!this.Enabled || shaderChanged)
             this.RestoreAndReleaseAll();
     }
@@ -94,8 +125,6 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         this._bindShadersHook?.Dispose();
         this._setDrawStateHook?.Dispose();
         this.RestoreAndReleaseAll();
-        foreach (var p in this._passes)
-            p.Swap.Dispose();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -117,32 +146,27 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         where T : struct, Enum =>
         Enum.IsDefined(value) ? value.ToString()[(typeof(T).Name.Length + 1)..] : $"unknown(0x{Convert.ToUInt32(value):08X})";
 
-    private static PixelShader* GetShaderObjectOrNull(AtkServer* server, AtkServer.ShaderPass pass, string? file)
+    /// <summary>The game's shader object of a pass and what it was loaded from. Both are null if the server is.</summary>
+    private static PixelShader* GetShaderObjectOrNull(AtkServer* server, AtkServer.ShaderPass pass, out ResourceHandle* resource)
     {
+        resource = null;
         if (server is null)
             return null;
 
-        PixelShader* shader;
-        ShaderCodeResourceHandle* resource;
         switch (pass)
         {
             case AtkServer.ShaderPass.Font:
-                shader = server->FontPS;
-                resource = server->FontPSResource;
-                break;
+                resource = (ResourceHandle*)server->FontPSResource;
+                return server->FontPS;
             case AtkServer.ShaderPass.FontHighlight:
-                shader = server->FontHightlightPS;
-                resource = server->FontHighlightPSResource;
-                break;
+                resource = (ResourceHandle*)server->FontHighlightPSResource;
+                return server->FontHightlightPS;
             case AtkServer.ShaderPass.FontEmboss:
-                shader = server->FontEmbossPS;
-                resource = server->FontEmbossPSResource;
-                break;
+                resource = (ResourceHandle*)server->FontEmbossPSResource;
+                return server->FontEmbossPS;
             default:
                 throw new ArgumentOutOfRangeException(nameof(pass));
         }
-
-        return file is null || (resource is not null && resource->FileName.EndsWithAsciiIgnoreCase(file)) ? shader : null;
     }
 
     private void Resolve()
@@ -174,11 +198,9 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             return;
         try
         {
-            this._server = server;
+            // The blend is only changed for a pass whose shader is the plugin's, which Ensure gets in.
             this._alternate = alternate != 0;
-            this._passActive = false;
-            if (!this._alternate && this.FindPass(pass) is { } p)
-                this._passActive = this.EnsureShaderSwap(server, p);
+            this._passActive = !this._alternate && this.FindPass(pass) is { } p && p.Swap.IsIn(GetShaderObjectOrNull(server, p.Pass, out _));
 
             // SetDrawState isn't called when only the pass changes.
             var last = this._last;
@@ -196,11 +218,16 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         }
         catch (Exception ex)
         {
-            // Off at once, and the failure keeps it off until the plugin is loaded again.
-            this._settings = default;
-            this.RestoreAndReleaseAll();
-            this._state.Fail(Part.Subpixel, ex, "Subpixel text failed");
+            this.Fail(ex);
         }
+    }
+
+    /// <summary>Off at once, and the failure keeps it off until the plugin is loaded again.</summary>
+    private void Fail(Exception ex)
+    {
+        this._settings = default;
+        this.RestoreAndReleaseAll();
+        this._state.Fail(Part.Subpixel, ex, "Subpixel text failed");
     }
 
     private void SetDrawStateDetour(AtkServer* server, AtkServer.DrawState* state, byte divisor)
@@ -258,46 +285,11 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
         return value;
     }
 
-    private bool EnsureShaderSwap(AtkServer* server, PassShader p)
-    {
-        var current = GetShaderObjectOrNull(server, p.Pass, null);
-        p.Swap.ForgetIfReplacedElsewhere(current);
-        if (current is null)
-            return false;
-        if (p.Swap.IsIn(current))
-            return true;
-
-        var game = (ID3D11PixelShader*)current->DirectXObject;
-        if (game is null || GetShaderObjectOrNull(server, p.Pass, p.File) is null)
-            return false;
-
-        if (!p.Swap.PluginShader)
-            p.Swap.PluginShader.Attach(this.CreateShader(game, p.Code).Detach());
-        p.Swap.Install(current);
-        return true;
-    }
-
-    private MyComPtr<ID3D11PixelShader> CreateShader(ID3D11PixelShader* game, string name)
-    {
-        var code = ShaderCode.Read(name);
-        if (!ShaderCode.PatchConstants(code,
-                (ShaderCode.ClearTypeLevelSentinel, this._settings.Level),
-                (ShaderCode.ContrastSentinel, this._settings.Contrast),
-                (ShaderCode.GammaSentinel, this._settings.Gamma),
-                (ShaderCode.GrayscaleContrastSentinel, this._settings.GrayscaleContrast)))
-            Plugin.Log.Warning($"Placeholder variables missing or repeated: {name}");
-        return PixelShaderSwap.CreateShader(game, code);
-    }
-
     private void RestoreAndReleaseAll()
     {
+        var server = PixelShaderSwap.GetServer();
         foreach (var p in this._passes)
-        {
-            if (p.Swap.Target is not null)
-                p.Swap.Restore(GetShaderObjectOrNull(this._server, p.Pass, null));
-            p.Swap.PluginShader.Dispose();
-        }
-
+            p.Swap.Release(GetShaderObjectOrNull(server, p.Pass, out _));
         this._passActive = false;
     }
 

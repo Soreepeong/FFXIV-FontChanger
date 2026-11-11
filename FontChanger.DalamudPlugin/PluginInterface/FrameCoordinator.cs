@@ -112,12 +112,14 @@ internal sealed class FrameCoordinator : IAsyncDisposable
         // The shaders get a value once, so that one that can't be applied isn't tried again until it changes.
         if (c.Edge.Drawn() != this._state.Edge)
             this._edge.Apply(c.Edge);
+        this._edge.Ensure();
         scope |= this.Replacer.SetEdge(c.Edge);
 
         var subpixel = this._state.Failed(Part.Subpixel) ? default : this._subpixelSource.Get(c);
         if (subpixel != this.AppliedSubpixel)
             this._subpixel.TryApply(subpixel);
         this.AppliedSubpixel = subpixel;
+        this._subpixel.Ensure();
         scope |= this.Replacer.SetSubpixel(this._subpixel.Active ? subpixel.Order : SubpixelOrder.None);
         scope |= this.Replacer.SetVerticalSubpixel(c.VerticalSubpixel);
         scope |= this.Replacer.SetAtlas(c.Atlas);

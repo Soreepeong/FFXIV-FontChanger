@@ -1,16 +1,10 @@
 using System;
 
-using Dalamud.Hooking;
-
-using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Client.System.Resource.Handle;
-using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Utilities;
-
-using TerraFX.Interop.DirectX;
 
 namespace FontChanger.DalamudPlugin.Fonts.Shaders;
 
@@ -18,26 +12,42 @@ internal sealed unsafe class EdgeShader : IDisposable
 {
     public const float MaxSoftness = 8;
 
-    private static readonly nint ModuleFontManagerOffset = typeof(AtkModule).FieldOffsetOf(nameof(AtkModule.AtkFontManager));
-
     private readonly PixelShaderSwap _swap = new();
 
-    private Hook<LoadShadersDelegate>? _loadShadersHook;
-    private float _softness;
-    private bool _used;
-
-    private delegate byte LoadShadersDelegate(AtkServer* server);
+    // Null for the game's shader.
+    private float? _softness;
 
     /// <summary>
     /// The plugin's shader draws a round edge of any width unless edges are the game's own 1 px. The game's shader, widened only
     /// by claiming a narrower texture (blocky past about 1.5 px), is the fallback.
     /// </summary>
+    /// <remarks><see cref="Ensure"/> gets the shader in.</remarks>
     public void Apply(EdgeSettings value)
     {
         value = value.Drawn();
+        this.SetSoftness(value.Enabled && value != new EdgeSettings { Enabled = true } ? value.Softness : null);
+    }
+
+    /// <summary>
+    /// Once a frame, as the game takes the shader out when it loads its shaders again, and has none before it first loads them.
+    /// </summary>
+    /// <remarks>If the shader can't be made, the game's stays until another value is applied.</remarks>
+    public void Ensure()
+    {
+        Misc.DebugAssertMainThread();
+        if (this._softness is not { } softness)
+            return;
+        var server = PixelShaderSwap.GetServer();
+        if (server is null)
+            return;
         try
         {
-            this.SetSoftness(value.Enabled && value != new EdgeSettings { Enabled = true } ? value.Softness : null);
+            this._swap.Ensure(
+                server->FontEdgePS,
+                (ResourceHandle*)server->FontEdgePSResource,
+                "FontEdgePS.shcd",
+                "FontChanger.DalamudPlugin.Fonts.Shaders.FontEdgePS.cso",
+                (ShaderCode.SoftnessSentinel, softness));
         }
         catch (Exception ex)
         {
@@ -46,99 +56,17 @@ internal sealed unsafe class EdgeShader : IDisposable
         }
     }
 
-    /// <summary>Null restores the game's shader.</summary>
+    public void Dispose() => this.SetSoftness(null);
+
+    /// <summary>Null restores the game's shader. A shader made for another softness goes.</summary>
     private void SetSoftness(float? value)
     {
         Misc.DebugAssertMainThread();
-
-        this._used = value.HasValue;
-        if (value is not { } softness)
-        {
-            this.Restore();
+        if (value == this._softness)
             return;
-        }
 
-        if (this._loadShadersHook is null)
-        {
-            var loadShaders = AtkServer.Addresses.LoadShaders.Value;
-            this._loadShadersHook = Plugin.GameInterop.HookFromAddress<LoadShadersDelegate>(loadShaders, this.LoadShadersDetour);
-            this._loadShadersHook.Enable();
-        }
-
-        if (this._swap.PluginShader && softness != this._softness)
-        {
-            this.Restore();
-            this._swap.PluginShader.Dispose();
-        }
-
-        this._softness = softness;
-
-        // Before the game has loaded its shaders, LoadShadersDetour installs it once it does.
-        if (this.CreateFromGame())
-            this.Install();
-    }
-
-    public void Dispose()
-    {
-        this._loadShadersHook?.Dispose();
-        this.Restore();
-        this._swap.Dispose();
-    }
-
-    private static PixelShader* GetEdgeShaderObjectOrNull(bool checkFontEdgePs)
-    {
-        var stage = AtkStage.Instance();
-        var fontManager = stage is null ? null : stage->AtkFontManager;
-        var module = fontManager is null ? null : (AtkModule*)((byte*)fontManager - ModuleFontManagerOffset);
-        var server = module is null ? null : module->AtkServer;
-        if (server is null)
-            return null;
-        var file = (ResourceHandle*)server->FontEdgePSResource;
-        return checkFontEdgePs && (file is null || !file->FileName.EndsWithAsciiIgnoreCase("FontEdgePS.shcd")) ? null : server->FontEdgePS;
-    }
-
-    private bool CreateFromGame()
-    {
-        if (this._swap.PluginShader)
-            return true;
-        var target = GetEdgeShaderObjectOrNull(true);
-        if (target is null)
-            return false;
-
-        var code = ShaderCode.Read("FontChanger.DalamudPlugin.Fonts.Shaders.FontEdgePS.cso");
-        if (!ShaderCode.PatchConstants(code, (ShaderCode.SoftnessSentinel, this._softness)))
-            Plugin.Log.Error(null, "Missing placeholder variables");
-        this._swap.PluginShader.Attach(PixelShaderSwap.CreateShader((ID3D11PixelShader*)target->DirectXObject, code).Detach());
-        return true;
-    }
-
-    private void Install()
-    {
-        var target = GetEdgeShaderObjectOrNull(true);
-        if (target is not null && !this._swap.IsIn(target))
-            this._swap.Install(target);
-    }
-
-    private void Restore()
-    {
-        if (this._swap.Target is not null)
-            this._swap.Restore(GetEdgeShaderObjectOrNull(false));
-    }
-
-    private byte LoadShadersDetour(AtkServer* server)
-    {
-        var result = this._loadShadersHook!.Original(server);
-        try
-        {
-            this._swap.ForgetIfReplacedElsewhere(GetEdgeShaderObjectOrNull(false));
-            if (this._used && this.CreateFromGame())
-                this.Install();
-        }
-        catch (Exception ex)
-        {
-            Plugin.Log.Error(ex, "Installing the edge shader again failed");
-        }
-
-        return result;
+        var server = PixelShaderSwap.GetServer();
+        this._swap.Release(server is null ? null : server->FontEdgePS);
+        this._softness = value;
     }
 }
