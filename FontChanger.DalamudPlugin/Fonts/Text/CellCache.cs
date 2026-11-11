@@ -34,8 +34,15 @@ internal sealed unsafe class CellCache(GlyphStore store, GlyphFactory factory, F
     public RasterKey KeyOf(SizedFont sized, Cluster c) => c.RasterKey ??= new(sized, c);
 
     /// <summary>Whether the cluster still needs rasterizing, which the shaper may do ahead on the thread pool.</summary>
-    public bool NeedsRaster(SizedFont sized, Cluster c) =>
-        c.Raster is null && (c.Source!.DrawsBitmaps || !this._rasters.TryGetValue(this.KeyOf(sized, c), out _));
+    public bool NeedsRaster(SizedFont sized, Cluster c)
+    {
+        if (c.Raster is not null)
+            return false;
+        if (c.Source!.DrawsBitmaps || !this._rasters.TryGetValue(this.KeyOf(sized, c), out var raster))
+            return true;
+        c.Raster = raster;
+        return false;
+    }
 
     /// <summary>Relative to the pen. The advance is final only for a monospaced cluster, as <see cref="GetCell"/> sets the others'.</summary>
     public RasterGlyph GetRaster(SizedFont sized, Cluster c)

@@ -265,6 +265,14 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
             while (end < count && ctx.TextSource[end] == source && ctx.TextItalic[end] == inItalic)
                 end++;
 
+            // Text left to the game needs no scripts.
+            if (source?.Element?.Source is null)
+            {
+                AddMissing(ctx, start, end, pen);
+                start = end;
+                continue;
+            }
+
             analyzer.Itemize(ctx.Text.AsSpan(start, end - start), ctx.TextRuns);
             foreach (var run in ctx.TextRuns)
                 this.CollectPiece(ctx, source, start + run.Start, start + run.End, run, inItalic, italicImages, ref pen);

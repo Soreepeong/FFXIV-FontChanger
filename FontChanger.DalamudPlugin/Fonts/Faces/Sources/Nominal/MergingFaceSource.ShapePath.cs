@@ -105,7 +105,9 @@ internal sealed partial class MergingFaceSource
                 }
 
                 lastCommand = char.ToUpperInvariant(command);
-                if (upper == 'Z' && !NextIsNumber())
+
+                // Nothing but another command may follow a closepath, which reads no numbers.
+                if (upper == 'Z')
                     command = '\0';
             }
 
@@ -116,12 +118,6 @@ internal sealed partial class MergingFaceSource
             {
                 while (i < d.Length && (char.IsWhiteSpace(d[i]) || d[i] == ','))
                     i++;
-            }
-
-            bool NextIsNumber()
-            {
-                SkipSeparators();
-                return i < d.Length && (char.IsAsciiDigit(d[i]) || d[i] is '-' or '+' or '.');
             }
 
             float ReadNumber()

@@ -33,6 +33,7 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
     private bool _italicMade;
     private OutlineFaceSource? _bold;
     private bool _boldMade;
+    private bool? _isSlanted;
 
     /// <summary>Takes <paramref name="font"/>, which it disposes.</summary>
     private OutlineFaceSource(FontServices services, FontElement def, LookupFont font, FT_FaceRec_* freeTypeFace, string fontName)
@@ -77,8 +78,9 @@ internal sealed unsafe partial class OutlineFaceSource : IFaceSource
 
     // Not to be sheared again by the game for an italic macro.
     private bool IsSlanted =>
-        IsRealItalic(this.Font.Face) ||
-        (this.Font.Face->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) != 0;
+        this._isSlanted ??=
+            IsRealItalic(this.Font.Face) ||
+            (this.Font.Face->GetSimulations() & DWRITE_FONT_SIMULATIONS.DWRITE_FONT_SIMULATIONS_OBLIQUE) != 0;
 
     public static OutlineFaceSource? Create(FontServices services, FontElement def, string fontName)
     {

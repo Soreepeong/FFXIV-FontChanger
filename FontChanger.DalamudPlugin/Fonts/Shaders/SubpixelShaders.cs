@@ -268,7 +268,7 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             if (!this._warnedBlend)
             {
                 this._warnedBlend = true;
-                Plugin.Log.Warning("Subpixel text: a glyph is drawn with blend state 0x{Blend:X8}, which can't take subpixel coverage", Describe(value));
+                Plugin.Log.Warning("Subpixel text: a glyph is drawn with blend state {Blend}, which can't take subpixel coverage", Describe(value));
             }
 
             return value;

@@ -173,7 +173,7 @@ internal sealed unsafe class LineBreaker : IDisposable
         var byteCount = Encoding.UTF8.GetByteCount(text);
         var bytes = byteCount <= 1024 ? stackalloc byte[byteCount] : new byte[byteCount];
         Encoding.UTF8.GetBytes(text, bytes);
-        var unitAt = byteCount < 1024 ? stackalloc int[byteCount + 1] : new int[byteCount + 1];
+        var unitAt = byteCount <= 1024 ? stackalloc int[byteCount + 1] : new int[byteCount + 1];
         for (int b = 0, u = 0; u < text.Length;)
         {
             Rune.DecodeFromUtf16(text[u..], out var rune, out var units);

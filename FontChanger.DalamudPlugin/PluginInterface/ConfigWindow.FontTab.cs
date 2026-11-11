@@ -407,7 +407,8 @@ internal sealed partial class ConfigWindow
         this._systemFamilies = null;
         if (!this.TryFindSystemFont(current, out var currentId))
             this.TryFindSystemFont(new() { FamilyName = "Segoe UI" }, out currentId);
-        dialog.SelectedFont = new() { FontId = currentId!, SizePx = 24 };
+        if (currentId is not null)
+            dialog.SelectedFont = new() { FontId = currentId, SizePx = 24 };
         this._fontChooser = new(dialog, apply);
     }
 
