@@ -22,9 +22,6 @@ internal sealed unsafe class GlyphLookup(
     LayoutContext context,
     GlyphLookup.GameGlyphDelegate gameGlyph)
 {
-    // What LayOutCharacter lays out a character a font has no glyph of as, in order of preference, as packed UTF-8.
-    private static readonly uint[] MissingGlyphSubstitutes = [0xE38093, 0x2D, 0xE39080];
-
     /// <summary>The game's own lookup in a font.</summary>
     public delegate AtkFontManager.Glyph* GameGlyphDelegate(AtkFontManager.FontSet* set, uint utf8Value, AtkFontManager.Font* font);
 
@@ -208,7 +205,7 @@ internal sealed unsafe class GlyphLookup(
     // copy has no textures of, so the copy's own glyphs of them (else one of no width) are given instead.
     private AtkFontManager.Glyph* GetMissingGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont drawn)
     {
-        foreach (var substitute in MissingGlyphSubstitutes)
+        foreach (var substitute in GameUtf8.MissingGlyphSubstitutes)
         {
             if (utf8Value == substitute)
                 continue;

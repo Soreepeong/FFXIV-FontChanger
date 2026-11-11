@@ -133,7 +133,7 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
     {
         this._ctx.Sized = sized;
         this._ctx.Absorbed.Clear();
-        count = ComposeHangul(this._ctx, count);
+        count = HangulComposer.Compose(this._ctx.Text, this._ctx.TextToByte, count, this._ctx.Absorbed);
         AssignSources(this._ctx, count);
 
         if (italic != ItalicMode.Images)
@@ -152,45 +152,6 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
             this._ctx.TextItalic.AsSpan(0, count).Clear();
             this.Collect(this._ctx, count, true);
         }
-    }
-
-    /// <summary>
-    /// Composes conjoining jamo into precomposed syllables as NFC does, since DirectWrite has no Hangul shaping and would
-    /// draw each jamo as a separate full-width letter. Old Hangul, having no precomposed syllables, is left as it is.
-    /// </summary>
-    private static int ComposeHangul(ShapingContext ctx, int count)
-    {
-        const int SyllableBase = 0xAC00, LeadBase = 0x1100, VowelBase = 0x1161, TrailBase = 0x11A7;
-        const int LeadCount = 19, VowelCount = 21, TrailCount = 28, SCount = LeadCount * VowelCount * TrailCount;
-
-        var text = ctx.Text;
-        var w = 0;
-        for (var i = 0; i < count;)
-        {
-            int c = text[i];
-            var n = 1;
-            if (c - LeadBase is >= 0 and < LeadCount && i + 1 < count && text[i + 1] - VowelBase is >= 0 and < VowelCount)
-            {
-                c = SyllableBase + ((((c - LeadBase) * VowelCount) + (text[i + 1] - VowelBase)) * TrailCount);
-                n = 2;
-            }
-
-            if ((n == 2 || (c - SyllableBase is >= 0 and < SCount && (c - SyllableBase) % TrailCount == 0)) &&
-                i + n < count && text[i + n] - TrailBase is > 0 and < TrailCount)
-            {
-                c += text[i + n] - TrailBase;
-                n++;
-            }
-
-            for (var j = 1; j < n; j++)
-                ctx.Absorbed.Add((ctx.TextToByte[i + j], ctx.TextToByte[i]));
-            text[w] = (char)c;
-            ctx.TextToByte[w] = ctx.TextToByte[i];
-            w++;
-            i += n;
-        }
-
-        return w;
     }
 
     private static void AssignSources(ShapingContext ctx, int count)

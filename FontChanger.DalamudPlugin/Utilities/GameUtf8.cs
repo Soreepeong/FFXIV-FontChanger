@@ -12,6 +12,9 @@ namespace FontChanger.DalamudPlugin.Utilities;
 /// <summary>The game keys its glyphs (AtkFontManager.Glyph.Utf8Value) by a character's UTF-8 bytes packed big-endian.</summary>
 public static unsafe class GameUtf8
 {
+    /// <summary>What LayOutCharacter lays out a character a font has no glyph of as, in order of preference, packed.</summary>
+    public static readonly uint[] MissingGlyphSubstitutes = [0xE38093, 0x2D, 0xE39080];
+
     public static uint Pack(Rune rune)
     {
         var c = (uint)rune.Value;
