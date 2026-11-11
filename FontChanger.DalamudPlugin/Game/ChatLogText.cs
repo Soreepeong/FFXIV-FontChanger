@@ -41,7 +41,7 @@ internal sealed unsafe class ChatLogText : IDisposable
     private readonly int[] _gameFontSizes = new int[TextFaceNames.ChatTabCount];
 
     // Outlives the PreRefresh listener, which can only replace the refresh's values with a pointer.
-    private AtkValue* _refreshValue;
+    private readonly AtkValue* _refreshValue;
 
     public ChatLogText(FontReplacer replacer)
     {

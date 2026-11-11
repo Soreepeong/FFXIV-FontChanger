@@ -145,7 +145,7 @@ internal sealed unsafe class LayoutContext
 
         // A name the game shows shortened is in no line, so no line is the title's.
         var text = node is null ? null : (byte*)node->NodeText.StringPtr;
-        var length = text is null ? 0 : (int)node->NodeText.Length;
+        var length = text is null ? 0 : node->NodeText.Length;
         if (faces.MainLine is not { } main || new ReadOnlySpan<byte>(text, length).IndexOf(main) < 0)
             faces = faces with { MainLine = null };
         this._setFaces[index] = (faces, (nint)text, length);
@@ -190,7 +190,7 @@ internal sealed unsafe class LayoutContext
     {
         var manager = AtkStage.Instance()->AtkFontManager;
         var index = manager is null || manager->FontSets is null ? -1 : set - manager->FontSets;
-        return index >= 0 && index < AtkFontManager.FontSetCount ? (int)index : -1;
+        return index is >= 0 and < AtkFontManager.FontSetCount ? (int)index : -1;
     }
 
     /// <summary>The character LayOutCharacter is laying out.</summary>

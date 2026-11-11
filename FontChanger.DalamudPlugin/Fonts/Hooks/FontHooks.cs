@@ -246,7 +246,7 @@ internal sealed unsafe class FontHooks : IDisposable
             var copy = this._copies.Pick(font, size, face, face == TextFace.Default && !this._context.Wrapping, out var halfPx, out var clamped);
 
             // Any renderer scale but exactly 1 resamples bilinearly (soft text), while a quarter pixel of size error doesn't show.
-            if (halfPx < CopyFonts.MaxHalfPx && halfPx > CopyFonts.MinHalfPx)
+            if (halfPx is < CopyFonts.MaxHalfPx and > CopyFonts.MinHalfPx)
                 copy->Size = clamped ? halfPx / 2f : size;
             set->CurrentFont = copy;
             return copy;

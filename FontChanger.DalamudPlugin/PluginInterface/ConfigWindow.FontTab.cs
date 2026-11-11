@@ -418,7 +418,7 @@ internal sealed partial class ConfigWindow
 
         this._fontChooser = null;
         var result = open.Dialog.ResultTask;
-        if (result.IsCompletedSuccessfully && result.Result.FontId is SystemFontId id)
+        if (result is { IsCompletedSuccessfully: true, Result.FontId: SystemFontId id })
             open.Apply(ToFamilyFont(id));
     }
 

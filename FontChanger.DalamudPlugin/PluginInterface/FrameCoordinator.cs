@@ -33,7 +33,7 @@ internal sealed class FrameCoordinator : IAsyncDisposable
     private readonly SubpixelShaders _subpixel;
     private readonly SubpixelSource _subpixelSource = new();
     private readonly EdgeShader _edge = new();
-    private readonly FontLoader _loader = null!;
+    private readonly FontLoader _loader;
     private readonly NamePlateText? _namePlates;
     private readonly ChatLogText? _chatLog;
     private readonly LineBreaker? _lineBreaker;
@@ -77,7 +77,7 @@ internal sealed class FrameCoordinator : IAsyncDisposable
 
     public FontReplacer Replacer { get; }
 
-    public PresetController Presets { get; } = null!;
+    public PresetController Presets { get; }
 
     /// <summary>Gets what subpixel rendering was last applied with, such as the system's ClearType settings.</summary>
     public SubpixelShaders.SettingsRecord AppliedSubpixel { get; private set; }

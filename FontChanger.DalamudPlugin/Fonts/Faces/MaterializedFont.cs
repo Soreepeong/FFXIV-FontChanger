@@ -220,10 +220,9 @@ internal sealed unsafe class MaterializedFont : IDisposable
     {
         // FontChanger's game font elements name a family read from the game's files; those made here name none and mean
         // the replaced font.
-        if (def.Source == ElementSource.Game && def.Lookup.FamilyName.Length == 0)
+        if (def is { Source: ElementSource.Game, Lookup.FamilyName.Length: 0 })
             return null;
 
-        var services = this._services;
         var fontName = this._def.Name;
         var source = this._sources.GetOrCreate(
             def,
@@ -232,8 +231,8 @@ internal sealed unsafe class MaterializedFont : IDisposable
                 IFaceSource made = def.Source switch
                 {
                     ElementSource.Game => (IFaceSource?)GameFontDataFaceSource.Create(def, fontName) ?? new EmptyFaceSource(def.Size, def.EmptyAscent, def.EmptyLineHeight),
-                    ElementSource.DirectWrite or ElementSource.FreeType => (IFaceSource?)OutlineFaceSource.Create(services, def, fontName) ?? new EmptyFaceSource(0, 0, 0),
-                    ElementSource.GlyphImages => ImageFaceSource.Create(def, services.Images),
+                    ElementSource.DirectWrite or ElementSource.FreeType => (IFaceSource?)OutlineFaceSource.Create(this._services, def, fontName) ?? new EmptyFaceSource(0, 0, 0),
+                    ElementSource.GlyphImages => ImageFaceSource.Create(def, this._services.Images),
                     _ => new EmptyFaceSource(def.Size, def.EmptyAscent, def.EmptyLineHeight),
                 };
                 made.MeasureMode = this._measureMode;
@@ -243,7 +242,7 @@ internal sealed unsafe class MaterializedFont : IDisposable
         // As in FontChanger, glyphs are merged only around fonts that draw outlines or images.
         if (def.GlyphMerging is not { } merging || def.Source is not (ElementSource.DirectWrite or ElementSource.FreeType or ElementSource.GlyphImages))
             return source;
-        var merged = this._sources.Own(MergingFaceSource.Create(source, def, merging, services, fontName));
+        var merged = this._sources.Own(MergingFaceSource.Create(source, def, merging, this._services, fontName));
         merged.MeasureMode = this._measureMode;
         return merged;
     }

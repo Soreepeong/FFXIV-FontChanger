@@ -40,7 +40,6 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
     /// <returns>The run's count of UTF-16 code units if decoded, and its length in bytes in <paramref name="length"/>.</returns>
     public int ReadRun(byte* p, ItalicMode italic, bool decode, out int length)
     {
-        var ctx = this._ctx;
         var count = 0;
         var i = 0;
         var inItalic = italic != ItalicMode.Upright;
@@ -70,7 +69,7 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
                 }
 
                 if (decode)
-                    ctx.ByteItalic.AsSpan(i, total).Fill(inItalic);
+                    this._ctx.ByteItalic.AsSpan(i, total).Fill(inItalic);
                 i += total;
                 continue;
             }
@@ -85,18 +84,18 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
                 continue;
             }
 
-            ctx.ByteItalic.AsSpan(i, charLength).Fill(inItalic);
+            this._ctx.ByteItalic.AsSpan(i, charLength).Fill(inItalic);
 
             // Control characters and broken sequences shape as a replacement character, which keeps them per character.
             var r = Rune.ReplacementChar;
             var valid = b >= 0x20 && GameUtf8.TryDecode(p + i, charLength, out r);
             if (!valid)
                 r = Rune.ReplacementChar;
-            ctx.EnsureCapacity(count + 2);
-            ctx.TextToByte[count] = valid ? i : -1;
-            var units = r.EncodeToUtf16(ctx.Text.AsSpan(count));
+            this._ctx.EnsureCapacity(count + 2);
+            this._ctx.TextToByte[count] = valid ? i : -1;
+            var units = r.EncodeToUtf16(this._ctx.Text.AsSpan(count));
             if (units == 2)
-                ctx.TextToByte[count + 1] = -1;
+                this._ctx.TextToByte[count + 1] = -1;
             count += units;
             i += charLength;
         }
@@ -108,10 +107,9 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
     /// <summary>Shapes the run <see cref="ReadRun"/> read, of <paramref name="count"/> code units.</summary>
     public void Shape(SizedFont sized, byte* p, int count, Pointer<AtkFontManager.Glyph>[] glyphs, ItalicMode italic)
     {
-        var ctx = this._ctx;
         this.Cluster(sized, count, italic);
-        this.PlaceClusters(ctx, p, glyphs);
-        foreach (var (b, owner) in ctx.Absorbed)
+        this.PlaceClusters(this._ctx, p, glyphs);
+        foreach (var (b, owner) in this._ctx.Absorbed)
             glyphs[b] = glyphs[owner].IsNull ? default : emptyGlyph;
     }
 
@@ -125,36 +123,34 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
     /// <param name="italic">The run's italics.</param>
     public void Measure(SizedFont sized, int count, int[] advances, ItalicMode italic)
     {
-        var ctx = this._ctx;
         this.Cluster(sized, count, italic);
-        this.MeasureClusters(ctx, advances);
-        foreach (var (b, owner) in ctx.Absorbed)
+        this.MeasureClusters(this._ctx, advances);
+        foreach (var (b, owner) in this._ctx.Absorbed)
             advances[b] = advances[owner] == Missing ? Missing : 0;
     }
 
     private void Cluster(SizedFont sized, int count, ItalicMode italic)
     {
-        var ctx = this._ctx;
-        ctx.Sized = sized;
-        ctx.Absorbed.Clear();
-        count = ComposeHangul(ctx, count);
-        AssignSources(ctx, count);
+        this._ctx.Sized = sized;
+        this._ctx.Absorbed.Clear();
+        count = ComposeHangul(this._ctx, count);
+        AssignSources(this._ctx, count);
 
         if (italic != ItalicMode.Images)
         {
             // A code unit with no byte of its own is in the italics of the one before it.
             for (var t = 0; t < count; t++)
             {
-                var b = ctx.TextToByte[t];
-                ctx.TextItalic[t] = b >= 0 ? ctx.ByteItalic[b] : t > 0 ? ctx.TextItalic[t - 1] : italic != ItalicMode.Upright;
+                var b = this._ctx.TextToByte[t];
+                this._ctx.TextItalic[t] = b >= 0 ? this._ctx.ByteItalic[b] : t > 0 ? this._ctx.TextItalic[t - 1] : italic != ItalicMode.Upright;
             }
 
-            this.Collect(ctx, count, false);
+            this.Collect(this._ctx, count, false);
         }
-        else if (!this.CollectSpreadItalics(ctx, count))
+        else if (!this.CollectSpreadItalics(this._ctx, count))
         {
-            ctx.TextItalic.AsSpan(0, count).Clear();
-            this.Collect(ctx, count, true);
+            this._ctx.TextItalic.AsSpan(0, count).Clear();
+            this.Collect(this._ctx, count, true);
         }
     }
 
@@ -456,7 +452,7 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
 
             // A cluster after one left to the per-character path can't move into it.
             var raster = cells.GetRaster(sized, c);
-            if (i > 0 && !clusters[i - 1].Missing && raster.Width > 0 && raster.Left < 0)
+            if (i > 0 && !clusters[i - 1].Missing && raster is { Width: > 0, Left: < 0 })
                 starts[i] = Math.Max(c.X0 + raster.Left, starts[i - 1]);
         }
 
@@ -542,28 +538,26 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
     /// </summary>
     private void RasterizeConcurrently(ShapingContext ctx)
     {
-        var pending = this._pending;
-        var seen = this._seen;
-        pending.Clear();
-        seen.Clear();
+        this._pending.Clear();
+        this._seen.Clear();
         foreach (var c in ctx.Clusters)
         {
-            if (!c.Missing && c.Source!.RasterizesConcurrently && cells.NeedsRaster(ctx.Sized, c) && seen.Add(cells.KeyOf(ctx.Sized, c)))
-                pending.Add(c);
+            if (!c.Missing && c.Source!.RasterizesConcurrently && cells.NeedsRaster(ctx.Sized, c) && this._seen.Add(cells.KeyOf(ctx.Sized, c)))
+                this._pending.Add(c);
         }
 
-        if (pending.Count < 2)
+        if (this._pending.Count < 2)
             return;
 
         // A cluster that fails is rasterized again by GetRaster, which reports it.
-        var raws = new RasterGlyph?[pending.Count];
-        var failed = new bool[pending.Count];
+        var raws = new RasterGlyph?[this._pending.Count];
+        var failed = new bool[this._pending.Count];
         Parallel.For(
             0,
-            pending.Count,
+            this._pending.Count,
             i =>
             {
-                var c = pending[i];
+                var c = this._pending[i];
                 try
                 {
                     raws[i] = c.Rasterize();
@@ -574,10 +568,10 @@ internal sealed unsafe class Shaper(DirectWriteTextAnalyzer analyzer, CellCache 
                 }
             });
 
-        for (var i = 0; i < pending.Count; i++)
+        for (var i = 0; i < this._pending.Count; i++)
         {
             if (!failed[i])
-                cells.AddRaster(ctx.Sized, pending[i], raws[i]);
+                cells.AddRaster(ctx.Sized, this._pending[i], raws[i]);
         }
     }
 }

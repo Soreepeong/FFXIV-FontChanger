@@ -108,7 +108,7 @@ internal sealed unsafe class SystemFallbackFonts : IDisposable
             var names = stackalloc char*[families.Length];
             for (var i = 0; i < families.Length; i++)
                 names[i] = (char*)handles[i].AddrOfPinnedObject();
-            builder->AddMapping(&range, 1, names, (uint)families.Length, null, null, null, 1).ThrowOnError();
+            builder->AddMapping(&range, 1, names, (uint)families.Length).ThrowOnError();
         }
         finally
         {

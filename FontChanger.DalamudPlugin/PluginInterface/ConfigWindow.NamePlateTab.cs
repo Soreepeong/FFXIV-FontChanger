@@ -66,7 +66,7 @@ internal sealed partial class ConfigWindow
         if (ImGui.Button("From target") && Plugin.TargetManager.Target is { } target)
         {
             this._newRuleName = target.Name.TextValue;
-            this._newRuleWorld = target is IPlayerCharacter pc && pc.HomeWorld.ValueNullable is { } world ? world.Name.ExtractText() : string.Empty;
+            this._newRuleWorld = target is IPlayerCharacter { HomeWorld.ValueNullable: { } world } ?world.Name.ExtractText() : string.Empty;
         }
 
         ImGui.SameLine();

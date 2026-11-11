@@ -106,7 +106,7 @@ internal sealed unsafe class CopyFonts(SizedFontRegistry sized, KernelTextureWra
             this._unsettled.Remove(key);
             var resolved = sized.Fonts.ResolveFace(face);
             var drawn = asked;
-            if (sized.Get(original, drawn, resolved, false).LineHeight is var lineHeight && lineHeight > MaxDrawnLineHeight)
+            if (sized.Get(original, drawn, resolved, false).LineHeight is var lineHeight and > MaxDrawnLineHeight)
             {
                 // Line metrics are rounded, so the size whose lines fit is checked.
                 drawn = Math.Max(MinHalfPx, drawn * MaxDrawnLineHeight / lineHeight);

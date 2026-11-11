@@ -69,12 +69,10 @@ internal sealed unsafe class GlyphStore : IDisposable
         return &this.SlotAt(id)->Glyph;
     }
 
-    /// <returns>The glyph.</returns>
-    public AtkFontManager.Glyph* Keep(AtkFontManager.Glyph* glyph)
+    public void Keep(AtkFontManager.Glyph* glyph)
     {
         if (IsOwn(glyph))
             this.CellOf(glyph).Refs++;
-        return glyph;
     }
 
     public void Release(AtkFontManager.Glyph* glyph)

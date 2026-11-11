@@ -319,7 +319,7 @@ internal sealed unsafe class NamePlateText : IDisposable
     private NodeFaces ChooseFaces(IGameObject? obj, UIObjectKind kind)
     {
         var name = obj?.Name.TextValue ?? string.Empty;
-        var world = obj is IPlayerCharacter pc && pc.HomeWorld.ValueNullable is { } row ? row.Name.ExtractText() : string.Empty;
+        var world = obj is IPlayerCharacter { HomeWorld.ValueNullable: { } row } ? row.Name.ExtractText() : string.Empty;
         var rule = name.Length == 0 ? null
                    : TextFaceNames.TryGetNamePlateRule(TextFaceNames.NamePlateRuleName(name, world), out _) ? TextFaceNames.NamePlateRuleName(name, world)
                    : TextFaceNames.TryGetNamePlateRule(TextFaceNames.NamePlateRuleName(name, string.Empty), out _) ? TextFaceNames.NamePlateRuleName(name, string.Empty)

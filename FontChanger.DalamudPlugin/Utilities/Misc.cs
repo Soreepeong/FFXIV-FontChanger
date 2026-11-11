@@ -4,7 +4,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 
 using Dalamud.Interface.GameFonts;
 using Dalamud.Utility;
@@ -27,13 +26,6 @@ public static unsafe class Misc
     {
         DebugAssertMainThread();
         return value;
-    }
-
-    [Conditional("DEBUG")]
-    public static void DebugAssertLockHeld(this Lock lockObj)
-    {
-        if (!lockObj.IsHeldByCurrentThread)
-            throw new InvalidOperationException("Lock was expected to be held by current thread, but was not.");
     }
 
     public static float StdRound(float value) => MathF.Round(value, MidpointRounding.AwayFromZero);

@@ -203,16 +203,15 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             this._passActive = !this._alternate && this.FindPass(pass) is { } p && p.Swap.IsIn(GetShaderObjectOrNull(server, p.Pass, out _));
 
             // SetDrawState isn't called when only the pass changes.
-            var last = this._last;
-            if (last.Has && last.Server == server)
+            if (this._last.Has && this._last.Server == server)
             {
-                var blend = this.Decide(server, last.State, last.SubpixelTexture);
-                if (!SameBlend(blend, last.Staged))
+                var blend = this.Decide(server, this._last.State, this._last.SubpixelTexture);
+                if (!SameBlend(blend, this._last.Staged))
                 {
-                    var state = last.State;
+                    var state = this._last.State;
                     state.BlendState = blend;
-                    this._setDrawStateHook!.Original(server, &state, last.Divisor);
-                    last.Staged = blend;
+                    this._setDrawStateHook!.Original(server, &state, this._last.Divisor);
+                    this._last.Staged = blend;
                 }
             }
         }
@@ -239,14 +238,13 @@ internal sealed unsafe partial class SubpixelShaders : IDisposable
             return;
         }
 
-        var last = this._last;
-        last.Server = server;
-        last.State = *state;
-        last.Divisor = divisor;
-        last.SubpixelTexture = state->Texture is not null && (state->Texture->ActualWidth & 1) != 0;
-        last.Has = true;
-        var blend = this.Decide(server, *state, last.SubpixelTexture);
-        last.Staged = blend;
+        this._last.Server = server;
+        this._last.State = *state;
+        this._last.Divisor = divisor;
+        this._last.SubpixelTexture = state->Texture is not null && (state->Texture->ActualWidth & 1) != 0;
+        this._last.Has = true;
+        var blend = this.Decide(server, *state, this._last.SubpixelTexture);
+        this._last.Staged = blend;
         if (SameBlend(blend, state->BlendState))
         {
             this._setDrawStateHook!.Original(server, state, divisor);

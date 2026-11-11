@@ -7,7 +7,6 @@ using System.Threading;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts;
-using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Utilities;
 
@@ -133,8 +132,6 @@ internal sealed class PresetController : IDisposable
         c.DisabledFamilies = enabled ? c.DisabledFamilies.Remove(family) : c.DisabledFamilies.Add(family));
 
     public void SetSystemFallback(bool systemFallback) => this.Change(c => c.SystemFallback = systemFallback);
-
-    public static bool IsFace(string family) => TextFaceNames.TryGetFace(family, out _);
 
     /// <summary>Makes the fonts again from the same settings, at the next framework update.</summary>
     public void Reload() => this._reloads++;

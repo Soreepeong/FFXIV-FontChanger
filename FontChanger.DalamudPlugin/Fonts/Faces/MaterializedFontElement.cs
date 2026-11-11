@@ -29,7 +29,7 @@ internal sealed class MaterializedFontElement(FontElement def, IFaceSource? sour
     public bool Has(Rune rune) =>
         this.Def.Contains(rune) && this.Source is { } s && s.GetGlyphId(this.GetDrawnCodepoint(rune)) != 0;
 
-    public Rune GetDrawnCodepoint(Rune rune) => this.Def.Replacements.TryGetValue(rune, out var to) ? to : rune;
+    public Rune GetDrawnCodepoint(Rune rune) => this.Def.Replacements.GetValueOrDefault(rune, rune);
 
     public float GetPx(float fontPx) => fontPx * this.Def.Size / referenceSize;
 
