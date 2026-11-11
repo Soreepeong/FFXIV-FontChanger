@@ -408,7 +408,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         var shown = MathF.Sqrt((transform[0] * transform[0]) + (transform[1] * transform[1]));
 
         // Plates shown over 100 percent up close or when targeted outgrow their bake, and are drawn live until baked again.
-        var obj = NamePlateAdditions.ObjectOf(bake);
+        var obj = bake->Object;
         if (shown > scale * (1 + ScaleTolerance) && !obj->NeedsToBeBaked && this.EffectiveMode == NamePlateMode.BakedAtFullSize)
             obj->NeedsToBeBaked = true;
 

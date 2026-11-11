@@ -185,7 +185,7 @@ internal sealed unsafe class FontHooks : IDisposable
             ref readonly var m = ref node->Transform;
             var scale = MathF.Sqrt((m.M21 * m.M21) + (m.M22 * m.M22));
             if (float.IsFinite(scale) && scale > 0 && MathF.Abs(scale - 1) > 0.001f)
-                AtkFontSetAdditions.PickScale(set) = scale;
+                set->PickScale = scale;
         }
 
         return set;

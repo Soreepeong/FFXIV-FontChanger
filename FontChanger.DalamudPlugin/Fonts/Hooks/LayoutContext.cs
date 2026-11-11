@@ -46,7 +46,7 @@ internal sealed unsafe class LayoutContext
 
     public static bool HasPickScale(AtkFontManager.FontSet* set)
     {
-        var scale = AtkFontSetAdditions.PickScale(set);
+        var scale = set->PickScale;
         return scale > 0 && float.IsFinite(scale);
     }
 
@@ -92,7 +92,7 @@ internal sealed unsafe class LayoutContext
         if (this.IsWrapMeasure(set))
             return set->ScaledSizeY * WrapMeasure.LargestScale;
         return set->NodeScaleX == 1 && set->NodeScaleY == 1 && HasPickScale(set)
-                   ? AtkFontSetAdditions.UnscaledSizeY(set) * AtkFontSetAdditions.PickScale(set)
+                   ? set->UnscaledSizeY * set->PickScale
                    : set->ScaledSizeY;
     }
 
@@ -159,7 +159,7 @@ internal sealed unsafe class LayoutContext
         if (faces.MainLine is not { } main)
             return TextFace.Default;
 
-        var buffer = AtkFontManagerAdditions.LineBuffer(AtkStage.Instance()->AtkFontManager);
+        var buffer = AtkStage.Instance()->AtkFontManager->LineBuffer;
         ReadOnlySpan<byte> line;
         if ((nint)p >= text && (nint)p < text + length)
             line = LineAround(new((byte*)text, length), (int)((nint)p - text));

@@ -24,7 +24,7 @@ internal sealed unsafe class PixelShaderSwap
     {
         var stage = AtkStage.Instance();
         var fontManager = stage is null ? null : stage->AtkFontManager;
-        var module = fontManager is null ? null : AtkModuleAdditions.FromFontManager(fontManager);
+        var module = fontManager is null ? null : fontManager->Module;
         return module is null ? null : module->AtkServer;
     }
 

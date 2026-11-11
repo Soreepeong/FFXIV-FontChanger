@@ -172,7 +172,7 @@ internal sealed unsafe class ChatLogText : IDisposable
             var panel = GetPanel(tab);
             if (panel is null)
                 continue;
-            LogViewerAdditions.LayoutPending(&panel->LogViewer) = 1;
+            panel->LogViewer.LayoutPending = 1;
             panel->AtkUnitBase.OnRequestedUpdate(stage->GetNumberArrayData(), stage->GetStringArrayData());
         }
     }

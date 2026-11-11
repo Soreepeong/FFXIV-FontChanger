@@ -20,43 +20,57 @@ internal static unsafe class AtkFontSetAdditions
     /// <summary>Bit 26 of the draw flags, which the game reads nowhere.</summary>
     public const AtkFontManager.DrawFlags UnusedDrawFlag26 = (AtkFontManager.DrawFlags)(1u << 26);
 
-    /// <summary>The float at 0x15C. Where positive, the game picks its font for this times the unscaled size, and scales the advances back.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ref float PickScale(AtkFontManager.FontSet* set) => ref *(float*)((byte*)set + 0x15C);
+    extension(ref AtkFontManager.FontSet set)
+    {
+        /// <summary>Gets the float at 0x15C. Where positive, the game picks its font for this times the unscaled size, and scales the advances back.</summary>
+        public ref float PickScale
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => ref *(float*)((byte*)Unsafe.AsPointer(ref set) + 0x15C);
+        }
 
-    /// <summary>The float at 0x124, the font size before the node's scale.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static float UnscaledSizeY(AtkFontManager.FontSet* set) => *(float*)((byte*)set + 0x124);
+        /// <summary>Gets the float at 0x124, the font size before the node's scale.</summary>
+        public float UnscaledSizeY
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => *(float*)((byte*)Unsafe.AsPointer(ref set) + 0x124);
+        }
+    }
 }
 
 /// <summary>Members of AtkFontManager and AtkFontManager.Font.</summary>
 internal static unsafe class AtkFontManagerAdditions
 {
-    /// <summary>The size of <see cref="LineBuffer"/>.</summary>
+    /// <summary>The size of the line buffer.</summary>
     public const int LineBufferSize = 0x2000;
 
-    /// <summary>The pointer at 0x48, to the buffer multiline text is drawn from, a line at a time.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte* LineBuffer(AtkFontManager* manager) => *(byte**)((byte*)manager + 0x48);
+    private static readonly nint ModuleFontManagerOffset = typeof(AtkModule).FieldOffsetOf(nameof(AtkModule.AtkFontManager));
 
-    /// <summary>The font's glyph of a character, null if it has none or isn't ready. Its glyph map only holds the basic plane.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static AtkFontManager.Glyph* FindGlyph(this ref AtkFontManager.Font font, Rune rune) =>
-        !rune.IsBmp
-        || font.GlyphMap is null
-        || !font.Flags.HasFlag(AtkFontManager.FontFlags.Ready)
-        || !font.GlyphMap->TryGetValue(GameUtf8.Pack(rune), out var found) || found.Value is null
-            ? null
-            : found.Value;
-}
+    extension(ref AtkFontManager manager)
+    {
+        /// <summary>Gets the pointer at 0x48, to the buffer multiline text is drawn from, a line at a time.</summary>
+        public byte* LineBuffer
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => *(byte**)((byte*)Unsafe.AsPointer(ref manager) + 0x48);
+        }
 
-/// <summary>Members of AtkModule.</summary>
-internal static unsafe class AtkModuleAdditions
-{
-    private static readonly nint FontManagerOffset = typeof(AtkModule).FieldOffsetOf(nameof(AtkModule.AtkFontManager));
+        /// <summary>Gets the module the font manager is embedded in, which AtkStage has no pointer to.</summary>
+        public AtkModule* Module => (AtkModule*)((byte*)Unsafe.AsPointer(ref manager) - ModuleFontManagerOffset);
+    }
 
-    /// <summary>The module a font manager is embedded in, which AtkStage has no pointer to.</summary>
-    public static AtkModule* FromFontManager(AtkFontManager* fontManager) => (AtkModule*)((byte*)fontManager - FontManagerOffset);
+    extension(ref AtkFontManager.Font font)
+    {
+        /// <summary>The font's glyph of a character, null if it has none or isn't ready. Its glyph map only holds the basic plane.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public AtkFontManager.Glyph* FindGlyph(Rune rune) =>
+            !rune.IsBmp
+            || font.GlyphMap is null
+            || !font.Flags.HasFlag(AtkFontManager.FontFlags.Ready)
+            || !font.GlyphMap->TryGetValue(GameUtf8.Pack(rune), out var found) || found.Value is null
+                ? null
+                : found.Value;
+    }
 }
 
 /// <summary>Values of AtkResNode.</summary>
@@ -90,11 +104,14 @@ internal static unsafe class AtkTextLayoutAdditions
     public delegate void PrepareNodeDelegate(nint renderer, nint outArea, AtkFontManager.FontSet* set, AtkTextNode* node);
 }
 
-/// <summary>Members of the log viewer embedded in AddonChatLogPanel.</summary>
+/// <summary>Members of LogViewer, which AddonChatLogPanel embeds.</summary>
 internal static unsafe class LogViewerAdditions
 {
-    /// <summary>The byte at 0x98. The viewer's OnRequestedUpdate lays its messages out again only if this is set or they changed.</summary>
-    public static ref byte LayoutPending(void* logViewer) => ref *((byte*)logViewer + 0x98);
+    extension(ref LogViewer viewer)
+    {
+        /// <summary>Gets the byte at 0x98. The viewer's OnRequestedUpdate lays its messages out again only if this is set or they changed.</summary>
+        public ref byte LayoutPending => ref *((byte*)Unsafe.AsPointer(ref viewer) + 0x98);
+    }
 }
 
 /// <summary>Values and layout of the nameplates' types.</summary>
@@ -106,6 +123,9 @@ internal static unsafe class NamePlateAdditions
     /// <summary>The bit of NamePlateObjectIntArrayData.UpdateFlags that has the plate updated, as a changed text does.</summary>
     public const int UpdateFlagUpdate = 1;
 
-    /// <summary>The object a bake's data is of, being its first member.</summary>
-    public static AddonNamePlate.NamePlateObject* ObjectOf(AddonNamePlate.BakeData* bake) => (AddonNamePlate.NamePlateObject*)bake;
+    extension(ref AddonNamePlate.BakeData bake)
+    {
+        /// <summary>Gets the object the bake's data is of, being its first member.</summary>
+        public AddonNamePlate.NamePlateObject* Object => (AddonNamePlate.NamePlateObject*)Unsafe.AsPointer(ref bake);
+    }
 }
