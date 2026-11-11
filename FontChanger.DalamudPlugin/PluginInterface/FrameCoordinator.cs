@@ -48,7 +48,7 @@ internal sealed class FrameCoordinator : IAsyncDisposable
             this.ChatLog = Optional("Chat log text", () => new ChatLogText(this.Replacer));
             this._lineBreaker = Optional("Line breaking", () => new LineBreaker(this.Replacer));
             this._loader = new(this.Replacer.Services, this.Replacer.FallbackFonts);
-            this.Presets = new(configuration, this.Replacer.Services, this._loader);
+            this.Presets = new(configuration, this._loader);
             this.OnUpdate(null!);
         }
         catch
@@ -101,9 +101,7 @@ internal sealed class FrameCoordinator : IAsyncDisposable
         var log = this._state.Drain();
 
         var c = this._configuration;
-        var (fonts, error) = this._loader.TryTake();
-        if (error is not null)
-            this.Presets.ReportFailure(error);
+        var fonts = this.Presets.Update();
 
         // Every cause is known before anything is made again, so that it is made once.
         var scope = this.Replacer.SetEnabled(c.Enabled && !this._state.Failed(Part.Replacer));
