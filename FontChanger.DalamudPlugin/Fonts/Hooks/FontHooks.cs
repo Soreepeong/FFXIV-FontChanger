@@ -29,7 +29,7 @@ internal sealed unsafe class FontHooks : IDisposable
     private readonly CopyFonts _copies;
     private readonly GlyphStore _store;
     private readonly FrameState _state;
-    private readonly FontSetFlags _flags;
+    private readonly LayoutContext _context;
     private readonly GlyphLookup _lookup;
     private readonly DisposeSafety.ScopedFinalizer _finalizer = new();
 
@@ -51,12 +51,12 @@ internal sealed unsafe class FontHooks : IDisposable
         CellPlacer placer,
         GlyphStore store,
         FrameState state,
-        FontSetFlags flags)
+        LayoutContext context)
     {
         this._copies = copies;
         this._store = store;
         this._state = state;
-        this._flags = flags;
+        this._context = context;
         try
         {
             this._rendererVtbl = AtkFontAnalyzerRenderer.Addresses.StaticVirtualTable.Value;
@@ -80,7 +80,7 @@ internal sealed unsafe class FontHooks : IDisposable
             else
                 Plugin.Log.Warning("Text drawing setup not found: chat tabs are drawn in their family's fonts");
 
-            this._lookup = new(copies, sized, layout, factory, placer, store, state, flags, this._getGlyphHook.Original);
+            this._lookup = new(copies, sized, layout, factory, placer, store, state, context, this._getGlyphHook.Original);
             this._getGlyphHook.Enable();
             this._pickFontHook.Enable();
             this._buildFontCacheHook.Enable();
@@ -177,7 +177,7 @@ internal sealed unsafe class FontHooks : IDisposable
     {
         this._prepareNodeHook!.Original(renderer, outArea, set, node);
         if (set is not null && node is not null)
-            this._flags.ApplyNodeFace(set, node, this._flags.GetNodeFaces(node));
+            this._context.ApplyNodeFace(set, node, this._context.GetNodeFaces(node));
     }
 
     private AtkFontManager.FontSet* PrepareMeasureDetour(AtkTextNode* node, byte considerScale)
@@ -186,21 +186,21 @@ internal sealed unsafe class FontHooks : IDisposable
         if (set is null || node is null)
             return set;
 
-        var faces = this._flags.GetNodeFaces(node);
-        this._flags.ApplyNodeFace(set, node, faces);
+        var faces = this._context.GetNodeFaces(node);
+        this._context.ApplyNodeFace(set, node, faces);
 
         // The game measures a node's bold upright, as it draws it.
-        set->DrawFlags = (node->TextFlags & TextFlags.Bold) != 0 ? set->DrawFlags | FontSetFlags.BoldFlag : set->DrawFlags & ~FontSetFlags.BoldFlag;
+        set->DrawFlags = (node->TextFlags & TextFlags.Bold) != 0 ? set->DrawFlags | LayoutContext.BoldFlag : set->DrawFlags & ~LayoutContext.BoldFlag;
 
         // Hinting rounds glyphs of different sizes differently, so text measured in the node's units (a speech balloon's) is laid
         // out with the glyphs it is drawn with, of its size on screen. Nameplate bakes are left alone, being drawn at a scale of
         // their own.
-        if (this._state.IsOn && considerScale == 0 && FontSetFlags.PickScaleOf(set) <= 0 && !TextFaceNames.IsNamePlates(faces.Face))
+        if (this._state.IsOn && considerScale == 0 && !LayoutContext.HasPickScale(set) && !TextFaceNames.IsNamePlates(faces.Face))
         {
             ref readonly var m = ref node->Transform;
             var scale = MathF.Sqrt((m.M21 * m.M21) + (m.M22 * m.M22));
             if (float.IsFinite(scale) && scale > 0 && MathF.Abs(scale - 1) > 0.001f)
-                FontSetFlags.PickScaleOf(set) = scale;
+                LayoutContext.PickScaleOf(set) = scale;
         }
 
         return set;
@@ -213,15 +213,14 @@ internal sealed unsafe class FontHooks : IDisposable
     private int TextWrapLayoutDetour(nint wrapper, byte* text)
     {
         Misc.DebugAssertMainThread();
-        var outer = LayoutCall.Wrapping;
-        LayoutCall.Wrapping = this._state.IsOn;
+        var outer = this._context.EnterWrap(this._state.IsOn);
         try
         {
             return this._textWrapLayoutHook!.Original(wrapper, text);
         }
         finally
         {
-            LayoutCall.Wrapping = outer;
+            this._context.LeaveWrap(outer);
         }
     }
 
@@ -240,21 +239,11 @@ internal sealed unsafe class FontHooks : IDisposable
 
         try
         {
-            // Picked for the on-screen size, even where the game picked for another (a node's fixed font resolution, or a pick
-            // scale of its own), so that the renderer doesn't scale the glyphs. Text laid out unscaled takes its pick scale's.
-            var size = set->ScaledSizeY;
-            var pickScale = FontSetFlags.PickScaleOf(set);
-            if (set->NodeScaleX == 1 && set->NodeScaleY == 1)
-            {
-                if (pickScale > 0 && float.IsFinite(pickScale))
-                    size = FontSetFlags.UnscaledSizeYOf(set) * pickScale;
-                else if (LayoutCall.Wrapping)
-                    size *= GlyphLookup.WrapScales[^1];
-            }
+            var size = this._context.PickSizeOf(set);
 
             // Text with faces of its own (nameplates, chat tabs) and wrapped text keep what they are laid out with.
-            var face = this._flags.FaceOf(set);
-            var copy = this._copies.Pick(font, size, face, face == TextFace.Default && !LayoutCall.Wrapping, out var halfPx, out var clamped);
+            var face = this._context.FaceOf(set);
+            var copy = this._copies.Pick(font, size, face, face == TextFace.Default && !this._context.Wrapping, out var halfPx, out var clamped);
 
             // Any renderer scale but exactly 1 resamples bilinearly (soft text), while a quarter pixel of size error doesn't show.
             if (halfPx < CopyFonts.MaxHalfPx && halfPx > CopyFonts.MinHalfPx)
@@ -276,24 +265,15 @@ internal sealed unsafe class FontHooks : IDisposable
     private byte* LayOutCharacterDetour(AtkFontAnalyzerBase* analyzer, byte** text, AtkFontAnalyzerState* state)
     {
         Misc.DebugAssertMainThread();
-        var outer = LayoutCall.Current;
         var vtbl = *(nint*)analyzer;
-        LayoutCall.Current = new()
-        {
-            Character = *text,
-            MeasuringOnly = vtbl != this._rendererVtbl && vtbl != this._renderCountVtbl,
-            State = state,
-        };
+        var outer = this._context.EnterCharacter(*text, vtbl != this._rendererVtbl && vtbl != this._renderCountVtbl, state);
         try
         {
             return this._layOutCharacterHook.Original(analyzer, text, state);
         }
         finally
         {
-            // The italic macro reads the bit when italics end (the glyph after moves by the font's italic correction).
-            if (LayoutCall.Current.ItalicCleared)
-                state->Flags |= AtkFontManager.DrawFlags.Italic;
-            LayoutCall.Current = outer;
+            this._context.LeaveCharacter(outer);
         }
     }
 

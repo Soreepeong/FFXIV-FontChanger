@@ -227,7 +227,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         for (var i = 0; i < NumNamePlateObjects; i++)
         {
             if (this._nameTexts[i] != 0 && this._nameTexts[i] != (nint)objects[i].NameText)
-                this._replacer.RemoveNodeFaces(this._nameTexts[i]);
+                this._replacer.Context.RemoveNodeFaces(this._nameTexts[i]);
         }
 
         for (var i = 0; i < NumNamePlateObjects; i++)
@@ -237,7 +237,7 @@ internal sealed unsafe class NamePlateText : IDisposable
                 continue;
             this._nameTexts[i] = node;
             if (node != 0)
-                this._replacer.SetNodeFaces(node, this._faces[i]);
+                this._replacer.Context.SetNodeFaces(node, this._faces[i]);
         }
     }
 
@@ -253,7 +253,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         foreach (var node in this._nameTexts)
         {
             if (node != 0)
-                this._replacer.RemoveNodeFaces(node);
+                this._replacer.Context.RemoveNodeFaces(node);
         }
 
         Array.Clear(this._nameTexts);
@@ -306,7 +306,7 @@ internal sealed unsafe class NamePlateText : IDisposable
             var old = this._faces[index];
             this._faces[index] = faces;
             if (this._nameTexts[index] != 0)
-                this._replacer.SetNodeFaces(this._nameTexts[index], faces);
+                this._replacer.Context.SetNodeFaces(this._nameTexts[index], faces);
             if (old.Face == faces.Face && old.OtherLines == faces.OtherLines)
                 continue;
             if (objects[index].NameText is not null)
@@ -382,7 +382,8 @@ internal sealed unsafe class NamePlateText : IDisposable
     private void PrepareDetour(BakePlateRenderer* renderer, float* rect, AtkFontManager.FontSet* set, AtkTextNode* node)
     {
         this._prepareHook.Original(renderer, rect, set, node);
-        this._replacer.ApplyNodeFace(set, node, this._replacer.TryGetNodeFaces(node, out var faces) ? faces : new NodeFaces(TextFace.NamePlate));
+        var context = this._replacer.Context;
+        context.ApplyNodeFace(set, node, context.TryGetNodeFaces(node, out var faces) ? faces : new NodeFaces(TextFace.NamePlate));
 
         // The original sets the node scale to 1, so a region allocated at another scale needs its own.
         var bake = renderer->CurrentBakeData;

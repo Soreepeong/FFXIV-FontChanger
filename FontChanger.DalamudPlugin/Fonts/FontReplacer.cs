@@ -3,8 +3,6 @@ using System.Linq;
 
 using Dalamud.Utility;
 
-using FFXIVClientStructs.FFXIV.Component.GUI;
-
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Glyphs;
@@ -38,7 +36,6 @@ internal sealed unsafe class FontReplacer : IDisposable
     private readonly KernelTextureWrapper _blankTexture;
 
     private readonly FrameState _state;
-    private readonly FontSetFlags _flags = new();
     private readonly FontHooks _fontHooks;
     private readonly GlyphStore _store;
     private readonly AtlasSet _atlases;
@@ -78,7 +75,7 @@ internal sealed unsafe class FontReplacer : IDisposable
             this._factory = new(this._store);
             this._layout = new(this.Services, this._store, this._factory, state);
             this._fontHooks = this._hooks.Add(
-                new FontHooks(this._copies, this._sized, this._layout, this._factory, this._placer, this._store, state, this._flags));
+                new FontHooks(this._copies, this._sized, this._layout, this._factory, this._placer, this._store, state, this.Context));
             this._hooks.Add(new FontLifecycleHooks(scope => this.Reset(scope), state));
 
             // Caches built so far hold the game's glyphs.
@@ -104,6 +101,9 @@ internal sealed unsafe class FontReplacer : IDisposable
 
     public SystemFallbackFonts FallbackFonts { get; }
 
+    /// <summary>Gets what is being laid out. Text nodes are given faces of their own there.</summary>
+    public LayoutContext Context { get; } = new();
+
     /// <summary>Gets a value indicating whether fonts are replaced, which an error turns off at once.</summary>
     public bool IsEnabled => this._state.IsOn;
 
@@ -111,15 +111,6 @@ internal sealed unsafe class FontReplacer : IDisposable
     public bool Supports4444 => this._supports4444 ??= this.CheckSupports4444();
 
     public bool HasOwnFonts(TextFace face) => this._sized.Fonts.HasOwnFonts(Misc.DebugAssertMainThread(face));
-
-    /// <summary>Gives a text node faces of its own until <see cref="RemoveNodeFaces"/>.</summary>
-    public void SetNodeFaces(nint node, NodeFaces faces) => this._flags.SetNodeFaces(node, faces);
-
-    public void RemoveNodeFaces(nint node) => this._flags.RemoveNodeFaces(node);
-
-    public bool TryGetNodeFaces(AtkTextNode* node, out NodeFaces faces) => this._flags.TryGetNodeFaces(node, out faces);
-
-    public void ApplyNodeFace(AtkFontManager.FontSet* set, AtkTextNode* node, NodeFaces faces) => this._flags.ApplyNodeFace(set, node, faces);
 
     /// <summary>Applied when it differs from what was last asked for, even if an error turned it off already, so that the font caches follow.</summary>
     public ResetScope SetEnabled(bool value)

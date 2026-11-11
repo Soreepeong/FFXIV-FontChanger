@@ -19,12 +19,9 @@ internal sealed unsafe class GlyphLookup(
     CellPlacer placer,
     GlyphStore store,
     FrameState state,
-    FontSetFlags flags,
+    LayoutContext context,
     GlyphLookup.GameGlyphDelegate gameGlyph)
 {
-    // The UI scales (High Resolution UI) text wrapped unscaled may be drawn at, the largest last.
-    public static readonly float[] WrapScales = [1f, 1.5f, 2f, 3f];
-
     // What LayOutCharacter lays out a character a font has no glyph of as, in order of preference, as packed UTF-8.
     private static readonly uint[] MissingGlyphSubstitutes = [0xE38093, 0x2D, 0xE39080];
 
@@ -34,7 +31,7 @@ internal sealed unsafe class GlyphLookup(
     public AtkFontManager.Glyph* Get(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info)
     {
         var drawn = this.GetDrawnSized(set, info);
-        var wrapping = LayoutCall.Wrapping && set->NodeScaleX == 1 && set->NodeScaleY == 1 && FontSetFlags.PickScaleOf(set) <= 0;
+        var wrapping = context.IsWrapMeasure(set);
         var glyph = wrapping ? this.GetWrapRunGlyph(set, utf8Value, info, drawn) : null;
         if (glyph is not null)
             return glyph;
@@ -45,25 +42,13 @@ internal sealed unsafe class GlyphLookup(
         return wrapping ? this.GetWrapGlyph(set, utf8Value, info, drawn, glyph) : glyph;
     }
 
-    // An italic macro sets the state's bit, which measuring sees too. A text node's italics are only in the font set's own flags,
-    // which only drawing sees.
-    private static ItalicMode GetItalicMode(AtkFontManager.FontSet* set)
-    {
-        var state = LayoutCall.Current.State;
-        if (state is null || (state->Flags & AtkFontManager.DrawFlags.Italic) == 0)
-            return ItalicMode.Upright;
-        return set is not null && (set->DrawFlags & AtkFontManager.DrawFlags.Italic) != 0
-                   ? ItalicMode.Images
-                   : ItalicMode.Real;
-    }
-
     private AtkFontManager.Glyph* WithPixels(AtkFontManager.Glyph* glyph) =>
-        LayoutCall.Current.MeasuringOnly ? glyph : placer.WithPixels(glyph, state.Frame);
+        context.MeasuringOnly ? glyph : placer.WithPixels(glyph, state.Frame);
 
     /// <summary>The sized fonts of the UI scales for the text being wrapped, <paramref name="drawn"/> (the largest) last.</summary>
-    /// <seealso cref="WrapScales"/>
+    /// <seealso cref="LayoutContext.WrapScales"/>
     private SizedFont[] GetWrapSizes(AtkFontManager.FontSet* set, CopyInfo info, SizedFont drawn) =>
-        info.GetWrapSizes(sized, WrapScales, set->ScaledSizeY, FontSetFlags.IsBold(LayoutCall.Current.State), drawn);
+        info.GetWrapSizes(sized, LayoutContext.WrapScales, set->ScaledSizeY, context.IsBold, drawn);
 
     /// <summary>
     /// While wrapping, the character LayOutCharacter is at gets its cell of its run laid out at every UI scale.
@@ -72,12 +57,12 @@ internal sealed unsafe class GlyphLookup(
     /// <seealso cref="GameTextLayout.TryGetWrapGlyph"/>
     private AtkFontManager.Glyph* GetWrapRunGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont drawn)
     {
-        var p = LayoutCall.Current.Character;
+        var p = context.Character;
         if (p is null || GameUtf8.Pack(p) != utf8Value)
             return null;
         try
         {
-            return layout.TryGetWrapGlyph(this.GetWrapSizes(set, info, drawn), WrapScales, p, GetItalicMode(set)).Value;
+            return layout.TryGetWrapGlyph(this.GetWrapSizes(set, info, drawn), LayoutContext.WrapScales, p, context.ItalicModeOf(set)).Value;
         }
         catch (Exception ex)
         {
@@ -96,7 +81,7 @@ internal sealed unsafe class GlyphLookup(
             return glyph;
 
         // In the copy's pixels, which are those of the largest scale. Width + OffsetX is how far the game advances.
-        var largest = WrapScales[^1];
+        var largest = LayoutContext.WrapScales[^1];
         var own = glyph->Width + glyph->OffsetX;
         var widest = own;
         try
@@ -106,7 +91,7 @@ internal sealed unsafe class GlyphLookup(
             {
                 var other = this.GetCopyGlyph(set, utf8Value, info, sizes[i], false);
                 if (other is not null && other != store.EmptyGlyph)
-                    widest = Math.Max(widest, (int)MathF.Ceiling((other->Width + other->OffsetX) * largest / WrapScales[i]));
+                    widest = Math.Max(widest, (int)MathF.Ceiling((other->Width + other->OffsetX) * largest / LayoutContext.WrapScales[i]));
             }
         }
         catch (Exception ex)
@@ -129,22 +114,19 @@ internal sealed unsafe class GlyphLookup(
     private AtkFontManager.Glyph* GetCopyGlyph(AtkFontManager.FontSet* set, uint utf8Value, CopyInfo info, SizedFont font, bool shape)
     {
         // Not for a lookup of the game's fallback characters.
-        var p = LayoutCall.Current.Character;
+        var p = context.Character;
         if (shape && p is not null && GameUtf8.Pack(p) == utf8Value)
         {
             try
             {
-                var italic = GetItalicMode(set);
+                var italic = context.ItalicModeOf(set);
                 var shaped = layout.TryGetGlyph(font, p, italic).Value;
                 if (shaped is not null)
                 {
                     // The quad emitter runs after this lookup, so clearing the italic bit until LayOutCharacterDetour ends draws
                     // a real italic glyph unsheared.
                     if (italic != ItalicMode.Upright && GlyphStore.IsOwn(shaped) && store.CellOf(shaped).RealItalic)
-                    {
-                        LayoutCall.Current.State->Flags &= ~AtkFontManager.DrawFlags.Italic;
-                        LayoutCall.Current.ItalicCleared = true;
-                    }
+                        context.ClearItalic();
 
                     return this.WithPixels(shaped);
                 }
@@ -207,12 +189,12 @@ internal sealed unsafe class GlyphLookup(
     {
         try
         {
-            if (flags.LineFaceOf(set, LayoutCall.Current.Character) is var face && face != TextFace.Default && face != info.Face &&
+            if (context.LineFaceOf(set) is var face && face != TextFace.Default && face != info.Face &&
                 sized.Fonts.HasFonts(face) &&
                 copies.TryGet(copies.GetOrCreate(info.Original, info.HalfPx, face), out var other) &&
                 other.Sized.Atlas == info.Sized.Atlas)
                 info = other;
-            return FontSetFlags.IsBold(LayoutCall.Current.State) ? info.GetBold(sized) : info.Sized;
+            return context.IsBold ? info.GetBold(sized) : info.Sized;
         }
         catch (Exception ex)
         {

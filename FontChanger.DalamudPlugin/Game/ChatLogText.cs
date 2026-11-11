@@ -120,10 +120,10 @@ internal sealed unsafe class ChatLogText : IDisposable
     private void SetPanelText(int tab, nint node)
     {
         if (this._panelTexts[tab] != 0)
-            this._replacer.RemoveNodeFaces(this._panelTexts[tab]);
+            this._replacer.Context.RemoveNodeFaces(this._panelTexts[tab]);
         this._panelTexts[tab] = node;
         if (node != 0)
-            this._replacer.SetNodeFaces(node, new(TextFaceNames.ChatTab(tab)));
+            this._replacer.Context.SetNodeFaces(node, new(TextFaceNames.ChatTab(tab)));
     }
 
     private void ForgetPanels()
