@@ -51,6 +51,7 @@ internal sealed unsafe class ResolvedSystemFont : IDisposable
             DWRITE_FONT_METRICS metrics;
             face->GetMetrics(&metrics);
             this.Metrics = metrics;
+            this.HasPairKerning = face->HasKerningPairs() && !HasGposKerning(face);
 
             // A variable font starts from its instance (DirectWrite lists the named ones as fonts), less the optical size.
             var ranges = Array.Empty<DWRITE_FONT_AXIS_RANGE>();
@@ -124,6 +125,9 @@ internal sealed unsafe class ResolvedSystemFont : IDisposable
     public IDWriteFontFace5* Face => this._face.Value;
 
     public DWRITE_FONT_METRICS Metrics { get; }
+
+    /// <summary>Whether the font kerns by its kern table only, which shaping doesn't apply.</summary>
+    public bool HasPairKerning { get; }
 
     /// <summary>Synthesis's slant (FreeType) and width on screen, applied before the element's transformation.</summary>
     public Matrix2x2 Transform { get; }
@@ -317,6 +321,34 @@ internal sealed unsafe class ResolvedSystemFont : IDisposable
         9 => 200,
         _ => 0,
     };
+
+    /// <summary>Tells whether the font's GPOS table has a kern feature.</summary>
+    private static bool HasGposKerning(IDWriteFontFace5* face)
+    {
+        void* data;
+        uint size;
+        void* context;
+        BOOL exists;
+        if (face->TryGetFontTable(0x534F5047 /* GPOS */, &data, &size, &context, &exists).FAILED || !exists)
+            return false;
+
+        var bytes = new ReadOnlySpan<byte>(data, (int)size);
+
+        // The feature list is a count, then records of a tag and an offset.
+        var found = false;
+        var list = U16(bytes, 6);
+        var count = list != 0 ? U16(bytes, list) : 0;
+        for (var i = 0; i < count && !found; i++)
+        {
+            var record = list + 2 + (i * 6);
+            found = record + 4 <= bytes.Length && bytes.Slice(record, 4).SequenceEqual("kern"u8);
+        }
+
+        face->ReleaseFontTable(context);
+        return found;
+
+        static int U16(ReadOnlySpan<byte> bytes, int at) => at + 2 <= bytes.Length ? (bytes[at] << 8) | bytes[at + 1] : 0;
+    }
 
     private static HRESULT WithSimulations(IDWriteFontFace5* face, DWRITE_FONT_SIMULATIONS simulations, IDWriteFontFace5** made)
     {

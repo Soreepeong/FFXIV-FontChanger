@@ -25,6 +25,10 @@ internal sealed unsafe partial class OutlineFaceSource
 
     private DWRITE_FONT_FEATURE[]? _features;
 
+    // Unless the lookup turns the kern feature off.
+    private bool IsKerningOn =>
+        !this.Def.Lookup.Features.TryGetValue((uint)DWRITE_FONT_FEATURE_TAG.DWRITE_FONT_FEATURE_TAG_KERNING, out var value) || value != 0;
+
     public int Shape(float px, ReadOnlySpan<char> text, ScriptToken script, List<ShapedCluster> clusters)
     {
         var length = text.Length;
@@ -150,6 +154,26 @@ internal sealed unsafe partial class OutlineFaceSource
                         featureRanges,
                         a,
                         o).ThrowOnError();
+                }
+            }
+
+            // Placing glyphs applies the kerning of GPOS only. A font with just a kern table gets its pairs here.
+            if (count > 1 && this.Font.HasPairKerning && this.IsKerningOn)
+            {
+                var adjustments = new int[count];
+                HRESULT hr;
+                fixed (ushort* g = glyphs)
+                fixed (int* adjustment = adjustments)
+                    hr = ((IDWriteFontFace1*)face)->GetKerningPairAdjustments(count, g, adjustment);
+
+                if (hr.SUCCEEDED)
+                {
+                    var scale = px / this.Font.Metrics.designUnitsPerEm;
+                    for (var i = 0; i < count; i++)
+                    {
+                        var adjustment = adjustments[i] * scale;
+                        advances[i] += measureMode is 1 or 2 ? Misc.StdRound(adjustment) : adjustment;
+                    }
                 }
             }
 
