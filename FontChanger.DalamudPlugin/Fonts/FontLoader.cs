@@ -1,63 +1,17 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Faces;
+using FontChanger.DalamudPlugin.Fonts.Records;
 using FontChanger.DalamudPlugin.Fonts.Text;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.DalamudPlugin.Utilities;
 using FontChanger.Presets.Records;
 
 namespace FontChanger.DalamudPlugin.Fonts;
-
-/// <summary>
-/// Game fonts the preset has no font of (all, if it is null) keep the game's glyphs, and characters a font lacks come from
-/// the game's glyphs unless <paramref name="SystemFallback"/>.
-/// </summary>
-internal readonly record struct FontSettings(
-    Preset? Preset = null, bool SystemFallback = true, IReadOnlyDictionary<TextFace, Preset>? Faces = null);
-
-/// <summary>The settings the fonts are made from.</summary>
-/// <remarks>The collections are replaced when edited, so two requests are equal only if none of it was.</remarks>
-/// <param name="FamilySources">The sources, by family or face.</param>
-/// <param name="DisabledFamilies">The families whose sources are left out.</param>
-/// <param name="SystemFallback">Whether characters a font lacks come from the system's fonts.</param>
-/// <param name="Reloads">How often the fonts were asked for again as they are.</param>
-internal readonly record struct FontRequest(
-    ImmutableDictionary<string, ImmutableList<FontSource>> FamilySources,
-    ImmutableHashSet<string> DisabledFamilies,
-    bool SystemFallback,
-    int Reloads);
-
-/// <summary>What reading a request's sources came to.</summary>
-/// <param name="Status">The status line.</param>
-/// <param name="Watch">The files to watch from now on, null to keep watching the same.</param>
-internal sealed record LoadReport(string Status, WatchList? Watch);
-
-/// <summary>The files whose edits make the fonts again.</summary>
-/// <param name="Presets">The preset files.</param>
-/// <param name="PresetFolders">The folders they are in, of those that exist.</param>
-/// <param name="GlyphImageFolders">The presets' glyph image folders, of those that exist.</param>
-internal sealed record WatchList(ImmutableHashSet<string> Presets, ImmutableHashSet<string> PresetFolders, ImmutableHashSet<string> GlyphImageFolders)
-{
-    public static readonly WatchList None = Of([], []);
-
-    /// <summary>Looks for the folders, so it is for the loader's task.</summary>
-    public static WatchList Of(IEnumerable<string> presets, IEnumerable<string> glyphImageFolders)
-    {
-        var watched = presets.ToImmutableHashSet(StringComparer.OrdinalIgnoreCase);
-        return new(
-            watched,
-            watched.Select(Path.GetDirectoryName).OfType<string>().Where(Directory.Exists).ToImmutableHashSet(StringComparer.OrdinalIgnoreCase),
-            glyphImageFolders.Where(Directory.Exists).ToImmutableHashSet(StringComparer.OrdinalIgnoreCase));
-    }
-}
 
 /// <summary>Reads the sources and makes the fonts on a task, which the framework thread takes once made. A request supersedes those before it.</summary>
 internal sealed class FontLoader(FontServices services, SystemFallbackFonts fallbackFonts) : IDisposable

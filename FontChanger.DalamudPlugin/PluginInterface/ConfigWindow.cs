@@ -8,7 +8,7 @@ using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 using FontChanger.DalamudPlugin.Configuration;
-using FontChanger.DalamudPlugin.Fonts;
+using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Fonts.Shaders;
 using FontChanger.DalamudPlugin.Utilities;
 

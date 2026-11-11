@@ -6,6 +6,7 @@ using System.Linq;
 
 using FontChanger.DalamudPlugin.Configuration;
 using FontChanger.DalamudPlugin.Fonts.Enums;
+using FontChanger.DalamudPlugin.Fonts.Records;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.PluginInterface;
 using FontChanger.Presets.Records;

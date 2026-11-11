@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 using FontChanger.DalamudPlugin.Fonts.Enums;
+using FontChanger.DalamudPlugin.Fonts.Records;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Utilities;
 

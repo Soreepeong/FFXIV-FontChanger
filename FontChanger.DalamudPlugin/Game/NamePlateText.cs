@@ -15,6 +15,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.Interop;
 
 using FontChanger.DalamudPlugin.Configuration;
+using FontChanger.DalamudPlugin.Fonts.Records;
 using FontChanger.DalamudPlugin.Fonts;
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.PluginInterface;

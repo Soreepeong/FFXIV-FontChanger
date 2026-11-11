@@ -5,7 +5,6 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Interface.Utility.Raii;
 
-using FontChanger.DalamudPlugin.Fonts;
 using FontChanger.DalamudPlugin.Fonts.Enums;
 
 namespace FontChanger.DalamudPlugin.PluginInterface;

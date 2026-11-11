@@ -1,6 +1,6 @@
 using System;
 
-namespace FontChanger.DalamudPlugin.Fonts;
+namespace FontChanger.DalamudPlugin.Fonts.Enums;
 
 /// <summary>How much is made again. Each includes what it is made from, but a font swap keeps the atlases and new atlases keep the fonts.</summary>
 [Flags]

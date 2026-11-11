@@ -2,18 +2,10 @@ using System;
 using System.Collections.Generic;
 
 using FontChanger.DalamudPlugin.Configuration;
+using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.PluginInterface;
 
 namespace FontChanger.DalamudPlugin.Fonts;
-
-/// <summary>A part that turns itself off when it fails, until the plugin is loaded again.</summary>
-internal enum Part
-{
-    Replacer,
-    Subpixel,
-    NamePlates,
-    ChatLog,
-}
 
 /// <summary>
 /// What the parts share: the frame that caches and atlas planes are aged by, whether fonts are replaced, the edge, and what

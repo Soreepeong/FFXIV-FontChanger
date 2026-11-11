@@ -5,6 +5,7 @@ using Dalamud.Utility;
 
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
+using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.PluginInterface;
 
 namespace FontChanger.DalamudPlugin.Fonts.Hooks;

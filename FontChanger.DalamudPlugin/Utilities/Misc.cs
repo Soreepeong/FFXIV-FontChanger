@@ -8,7 +8,6 @@ using System.Text;
 using Dalamud.Interface.GameFonts;
 using Dalamud.Utility;
 
-using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.STD;
 
 using TerraFX.Interop.DirectX;

@@ -15,7 +15,6 @@ using Dalamud.Interface.Utility.Raii;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 
 using FontChanger.DalamudPlugin.Configuration;
-using FontChanger.DalamudPlugin.Fonts;
 using FontChanger.DalamudPlugin.Fonts.Enums;
 using FontChanger.DalamudPlugin.Game;
 using FontChanger.DalamudPlugin.Utilities;
