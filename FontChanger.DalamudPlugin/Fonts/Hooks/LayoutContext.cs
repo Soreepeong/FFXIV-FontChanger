@@ -26,12 +26,15 @@ internal sealed unsafe class LayoutContext
     // The game neither sets nor reads it, and restores the set's flags after each layout, so it can't outlive the text it marks.
     private const AtkFontManager.DrawFlags FaceFlag = AtkFontSetAdditions.UnusedDrawFlag25;
 
-    private readonly (NodeFaces Faces, nint Text, int Length)[] _setFaces = new (NodeFaces, nint, int)[AtkFontManager.FontSetCount];
+    private readonly (NodeFaces Faces, nint Text, int Length, int MainStart, int MainLength)[] _setFaces =
+        new (NodeFaces, nint, int, int, int)[AtkFontManager.FontSetCount];
 
     // Text nodes with faces of their own, set by those who know them (nameplates, chat tabs).
     private readonly Dictionary<nint, NodeFaces> _nodeFaces = [];
 
     private Call _call;
+
+    public Action<nint>? RefreshNodeFaces { get; set; }
 
     /// <summary>Gets a value indicating whether the text wrapper is laying text out.</summary>
     public bool Wrapping { get; private set; }
@@ -52,10 +55,10 @@ internal sealed unsafe class LayoutContext
     }
 
     /// <returns>The call it replaces, for <see cref="LeaveCharacter"/>.</returns>
-    public Call EnterCharacter(byte* character, bool measuringOnly, AtkFontAnalyzerState* state)
+    public Call EnterCharacter(byte* character, byte* lineCharacter, bool measuringOnly, AtkFontAnalyzerState* state)
     {
         var outer = this._call;
-        this._call = new() { Character = character, MeasuringOnly = measuringOnly, State = state };
+        this._call = new() { Character = character, LineCharacter = lineCharacter, MeasuringOnly = measuringOnly, State = state };
         return outer;
     }
 
@@ -127,6 +130,12 @@ internal sealed unsafe class LayoutContext
     /// <summary>Default for a node no one set faces of.</summary>
     public NodeFaces GetNodeFaces(AtkTextNode* node) => this._nodeFaces.GetValueOrDefault((nint)node);
 
+    public NodeFaces GetMeasuredNodeFaces(AtkTextNode* node)
+    {
+        this.RefreshNodeFaces?.Invoke((nint)node);
+        return this.GetNodeFaces(node);
+    }
+
     public bool TryGetNodeFaces(AtkTextNode* node, out NodeFaces faces) => this._nodeFaces.TryGetValue((nint)node, out faces);
 
     public void ApplyNodeFace(AtkFontManager.FontSet* set, AtkTextNode* node, NodeFaces faces)
@@ -137,12 +146,55 @@ internal sealed unsafe class LayoutContext
             return;
         }
 
-        // A name the game shows shortened is in no line, so no line is the title's.
         var text = node is null ? null : (byte*)node->NodeText.StringPtr;
-        var length = text is null ? 0 : node->NodeText.Length;
-        if (faces.MainLine is not { } main || new ReadOnlySpan<byte>(text, length).IndexOf(main) < 0)
-            faces = faces with { MainLine = null };
-        this._setFaces[index] = (faces, (nint)text, length);
+        var length = text is null ? 0 : GameUtf8.TextLength(text, node->NodeText.Length);
+        var mainStart = 0;
+        var mainLength = 0;
+        if (faces.OtherLines == TextFace.Default || length == 0)
+        {
+            faces = faces with { OtherLines = TextFace.Default, Title = TitleLines.None };
+        }
+        else
+        {
+            switch (faces.Title)
+            {
+                case TitleLines.AllLines:
+                    mainStart = -1;
+                    break;
+                case TitleLines.AfterFirstLine:
+                {
+                    var brk = GameUtf8.NextLineBreak(text, length, 0, out _);
+                    if (brk < 0)
+                        faces = faces with { OtherLines = TextFace.Default, Title = TitleLines.None };
+                    else
+                        mainLength = brk;
+                    break;
+                }
+                case TitleLines.BeforeLastLine:
+                {
+                    var start = 0;
+                    while (GameUtf8.NextLineBreak(text, length, start, out var brkLen) is var brk and >= 0)
+                        start = brk + brkLen;
+                    if (start == 0)
+                    {
+                        faces = faces with { OtherLines = TextFace.Default, Title = TitleLines.None };
+                    }
+                    else
+                    {
+                        mainStart = start;
+                        mainLength = length - start;
+                    }
+
+                    break;
+                }
+                case TitleLines.None:
+                default:
+                    faces = faces with { OtherLines = TextFace.Default, Title = TitleLines.None };
+                    break;
+            }
+        }
+
+        this._setFaces[index] = (faces, (nint)text, length, mainStart, mainLength);
         set->DrawFlags |= FaceFlag;
     }
 
@@ -153,28 +205,41 @@ internal sealed unsafe class LayoutContext
     /// <remarks>Measuring lays a node's text out where it is. Drawing multiline text lays it out a line at a time, copied to the line buffer.</remarks>
     public TextFace LineFaceOf(AtkFontManager.FontSet* set)
     {
-        var p = this._call.Character;
+        var p = this._call.LineCharacter;
         if (p is null || (set->DrawFlags & FaceFlag) == 0 || IndexOf(set) is not (var index and >= 0))
             return TextFace.Default;
-        var (faces, text, length) = this._setFaces[index];
-        if (faces.MainLine is not { } main)
+        var (faces, text, length, mainStart, mainLength) = this._setFaces[index];
+        if (faces.OtherLines == TextFace.Default)
             return TextFace.Default;
+        if (mainStart < 0)
+            return faces.OtherLines;
+
+        if ((nint)p >= text && (nint)p < text + length)
+        {
+            var at = (int)((nint)p - text);
+            return at >= mainStart && at < mainStart + mainLength ? TextFace.Default : faces.OtherLines;
+        }
 
         var buffer = AtkStage.Instance()->AtkFontManager->LineBuffer;
-        ReadOnlySpan<byte> line;
-        if ((nint)p >= text && (nint)p < text + length)
-            line = LineAround(new((byte*)text, length), (int)((nint)p - text));
-        else if (buffer is not null && p >= buffer && p < buffer + AtkFontManagerAdditions.LineBufferSize)
-            line = LineAround(new(buffer, AtkFontManagerAdditions.LineBufferSize), (int)(p - buffer));
-        else
+        if (buffer is null || p < buffer || p >= buffer + AtkFontManagerAdditions.LineBufferSize)
             return TextFace.Default;
-        return line.IndexOf(main) < 0 ? faces.OtherLines : TextFace.Default;
+        var bufLength = GameUtf8.TextLength(buffer, AtkFontManagerAdditions.LineBufferSize);
+        if (p >= buffer + bufLength)
+            return TextFace.Default;
+        var line = LineAt(buffer, bufLength, (int)(p - buffer));
+        return line.SequenceEqual(new((byte*)text + mainStart, mainLength)) ? TextFace.Default : faces.OtherLines;
 
-        static ReadOnlySpan<byte> LineAround(ReadOnlySpan<byte> text, int at)
+        static ReadOnlySpan<byte> LineAt(byte* text, int length, int at)
         {
-            var start = text[..at].LastIndexOfAny((byte)'\n', (byte)'\r') + 1;
-            var end = text[at..].IndexOfAny((byte)'\n', (byte)'\r', (byte)0);
-            return text[start..(end < 0 ? text.Length : at + end)];
+            var start = 0;
+            while (GameUtf8.NextLineBreak(text, length, start, out var brkLen) is var brk and >= 0)
+            {
+                if (at < brk + brkLen)
+                    return new(text + start, Math.Max(0, brk - start));
+                start = brk + brkLen;
+            }
+
+            return new(text + start, length - start);
         }
     }
 
@@ -189,6 +254,8 @@ internal sealed unsafe class LayoutContext
     public struct Call
     {
         public byte* Character;
+
+        public byte* LineCharacter;
 
         // Laid out by an analyzer that only measures, so its glyph needs no pixels yet.
         public bool MeasuringOnly;

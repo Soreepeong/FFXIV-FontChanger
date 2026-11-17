@@ -139,7 +139,7 @@ internal sealed unsafe class RasterKey(SizedFont sized, PlacedCluster c) : IEqua
          this.Alignment == other.Alignment &&
          this._glyphs.AsSpan().SequenceEqual(other._glyphs) &&
          this._advances.AsSpan().SequenceEqual(other._advances) &&
-         MemoryMarshal.AsBytes(this._offsets.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(other._offsets.AsSpan())));
+         this._offsets.AsSpan().SequenceEqual(other._offsets));
 
     public override bool Equals(object? obj) => this.Equals(obj as RasterKey);
 
@@ -157,7 +157,10 @@ internal sealed unsafe class RasterKey(SizedFont sized, PlacedCluster c) : IEqua
         hash.Add(this._rawAdvance);
         hash.Add(this.Alignment);
         hash.AddBytes(MemoryMarshal.AsBytes(this._glyphs.AsSpan()));
-        hash.AddBytes(MemoryMarshal.AsBytes(this._advances.AsSpan()));
+        foreach (var advance in this._advances)
+            hash.Add(advance);
+        foreach (var offset in this._offsets.AsSpan())
+            hash.Add(offset);
         return hash.ToHashCode();
     }
 }

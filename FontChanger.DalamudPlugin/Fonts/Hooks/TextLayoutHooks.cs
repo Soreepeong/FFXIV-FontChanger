@@ -171,7 +171,7 @@ internal sealed unsafe class TextLayoutHooks : IDisposable
         if (set is null || node is null)
             return set;
 
-        var faces = this._context.GetNodeFaces(node);
+        var faces = this._context.GetMeasuredNodeFaces(node);
         this._context.ApplyNodeFace(set, node, faces);
 
         // The game measures a node's bold upright, as it draws it.
@@ -249,12 +249,31 @@ internal sealed unsafe class TextLayoutHooks : IDisposable
 
     private byte* LayOutCharacterDetour(AtkFontAnalyzerBase* analyzer, byte** text, AtkFontAnalyzerState* state)
     {
+        // An invalid lead byte bypasses GetGlyph and a truncated sequence steps past the terminator, so U+3013 is laid out instead.
         Misc.DebugAssertMainThread();
+        var p = *text;
+        var invalid = this._state.IsOn && *p >= 0x80 && (*p < 0xC0 || *p >= 0xF8 || GameUtf8.CharacterLength(p) == 0);
         var vtbl = *(nint*)analyzer;
-        var outer = this._context.EnterCharacter(*text, vtbl != this._rendererVtbl && vtbl != this._renderCountVtbl, state);
+        var outer = this._context.EnterCharacter(invalid ? null : p, p, vtbl != this._rendererVtbl && vtbl != this._renderCountVtbl, state);
         try
         {
-            return this._layOutCharacterHook.Original(analyzer, text, state);
+            if (!invalid)
+                return this._layOutCharacterHook.Original(analyzer, text, state);
+
+            fixed (byte* geta = "〓\0"u8)
+            {
+                *text = geta;
+                var res = this._layOutCharacterHook.Original(analyzer, text, state);
+                var next = p + 1;
+                if (*p is >= 0xC0 and < 0xF8)
+                {
+                    while (*next != 0)
+                        next++;
+                }
+
+                *text = next;
+                return res;
+            }
         }
         finally
         {

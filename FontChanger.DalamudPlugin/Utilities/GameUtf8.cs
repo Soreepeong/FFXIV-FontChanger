@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 using Lumina.Text;
+using Lumina.Text.Payloads;
 using Lumina.Text.ReadOnly;
 
 namespace FontChanger.DalamudPlugin.Utilities;
@@ -95,5 +96,77 @@ public static unsafe class GameUtf8
         }
 
         return p[total - 1] == ReadOnlySeString.Etx ? (int)total : 0;
+    }
+
+    public static int TextLength(byte* text, int maxLength)
+    {
+        if (text is null || maxLength <= 0)
+            return 0;
+        var zero = new ReadOnlySpan<byte>(text, maxLength).IndexOf((byte)0);
+        return zero < 0 ? maxLength : zero;
+    }
+
+    public static int NextLineBreak(byte* text, int length, int from, out int breakLength)
+    {
+        for (var i = from; i < length;)
+        {
+            switch (text[i])
+            {
+                case (byte)'\n':
+                    breakLength = 1;
+                    return i;
+                case (byte)'\r':
+                    breakLength = i + 1 < length && text[i + 1] == (byte)'\n' ? 2 : 1;
+                    return i;
+                case ReadOnlySeString.Stx:
+                {
+                    var macro = MacroLength(text + i);
+                    if (macro > 0 && i + macro <= length)
+                    {
+                        if ((MacroCode)text[i + 1] == MacroCode.NewLine)
+                        {
+                            breakLength = macro;
+                            return i;
+                        }
+
+                        i += macro;
+                        continue;
+                    }
+
+                    break;
+                }
+            }
+
+            i++;
+        }
+
+        breakLength = 0;
+        return -1;
+    }
+
+    public static ReadOnlySpan<byte> TrimItalicMacros(byte* text, int length)
+    {
+        var start = 0;
+        while (start < length && text[start] == ReadOnlySeString.Stx && (MacroCode)text[start + 1] == MacroCode.Italic
+               && MacroLength(text + start) is var lead and > 0 && start + lead <= length)
+            start += lead;
+
+        var end = start;
+        for (var i = start; i < length;)
+        {
+            if (text[i] == ReadOnlySeString.Stx && MacroLength(text + i) is var macro and > 0 && i + macro <= length)
+            {
+                var code = (MacroCode)text[i + 1];
+                i += macro;
+                if (code != MacroCode.Italic)
+                    end = i;
+            }
+            else
+            {
+                end = ++i;
+            }
+        }
+
+        return new(text + start, end - start);
     }
 }

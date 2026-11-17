@@ -117,11 +117,20 @@ internal static unsafe class LogViewerAdditions
 /// <summary>Values and layout of the nameplates' types.</summary>
 internal static unsafe class NamePlateAdditions
 {
-    /// <summary>The object ID of a nameplate info entry without an object, as an NPC's.</summary>
-    public const uint NoObjectId = 0xE0000000;
+    /// <summary>The object ID of a nameplate info entry without an object.</summary>
+    public const ulong NoObjectId = 0xE0000000;
 
     /// <summary>The bit of NamePlateObjectIntArrayData.UpdateFlags that has the plate updated, as a changed text does.</summary>
     public const int UpdateFlagUpdate = 1;
+
+    /// <summary>The bit of NamePlateObjectIntArrayData.DrawFlags that places the title before the name.</summary>
+    public const int DrawFlagPrefixTitle = 1;
+
+    /// <summary>The bit of NamePlateObjectIntArrayData.DrawFlags that hides the title.</summary>
+    public const int DrawFlagHideTitle = 0x80;
+
+    /// <summary>The offset of the titles in the nameplate string array.</summary>
+    public const int TitleStringOffset = 50;
 
     extension(ref AddonNamePlate.BakeData bake)
     {

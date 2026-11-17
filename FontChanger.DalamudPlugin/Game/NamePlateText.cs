@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Runtime.InteropServices;
 
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
@@ -103,15 +103,24 @@ internal sealed unsafe class NamePlateText : IDisposable
             this._bakePlateDrawHook.Enable();
             Array.Fill(this._faces, new(TextFace.NamePlate, TextFace.NamePlateTitle));
             this._finalizer.Add(this.ForgetNameTexts);
+            this._replacer.Context.RefreshNodeFaces = this.RefreshNodeFaces;
+            this._finalizer.Add(() => this._replacer.Context.RefreshNodeFaces = null);
             Plugin.AddonLifecycle.RegisterListener(AddonEvent.PreRequestedUpdate, AddonName, this.OnPreRequestedUpdate);
             this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PreRequestedUpdate, AddonName, this.OnPreRequestedUpdate));
+            Plugin.AddonLifecycle.RegisterListener(AddonEvent.PostRequestedUpdate, AddonName, this.OnPostRequestedUpdate);
+            this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PostRequestedUpdate, AddonName, this.OnPostRequestedUpdate));
             Plugin.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, AddonName, this.OnPreFinalize);
             this._finalizer.Add(() => Plugin.AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, AddonName, this.OnPreFinalize));
 
             // An addon already loaded may draw its plates before its next update.
             var addon = FindAddon();
             if (addon is not null)
+            {
                 this.ReadNameTexts(addon);
+                this.ReadCharacters(addon);
+                this.UpdateTitleLines(addon);
+            }
+
             this.Rebake();
         }
         catch
@@ -173,6 +182,7 @@ internal sealed unsafe class NamePlateText : IDisposable
         {
             // The update below measures without the listener that reads them.
             this.ReadNameTexts(addon);
+            this.ReadCharacters(addon);
 
             // The update measures again the text that differs from its node's. Plates not shown are left alone, as the game may
             // show them again without updating them.
@@ -189,6 +199,7 @@ internal sealed unsafe class NamePlateText : IDisposable
             }
 
             addon->UpdateAllNamePlates();
+            this.UpdateTitleLines(addon);
         }
         catch (Exception ex)
         {
@@ -275,6 +286,18 @@ internal sealed unsafe class NamePlateText : IDisposable
         }
     }
 
+    private void OnPostRequestedUpdate(AddonEvent type, AddonArgs args)
+    {
+        try
+        {
+            this.UpdateTitleLines((AddonNamePlate*)args.Addon.Address);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error(ex, "Updating the nameplates' title lines failed");
+        }
+    }
+
     // A plate whose face changes is updated (and so measured) again, as the game would only if its text changed.
     private void ReadCharacters(AddonNamePlate* addon)
     {
@@ -293,8 +316,8 @@ internal sealed unsafe class NamePlateText : IDisposable
             if (index < 0 || index >= NumNamePlateObjects)
                 continue;
 
-            // As Dalamud's nameplate API finds it: NPCs have no entity ID, and an invalid object's plate (in some cutscenes) no object.
-            var objectInfo = atk->NamePlateInfoEntries[index].ObjectId.ObjectId != NamePlateAdditions.NoObjectId && i < ui3d->NamePlateObjectInfoCount
+            // An invalid object's plate (in some cutscenes) has no object in UI3DModule.
+            var objectInfo = (ulong)atk->NamePlateInfoEntries[index].ObjectId != NamePlateAdditions.NoObjectId && i < ui3d->NamePlateObjectInfoCount
                                  ? ui3d->NamePlateObjectInfoPointers[i].Value
                                  : null;
             var gameObject = objectInfo is null ? null : objectInfo->GameObject;
@@ -303,8 +326,8 @@ internal sealed unsafe class NamePlateText : IDisposable
             this._characters[index] = new(gameObject, data.NamePlateKind);
 
             var obj = gameObject is null ? null : Plugin.ObjectTable[gameObject->ObjectIndex];
-            var faces = this.ChooseFaces(obj, data.NamePlateKind);
             var old = this._faces[index];
+            var faces = this.ChooseFaces(obj, data.NamePlateKind) with { Title = old.Title };
             this._faces[index] = faces;
             if (this._nameTexts[index] != 0)
                 this._replacer.Context.SetNodeFaces(this._nameTexts[index], faces);
@@ -316,7 +339,70 @@ internal sealed unsafe class NamePlateText : IDisposable
         }
     }
 
-    // In order, where it has fonts: the character's rule's (its world's before any world's), its kind's, then the nameplates'.
+    private void RefreshNodeFaces(nint node)
+    {
+        if (node == 0 || Array.IndexOf(this._nameTexts, node) is not (var index and >= 0))
+            return;
+        var array = NamePlateNumberArray.Instance();
+        var stage = AtkStage.Instance();
+        var strings = stage is null ? null : stage->GetStringArrayData(StringArrayType.NamePlate);
+        if (array is null || strings is null)
+            return;
+        var shown = Math.Clamp(array->ActiveNamePlateCount, 0, NumNamePlateObjects);
+        for (var i = 0; i < shown; i++)
+        {
+            if (array->ObjectData[i].NamePlateObjectIndex != index)
+                continue;
+            this.SetTitleLines(index, DetermineTitleLines(array->ObjectData[i].DrawFlags, strings->StringArray[i + NamePlateAdditions.TitleStringOffset], (AtkTextNode*)node));
+            return;
+        }
+    }
+
+    private void UpdateTitleLines(AddonNamePlate* addon)
+    {
+        var objects = addon->NamePlateObjectArray;
+        var array = NamePlateNumberArray.Instance();
+        var stage = AtkStage.Instance();
+        var strings = stage is null ? null : stage->GetStringArrayData(StringArrayType.NamePlate);
+        if (objects is null || array is null || strings is null)
+            return;
+        var shown = Math.Clamp(array->ActiveNamePlateCount, 0, NumNamePlateObjects);
+        for (var i = 0; i < shown; i++)
+        {
+            ref var data = ref array->ObjectData[i];
+            var index = data.NamePlateObjectIndex;
+            if (index >= 0 && index < NumNamePlateObjects)
+                this.SetTitleLines(index, DetermineTitleLines(data.DrawFlags, strings->StringArray[i + NamePlateAdditions.TitleStringOffset], objects[index].NameText));
+        }
+    }
+
+    private void SetTitleLines(int index, TitleLines title)
+    {
+        if (this._faces[index].Title == title)
+            return;
+        var faces = this._faces[index] with { Title = title };
+        this._faces[index] = faces;
+        if (this._nameTexts[index] != 0)
+            this._replacer.Context.SetNodeFaces(this._nameTexts[index], faces);
+    }
+
+    private static TitleLines DetermineTitleLines(int drawFlags, byte* titlePtr, AtkTextNode* node)
+    {
+        if ((drawFlags & NamePlateAdditions.DrawFlagHideTitle) != 0 || titlePtr is null || *titlePtr == 0 || node is null)
+            return TitleLines.None;
+        var text = (byte*)node->NodeText.StringPtr;
+        var length = GameUtf8.TextLength(text, node->NodeText.Length);
+        if (length == 0)
+            return TitleLines.None;
+        if (GameUtf8.NextLineBreak(text, length, 0, out _) >= 0)
+            return (drawFlags & NamePlateAdditions.DrawFlagPrefixTitle) != 0 ? TitleLines.BeforeLastLine : TitleLines.AfterFirstLine;
+        var titleSpan = MemoryMarshal.CreateReadOnlySpanFromNullTerminated(titlePtr);
+        return GameUtf8.TrimItalicMacros(text, length).SequenceEqual(GameUtf8.TrimItalicMacros(titlePtr, titleSpan.Length))
+                   ? TitleLines.AllLines
+                   : TitleLines.None;
+    }
+
+    // In order, where it has fonts, the character's rule's (its world's before any world's), its kind's, then the nameplates'.
     private NodeFaces ChooseFaces(IGameObject? obj, UIObjectKind kind)
     {
         var name = obj?.Name.TextValue ?? string.Empty;
@@ -330,7 +416,7 @@ internal sealed unsafe class NamePlateText : IDisposable
                    : this._replacer.HasOwnFonts(TextFaceNames.KindFace(kind)) ? TextFaceNames.KindFace(kind)
                    : TextFace.NamePlate;
         var title = rule is not null && this.WithFonts(TextFaceNames.NamePlateRuleTitleName(rule)) is { } ruleTitle ? ruleTitle : TextFace.NamePlateTitle;
-        return new(face, title, name.Length == 0 ? null : Encoding.UTF8.GetBytes(name));
+        return new(face, title);
     }
 
     private TextFace? WithFonts(string rule) =>
